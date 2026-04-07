@@ -1,0 +1,45 @@
+# Coffee Mais — Regras do Projeto
+
+## Idioma
+- Comunique-se sempre em Português Brasileiro (pt-BR)
+- Código: variáveis e funções em inglês, comentários em português quando necessário
+- Commits em português
+
+## Stack Técnica
+- Backend: Supabase (PostgreSQL, Auth, Storage, Edge Functions)
+- Supabase Project ID: ncncazbhpoxjlyvcbvqa
+- Supabase URL: https://ncncazbhpoxjlyvcbvqa.supabase.co
+
+## Padrões de Código
+- TypeScript strict mode
+- ESLint + Prettier
+- Nomeação: camelCase para variáveis/funções, PascalCase para componentes/classes
+- Arquivos: kebab-case (ex: `user-profile.tsx`)
+
+## Banco de Dados (Supabase)
+- Tabelas em snake_case (ex: `order_items`)
+- Sempre usar Row Level Security (RLS)
+- Migrations via Supabase MCP ou CLI
+- Queries tipadas com tipos gerados automaticamente
+
+## Segurança
+- Nunca expor service_role key no client
+- Usar apenas anon key no frontend
+- Validar inputs no backend (Edge Functions)
+- RLS em todas as tabelas
+
+## BMAD Method
+- Seguir a metodologia BMAD para planejamento e implementação
+- Usar `/bmad-help` para orientação de workflow
+- Documentar decisões arquiteturais
+
+## Estrutura de Pastas
+```
+src/
+├── app/          # Pages e rotas
+├── components/   # Componentes reutilizáveis
+├── lib/          # Utilitários e configurações
+├── hooks/        # Custom hooks
+├── types/        # Tipos TypeScript
+└── styles/       # Estilos globais
+```
