@@ -2,13 +2,15 @@
 node_modules/
 .pnp
 .pnp.js
+.yarn/install-state.gz
 
-# Build
+# Next.js
 .next/
 out/
 build/
 dist/
 *.tsbuildinfo
+next-env.d.ts
 
 # Environment
 .env
@@ -36,7 +38,7 @@ Thumbs.db
 # Supabase
 supabase/.temp/
 
-# BMAD output (generated artifacts - optional to track)
+# BMAD output
 {output_folder}/
 
 # Test results
@@ -44,5 +46,15 @@ test-results/
 playwright-report/
 coverage/
 
+# Vercel
+.vercel
+
 # Misc
 *.pem
+
+# Antigravity/AI Agents
+.agents/
+
+# Backup folders
+backup_*/
+
