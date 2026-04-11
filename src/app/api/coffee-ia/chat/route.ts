@@ -101,9 +101,11 @@ export async function POST(request: NextRequest) {
       parts: [{ text: msg.text }],
     }));
 
+    const dataAtualSistema = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+
     const chat = model.startChat({
       history: [
-        { role: "user", parts: [{ text: SCHEMA_CONTEXT }] },
+        { role: "user", parts: [{ text: SCHEMA_CONTEXT + `\n\nIMPORTANTE: A data atual do sistema hoje é: ${dataAtualSistema}. Use essa data como base quando perguntarem algo sobre 'hoje', 'ontem', 'este mês', etc.` }] },
         {
           role: "model",
           parts: [

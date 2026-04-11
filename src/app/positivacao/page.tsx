@@ -215,7 +215,7 @@ export default function PositivacaoPage() {
           <p className="dash-sidebar-title">Região (UF)</p>
           <MultiSelect value={filterUf} onChange={setFilterUf} options={filterOptions.ufs} className="dash-filter-select" placeholder="Todos" />
 
-          <p className="dash-sidebar-title">Unidade</p>
+          <p className="dash-sidebar-title">Canal</p>
           <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
 
           <p className="dash-sidebar-title">Matriz</p>

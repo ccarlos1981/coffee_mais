@@ -45,6 +45,9 @@ const YEARS = [2022, 2023, 2024, 2025, 2026];
 type Tab = "metas" | "dias-uteis";
 
 export default function MetasPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+
   const [activeTab, setActiveTab] = useState<Tab>("metas");
   const [targets, setTargets] = useState<TargetRecord[]>([]);
   const [businessDays, setBusinessDays] = useState<BusinessDay[]>([]);
@@ -232,6 +235,56 @@ export default function MetasPage() {
       setSortDir("desc");
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
+        <div className="glass-card p-8 w-full max-w-sm text-center relative overflow-hidden shadow-2xl">
+          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-amber-500/5 z-0" />
+          <div className="relative z-10 flex flex-col items-center">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 mb-6 shadow-lg shadow-violet-500/30">
+              <Target className="w-6 h-6 text-white" />
+            </div>
+            
+            <h2 className="text-xl font-bold text-foreground mb-2">Acesso Restrito</h2>
+            <p className="text-sm text-muted mb-6">Por favor, digite a senha para acessar a gestão de metas.</p>
+            
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (passwordInput === "123456") {
+                setIsAuthenticated(true);
+                setError(null);
+              } else {
+                setError("Senha incorreta");
+              }
+            }} className="w-full flex flex-col gap-4">
+              <input
+                type="password"
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="Senha"
+                className="w-full bg-background border border-border-light rounded-xl px-4 py-3 text-center tracking-widest text-foreground placeholder:tracking-normal placeholder:text-dim focus:outline-none focus:border-violet-500"
+                autoFocus
+              />
+              
+              {error && <p className="text-xs text-red-400 -mt-2">{error}</p>}
+              
+              <button
+                type="submit"
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white font-medium transition-all shadow-lg shadow-violet-500/20"
+              >
+                Acessar
+              </button>
+            </form>
+
+            <Link href="/" className="mt-8 flex items-center gap-2 text-sm text-muted hover:text-foreground transition-colors">
+              <ArrowLeft className="w-4 h-4" /> Voltar ao Menu Inicial
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

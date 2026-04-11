@@ -260,7 +260,7 @@ export default function DREPage() {
             {filterOptions.ufs.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
-          <p className="dash-sidebar-title">Unidade</p>
+          <p className="dash-sidebar-title">Canal</p>
           <select value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)} className="dash-filter-select">
             <option value="Todos">Todos</option>
             {filterOptions.channels.map(c => <option key={c} value={c}>{c}</option>)}

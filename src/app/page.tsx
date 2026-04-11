@@ -18,6 +18,8 @@ import {
   Receipt,
   CheckCircle2,
   Sparkles,
+  AlertTriangle,
+  Mail,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
@@ -42,20 +44,20 @@ const modules = [
         ready: true,
       },
       {
-        title: "MaCo",
-        description: "Margem contribuição",
-        href: "/vendas?tab=maco",
-        icon: DollarSign,
-        color: "from-green-600 to-green-800",
-        ready: false,
-      },
-      {
         title: "Histórico",
         description: "Multi-ano",
         href: "/historico",
         icon: History,
         color: "from-amber-600 to-amber-800",
         ready: true,
+      },
+      {
+        title: "MaCo",
+        description: "Margem contribuição",
+        href: "/vendas?tab=maco",
+        icon: DollarSign,
+        color: "from-green-600 to-green-800",
+        ready: false,
       },
       {
         title: "Dia",
@@ -186,6 +188,27 @@ const modules = [
         icon: Layers,
         color: "from-slate-600 to-slate-800",
         ready: false,
+      },
+    ],
+  },
+  {
+    category: "Smart Hub",
+    items: [
+      {
+        title: "Alertas",
+        description: "Ações de retenção",
+        href: "/alertas",
+        icon: AlertTriangle,
+        color: "from-red-600 to-red-800",
+        ready: true,
+      },
+      {
+        title: "E-mails",
+        description: "Envio de relatórios",
+        href: "/emails",
+        icon: Mail,
+        color: "from-orange-500 to-orange-700",
+        ready: true,
       },
     ],
   },

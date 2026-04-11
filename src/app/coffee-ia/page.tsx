@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Database,
   ArrowLeft,
+  Trash2,
 } from "lucide-react";
 
 interface Message {
@@ -21,17 +22,18 @@ interface Message {
 }
 
 export default function CoffeeIAPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
+  const defaultWelcome = {
       id: "welcome",
-      role: "assistant",
+      role: "assistant" as const,
       text: "Olá! ☕ Sou o **Coffee_IA**, seu assistente de dados.\n\nPode me perguntar qualquer coisa sobre as vendas, como:\n\n• _\"Qual o faturamento de março 2026?\"_\n• _\"Quais os 5 maiores clientes?\"_\n• _\"Qual o produto mais vendido?\"_\n• _\"Compare faturamento de fevereiro e março\"_\n\nPergunte à vontade!",
       timestamp: new Date(),
-    },
-  ]);
+  };
+
+  const [messages, setMessages] = useState<Message[]>([defaultWelcome]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showSql, setShowSql] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -40,8 +42,30 @@ export default function CoffeeIAPage() {
   };
 
   useEffect(() => {
+    setIsMounted(true);
+    const saved = localStorage.getItem("coffee_ia_full_history");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        parsed.forEach((m: any) => { m.timestamp = new Date(m.timestamp) });
+        if (parsed.length > 0) setMessages(parsed);
+      } catch (e) {}
+    }
+  }, []);
+
+  useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+    if (isMounted) {
+       localStorage.setItem("coffee_ia_full_history", JSON.stringify(messages.filter((m) => !m.loading)));
+    }
+  }, [messages, isMounted]);
+
+  const handleClearHistory = () => {
+    if (window.confirm("Limpar todo o histórico de conversas?")) {
+       setMessages([{ ...defaultWelcome, timestamp: new Date() }]);
+       localStorage.removeItem("coffee_ia_full_history");
+    }
+  };
 
   const sendMessage = async () => {
     const text = input.trim();
@@ -228,6 +252,28 @@ export default function CoffeeIAPage() {
             )}
           </p>
         </div>
+        
+        {messages.length > 1 && (
+          <button
+            onClick={handleClearHistory}
+            style={{
+              background: "rgba(239,68,68,0.15)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              color: "#ef4444",
+              borderRadius: "50%",
+              width: 34,
+              height: 34,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              transition: "all 0.2s"
+            }}
+            title="Limpar Histórico"
+          >
+            <Trash2 style={{ width: 14, height: 14 }} />
+          </button>
+        )}
       </header>
 
       {/* Chat Area */}

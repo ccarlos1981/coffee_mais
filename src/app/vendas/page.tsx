@@ -41,6 +41,22 @@ const PIE_COLORS = [
   "#deb887", "#556b2f",
 ];
 
+/* ── Quick Filter Presets ── */
+const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; value: string; color: string }[] = [
+  { label: "Leandro", type: "manager", value: "Leandro", color: "#6366f1" },
+  { label: "Luiz", type: "manager", value: "Luiz", color: "#8b5cf6" },
+  { label: "Julliano", type: "manager", value: "Julliano", color: "#a855f7" },
+  { label: "Luisa", type: "manager", value: "Luisa", color: "#d946ef" },
+  { label: "Inside", type: "manager", value: "Inside Sales", color: "#ec4899" },
+  { label: "KA", type: "channel", value: "KA", color: "#f59e0b" },
+  { label: "Distrib.", type: "channel", value: "Distribuidor", color: "#10b981" },
+  { label: "Inside S.", type: "channel", value: "Inside Sales", color: "#06b6d4" },
+  { label: "1 KG", type: "familia", value: "1 KG", color: "#c8a96e" },
+  { label: "5 KG", type: "familia", value: "5 KG", color: "#7d6b45" },
+  { label: "Cápsula", type: "familia", value: "Cápsula", color: "#5a805a" },
+  { label: "Drip", type: "familia", value: "Drip", color: "#6b8fad" },
+];
+
 /* ───────────────── types ───────────────── */
 interface FiltersData {
   managers: string[];
@@ -120,6 +136,7 @@ export default function VendasDashboard() {
 
   // Drill-down state
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
+  const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
 
   /* ─── Fetch filters ─── */
   const fetchFilters = useCallback(async () => {
@@ -280,6 +297,26 @@ export default function VendasDashboard() {
     setFilterUf([]);
     setFilterChannel([]);
     setFilterProduct([]);
+    setActiveQuickFilter(null);
+  };
+
+  const handleQuickFilter = (qf: typeof QUICK_FILTERS[number]) => {
+    const key = `${qf.type}:${qf.value}`;
+    if (activeQuickFilter === key) {
+      // Toggle off
+      handleClearFilters();
+      return;
+    }
+    // Reset all, then apply
+    setFilterManager([]);
+    setFilterFamilia([]);
+    setFilterUf([]);
+    setFilterChannel([]);
+    setFilterProduct([]);
+    if (qf.type === "manager") setFilterManager([qf.value]);
+    else if (qf.type === "channel") setFilterChannel([qf.value]);
+    else if (qf.type === "familia") setFilterFamilia([qf.value]);
+    setActiveQuickFilter(key);
   };
 
   const hasActiveFilters =
@@ -376,8 +413,8 @@ export default function VendasDashboard() {
           <p className="dash-sidebar-title">Região (UF)</p>
           <MultiSelect value={filterUf} onChange={setFilterUf} options={filterOptions.ufs} className="dash-filter-select" placeholder="Todos" />
 
-          <p className="dash-sidebar-title">Unidade</p>
-          <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
+          <p className="dash-sidebar-title">Canal</p>
+          <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todos" />
 
           <p className="dash-sidebar-title">Linha SKU</p>
           <MultiSelect 
@@ -417,6 +454,33 @@ export default function VendasDashboard() {
         {/* ═══ MAIN CONTENT ═══ */}
         <main className="cm-main" style={{ paddingTop: 4 }}>
           {loading && <div style={{ position: "absolute", right: 16, top: 8, width: 12, height: 12, border: "2px solid var(--accent-gold)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
+
+        {/* ═══ QUICK FILTER BUTTONS ═══ */}
+        <div className="quick-filter-bar">
+          <button
+            className={`qf-btn qf-btn-clear ${!activeQuickFilter ? 'active' : ''}`}
+            onClick={handleClearFilters}
+          >
+            TODOS
+          </button>
+          {QUICK_FILTERS.map((qf) => {
+            const key = `${qf.type}:${qf.value}`;
+            const isActive = activeQuickFilter === key;
+            return (
+              <button
+                key={key}
+                className={`qf-btn ${isActive ? 'active' : ''}`}
+                style={{
+                  '--qf-color': qf.color,
+                  '--qf-bg': isActive ? qf.color : 'transparent',
+                } as React.CSSProperties}
+                onClick={() => handleQuickFilter(qf)}
+              >
+                {qf.label}
+              </button>
+            );
+          })}
+        </div>
         {/* ═══ TOP SECTION: KPIs + Gauge + Pie ═══ */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 240px", gap: 14, marginBottom: 16 }}>
           <div className="kpi-grid" style={{ marginBottom: 0 }}>
