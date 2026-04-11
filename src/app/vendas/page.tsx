@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Filter,
+  Bell,
   ChevronRight,
   TrendingUp,
   TrendingDown,
@@ -675,6 +676,9 @@ export default function VendasDashboard() {
         </span>
         <Link href="/matriz" className="bottom-tab">
           <Users className="bottom-tab-icon" /> Matriz
+        </Link>
+        <Link href="/alertas" className="bottom-tab">
+          <Bell className="bottom-tab-icon" /> Alertas
         </Link>
         <span className="bottom-tab disabled">
           <TrendingUp className="bottom-tab-icon" /> Inv.
