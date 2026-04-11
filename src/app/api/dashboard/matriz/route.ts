@@ -13,170 +13,9 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-interface SaleRow {
-  manager: string | null;
-  rede: string | null;
-  nome_parceiro: string | null;
-  tipo_produto: string | null;
-  product: string | null;
-  net_value: number | string;
-  quantity: number | string;
-  imposto: number | string;
-  custo_total: number | string;
-  custo_frete: number | string;
-  receita_frete: number | string;
-  invoice_date: string | null;
-}
-
-async function fetchAllSales(
-  supabase: ReturnType<typeof getSupabaseClient>,
-  startDate: string | null,
-  endDate: string | null,
-  filters: Record<string, string | null>
-): Promise<SaleRow[]> {
-  const all: SaleRow[] = [];
-  const batchSize = 1000;
-  let from = 0;
-
-  while (true) {
-    let query = supabase
-      .from('sales')
-      .select(
-        'manager, rede, nome_parceiro, tipo_produto, product, ' +
-        'net_value, quantity, imposto, custo_total, custo_frete, receita_frete, invoice_date'
-      );
-
-    if (startDate) query = query.gte('invoice_date', startDate);
-    if (endDate) query = query.lte('invoice_date', endDate);
-    if (filters.manager) query = query.in('manager', filters.manager.split(','));
-    if (filters.familia) query = query.in('tipo_produto', filters.familia.split(','));
-    if (filters.uf) query = query.in('uf', filters.uf.split(','));
-    if (filters.channel) query = query.in('channel', filters.channel.split(','));
-    if (filters.product) query = query.in('product', filters.product.split(','));
-    if (filters.matriz) query = query.in('rede', filters.matriz.split(','));
-
-    const { data, error } = await query.range(from, from + batchSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    all.push(...(data as unknown as SaleRow[]));
-    if (data.length < batchSize) break;
-    from += batchSize;
-  }
-
-  return all;
-}
-
-function aggregate(sales: SaleRow[], investmentPct: number) {
-  const byMatrizMap: Record<string, {
-    fat: number; qty: number; maco: number;
-    // v_futura, devolucoes, bonif -> mocked as 0 in UI per user request, we only return real ones here
-  }> = {};
-
-  const byManagerMap: Record<string, { fat: number }> = {};
-  const byProductMap: Record<string, { fat: number; qty: number }> = {};
-  const byFamiliaMap: Record<string, { fat: number }> = {};
-  const byMonthMap: Record<string, { fat: number; qty: number, maco: number }> = {};
-
-  let totalFat = 0, totalQty = 0, totalMaco = 0;
-
-  for (const sale of sales) {
-    const matriz = sale.rede || sale.nome_parceiro || 'Não Mapeado';
-    const m = sale.manager || 'Sem Gerente';
-    const familia = sale.tipo_produto || 'Outros';
-    const prod = sale.product || 'Outros';
-
-    const vlr = parseFloat(sale.net_value as string) || 0;
-    const qty = parseFloat(sale.quantity as string) || 0;
-    const imposto = parseFloat(sale.imposto as string) || 0;
-    const custoTotal = parseFloat(sale.custo_total as string) || 0;
-    const custoFrete = parseFloat(sale.custo_frete as string) || 0;
-    const investimentos = vlr * investmentPct;
-    const maco = vlr - imposto - custoTotal - custoFrete - investimentos;
-    
-    let monthKey = 'Unknown';
-    if (sale.invoice_date) {
-        // e.g. "2026-03-15" => "2026-03"
-        monthKey = sale.invoice_date.substring(0, 7); 
-    }
-
-    totalFat += vlr;
-    totalQty += qty;
-    totalMaco += maco;
-
-    // Matriz
-    if (!byMatrizMap[matriz]) byMatrizMap[matriz] = { fat: 0, qty: 0, maco: 0 };
-    byMatrizMap[matriz].fat += vlr;
-    byMatrizMap[matriz].qty += qty;
-    byMatrizMap[matriz].maco += maco;
-
-    // Manager
-    if (!byManagerMap[m]) byManagerMap[m] = { fat: 0 };
-    byManagerMap[m].fat += vlr;
-
-    // Product
-    if (!byProductMap[prod]) byProductMap[prod] = { fat: 0, qty: 0 };
-    byProductMap[prod].fat += vlr;
-    byProductMap[prod].qty += qty;
-
-    // Familia
-    if (!byFamiliaMap[familia]) byFamiliaMap[familia] = { fat: 0 };
-    byFamiliaMap[familia].fat += vlr;
-
-    // Month
-    if (!byMonthMap[monthKey]) byMonthMap[monthKey] = { fat: 0, qty: 0, maco: 0 };
-    byMonthMap[monthKey].fat += vlr;
-    byMonthMap[monthKey].qty += qty;
-    byMonthMap[monthKey].maco += maco;
-  }
-
-  // Formatting output
-  const byMatriz = Object.entries(byMatrizMap).map(([matriz, data]) => ({
-    matriz,
-    fat: data.fat,
-    qty: data.qty,
-    rk_kg: data.qty > 0 ? data.fat / data.qty : 0,
-    maco: data.maco,
-    maco_kg: data.qty > 0 ? data.maco / data.qty : 0,
-    v_futura: 0, 
-    devolucoes: 0,
-    bonif: 0
-  })).sort((a, b) => b.fat - a.fat)
-  .map((m, i) => ({ ...m, rank: i + 1 }));
-
-  const byManager = Object.entries(byManagerMap).map(([name, data]) => ({
-    name,
-    fat: data.fat,
-    pct: totalFat > 0 ? (data.fat / totalFat) * 100 : 0
-  })).sort((a, b) => b.fat - a.fat);
-
-  const byProduct = Object.entries(byProductMap).map(([product, data]) => ({
-    product,
-    fat: data.fat,
-    qty: data.qty
-  })).sort((a, b) => b.fat - a.fat).slice(0, 15); // limit to top 15 products
-
-  const byFamilia = Object.entries(byFamiliaMap).map(([familia, data]) => ({
-    familia,
-    fat: data.fat,
-    pct: totalFat > 0 ? (data.fat / totalFat) * 100 : 0
-  })).sort((a, b) => b.fat - a.fat);
-
-  const byMonth = Object.entries(byMonthMap).map(([month, data]) => ({
-    month,
-    fat: data.fat,
-    qty: data.qty,
-    maco: data.maco
-  })).sort((a, b) => a.month.localeCompare(b.month));
-
-  return {
-    totals: { fat: totalFat, qty: totalQty, maco: totalMaco },
-    byMatriz,
-    byManager,
-    byProduct,
-    byFamilia,
-    byMonth
-  };
+function escapeSqlValue(value: string | null) {
+  if (!value) return "NULL";
+  return "'" + value.replace(/'/g, "''") + "'";
 }
 
 export async function GET(request: Request) {
@@ -214,29 +53,189 @@ export async function GET(request: Request) {
        queryStart = dateObj.toISOString().split('T')[0];
     }
 
-    const sales = await fetchAllSales(supabase, queryStart, endDate, filters);
-    
-    // To keep "Matriz" table aligned to current month selection ONLY,
-    // we split the sales into two parts if history is enabled.
-    let currentPeriodSales = sales;
-    if (enableHistory && startDate) {
-      currentPeriodSales = sales.filter(s => s.invoice_date && s.invoice_date >= startDate);
+    let base_filters = '';
+    if (filters.manager) {
+      const list = filters.manager.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND manager IN (${list})`;
+    }
+    if (filters.familia) {
+      const list = filters.familia.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND tipo_produto IN (${list})`;
+    }
+    if (filters.uf) {
+      const list = filters.uf.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND uf IN (${list})`;
+    }
+    if (filters.channel) {
+      const list = filters.channel.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND channel IN (${list})`;
+    }
+    if (filters.product) {
+      const list = filters.product.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND product IN (${list})`;
+    }
+    if (filters.matriz) {
+      const list = filters.matriz.split(',').map(m => escapeSqlValue(m)).join(',');
+      base_filters += ` AND rede IN (${list})`;
+    }
+
+    // --- Query 1: Current Period (Matriz, Manager, Familia, Products) --- //
+    let current_where = 'WHERE invoice_date IS NOT NULL' + base_filters;
+    // Current period is exact start/end passed from user query 
+    // unless they didn't pass it, in which case we fall back to queryStart
+    if (startDate) {
+        current_where += ` AND invoice_date >= ${escapeSqlValue(startDate)}`;
+    } else if (queryStart) {
+        current_where += ` AND invoice_date >= ${escapeSqlValue(queryStart)}`;
     }
     
-    const result = aggregate(currentPeriodSales, investmentPct);
-    
-    // However, we want history across months:
-    const historyResult = aggregate(sales, investmentPct);
+    if (endDate) {
+        current_where += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
+    }
 
-    // Swap byMonth to be the full history
-    if (enableHistory) {
-      result.byMonth = historyResult.byMonth;
+    const sqlCurrent = `
+      WITH filtered_sales AS (
+        SELECT 
+          manager, rede, nome_parceiro, tipo_produto, product, invoice_date, 
+          COALESCE(CAST(net_value AS numeric), 0) as net_value,
+          COALESCE(CAST(quantity AS numeric), 0) as quantity,
+          COALESCE(CAST(imposto AS numeric), 0) as imposto,
+          COALESCE(CAST(custo_total AS numeric), 0) as custo_total,
+          COALESCE(CAST(custo_frete AS numeric), 0) as custo_frete
+        FROM sales
+        ${current_where}
+      ),
+      calc_sales AS (
+        SELECT *,
+               (net_value * ${investmentPct}) as investimentos,
+               (net_value - imposto - custo_total - custo_frete - (net_value * ${investmentPct})) as maco
+        FROM filtered_sales
+      ),
+      totals AS (
+        SELECT 
+          COALESCE(SUM(net_value), 0) as fat, 
+          COALESCE(SUM(quantity), 0) as qty, 
+          COALESCE(SUM(maco), 0) as maco,
+          COUNT(*) as record_count
+        FROM calc_sales
+      ),
+      by_matriz AS (
+        SELECT 
+          COALESCE(NULLIF(rede, ''), COALESCE(NULLIF(nome_parceiro, ''), 'Não Mapeado')) as matriz,
+          COALESCE(SUM(net_value), 0) as fat,
+          COALESCE(SUM(quantity), 0) as qty,
+          COALESCE(SUM(maco), 0) as maco
+        FROM calc_sales
+        GROUP BY 1
+      ),
+      by_matriz_final AS (
+        SELECT 
+          matriz, fat, qty, maco,
+          CASE WHEN qty > 0 THEN fat / qty ELSE 0 END as rk_kg,
+          CASE WHEN qty > 0 THEN maco / qty ELSE 0 END as maco_kg,
+          0 as v_futura, 0 as devolucoes, 0 as bonif,
+          ROW_NUMBER() OVER (ORDER BY fat DESC) as rank
+        FROM by_matriz
+        ORDER BY fat DESC
+      ),
+      by_manager AS (
+        SELECT 
+          COALESCE(NULLIF(manager, ''), 'Sem Gerente') as name,
+          COALESCE(SUM(net_value), 0) as fat,
+          CASE WHEN (SELECT fat FROM totals) > 0 THEN (COALESCE(SUM(net_value), 0) / (SELECT fat FROM totals)) * 100 ELSE 0 END as pct
+        FROM calc_sales
+        GROUP BY 1
+        ORDER BY fat DESC
+      ),
+      by_product AS (
+        SELECT 
+          COALESCE(NULLIF(product, ''), 'Outros') as product,
+          COALESCE(SUM(net_value), 0) as fat,
+          COALESCE(SUM(quantity), 0) as qty
+        FROM calc_sales
+        GROUP BY 1
+        ORDER BY fat DESC
+        LIMIT 15
+      ),
+      by_familia AS (
+        SELECT 
+          COALESCE(NULLIF(tipo_produto, ''), 'Outros') as familia,
+          COALESCE(SUM(net_value), 0) as fat,
+          CASE WHEN (SELECT fat FROM totals) > 0 THEN (COALESCE(SUM(net_value), 0) / (SELECT fat FROM totals)) * 100 ELSE 0 END as pct
+        FROM calc_sales
+        GROUP BY 1
+        ORDER BY fat DESC
+      )
+      SELECT 
+        (SELECT row_to_json(t) FROM (SELECT fat, qty, maco, record_count FROM totals) t) as totals,
+        (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_matriz_final t) as "byMatriz",
+        (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_manager t) as "byManager",
+        (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_product t) as "byProduct",
+        (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_familia t) as "byFamilia"
+    `;
+
+    // --- Query 2: History Period (byMonth) --- //
+    // Using queryStart for looking 12 months back
+    let history_where = 'WHERE invoice_date IS NOT NULL' + base_filters;
+    if (queryStart) history_where += ` AND invoice_date >= ${escapeSqlValue(queryStart)}`;
+    if (endDate) history_where += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
+
+    const sqlHistory = `
+      WITH filtered_sales AS (
+        SELECT 
+          invoice_date, 
+          COALESCE(CAST(net_value AS numeric), 0) as net_value,
+          COALESCE(CAST(quantity AS numeric), 0) as quantity,
+          COALESCE(CAST(imposto AS numeric), 0) as imposto,
+          COALESCE(CAST(custo_total AS numeric), 0) as custo_total,
+          COALESCE(CAST(custo_frete AS numeric), 0) as custo_frete
+        FROM sales
+        ${history_where}
+      ),
+      calc_sales AS (
+        SELECT *,
+               (net_value * ${investmentPct}) as investimentos,
+               (net_value - imposto - custo_total - custo_frete - (net_value * ${investmentPct})) as maco
+        FROM filtered_sales
+      ),
+      monthly AS (
+        SELECT 
+          SUBSTRING(CAST(invoice_date AS text), 1, 7) as month,
+          COALESCE(SUM(net_value), 0) as fat,
+          COALESCE(SUM(quantity), 0) as qty,
+          COALESCE(SUM(maco), 0) as maco
+        FROM calc_sales
+        GROUP BY 1
+        ORDER BY 1
+      )
+      SELECT COALESCE(json_agg(t), '[]'::json) as "byMonth" FROM monthly t;
+    `;
+
+    // Fire both query requests to DB in parallel
+    const [resCurrent, resHistory] = await Promise.all([
+        supabase.rpc('execute_readonly_query', { query_text: sqlCurrent }),
+        supabase.rpc('execute_readonly_query', { query_text: sqlHistory })
+    ]);
+
+    if (resCurrent.error) throw new Error(resCurrent.error.message);
+    if (resHistory.error) throw new Error(resHistory.error.message);
+
+    const currentData = resCurrent.data && resCurrent.data.length > 0 ? resCurrent.data[0] : null;
+    const historyData = resHistory.data && resHistory.data.length > 0 ? resHistory.data[0] : null;
+
+    if (!currentData || !historyData) {
+        throw new Error("No data returned from queries.");
     }
 
     const payload = {
       success: true,
-      ...result,
-      recordCount: currentPeriodSales.length,
+      totals: currentData.totals,
+      byMatriz: currentData.byMatriz,
+      byManager: currentData.byManager,
+      byProduct: currentData.byProduct,
+      byFamilia: currentData.byFamilia,
+      byMonth: historyData.byMonth,
+      recordCount: currentData.totals?.record_count || 0,
     };
     
     API_CACHE.set(cacheKey, { timestamp: Date.now(), data: payload });

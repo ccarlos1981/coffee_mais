@@ -27,6 +27,7 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { calcPace } from "@/lib/calculations";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
+import { ExportButton } from "@/components/ExportButton";
 
 /* ───────────────── constants ───────────────── */
 const MONTHS = [
@@ -431,6 +432,21 @@ export default function VendasDashboard() {
               Limpar Filtros ({activeFilterCount})
             </button>
           )}
+
+          <ExportButton 
+            data={managerRows.flatMap(m => m.topClients.map(c => ({
+              Gerente: m.manager,
+              Cliente: c.client,
+              Faturamento_R$: Number(c.fat.toFixed(2)),
+              Volume_un: c.qty,
+              Margem_Maco_R$: Number((c.maco || 0).toFixed(2)),
+              Mes_Anterior_R$: Number((c.prevMonthFat || 0).toFixed(2)),
+              Ano_Anterior_R$: Number((c.prevYearFat || 0).toFixed(2))
+            })))}
+            filename={`Painel_Vendas_${MONTHS[filterMonth - 1]}`}
+            className="w-full mt-4 justify-center"
+            variant="outline"
+          />
 
           {hasActiveFilters && (
             <div className="sidebar-info-box">

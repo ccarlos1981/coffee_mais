@@ -13,56 +13,9 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-interface SaleRow {
-  invoice_date: string | null;
-  manager: string | null;
-  rede: string | null;
-  nome_parceiro: string | null;
-  tipo_produto: string | null;
-  net_value: number | string;
-  quantity: number | string;
-  imposto: number | string;
-  custo_total: number | string;
-  custo_frete: number | string;
-  receita_frete: number | string;
-}
-
-async function fetchAllSalesHistory(
-  supabase: ReturnType<typeof getSupabaseClient>,
-  startDate: string | null,
-  endDate: string | null,
-  filters: Record<string, string | null>
-): Promise<SaleRow[]> {
-  const all: SaleRow[] = [];
-  const batchSize = 1000;
-  let from = 0;
-
-  while (true) {
-    let query = supabase
-      .from('sales')
-      .select(
-        'invoice_date, manager, rede, nome_parceiro, tipo_produto, ' +
-        'net_value, quantity, imposto, custo_total, custo_frete, receita_frete'
-      );
-
-    if (startDate) query = query.gte('invoice_date', startDate);
-    if (endDate) query = query.lte('invoice_date', endDate);
-    if (filters.manager) query = query.in('manager', filters.manager.split(','));
-    if (filters.familia) query = query.in('tipo_produto', filters.familia.split(','));
-    if (filters.uf) query = query.in('uf', filters.uf.split(','));
-    if (filters.channel) query = query.in('channel', filters.channel.split(','));
-    if (filters.product) query = query.in('product', filters.product.split(','));
-
-    const { data, error } = await query.range(from, from + batchSize - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    all.push(...(data as unknown as SaleRow[]));
-    if (data.length < batchSize) break;
-    from += batchSize;
-  }
-
-  return all;
+function escapeSqlValue(value: string | null) {
+  if (!value) return "NULL";
+  return "'" + value.replace(/'/g, "''") + "'";
 }
 
 export async function GET(request: Request) {
@@ -78,7 +31,6 @@ export async function GET(request: Request) {
       const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
       endDate = `${endStr}-${String(lastDay).padStart(2, "0")}`;
     } else {
-      // Fallback para comportamento original se faltar params
       const endYear = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
       const startYear = endYear - 2; // Last 3 years inclusive
       startDate = `${startYear}-01-01`;
@@ -102,86 +54,112 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.data);
     }
 
-    const supabase = getSupabaseClient();
-    const sales = await fetchAllSalesHistory(supabase, startDate, endDate, filters);
+    let where_clause = 'WHERE 1=1';
+    if (startDate) where_clause += ` AND invoice_date >= ${escapeSqlValue(startDate)}`;
+    if (endDate) where_clause += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
 
-    // Month-by-month aggregation Map: "YYYY-MM"
-    const byMonthMap: Record<string, {
-      monthKey: string; year: string; fat: number; qty: number; maco: number;
-    }> = {};
-
-    // For Donut Charts
-    const byFamiliaMap: Record<string, { fat: number; qty: number; maco: number }> = {};
-    const byClientMap: Record<string, { fat: number; qty: number; maco: number }> = {};
-
-    let totalFat = 0, totalQty = 0, totalMaco = 0;
-
-    for (const sale of sales) {
-      if (!sale.invoice_date) continue;
-      const monthPrefix = sale.invoice_date.slice(0, 7); // "YYYY-MM"
-      const year = sale.invoice_date.slice(0, 4);
-
-      const familia = sale.tipo_produto || 'Outros';
-      const client = sale.nome_parceiro || sale.rede || 'Não Mapeado';
-
-      const vlr = parseFloat(sale.net_value as string) || 0;
-      const qty = parseFloat(sale.quantity as string) || 0;
-      const imposto = parseFloat(sale.imposto as string) || 0;
-      const custoTotal = parseFloat(sale.custo_total as string) || 0;
-      const custoFrete = parseFloat(sale.custo_frete as string) || 0;
-      const investimentos = vlr * investmentPct;
-      const maco = vlr - imposto - custoTotal - custoFrete - investimentos;
-
-      totalFat += vlr;
-      totalQty += qty;
-      totalMaco += maco;
-
-      // By Month
-      if (!byMonthMap[monthPrefix]) {
-        byMonthMap[monthPrefix] = { monthKey: monthPrefix, year, fat: 0, qty: 0, maco: 0 };
-      }
-      byMonthMap[monthPrefix].fat += vlr;
-      byMonthMap[monthPrefix].qty += qty;
-      byMonthMap[monthPrefix].maco += maco;
-
-      // By Familia
-      if (!byFamiliaMap[familia]) {
-        byFamiliaMap[familia] = { fat: 0, qty: 0, maco: 0 };
-      }
-      byFamiliaMap[familia].fat += vlr;
-      byFamiliaMap[familia].qty += qty;
-      byFamiliaMap[familia].maco += maco;
-
-      // By Client
-      if (!byClientMap[client]) {
-        byClientMap[client] = { fat: 0, qty: 0, maco: 0 };
-      }
-      byClientMap[client].fat += vlr;
-      byClientMap[client].qty += qty;
-      byClientMap[client].maco += maco;
+    if (filters.manager && filters.manager !== 'all') {
+      const list = filters.manager.split(',').map(m => escapeSqlValue(m)).join(',');
+      where_clause += ` AND manager IN (${list})`;
+    }
+    if (filters.familia && filters.familia !== 'all') {
+      const list = filters.familia.split(',').map(m => escapeSqlValue(m)).join(',');
+      where_clause += ` AND tipo_produto IN (${list})`;
+    }
+    if (filters.uf && filters.uf !== 'all') {
+      const list = filters.uf.split(',').map(m => escapeSqlValue(m)).join(',');
+      where_clause += ` AND uf IN (${list})`;
+    }
+    if (filters.channel && filters.channel !== 'all') {
+      const list = filters.channel.split(',').map(m => escapeSqlValue(m)).join(',');
+      where_clause += ` AND channel IN (${list})`;
+    }
+    if (filters.product && filters.product !== 'all') {
+      const list = filters.product.split(',').map(m => escapeSqlValue(m)).join(',');
+      where_clause += ` AND product IN (${list})`;
     }
 
-    // Sort Month array
-    const monthlyHistory = Object.values(byMonthMap).sort((a, b) => a.monthKey.localeCompare(b.monthKey));
+    const sql = `
+    WITH filtered_sales AS (
+      SELECT 
+        manager, rede, nome_parceiro, tipo_produto, product, invoice_date, 
+        COALESCE(CAST(net_value AS numeric), 0) as net_value,
+        COALESCE(CAST(quantity AS numeric), 0) as quantity,
+        COALESCE(CAST(imposto AS numeric), 0) as imposto,
+        COALESCE(CAST(custo_total AS numeric), 0) as custo_total,
+        COALESCE(CAST(custo_frete AS numeric), 0) as custo_frete
+      FROM sales
+      ${where_clause}
+    ),
+    calc_sales AS (
+      SELECT *,
+             (net_value * ${investmentPct}) as investimentos,
+             (net_value - imposto - custo_total - custo_frete - (net_value * ${investmentPct})) as maco
+      FROM filtered_sales
+    ),
+    totals AS (
+      SELECT 
+        COALESCE(SUM(net_value), 0) as fat, 
+        COALESCE(SUM(quantity), 0) as qty, 
+        COALESCE(SUM(maco), 0) as maco
+      FROM calc_sales
+    ),
+    monthly AS (
+      SELECT 
+        SUBSTRING(CAST(invoice_date AS text), 1, 7) as "monthKey",
+        SUBSTRING(CAST(invoice_date AS text), 1, 4) as year,
+        COALESCE(SUM(net_value), 0) as fat,
+        COALESCE(SUM(quantity), 0) as qty,
+        COALESCE(SUM(maco), 0) as maco
+      FROM calc_sales
+      WHERE invoice_date IS NOT NULL
+      GROUP BY SUBSTRING(CAST(invoice_date AS text), 1, 7), SUBSTRING(CAST(invoice_date AS text), 1, 4)
+      ORDER BY 1
+    ),
+    by_familia AS (
+      SELECT 
+        COALESCE(NULLIF(tipo_produto, ''), 'Outros') as familia,
+        COALESCE(SUM(net_value),0) as fat,
+        COALESCE(SUM(quantity),0) as qty,
+        COALESCE(SUM(maco),0) as maco
+      FROM calc_sales
+      GROUP BY COALESCE(NULLIF(tipo_produto, ''), 'Outros')
+      ORDER BY 2 DESC
+      LIMIT 10
+    ),
+    by_client AS (
+      SELECT 
+        COALESCE(NULLIF(nome_parceiro, ''), COALESCE(NULLIF(rede, ''), 'Não Mapeado')) as client,
+        COALESCE(SUM(net_value),0) as fat,
+        COALESCE(SUM(quantity),0) as qty,
+        COALESCE(SUM(maco),0) as maco
+      FROM calc_sales
+      GROUP BY COALESCE(NULLIF(nome_parceiro, ''), COALESCE(NULLIF(rede, ''), 'Não Mapeado'))
+      ORDER BY 2 DESC
+      LIMIT 10
+    )
+    SELECT 
+      (SELECT row_to_json(t) FROM (SELECT fat, qty, maco FROM totals) t) as totals,
+      (SELECT COALESCE(json_agg(t), '[]'::json) FROM monthly t) as "monthlyHistory",
+      (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_familia t) as "byFamilia",
+      (SELECT COALESCE(json_agg(t), '[]'::json) FROM by_client t) as "byClient"
+    `;
 
-    // Sort Familias
-    const byFamilia = Object.entries(byFamiliaMap)
-      .map(([familia, data]) => ({ familia, ...data }))
-      .sort((a, b) => b.fat - a.fat)
-      .slice(0, 10);
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: sql });
 
-    // Sort Clients
-    const byClient = Object.entries(byClientMap)
-      .map(([client, data]) => ({ client, ...data }))
-      .sort((a, b) => b.fat - a.fat)
-      .slice(0, 10);
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const payload = data && data.length > 0 ? data[0] : null;
 
     const result = {
       success: true,
-      monthlyHistory,
-      byFamilia,
-      byClient,
-      totals: { fat: totalFat, qty: totalQty, maco: totalMaco }
+      monthlyHistory: payload?.monthlyHistory || [],
+      byFamilia: payload?.byFamilia || [],
+      byClient: payload?.byClient || [],
+      totals: payload?.totals || { fat: 0, qty: 0, maco: 0 }
     };
     
     // Save to Cache

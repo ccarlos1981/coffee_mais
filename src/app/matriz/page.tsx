@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
+import { ExportButton } from "@/components/ExportButton";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -335,6 +336,10 @@ export default function MatrizPage() {
           <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 14 }}>
             {/* Table */}
             <div className="glass-card" style={{ padding: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+                <h3 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--foreground-secondary)" }}>Visão por Matriz</h3>
+                <ExportButton data={matrizData} filename="Matriz_Export" />
+              </div>
               <div style={{ overflowX: "auto", overflowY: "auto" }}>
                 <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", width: "100%", tableLayout: "auto", whiteSpace: "nowrap" }}>
                   <thead style={{ position: "sticky", top: 0, background: "var(--card-bg, #fff)", zIndex: 1, boxShadow: "0 1px 0 var(--border)" }}>

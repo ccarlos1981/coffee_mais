@@ -17,6 +17,7 @@ import {
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
+import { ExportButton } from "@/components/ExportButton";
 import {
   BarChart,
   Bar,
@@ -172,7 +173,8 @@ export default function HistoricoDashboard() {
           </p>
         </div>
 
-        <div className="cm-nav-right">
+        <div className="cm-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <ExportButton data={monthlyHistory} filename="Historico_Export" />
           <div style={{ fontSize: "0.58rem", color: "var(--foreground-dim)", textAlign: "right", lineHeight: 1.4 }}>
             <div style={{ color: "var(--foreground-muted)" }}>{new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</div>
           </div>

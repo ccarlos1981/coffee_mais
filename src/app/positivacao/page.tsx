@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
+import { ExportButton } from "@/components/ExportButton";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -91,6 +92,7 @@ export default function PositivacaoPage() {
 
   interface BatalhaNavalRow {
     sku: string;
+    totalQty: number;
     months: Record<string, number>;
   }
 
@@ -287,6 +289,10 @@ export default function PositivacaoPage() {
 
           {/* TABELA POR GERENTE */}
           <div className="glass-card" style={{ padding: 0, marginBottom: 14, minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
+              <h3 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--foreground-secondary)" }}>Visão por Gerente</h3>
+              <ExportButton data={byManager} filename="Positivacao_Gerentes" />
+            </div>
             <div style={{ overflowX: "auto" }}>
               <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", width: "100%", whiteSpace: "nowrap" }}>
                 <thead style={{ position: "sticky", top: 0, background: "var(--card-bg, #fff)", zIndex: 1, boxShadow: "0 1px 0 var(--border)" }}>
@@ -329,13 +335,16 @@ export default function PositivacaoPage() {
 
           {/* BATALHA NAVAL: SKU x MÊS */}
           <div className="glass-card" style={{ padding: 0, minWidth: 0 }}>
-            <div style={{ padding: "12px 16px 8px", borderBottom: "1px solid var(--border)" }}>
-              <h3 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--foreground-secondary)" }}>
-                Batalha Naval — SKU × Mês (Clientes Positivados)
-              </h3>
-              <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
-                Quanto mais verde, mais clientes compraram aquele SKU naquele mês
-              </p>
+            <div style={{ padding: "12px 16px 8px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <h3 style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", color: "var(--foreground-secondary)" }}>
+                  Batalha Naval — SKU × Mês (Clientes Positivados)
+                </h3>
+                <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
+                  Quanto mais verde, mais clientes compraram aquele SKU naquele mês
+                </p>
+              </div>
+              <ExportButton data={batalhaNaval.map(b => ({ sku: b.sku, totalQty: b.totalQty, ...b.months }))} filename="Positivacao_BatalhaNaval" />
             </div>
             <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: 500 }}>
               <table style={{ fontSize: "0.65rem", borderCollapse: "collapse", width: "100%", whiteSpace: "nowrap" }}>
