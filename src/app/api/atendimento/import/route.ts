@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Try first sheet
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const range = findHeaderRange(sheet, ["parceiro", "gerente", "canal", "código"]);
+    const range = findHeaderRange(sheet, ["parceiro", "gerente", "canal", "cód", "cod", "nome", "razão", "razao", "cliente", "vendedor"]);
     const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       defval: null,
       range,
@@ -69,36 +69,38 @@ export async function POST(request: NextRequest) {
       const codParceiro = findCol(
         row,
         "Cód. Parceiro", "Cod. Parceiro", "Código", "Codigo",
-        "cod_parceiro", "CodParceiro", "ID"
+        "cod_parceiro", "CodParceiro", "ID", "Cód. Parceiro (Parceiro)", "Cod. Parceiro (Parceiro)",
+        "Código do Parceiro", "Codigo do Parceiro", "Cod. de Parceiro"
       );
       if (!codParceiro) continue;
 
       const nome = findCol(
         row,
         "Nome Parceiro", "Parceiro", "Nome", "Cliente",
-        "nome_parceiro", "NomeParceiro", "Nome Parceiro (Parceiro)"
+        "nome_parceiro", "NomeParceiro", "Nome Parceiro (Parceiro)",
+        "Razão Social", "Razao Social", "Nome Fantasia"
       );
       if (!nome) continue;
 
       const gerente = findCol(
         row,
         "Gerente", "Manager", "Responsável", "Responsavel",
-        "manager", "Time"
+        "manager", "Time", "Vendedor", "Vendedor (Parceiro)"
       );
 
       const canal = findCol(
         row,
-        "Canal", "Channel", "canal", "Tipo Canal"
+        "Canal", "Channel", "canal", "Tipo Canal", "Canal (Parceiro)"
       );
 
       const uf = findCol(
         row,
-        "UF", "Estado", "uf", "UF Destino"
+        "UF", "Estado", "uf", "UF Destino", "UF (Parceiro)"
       );
 
       const rede = findCol(
         row,
-        "Rede", "Matriz", "rede", "Grupo"
+        "Rede", "Matriz", "rede", "Grupo", "Rede (Parceiro)"
       );
 
       records.push({
