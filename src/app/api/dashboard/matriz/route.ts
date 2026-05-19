@@ -80,7 +80,7 @@ export async function GET(request: Request) {
     }
 
     // --- Query 1: Current Period (Matriz, Manager, Familia, Products) --- //
-    let current_where = 'WHERE invoice_date IS NOT NULL' + base_filters;
+    let current_where = 'WHERE invoice_date IS NOT NULL AND manager IS NOT NULL' + base_filters;
     // Current period is exact start/end passed from user query 
     // unless they didn't pass it, in which case we fall back to queryStart
     if (startDate) {
@@ -94,7 +94,37 @@ export async function GET(request: Request) {
     }
 
     const sqlCurrent = `
-      WITH filtered_sales AS (
+      
+    WITH sales_enriched AS (
+      SELECT 
+        b.manager, 
+        b.rede, 
+        f.nome_parceiro, 
+        CASE 
+          WHEN UPPER(f.desc_produto) LIKE '%1KG%' THEN '1 KG'
+          WHEN UPPER(f.desc_produto) LIKE '%5KG%' OR UPPER(f.desc_produto) LIKE '%5 KG%' THEN '5 KG'
+          WHEN UPPER(f.desc_produto) LIKE '%CAPSULA%' OR UPPER(f.desc_produto) LIKE '%CÁPSULA%' THEN 'Cápsula'
+          WHEN UPPER(f.desc_produto) LIKE '%DRIP%' THEN 'Drip'
+          WHEN UPPER(f.desc_produto) LIKE '%GEISHA%' THEN 'Geisha'
+          WHEN UPPER(f.desc_produto) LIKE '%VERDE%' THEN 'Café Verde'
+          WHEN UPPER(f.desc_produto) LIKE '%GRAO%' OR UPPER(f.desc_produto) LIKE '%GRÃO%' THEN 'Grão'
+          WHEN UPPER(f.desc_produto) LIKE '%MOIDO%' OR UPPER(f.desc_produto) LIKE '%MOÍDO%' THEN 'Moído'
+          WHEN UPPER(f.desc_produto) LIKE '%ACESSORIO%' OR UPPER(f.desc_produto) LIKE '%GARRAFA%' OR UPPER(f.desc_produto) LIKE '%CANECA%' OR UPPER(f.desc_produto) LIKE '%KIT%' THEN 'Acessório'
+          ELSE 'Outros'
+        END as tipo_produto,
+        f.desc_produto as product, 
+        f.dt_faturamento as invoice_date, 
+        COALESCE(CAST(f.vlr_total_liq AS numeric), 0) as net_value,
+        COALESCE(CAST(f.quantidade AS numeric), 0) as quantity,
+        (COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0)) as imposto,
+        COALESCE(CAST(f.custo_total AS numeric), 0) as custo_total,
+        COALESCE(CAST(f.vlr_frete AS numeric), 0) as custo_frete,
+        b.uf,
+        b.canal as channel
+      FROM cm_faturamento_sankhya f
+      JOIN base_atendimento b ON CAST(b.cod_parceiro AS TEXT) = CAST(f.cod_parceiro AS TEXT)
+    ),
+    filtered_sales AS (
         SELECT 
           manager, rede, nome_parceiro, tipo_produto, product, invoice_date, 
           COALESCE(CAST(net_value AS numeric), 0) as net_value,
@@ -102,7 +132,7 @@ export async function GET(request: Request) {
           COALESCE(CAST(imposto AS numeric), 0) as imposto,
           COALESCE(CAST(custo_total AS numeric), 0) as custo_total,
           COALESCE(CAST(custo_frete AS numeric), 0) as custo_frete
-        FROM sales
+        FROM sales_enriched
         ${current_where}
       ),
       calc_sales AS (
@@ -140,7 +170,7 @@ export async function GET(request: Request) {
       ),
       by_manager AS (
         SELECT 
-          COALESCE(NULLIF(manager, ''), 'Sem Gerente') as name,
+          COALESCE(NULLIF(manager, ''), 'Outros') as name,
           COALESCE(SUM(net_value), 0) as fat,
           CASE WHEN (SELECT fat FROM totals) > 0 THEN (COALESCE(SUM(net_value), 0) / (SELECT fat FROM totals)) * 100 ELSE 0 END as pct
         FROM calc_sales
@@ -176,7 +206,7 @@ export async function GET(request: Request) {
 
     // --- Query 2: History Period (byMonth) --- //
     // Using queryStart for looking 12 months back
-    let history_where = 'WHERE invoice_date IS NOT NULL' + base_filters;
+    let history_where = 'WHERE invoice_date IS NOT NULL AND manager IS NOT NULL' + base_filters;
     if (queryStart) history_where += ` AND invoice_date >= ${escapeSqlValue(queryStart)}`;
     if (endDate) history_where += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
 
@@ -189,7 +219,7 @@ export async function GET(request: Request) {
           COALESCE(CAST(imposto AS numeric), 0) as imposto,
           COALESCE(CAST(custo_total AS numeric), 0) as custo_total,
           COALESCE(CAST(custo_frete AS numeric), 0) as custo_frete
-        FROM sales
+        FROM sales_enriched
         ${history_where}
       ),
       calc_sales AS (
@@ -208,7 +238,7 @@ export async function GET(request: Request) {
         GROUP BY 1
         ORDER BY 1
       )
-      SELECT COALESCE(json_agg(t), '[]'::json) as "byMonth" FROM monthly t;
+      SELECT COALESCE(json_agg(t), '[]'::json) as "byMonth" FROM monthly t
     `;
 
     // Fire both query requests to DB in parallel

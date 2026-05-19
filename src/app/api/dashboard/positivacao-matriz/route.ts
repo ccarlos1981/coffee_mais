@@ -23,35 +23,100 @@ interface SaleRow {
   quantity: number | string;
 }
 
+let BASE_ATENDIMENTO_CACHE: Map<string, any> | null = null;
+let BASE_ATENDIMENTO_TIMESTAMP = 0;
+
+async function getBaseAtendimentoMap(supabase: ReturnType<typeof getSupabaseClient>) {
+  if (BASE_ATENDIMENTO_CACHE && Date.now() - BASE_ATENDIMENTO_TIMESTAMP < CACHE_TTL) {
+    return BASE_ATENDIMENTO_CACHE;
+  }
+  
+  const map = new Map<string, any>();
+  let from = 0;
+  const batchSize = 1000;
+  while(true) {
+    const { data, error } = await supabase.from('base_atendimento').select('*').range(from, from + batchSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      if (row.cod_parceiro) {
+        map.set(String(row.cod_parceiro), row);
+      }
+    }
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
+  
+  BASE_ATENDIMENTO_CACHE = map;
+  BASE_ATENDIMENTO_TIMESTAMP = Date.now();
+  return map;
+}
+
 async function fetchAllSales(
   supabase: ReturnType<typeof getSupabaseClient>,
   startDate: string | null,
   endDate: string | null,
-  filters: Record<string, string | null>
+  filters: Record<string, string | null>,
+  baseAtendimentoMap: Map<string, any>
 ): Promise<SaleRow[]> {
   const all: SaleRow[] = [];
   const batchSize = 1000;
   let from = 0;
 
+  const fManagers = filters.manager ? filters.manager.split(',') : null;
+  const fFamilias = filters.familia ? filters.familia.split(',') : null;
+  const fUfs = filters.uf ? filters.uf.split(',') : null;
+  const fChannels = filters.channel ? filters.channel.split(',') : null;
+  const fProducts = filters.product ? filters.product.split(',') : null;
+  const fMatrizes = filters.matriz ? filters.matriz.split(',') : null;
+
   while (true) {
     let query = supabase
-      .from('sales')
-      .select('manager, rede, nome_parceiro, tipo_produto, product, invoice_date, net_value, quantity');
+      .from('cm_faturamento_sankhya')
+      .select('dt_faturamento, cod_parceiro, nome_parceiro, desc_produto, quantidade, vlr_total_liq');
 
-    if (startDate) query = query.gte('invoice_date', startDate);
-    if (endDate) query = query.lte('invoice_date', endDate);
-    if (filters.manager) query = query.in('manager', filters.manager.split(','));
-    if (filters.familia) query = query.in('tipo_produto', filters.familia.split(','));
-    if (filters.uf) query = query.in('uf', filters.uf.split(','));
-    if (filters.channel) query = query.in('channel', filters.channel.split(','));
-    if (filters.product) query = query.in('product', filters.product.split(','));
-    if (filters.matriz) query = query.in('rede', filters.matriz.split(','));
+    if (startDate) query = query.gte('dt_faturamento', startDate);
+    if (endDate) query = query.lte('dt_faturamento', endDate);
 
     const { data, error } = await query.range(from, from + batchSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
 
-    all.push(...(data as unknown as SaleRow[]));
+    for (const row of data) {
+      const baseRow = baseAtendimentoMap.get(String(row.cod_parceiro));
+      if (!baseRow || !baseRow.manager) continue;
+
+      let familia = 'Outros';
+      const p = (row.desc_produto || '').toString().toUpperCase();
+      if (p.includes('1KG')) familia = '1 KG';
+      else if (p.includes('5KG') || p.includes('5 KG')) familia = '5 KG';
+      else if (p.includes('CAPSULA') || p.includes('CÁPSULA')) familia = 'Cápsula';
+      else if (p.includes('DRIP')) familia = 'Drip';
+      else if (p.includes('GEISHA')) familia = 'Geisha';
+      else if (p.includes('VERDE')) familia = 'Café Verde';
+      else if (p.includes('GRAO') || p.includes('GRÃO')) familia = 'Grão';
+      else if (p.includes('MOIDO') || p.includes('MOÍDO')) familia = 'Moído';
+      else if (p.includes('ACESSORIO') || p.includes('GARRAFA') || p.includes('CANECA') || p.includes('KIT')) familia = 'Acessório';
+
+      if (fManagers && !fManagers.includes(baseRow.manager)) continue;
+      if (fFamilias && !fFamilias.includes(familia)) continue;
+      if (fUfs && !fUfs.includes(baseRow.uf)) continue;
+      if (fChannels && !fChannels.includes(baseRow.canal)) continue;
+      if (fProducts && !fProducts.includes(row.desc_produto)) continue;
+      if (fMatrizes && !fMatrizes.includes(baseRow.rede)) continue;
+
+      all.push({
+        manager: baseRow.manager,
+        rede: baseRow.rede,
+        nome_parceiro: row.nome_parceiro,
+        tipo_produto: familia,
+        product: row.desc_produto,
+        invoice_date: row.dt_faturamento,
+        net_value: row.vlr_total_liq,
+        quantity: row.quantidade
+      });
+    }
+
     if (data.length < batchSize) break;
     from += batchSize;
   }
@@ -81,7 +146,8 @@ export async function GET(request: Request) {
     }
 
     const supabase = getSupabaseClient();
-    const sales = await fetchAllSales(supabase, startDate, endDate, filters);
+    const baseAtendimentoMap = await getBaseAtendimentoMap(supabase);
+    const sales = await fetchAllSales(supabase, startDate, endDate, filters, baseAtendimentoMap);
 
     // Maps por Mês
     const months = new Set<string>();

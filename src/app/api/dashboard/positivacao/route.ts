@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseClient();
     
-    let where_clause = 'WHERE invoice_date IS NOT NULL';
+    let where_clause = 'WHERE invoice_date IS NOT NULL AND manager IS NOT NULL';
     if (startDate) where_clause += ` AND invoice_date >= ${escapeSqlValue(startDate)}`;
     if (endDate) where_clause += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
 
@@ -70,7 +70,37 @@ export async function GET(request: Request) {
     }
 
     const sql = `
-      WITH filtered_sales AS (
+      
+    WITH sales_enriched AS (
+      SELECT 
+        b.manager, 
+        b.rede, 
+        f.nome_parceiro, 
+        CASE 
+          WHEN UPPER(f.desc_produto) LIKE '%1KG%' THEN '1 KG'
+          WHEN UPPER(f.desc_produto) LIKE '%5KG%' OR UPPER(f.desc_produto) LIKE '%5 KG%' THEN '5 KG'
+          WHEN UPPER(f.desc_produto) LIKE '%CAPSULA%' OR UPPER(f.desc_produto) LIKE '%CÁPSULA%' THEN 'Cápsula'
+          WHEN UPPER(f.desc_produto) LIKE '%DRIP%' THEN 'Drip'
+          WHEN UPPER(f.desc_produto) LIKE '%GEISHA%' THEN 'Geisha'
+          WHEN UPPER(f.desc_produto) LIKE '%VERDE%' THEN 'Café Verde'
+          WHEN UPPER(f.desc_produto) LIKE '%GRAO%' OR UPPER(f.desc_produto) LIKE '%GRÃO%' THEN 'Grão'
+          WHEN UPPER(f.desc_produto) LIKE '%MOIDO%' OR UPPER(f.desc_produto) LIKE '%MOÍDO%' THEN 'Moído'
+          WHEN UPPER(f.desc_produto) LIKE '%ACESSORIO%' OR UPPER(f.desc_produto) LIKE '%GARRAFA%' OR UPPER(f.desc_produto) LIKE '%CANECA%' OR UPPER(f.desc_produto) LIKE '%KIT%' THEN 'Acessório'
+          ELSE 'Outros'
+        END as tipo_produto,
+        f.desc_produto as product, 
+        f.dt_faturamento as invoice_date, 
+        COALESCE(CAST(f.vlr_total_liq AS numeric), 0) as net_value,
+        COALESCE(CAST(f.quantidade AS numeric), 0) as quantity,
+        (COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0)) as imposto,
+        COALESCE(CAST(f.custo_total AS numeric), 0) as custo_total,
+        COALESCE(CAST(f.vlr_frete AS numeric), 0) as custo_frete,
+        b.uf,
+        b.canal as channel
+      FROM cm_faturamento_sankhya f
+      JOIN base_atendimento b ON CAST(b.cod_parceiro AS TEXT) = CAST(f.cod_parceiro AS TEXT)
+    ),
+    filtered_sales AS (
         SELECT 
           manager, rede, nome_parceiro, product, invoice_date, 
           COALESCE(CAST(net_value AS numeric), 0) as net_value,
@@ -78,9 +108,9 @@ export async function GET(request: Request) {
           COALESCE(NULLIF(nome_parceiro, ''), COALESCE(NULLIF(rede, ''), 'Não Mapeado')) as client,
           COALESCE(NULLIF(rede, ''), 'Não Mapeado') as matriz,
           COALESCE(NULLIF(product, ''), 'Outros') as sku,
-          COALESCE(NULLIF(manager, ''), 'Sem Gerente') as manager_name,
+          COALESCE(NULLIF(manager, ''), 'Outros') as manager_name,
           SUBSTRING(CAST(invoice_date AS text), 1, 7) as month_key
-        FROM sales
+        FROM sales_enriched
         ${where_clause}
       ),
       totals AS (

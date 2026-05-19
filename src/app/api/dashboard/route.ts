@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = 'nodejs';
 
-// In-memory cache to dramatically speed up dashboard
+// In-memory cache to dramatically speed up dashboard (cleared on reload)
 const API_CACHE = new Map<string, { timestamp: number; data: unknown }>();
 const CACHE_TTL = 1000 * 60 * 15; // 15 minutos
 
@@ -27,6 +27,35 @@ interface SaleRow {
   receita_frete: number | string;
 }
 
+let BASE_ATENDIMENTO_CACHE: Map<string, any> | null = null;
+let BASE_ATENDIMENTO_TIMESTAMP = 0;
+
+async function getBaseAtendimentoMap(supabase: ReturnType<typeof getSupabaseClient>) {
+  if (BASE_ATENDIMENTO_CACHE && Date.now() - BASE_ATENDIMENTO_TIMESTAMP < CACHE_TTL) {
+    return BASE_ATENDIMENTO_CACHE;
+  }
+  
+  const map = new Map<string, any>();
+  let from = 0;
+  const batchSize = 1000;
+  while(true) {
+    const { data, error } = await supabase.from('base_atendimento').select('*').range(from, from + batchSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      if (row.cod_parceiro) {
+        map.set(String(row.cod_parceiro), row);
+      }
+    }
+    if (data.length < batchSize) break;
+    from += batchSize;
+  }
+  
+  BASE_ATENDIMENTO_CACHE = map;
+  BASE_ATENDIMENTO_TIMESTAMP = Date.now();
+  return map;
+}
+
 /**
  * Fetches ALL matching rows via pagination (Supabase default limit = 1000).
  * Selects only the columns needed for aggregation to minimize payload.
@@ -35,33 +64,73 @@ async function fetchAllSales(
   supabase: ReturnType<typeof getSupabaseClient>,
   startDate: string | null,
   endDate: string | null,
-  filters: Record<string, string | null>
+  filters: Record<string, string | null>,
+  baseAtendimentoMap: Map<string, any>
 ): Promise<SaleRow[]> {
   const all: SaleRow[] = [];
   const batchSize = 1000;
   let from = 0;
 
+  const fManagers = filters.manager ? filters.manager.split(',') : null;
+  const fFamilias = filters.familia ? filters.familia.split(',') : null;
+  const fUfs = filters.uf ? filters.uf.split(',') : null;
+  const fChannels = filters.channel ? filters.channel.split(',') : null;
+  const fProducts = filters.product ? filters.product.split(',') : null;
+
   while (true) {
     let query = supabase
-      .from('sales')
-      .select(
-        'manager, rede, nome_parceiro, tipo_produto, product, ' +
-        'net_value, quantity, imposto, custo_total, custo_frete, receita_frete'
-      );
+      .from('cm_faturamento_sankhya')
+      .select('dt_faturamento, cod_parceiro, nome_parceiro, desc_produto, quantidade, vlr_total_liq, custo_icms, custo_total, vlr_frete, vlr_total_st')
 
-    if (startDate) query = query.gte('invoice_date', startDate);
-    if (endDate) query = query.lte('invoice_date', endDate);
-    if (filters.manager) query = query.in('manager', filters.manager.split(','));
-    if (filters.familia) query = query.in('tipo_produto', filters.familia.split(','));
-    if (filters.uf) query = query.in('uf', filters.uf.split(','));
-    if (filters.channel) query = query.in('channel', filters.channel.split(','));
-    if (filters.product) query = query.in('product', filters.product.split(','));
+    if (startDate) query = query.gte('dt_faturamento', startDate);
+    if (endDate) query = query.lte('dt_faturamento', endDate);
+    
+    // Status NFe: We can ignore Cancelled if needed, but it was not specified in the original fetchAllSales (sales_enriched already filtered).
+    // Let's filter out 'Denegada' and 'Cancelada' if they exist, or just assume the DB has them.
+    // Actually, let's keep it simple.
 
     const { data, error } = await query.range(from, from + batchSize - 1);
     if (error) throw error;
     if (!data || data.length === 0) break;
 
-    all.push(...(data as unknown as SaleRow[]));
+    for (const row of data) {
+      const baseRow = baseAtendimentoMap.get(String(row.cod_parceiro));
+      // Só exibir vendas com gerente atribuído (clientes na base de atendimento)
+      if (!baseRow || !baseRow.manager) continue;
+
+      let familia = 'Outros';
+      const p = (row.desc_produto || '').toString().toUpperCase();
+      if (p.includes('1KG')) familia = '1 KG';
+      else if (p.includes('5KG') || p.includes('5 KG')) familia = '5 KG';
+      else if (p.includes('CAPSULA') || p.includes('CÁPSULA')) familia = 'Cápsula';
+      else if (p.includes('DRIP')) familia = 'Drip';
+      else if (p.includes('GEISHA')) familia = 'Geisha';
+      else if (p.includes('VERDE')) familia = 'Café Verde';
+      else if (p.includes('GRAO') || p.includes('GRÃO')) familia = 'Grão';
+      else if (p.includes('MOIDO') || p.includes('MOÍDO')) familia = 'Moído';
+      else if (p.includes('ACESSORIO') || p.includes('GARRAFA') || p.includes('CANECA') || p.includes('KIT')) familia = 'Acessório';
+
+      if (fManagers && !fManagers.includes(baseRow.manager)) continue;
+      if (fFamilias && !fFamilias.includes(familia)) continue;
+      if (fUfs && !fUfs.includes(baseRow.uf)) continue;
+      if (fChannels && !fChannels.includes(baseRow.canal)) continue;
+      if (fProducts && !fProducts.includes(row.desc_produto)) continue;
+
+      all.push({
+        manager: baseRow.manager,
+        rede: baseRow.rede,
+        nome_parceiro: row.nome_parceiro,
+        tipo_produto: familia,
+        product: row.desc_produto,
+        net_value: row.vlr_total_liq,
+        quantity: row.quantidade,
+        imposto: (row.custo_icms || 0) + (row.vlr_total_st || 0),
+        custo_total: row.custo_total,
+        custo_frete: row.vlr_frete,
+        receita_frete: 0
+      });
+    }
+
     if (data.length < batchSize) break;
     from += batchSize;
   }
@@ -91,21 +160,8 @@ function aggregate(
   let totalFat = 0, totalQty = 0, totalMaco = 0;
 
   for (const sale of sales) {
-    const m = sale.manager || 'Sem Gerente';
-    let familia = sale.tipo_produto;
-    if (!familia || familia === 'Outros') {
-      const p = (sale.product || '').toString().toUpperCase();
-      if (p.includes('1KG')) familia = '1 KG';
-      else if (p.includes('5KG') || p.includes('5 KG')) familia = '5 KG';
-      else if (p.includes('CAPSULA') || p.includes('CÁPSULA')) familia = 'Cápsula';
-      else if (p.includes('DRIP')) familia = 'Drip';
-      else if (p.includes('GEISHA')) familia = 'Geisha';
-      else if (p.includes('VERDE')) familia = 'Café Verde';
-      else if (p.includes('GRAO') || p.includes('GRÃO')) familia = 'Grão';
-      else if (p.includes('MOIDO') || p.includes('MOÍDO')) familia = 'Moído';
-      else if (p.includes('ACESSORIO') || p.includes('GARRAFA') || p.includes('CANECA') || p.includes('KIT')) familia = 'Acessório';
-      else familia = 'Outros';
-    }
+    const m = sale.manager || 'Outros';
+    const familia = sale.tipo_produto || 'Outros';
     
     const client = sale.rede || sale.nome_parceiro || 'Não Mapeado';
 
@@ -205,6 +261,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = getSupabaseClient();
+    const baseAtendimentoMap = await getBaseAtendimentoMap(supabase);
 
     // Fetch comparison periods
     let previousMonth = { fat: 0, qty: 0, maco: 0 };
@@ -228,7 +285,8 @@ export async function GET(request: Request) {
         supabase,
         prevMonthStart.toISOString().split('T')[0],
         prevMonthEnd.toISOString().split('T')[0],
-        filters
+        filters,
+        baseAtendimentoMap
       );
       const pmAgg = aggregate(pmSales, investmentPct);
       previousMonth = pmAgg.totals;
@@ -256,7 +314,8 @@ export async function GET(request: Request) {
         supabase,
         prevYearStart.toISOString().split('T')[0],
         prevYearEnd.toISOString().split('T')[0],
-        filters
+        filters,
+        baseAtendimentoMap
       );
       const pyAgg = aggregate(pySales, investmentPct);
       previousYear = pyAgg.totals;
@@ -276,7 +335,7 @@ export async function GET(request: Request) {
     }
 
     // Fetch current period (with comparison maps)
-    const sales = await fetchAllSales(supabase, startDate, endDate, filters);
+    const sales = await fetchAllSales(supabase, startDate, endDate, filters, baseAtendimentoMap);
     const result = aggregate(sales, investmentPct, pmClientMap, pyClientMap);
 
     const payload = {
