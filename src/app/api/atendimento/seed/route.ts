@@ -29,7 +29,7 @@ export async function POST() {
     
     while (true) {
       const { data, error } = await supabase
-        .from('sales')
+        .from('sales_enriched')
         .select('uf, manager, cod_parceiro, nome_parceiro, rede, channel')
         .range(from, from + batchSize - 1);
         
@@ -86,7 +86,7 @@ export async function POST() {
     let pdvSuccess = 0;
     for (let i = 0; i < pdvPayload.length; i += 500) {
       const batch = pdvPayload.slice(i, i + 500);
-      const { error: err2 } = await supabase.from('pdv_mapping').upsert(batch, { onConflict: 'cod_parceiro' });
+      const { error: err2 } = await supabase.from('base_atendimento').upsert(batch, { onConflict: 'cod_parceiro' });
       if (err2) {
         console.error('[SEED PDV Error at batch ' + i + ']', err2);
       } else {

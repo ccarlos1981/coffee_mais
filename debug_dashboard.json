@@ -1,0 +1,396 @@
+{
+  "success": true,
+  "salesCount": 1199,
+  "byManager": [
+    {
+      "manager": "Leandro",
+      "fat": 1861217.1000000008,
+      "qty": 62406,
+      "maco": -858310.6099995602,
+      "topClients": [
+        {
+          "client": "FESTVAL",
+          "fat": 918761.5000000002,
+          "qty": 30510,
+          "maco": -406803.57999956,
+          "prevMonthFat": 771908.399999,
+          "prevYearFat": 864818.1999999997
+        },
+        {
+          "client": "ANGELONI",
+          "fat": 374755.42000000004,
+          "qty": 12234,
+          "maco": -165992.96999999997,
+          "prevMonthFat": 214389.19999999998,
+          "prevYearFat": 127357.31000000007
+        },
+        {
+          "client": "ZAFFARI",
+          "fat": 329788.2,
+          "qty": 11590,
+          "maco": -168065.64999999997,
+          "prevMonthFat": 607781.6000000001,
+          "prevYearFat": 431024.24
+        },
+        {
+          "client": "FORT",
+          "fat": 132500,
+          "qty": 4070,
+          "maco": -66017.66,
+          "prevMonthFat": 71764,
+          "prevYearFat": 104365.2
+        },
+        {
+          "client": "HIPERBOM / HIPERSELECT",
+          "fat": 105411.98,
+          "qty": 4002,
+          "maco": -51430.75000000001,
+          "prevMonthFat": 80243.64,
+          "prevYearFat": 53960.58
+        }
+      ]
+    },
+    {
+      "manager": "Luiz",
+      "fat": 1804376.320000002,
+      "qty": 67588,
+      "maco": -891734.9099999991,
+      "topClients": [
+        {
+          "client": "ZONA SUL",
+          "fat": 1105460,
+          "qty": 40400,
+          "maco": -541018.0399999996,
+          "prevMonthFat": 680658,
+          "prevYearFat": 708555.1000000002
+        },
+        {
+          "client": "VERDEMAR",
+          "fat": 442582,
+          "qty": 17236,
+          "maco": -229237.31999999995,
+          "prevMonthFat": 511136,
+          "prevYearFat": 333005.4600000001
+        },
+        {
+          "client": "SUPERNOSSO - PRIVATE",
+          "fat": 102255.12000000002,
+          "qty": 3328,
+          "maco": -46106.530000000006,
+          "prevMonthFat": 258074.19999999998,
+          "prevYearFat": 346198.3999999999
+        },
+        {
+          "client": "BH",
+          "fat": 88509.6,
+          "qty": 3816,
+          "maco": -44205.13,
+          "prevMonthFat": 238524,
+          "prevYearFat": 114992.40000000002
+        },
+        {
+          "client": "DONA",
+          "fat": 42046.8,
+          "qty": 1884,
+          "maco": -20096.700000000008,
+          "prevMonthFat": 125515.58000000006,
+          "prevYearFat": 599.8
+        },
+        {
+          "client": "EPA",
+          "fat": 21123.599999999995,
+          "qty": 844,
+          "maco": -9879.949999999999,
+          "prevMonthFat": 82525.2,
+          "prevYearFat": 65503.19999999999
+        },
+        {
+          "client": "SUPERNOSSO",
+          "fat": 2399.2,
+          "qty": 80,
+          "maco": -1191.2399999999998,
+          "prevMonthFat": 16194.599999999999,
+          "prevYearFat": 125358.20000000001
+        }
+      ]
+    },
+    {
+      "manager": "Julliano",
+      "fat": 363507.62,
+      "qty": 14221,
+      "maco": -179704.11000000002,
+      "topClients": [
+        {
+          "client": "REDE OBA",
+          "fat": 245491.92000000007,
+          "qty": 10428,
+          "maco": -125737.22999999997,
+          "prevMonthFat": 181119.16000000003,
+          "prevYearFat": 121088.76000000005
+        },
+        {
+          "client": "MAMBO",
+          "fat": 77214.08,
+          "qty": 2496,
+          "maco": -35232.93000000001,
+          "prevMonthFat": 143041.12,
+          "prevYearFat": 83872.20000000008
+        },
+        {
+          "client": "SuperVille",
+          "fat": 22972.619999999995,
+          "qty": 701,
+          "maco": -9743.48,
+          "prevMonthFat": 17692.19999999999,
+          "prevYearFat": 5998.000000000001
+        },
+        {
+          "client": "ZAFFARI",
+          "fat": 14020,
+          "qty": 460,
+          "maco": -7161.91,
+          "prevMonthFat": 607781.6000000001,
+          "prevYearFat": 431024.24
+        },
+        {
+          "client": "CONFIANÇA",
+          "fat": 3809,
+          "qty": 136,
+          "maco": -1828.5600000000002,
+          "prevMonthFat": 3185.2,
+          "prevYearFat": 0
+        }
+      ]
+    },
+    {
+      "manager": "Inside Sales",
+      "fat": 288437.2800000002,
+      "qty": 10891,
+      "maco": -253318.4000000001,
+      "topClients": [
+        {
+          "client": "PARANA COMERCIO DE ERVA MATE LTDA",
+          "fat": 135407.16,
+          "qty": 4884,
+          "maco": -135648.46,
+          "prevMonthFat": 45135.72,
+          "prevYearFat": 0
+        },
+        {
+          "client": "INTER CAFÉ",
+          "fat": 35897.60000000002,
+          "qty": 1580,
+          "maco": -24611.61,
+          "prevMonthFat": 41183.88000000001,
+          "prevYearFat": 36520
+        },
+        {
+          "client": "DISTRA ALIMENTOS",
+          "fat": 30144.000000000004,
+          "qty": 1600,
+          "maco": -21073.46,
+          "prevMonthFat": 30367.2,
+          "prevYearFat": 0
+        },
+        {
+          "client": "PRUDENTIAL DO BRASIL SEGUROS S.A.",
+          "fat": 13945.35,
+          "qty": 465,
+          "maco": -6640.74,
+          "prevMonthFat": 13945.35,
+          "prevYearFat": 0
+        },
+        {
+          "client": "GRAMARI SOL NASCENTE",
+          "fat": 6471,
+          "qty": 252,
+          "maco": -7461.25,
+          "prevMonthFat": 0,
+          "prevYearFat": 1679.3600000000001
+        },
+        {
+          "client": "VARANDA GRILL",
+          "fat": 6349.4,
+          "qty": 60,
+          "maco": -3661.66,
+          "prevMonthFat": 7349.299999999999,
+          "prevYearFat": 10858.999999999998
+        },
+        {
+          "client": "GRATITUDE",
+          "fat": 4575.360000000001,
+          "qty": 94,
+          "maco": -4582.38,
+          "prevMonthFat": 4575.36,
+          "prevYearFat": 7679.4
+        },
+        {
+          "client": "GUSTAVO ENSSLIN",
+          "fat": 3598.8000000000006,
+          "qty": 120,
+          "maco": -5329.52,
+          "prevMonthFat": 1199.6000000000001,
+          "prevYearFat": 0
+        },
+        {
+          "client": "VANILA CAKES CAFE",
+          "fat": 3598.8,
+          "qty": 120,
+          "maco": -2612.16,
+          "prevMonthFat": 0,
+          "prevYearFat": 0
+        },
+        {
+          "client": "PIACERE",
+          "fat": 3274.8599999999997,
+          "qty": 114,
+          "maco": -3303.68,
+          "prevMonthFat": 0,
+          "prevYearFat": 3862.6400000000003
+        },
+        {
+          "client": "BW ENERGY MAROMBA DO BRASIL LTDA.",
+          "fat": 2998.9999999999995,
+          "qty": 100,
+          "maco": -1567.5400000000002,
+          "prevMonthFat": 5998,
+          "prevYearFat": 0
+        },
+        {
+          "client": "EMPORIO DO BENNA",
+          "fat": 2914.8799999999997,
+          "qty": 112,
+          "maco": -2950.9900000000007,
+          "prevMonthFat": 0,
+          "prevYearFat": 0
+        },
+        {
+          "client": "ICH ADMINISTRACAO DE HOTEIS S.A.",
+          "fat": 2878.8,
+          "qty": 120,
+          "maco": -1377.88,
+          "prevMonthFat": 0,
+          "prevYearFat": 2629.2
+        },
+        {
+          "client": "FORTE SERVICOS DE HOTELARIA LTDA 260.780.138",
+          "fat": 2399.2,
+          "qty": 80,
+          "maco": -1465.54,
+          "prevMonthFat": 2639.08,
+          "prevYearFat": 239.88
+        },
+        {
+          "client": "BIANCHIN CAFETERIA LTDA",
+          "fat": 2399.2,
+          "qty": 80,
+          "maco": -3959.3200000000006,
+          "prevMonthFat": 0,
+          "prevYearFat": 0
+        },
+        {
+          "client": "PHALCOO",
+          "fat": 2375.16,
+          "qty": 84,
+          "maco": -1525.5700000000002,
+          "prevMonthFat": 0,
+          "prevYearFat": 2079.1699999999996
+        },
+        {
+          "client": "CASA APOLLONIA",
+          "fat": 2375.16,
+          "qty": 84,
+          "maco": -1613.5200000000002,
+          "prevMonthFat": 0,
+          "prevYearFat": 0
+        },
+        {
+          "client": "HOLA LAVANDEIRA -SALUTERIA MERCADO SAUDAVEL",
+          "fat": 2299.5,
+          "qty": 50,
+          "maco": -2536.34,
+          "prevMonthFat": 0,
+          "prevYearFat": 977.58
+        },
+        {
+          "client": "BONÍSSIMA",
+          "fat": 2183.16,
+          "qty": 84,
+          "maco": -1358.9499999999998,
+          "prevMonthFat": 2687.0000000000005,
+          "prevYearFat": 8232.599999999997
+        },
+        {
+          "client": "BOUTIQUE DO VINHO",
+          "fat": 1759.7,
+          "qty": 32,
+          "maco": -3940.5,
+          "prevMonthFat": 0,
+          "prevYearFat": 0
+        }
+      ]
+    }
+  ],
+  "byFamilia": [
+    {
+      "familia": "Moído",
+      "fat": 2026981.6899999985,
+      "qty": 70743,
+      "pct": 46.94762477522143
+    },
+    {
+      "familia": "Grão",
+      "fat": 1449085.339999999,
+      "qty": 50227,
+      "pct": 33.56276731320359
+    },
+    {
+      "familia": "Drip",
+      "fat": 339220.02000000025,
+      "qty": 15845,
+      "pct": 7.856792339946164
+    },
+    {
+      "familia": "Cápsula",
+      "fat": 296650.4400000001,
+      "qty": 15732,
+      "pct": 6.870823557623923
+    },
+    {
+      "familia": "1 KG",
+      "fat": 153885.49999999997,
+      "qty": 1480,
+      "pct": 3.564195349168319
+    },
+    {
+      "familia": "Geisha",
+      "fat": 48073.97,
+      "qty": 863,
+      "pct": 1.1134578650363898
+    },
+    {
+      "familia": "Acessório",
+      "fat": 2490,
+      "qty": 152,
+      "pct": 0.05767175217567033
+    }
+  ],
+  "totals": {
+    "fat": 4317538.319999999,
+    "qty": 155106,
+    "maco": -2183068.0299995583
+  },
+  "previousMonth": {
+    "fat": 6518272.149998889,
+    "qty": 223342,
+    "maco": -1270044094315.6785
+  },
+  "previousYear": {
+    "fat": 5202489.340000006,
+    "qty": 162032,
+    "maco": -2946613.2200002284
+  },
+  "recordCount": 1199,
+  "hasSession": true,
+  "sessionUser": "cristiano@coffeemais.com"
+}

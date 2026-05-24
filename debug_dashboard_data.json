@@ -1,0 +1,17 @@
+{
+  "dataLength": 224,
+  "baseMapSize": 1258,
+  "firstRow": {
+    "dt_faturamento": "2026-05-01",
+    "cod_parceiro": "148430",
+    "nome_parceiro": "KARINE SILVEIRA DE JESUS",
+    "desc_produto": "CAFE SUL DE MINAS TIPO GRAO 250GR",
+    "quantidade": 1,
+    "vlr_total_liq": 26.98,
+    "custo_icms": 12.81,
+    "custo_total": 12.81,
+    "vlr_frete": 0,
+    "vlr_total_st": 26.98
+  },
+  "error": null
+}

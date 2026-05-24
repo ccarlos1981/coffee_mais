@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
-import { calcPace } from "@/lib/calculations";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
@@ -79,6 +78,9 @@ interface ManagerData {
   fat: number;
   qty: number;
   maco: number;
+  paceFat?: number;
+  paceQty?: number;
+  paceMaco?: number;
   topClients: TopClientRow[];
 }
 
@@ -209,6 +211,9 @@ export default function VendasDashboard() {
             fat: sales?.fat || 0,
             qty: sales?.qty || 0,
             maco: sales?.maco || 0,
+            paceFat: sales?.paceFat || 0,
+            paceQty: sales?.paceQty || 0,
+            paceMaco: sales?.paceMaco || 0,
             topClients: sales?.topClients || [],
             metaFat: target?.target_revenue || 0,
             metaUnd: target?.target_tons || 0,
@@ -243,8 +248,11 @@ export default function VendasDashboard() {
         qty: acc.qty + r.qty,
         metaMaco: acc.metaMaco + r.metaMaco,
         maco: acc.maco + r.maco,
+        paceFat: acc.paceFat + (r.paceFat || 0),
+        paceQty: acc.paceQty + (r.paceQty || 0),
+        paceMaco: acc.paceMaco + (r.paceMaco || 0),
       }),
-      { metaFat: 0, fat: 0, metaUnd: 0, qty: 0, metaMaco: 0, maco: 0 }
+      { metaFat: 0, fat: 0, metaUnd: 0, qty: 0, metaMaco: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0 }
     );
   }, [managerRows]);
 
@@ -267,21 +275,6 @@ export default function VendasDashboard() {
   };
 
   const faturamentoPct = pct(totals.fat, totals.metaFat);
-
-  const paceFat = useMemo(() => {
-    if (!businessDays || !businessDays.total_days || !businessDays.elapsed_days) return 0;
-    return calcPace(totals.fat, totals.metaFat, businessDays.total_days, businessDays.elapsed_days);
-  }, [totals.fat, totals.metaFat, businessDays]);
-
-  const paceMaco = useMemo(() => {
-    if (!businessDays || !businessDays.total_days || !businessDays.elapsed_days) return 0;
-    return calcPace(totals.maco, totals.metaMaco, businessDays.total_days, businessDays.elapsed_days);
-  }, [totals.maco, totals.metaMaco, businessDays]);
-
-  const paceUnid = useMemo(() => {
-    if (!businessDays || !businessDays.total_days || !businessDays.elapsed_days) return 0;
-    return calcPace(totals.qty, totals.metaUnd, businessDays.total_days, businessDays.elapsed_days);
-  }, [totals.qty, totals.metaUnd, businessDays]);
 
   const compareVariation = (current: number, previous: number) => {
     if (previous === 0) return { pct: 0, direction: "neutral" as const };
@@ -553,9 +546,9 @@ export default function VendasDashboard() {
 
         {/* ═══ Pace Row ═══ */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 16 }}>
-          <MiniStat label="Pace Fat." value={formatPercent(paceFat)} color={pctColor(paceFat)} />
-          <MiniStat label="Pace Unid." value={formatPercent(paceUnid)} color={pctColor(paceUnid)} />
-          <MiniStat label="Pace MaCo" value={formatPercent(paceMaco)} color={pctColor(paceMaco)} />
+          <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
+          <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
+          <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
           <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
           <MiniStat
             label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
@@ -607,10 +600,6 @@ export default function VendasDashboard() {
                       const pFat = pct(row.fat, row.metaFat);
                       const pUnd = pct(row.qty, row.metaUnd);
                       const pMaco = pct(row.maco, row.metaMaco);
-                      const rowPaceFat = businessDays && businessDays.elapsed_days > 0 && row.metaFat > 0
-                        ? calcPace(row.fat, row.metaFat, businessDays.total_days, businessDays.elapsed_days) : 0;
-                      const rowPaceMaco = businessDays && businessDays.elapsed_days > 0 && row.metaMaco > 0
-                        ? calcPace(row.maco, row.metaMaco, businessDays.total_days, businessDays.elapsed_days) : 0;
                       const isExpanded = expandedManager === row.manager;
 
                       return [
@@ -630,8 +619,8 @@ export default function VendasDashboard() {
                           <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
                             {row.metaFat > 0 ? formatPercent(pFat) : "-"}
                           </td>
-                          <td className="pct-cell" style={{ color: pctColor(rowPaceFat) }}>
-                            {rowPaceFat > 0 ? formatPercent(rowPaceFat) : "-"}
+                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                            {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
                           </td>
                           <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
                           <td>{formatNumber(row.qty, 0)}</td>
@@ -643,8 +632,8 @@ export default function VendasDashboard() {
                           <td className="pct-cell" style={getPctStyle(pMaco, row.metaMaco)}>
                             {row.metaMaco > 0 ? formatPercent(pMaco) : "-"}
                           </td>
-                          <td className="pct-cell" style={{ color: pctColor(rowPaceMaco) }}>
-                            {rowPaceMaco > 0 ? formatPercent(rowPaceMaco) : "-"}
+                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                            {row.paceMaco && row.paceMaco > 0 ? formatCurrency(row.paceMaco / 1000) : "-"}
                           </td>
                         </tr>,
                         isExpanded && (
@@ -713,8 +702,8 @@ export default function VendasDashboard() {
                         <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
                           {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
                         </td>
-                        <td className="pct-cell" style={{ color: pctColor(paceFat) }}>
-                          {paceFat > 0 ? formatPercent(paceFat) : "-"}
+                        <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                          {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
                         </td>
                         <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                         <td>{formatNumber(totals.qty, 0)}</td>
@@ -726,8 +715,8 @@ export default function VendasDashboard() {
                         <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
                           {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
                         </td>
-                        <td className="pct-cell" style={{ color: pctColor(paceMaco) }}>
-                          {paceMaco > 0 ? formatPercent(paceMaco) : "-"}
+                        <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                          {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
                         </td>
                       </tr>
                     )}

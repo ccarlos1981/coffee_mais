@@ -376,57 +376,58 @@ export async function POST(request: NextRequest) {
 
     // Process known sheets
     const allSalesRows: SalesRow[] = [];
+    let usedItensNota = false;
 
-    // ÚltimasVendas
-    if (workbook.SheetNames.includes("ÚltimasVendas")) {
-      const sheet = workbook.Sheets["ÚltimasVendas"];
-      const rows = parseUltimasVendas(sheet, batchId);
-      if (rows.length > 0) {
-        sheetsDetected.push("ÚltimasVendas");
-        allSalesRows.push(...rows);
+    // If no known sheets... try every sheet with all parsers (ItensNota first)
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      
+      // Try ItensNota (standard format with cod_parceiro) first
+      const itensRows = parseItensNota(sheet, batchId);
+      if (itensRows.length > 0) {
+        sheetsDetected.push(sheetName);
+        allSalesRows.push(...itensRows);
+        usedItensNota = true;
+        continue;
       }
-    }
 
-    // PortalVendas
-    if (workbook.SheetNames.includes("PortalVendas")) {
-      const sheet = workbook.Sheets["PortalVendas"];
-      const rows = parsePortalVendas(sheet, batchId);
-      if (rows.length > 0) {
-        sheetsDetected.push("PortalVendas");
-        allSalesRows.push(...rows);
+      // Try ÚltimasVendas
+      const ultimasRows = parseUltimasVendas(sheet, batchId);
+      if (ultimasRows.length > 0) {
+        sheetsDetected.push(sheetName);
+        allSalesRows.push(...ultimasRows);
+        continue;
       }
-    }
 
-    // If no known sheets... try every sheet with all parsers
-    if (allSalesRows.length === 0 && workbook.SheetNames.length > 0) {
-      for (const sheetName of workbook.SheetNames) {
-        const sheet = workbook.Sheets[sheetName];
-        // Try ItensNota (standard format) first, then legacy formats
-        let rows = parseItensNota(sheet, batchId);
-        if (rows.length === 0) {
-          rows = parseUltimasVendas(sheet, batchId);
-        }
-        if (rows.length === 0) {
-          rows = parsePortalVendas(sheet, batchId);
-        }
-        if (rows.length > 0) {
+      // Only use PortalVendas if ItensNota didn't produce results (avoids duplicates)
+      if (!usedItensNota) {
+        const portalRows = parsePortalVendas(sheet, batchId);
+        if (portalRows.length > 0) {
           sheetsDetected.push(sheetName);
-          allSalesRows.push(...rows);
-          break;
+          allSalesRows.push(...portalRows);
         }
       }
     }
 
-    // Insert sales in batches of 500 (upsert — duplicates are ignored)
+    // Deduplicate rows by invoice_number + invoice_date + product + cod_parceiro
+    const deduped = new Map<string, SalesRow>();
+    for (const row of allSalesRows) {
+      const key = `${row.invoice_number}|${row.invoice_date}|${row.product || ''}|${row.cod_parceiro || ''}`;
+      deduped.set(key, row); // last wins
+    }
+    const uniqueRows = Array.from(deduped.values());
+    console.log(`[process-excel] ${allSalesRows.length} rows parsed → ${uniqueRows.length} after dedup`);
+
+    // Insert sales in batches of 500
     let insertedCount = 0;
     let syncedCount = 0;
-    if (allSalesRows.length > 0) {
+    if (uniqueRows.length > 0) {
       const batchSize = 500;
-      for (let i = 0; i < allSalesRows.length; i += batchSize) {
-        const batch = allSalesRows.slice(i, i + batchSize);
+      for (let i = 0; i < uniqueRows.length; i += batchSize) {
+        const batch = uniqueRows.slice(i, i + batchSize);
         const { data, error: insertError } = await supabase
-          .from("sales")
-          .insert(batch)
+          .from("sales_v2")
+          .upsert(batch, { onConflict: 'chave', ignoreDuplicates: false })
           .select("id");
 
         if (insertError) {
@@ -436,7 +437,7 @@ export async function POST(request: NextRequest) {
           insertedCount += data?.length ?? 0;
         }
       }
-      totalRecords = allSalesRows.length;
+      totalRecords = uniqueRows.length;
 
       // Get date range
       const dates = allSalesRows

@@ -43,12 +43,11 @@ export function calcPricePerKg(revenue: number, weightKg: number): number {
  */
 export function calcPace(
   actual: number,
-  target: number,
   totalBusinessDays: number,
   elapsedBusinessDays: number
 ): number {
-  if (target <= 0 || elapsedBusinessDays <= 0) return 0;
-  return (actual / target) * (totalBusinessDays / elapsedBusinessDays) * 100;
+  if (elapsedBusinessDays <= 0) return 0;
+  return (actual / elapsedBusinessDays) * totalBusinessDays;
 }
 
 /**

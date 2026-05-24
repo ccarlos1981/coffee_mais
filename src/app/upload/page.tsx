@@ -91,21 +91,10 @@ export default function UploadPage() {
         .single();
 
       if (batchError) throw new Error(`Erro ao registrar upload: ${batchError.message}`);
-      setProgress(25);
-
-      // 2. Upload file to Supabase Storage
-      const filePath = `uploads/${batch.id}/${file.name}`;
-      const { error: storageError } = await supabase.storage
-        .from("excel-uploads")
-        .upload(filePath, file, { upsert: true });
-
-      if (storageError) throw new Error(`Erro no upload: ${storageError.message}`);
-      setProgress(50);
+      setProgress(30);
       setStatus("processing");
 
-      // 3. Process file via API route (client-side parsing for MVP)
-      // For MVP, we'll read the file locally using the browser FileReader
-      // In production, this would call an Edge Function
+      // 2. Send file directly to API for processing (skip Storage)
       const formData = new FormData();
       formData.append("file", file);
       formData.append("batch_id", batch.id);
@@ -125,7 +114,7 @@ export default function UploadPage() {
       const resultData = await response.json();
       setProgress(100);
 
-      // 4. Update batch status
+      // 3. Update batch status
       await supabase
         .from("upload_batches")
         .update({

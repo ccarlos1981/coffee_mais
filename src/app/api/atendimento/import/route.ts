@@ -56,6 +56,18 @@ export async function POST(request: NextRequest) {
       range,
     });
 
+    // DEBUG: Log column names and first rows to diagnose import issues
+    console.log("[IMPORT DEBUG] Sheet name:", workbook.SheetNames[0]);
+    console.log("[IMPORT DEBUG] Header range found at row:", range);
+    console.log("[IMPORT DEBUG] Total rows parsed:", jsonData.length);
+    if (jsonData.length > 0) {
+      console.log("[IMPORT DEBUG] Column names:", Object.keys(jsonData[0]));
+      console.log("[IMPORT DEBUG] First row sample:", JSON.stringify(jsonData[0]));
+      if (jsonData.length > 1) {
+        console.log("[IMPORT DEBUG] Second row sample:", JSON.stringify(jsonData[1]));
+      }
+    }
+
     const records: {
       cod_parceiro: string;
       nome_parceiro: string;
@@ -68,17 +80,18 @@ export async function POST(request: NextRequest) {
     for (const row of jsonData) {
       const codParceiro = findCol(
         row,
-        "Cód. Parceiro", "Cod. Parceiro", "Código", "Codigo",
-        "cod_parceiro", "CodParceiro", "ID", "Cód. Parceiro (Parceiro)", "Cod. Parceiro (Parceiro)",
+        "Cód Parceiro", "Cód. Parceiro", "Cod Parceiro", "Cod. Parceiro",
+        "Código", "Codigo", "cod_parceiro", "CodParceiro", "ID",
+        "Cód. Parceiro (Parceiro)", "Cod. Parceiro (Parceiro)",
         "Código do Parceiro", "Codigo do Parceiro", "Cod. de Parceiro"
       );
       if (!codParceiro) continue;
 
       const nome = findCol(
         row,
-        "Nome Parceiro", "Parceiro", "Nome", "Cliente",
+        "Nome / Razão", "Nome Parceiro", "Parceiro", "Nome", "Cliente",
         "nome_parceiro", "NomeParceiro", "Nome Parceiro (Parceiro)",
-        "Razão Social", "Razao Social", "Nome Fantasia"
+        "Razão Social", "Razao Social", "Nome Fantasia", "Nome / Razao"
       );
       if (!nome) continue;
 
@@ -100,7 +113,7 @@ export async function POST(request: NextRequest) {
 
       const rede = findCol(
         row,
-        "Rede", "Matriz", "rede", "Grupo", "Rede (Parceiro)"
+        "Matriz (rede)", "Matriz (Rede)", "Rede", "Matriz", "rede", "Grupo", "Rede (Parceiro)"
       );
 
       records.push({
@@ -109,7 +122,7 @@ export async function POST(request: NextRequest) {
         rede: rede ? String(rede) : "",
         uf: uf ? String(uf).toUpperCase().trim() : "",
         canal: canal ? String(canal) : "VAREJO F OUT",
-        manager: gerente ? String(gerente) : "Sem Gerente",
+        manager: gerente ? String(gerente) : "Inside Sales",
       });
     }
 
@@ -120,12 +133,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Deduplicate by cod_parceiro (keep last occurrence)
+    const deduped = new Map<string, typeof records[0]>();
+    for (const r of records) {
+      deduped.set(r.cod_parceiro, r);
+    }
+    const uniqueRecords = Array.from(deduped.values());
+    console.log(`[IMPORT] ${records.length} rows parsed, ${uniqueRecords.length} unique after dedup`);
+
     // Upsert in batches of 500
     let upserted = 0;
-    for (let i = 0; i < records.length; i += 500) {
-      const batch = records.slice(i, i + 500);
+    for (let i = 0; i < uniqueRecords.length; i += 500) {
+      const batch = uniqueRecords.slice(i, i + 500);
       const { error } = await supabase
-        .from("pdv_mapping")
+        .from("base_atendimento")
         .upsert(batch, { onConflict: "cod_parceiro" });
 
       if (error) {

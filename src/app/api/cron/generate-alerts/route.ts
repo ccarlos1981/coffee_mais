@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     let from = 0;
     while (true) {
       const { data, error } = await supabase
-        .from('sales')
+        .from('sales_enriched')
         .select('manager, rede, nome_parceiro, net_value')
         .gte('invoice_date', stPrev)
         .lte('invoice_date', enPrev)
@@ -65,7 +65,8 @@ export async function GET(request: Request) {
       for (const row of (data as unknown as SaleRow[])) {
         const clientName = row.rede || row.nome_parceiro || 'Não Mapeado';
         const fat = parseFloat(row.net_value as string) || 0;
-        const manager = row.manager || 'Sem Gerente';
+        if (!row.manager) continue; // Ignorar vendas sem gerente
+        const manager = row.manager;
         
         const existing = prevSalesMap.get(clientName) || { manager, fat: 0 };
         prevSalesMap.set(clientName, { manager, fat: existing.fat + fat });
@@ -91,7 +92,7 @@ export async function GET(request: Request) {
       pagesCurrProcessed++;
       console.log(`[Generate Alerts] Buscando Mês Atual: offset ${from}...`);
       const { data, error } = await supabase
-        .from('sales')
+        .from('sales_enriched')
         .select('manager, rede, nome_parceiro, net_value')
         .gte('invoice_date', stCurrent)
         .lte('invoice_date', enCurrent)

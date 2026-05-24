@@ -9,6 +9,9 @@ import {
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
+import { Skeleton, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { GlassTooltip } from "@/components/GlassTooltip";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -282,9 +285,35 @@ export default function MatrizPage() {
 
         {/* MAIN */}
         <main className="cm-main" style={{ paddingTop: 4 }}>
-          {loading && <div style={{ position: "absolute", right: 16, top: 8, width: 12, height: 12, border: "2px solid var(--accent-gold)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
-          
-          <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 14, marginBottom: 14 }}>
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 14 }}>
+                <SkeletonChart height={260} />
+                <div className="glass-card flex items-center justify-center h-[260px]"><Skeleton className="w-full h-full rounded bg-[var(--border)]" /></div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 14 }}>
+                <SkeletonTable />
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                  <SkeletonChart height={250} />
+                  <div style={{ display: "flex", gap: 14, height: 220 }}>
+                     <div className="glass-card flex-1"><Skeleton className="w-full h-full rounded-full bg-[var(--border)] scale-75" /></div>
+                     <div className="glass-card flex-1"><Skeleton className="w-full h-full rounded-full bg-[var(--border)] scale-75" /></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : matrizData.length === 0 ? (
+            <div style={{ padding: "20px 0" }}>
+              <EmptyState 
+                title="Sua busca não encontrou resultados" 
+                message="Não há dados de Matriz registrados com a combinação de filtros selecionada para este período." 
+                minHeight={500} 
+                onClearFilters={handleClearFilters} 
+              />
+            </div>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "3fr 1fr", gap: 14, marginBottom: 14 }}>
             {/* Histórico Mensal */}
             <div className="glass-card" style={{ padding: "16px 20px", display: "flex", flexDirection: "column", height: 260, minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -299,12 +328,13 @@ export default function MatrizPage() {
                       return _m ? MONTHS[parseInt(_m)-1].slice(0,3) + '/' + _y.slice(2) : val;
                     }} axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} interval={0} angle={-45} textAnchor="end" dy={5} />
                     <Tooltip 
+                      content={<GlassTooltip
+                        formatter={(value) => [formatNumber(Number(value), 0) + ' tons', 'Volume']}
+                      />}
                       cursor={{ fill: 'var(--border)', opacity: 0.2 }}
-                      contentStyle={{ background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
-                      formatter={(value) => formatNumber(Number(value), 0) + ' tons'}
                     />
                     <Bar dataKey="qty" fill="var(--accent-gold)" radius={[4, 4, 0, 0]} barSize={28}>
-                      <LabelList dataKey="qty" position="center" fill="#1f2937" fontSize={10} fontWeight="600" angle={-90} formatter={(val) => formatNumber(Number(val), 1)} />
+                      <LabelList dataKey="qty" position="center" fill="#1f2937" fontSize={10} fontWeight="600" angle={-90} formatter={(val) => formatNumber(Number(val), 0)} />
                       {historyData.map((entry, index) => {
                         const entryMonth = parseInt((entry.month as string).substring(5, 7));
                         const isEndMonth = entryMonth === filterEndMonth;
@@ -410,7 +440,7 @@ export default function MatrizPage() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" opacity={0.3} />
                     <XAxis type="number" hide />
                     <YAxis dataKey="product" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} width={140} tickFormatter={(val) => (val as string).length > 20 ? (val as string).substring(0,18)+'...' : (val as string)} />
-                    <Tooltip cursor={{ fill: 'var(--border)', opacity: 0.1 }} contentStyle={{ fontSize: 11, borderRadius: 6, background: "var(--background)", borderColor: "var(--border)" }} formatter={(val) => formatNumber(Number(val), 0) + ' tons'} />
+                    <Tooltip content={<GlassTooltip formatter={(val) => [formatNumber(Number(val), 0) + ' tons', 'Volume']} />} cursor={{ fill: 'var(--border)', opacity: 0.1 }} />
                     <Bar dataKey="qty" fill="#3f51b5" barSize={16} radius={[0, 4, 4, 0]}>
                       <LabelList dataKey="qty" position="right" fill="var(--foreground-muted)" fontSize={9} formatter={(val) => formatNumber(Number(val), 0)} />
                     </Bar>
@@ -451,7 +481,7 @@ export default function MatrizPage() {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(v) => formatCurrency(Number(v), 0)} contentStyle={{fontSize: 10}} />
+                      <Tooltip content={<GlassTooltip formatter={(v) => [formatCurrency(Number(v), 0), 'Faturamento']} />} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -490,7 +520,7 @@ export default function MatrizPage() {
                         <Cell fill="#b71c1c" />
                         <Cell fill="#1b5e20" />
                       </Pie>
-                      <Tooltip formatter={(v) => formatCurrency(Number(v))} contentStyle={{fontSize: 10}} />
+                      <Tooltip content={<GlassTooltip formatter={(v) => [formatCurrency(Number(v)), 'Valor']} />} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -498,6 +528,8 @@ export default function MatrizPage() {
 
             </div>
           </div>
+          </>
+          )}
         </main>
       </div>
 

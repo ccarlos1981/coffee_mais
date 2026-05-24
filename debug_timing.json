@@ -1,0 +1,16 @@
+{
+  "durationMs": 28609,
+  "pmSalesCount": 33581,
+  "pySalesCount": 29747,
+  "currentSalesCount": 31684,
+  "rawFetched": {
+    "pm": 33581,
+    "py": 29747,
+    "curr": 31684
+  },
+  "loops": {
+    "pm": 0,
+    "py": 0,
+    "curr": 0
+  }
+}

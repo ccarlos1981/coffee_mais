@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet } from "lucide-react";
+import { toast } from "sonner";
 
 interface ExportButtonProps {
   data: any[];
@@ -25,11 +26,14 @@ export function ExportButton({
     e.stopPropagation(); // Previne qualquer bubble de react
 
     if (!data || data.length === 0) {
-      alert("Nenhum dado disponível para exportar no filtro atual.");
+      toast.error("Filtro Vazio", {
+        description: "Nenhum dado disponível para exportar no filtro atual.",
+      });
       return;
     }
 
     setIsExporting(true);
+    const toastId = toast.loading("Gerando arquivo Excel...");
 
     // Give UI time to update to "Gerando..."
     setTimeout(() => {
@@ -67,9 +71,14 @@ export function ExportButton({
           window.URL.revokeObjectURL(uri);
         }, 100);
 
+        toast.success("Download Concluído", {
+          id: toastId,
+          description: `O arquivo ${finalFilename} foi baixado.`,
+        });
+
       } catch (error) {
         console.error("Erro ao exportar:", error);
-        alert("Falha ao gerar o Excel.");
+        toast.error("Falha ao gerar o Excel", { id: toastId });
       } finally {
         setIsExporting(false);
       }

@@ -36,7 +36,7 @@ Colunas disponíveis:
 - nome_parceiro (text): ⚠️ SEMPRE use este campo para nome do cliente/parceiro (NÃO use 'partner')
 - cod_parceiro (text): código do cliente
 - cod_produto (text): código do produto
-- manager (text): gerente responsável (Luciano, Leandro, Luiz, Inside Sales, Luisa)
+- manager (text): gerente responsável (Leandro, Luiz, Julliano, Inside Sales)
 - channel (text): canal de venda (KA, Inside Sales, ATACADO, etc.)
 - uf (text): UF / Estado do cliente (MG, SP, RS, DF, RJ, SC, PR, GO, MT, etc.). Use-o para buscar dados "por estado"
 - regional (text): região
@@ -65,7 +65,7 @@ Colunas disponíveis:
 3. Faturamento = SUM(net_value)
 4. Volume = SUM(quantity) ou Volume em Toneladas = SUM(weight_kg) / 1000
 5. MaCo (Margem de Contribuição) = net_value - imposto - custo_total - custo_frete
-6. Ticket Médio = SUM(net_value) / COUNT(DISTINCT invoice_number). Preço Médio = SUM(net_value) / SUM(quantity).
+6. Ticket Médio = SUM(net_value) / COUNT(DISTINCT invoice_number). Preço Médio = SUM(net_value) / SUM(quantity). SEMPRE que o usuário perguntar por "preço" ou "preço médio" de um cliente, matriz ou produto, assuma RIGOROSAMENTE que ele quer a fórmula do Preço Médio em vez do faturamento total.
 7. Para meses, use invoice_date com filtros >= e <=
 8. Limite resultados a 20 linhas quando listar itens
 9. SEMPRE use ::numeric antes de ROUND. Exemplo: ROUND(SUM(net_value)::numeric, 2)

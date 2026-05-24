@@ -40,7 +40,7 @@ interface PdvMapping {
   uf: string;
 }
 
-const MANAGERS_LIST = ["Luciano", "Leandro", "Luiz", "Inside Sales", "Sem Gerente"];
+const MANAGERS_LIST = ["Julliano", "Leandro", "Luiz", "Inside Sales"];
 const CHANNELS_LIST = [
   "ATACADO",
   "CASH & CARRY",
@@ -98,9 +98,9 @@ export default function AtendimentoPage() {
   const [deletedPdvs, setDeletedPdvs] = useState<Set<string>>(new Set());
   const [newPdvsCount, setNewPdvsCount] = useState(0);
 
-  // Paginação PDVs
   const [pdvSearch, setPdvSearch] = useState("");
   const [ufFilter, setUfFilter] = useState("Todos");
+  const [managerFilter, setManagerFilter] = useState("Todos");
   const [pdvPage, setPdvPage] = useState(0);
   const itemsPerPage = 50;
 
@@ -108,7 +108,7 @@ export default function AtendimentoPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const resPdv = await supabase.from("pdv_mapping").select("*").order("nome_parceiro");
+      const resPdv = await supabase.from("base_atendimento").select("*").order("nome_parceiro");
       if (resPdv.error) throw resPdv.error;
 
       setPdvData(resPdv.data || []);
@@ -134,18 +134,20 @@ export default function AtendimentoPage() {
   // PDVs filtrados e paginados
   const filteredPdvs = useMemo(() => {
     const base = pdvData.filter(p => !deletedPdvs.has(p.cod_parceiro));
-    if (!pdvSearch && ufFilter === "Todos") return base;
+    if (!pdvSearch && ufFilter === "Todos" && managerFilter === "Todos") return base;
     const lower = pdvSearch.toLowerCase();
     return base.filter(
       p => {
         const pUf = modifiedPdvs[p.cod_parceiro]?.uf || p.uf;
         const pNome = modifiedPdvs[p.cod_parceiro]?.nome_parceiro || p.nome_parceiro;
         const pRede = modifiedPdvs[p.cod_parceiro]?.rede || p.rede;
+        const pManager = modifiedPdvs[p.cod_parceiro]?.manager || p.manager;
         return (ufFilter === "Todos" || (pUf && pUf === ufFilter)) && 
+               (managerFilter === "Todos" || (pManager && pManager === managerFilter)) &&
                (pNome?.toLowerCase().includes(lower) || p.cod_parceiro?.toLowerCase().includes(lower) || pRede?.toLowerCase().includes(lower))
       }
     );
-  }, [pdvData, pdvSearch, ufFilter, deletedPdvs, modifiedPdvs]);
+  }, [pdvData, pdvSearch, ufFilter, managerFilter, deletedPdvs, modifiedPdvs]);
 
   const paginatedPdvs = useMemo(() => {
     const start = pdvPage * itemsPerPage;
@@ -163,8 +165,8 @@ export default function AtendimentoPage() {
 
   const handleAddRow = () => {
     const virtualId = "NOVO-" + Date.now();
-    setPdvData(prev => [{ cod_parceiro: virtualId, nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Sem Gerente", uf: "SP", rede: "" }, ...prev]);
-    setModifiedPdvs(prev => ({ ...prev, [virtualId]: { nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Sem Gerente", uf: "SP" } }));
+    setPdvData(prev => [{ cod_parceiro: virtualId, nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Inside Sales", uf: "SP", rede: "" }, ...prev]);
+    setModifiedPdvs(prev => ({ ...prev, [virtualId]: { nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Inside Sales", uf: "SP" } }));
     setNewPdvsCount(c => c + 1);
     setPdvPage(0); // View the new row
   };
@@ -191,7 +193,7 @@ export default function AtendimentoPage() {
     try {
       // Delete PDVs
       if (deletedPdvs.size > 0) {
-        const { error } = await supabase.from("pdv_mapping").delete().in("cod_parceiro", Array.from(deletedPdvs));
+        const { error } = await supabase.from("base_atendimento").delete().in("cod_parceiro", Array.from(deletedPdvs));
         if (error) throw error;
       }
 
@@ -210,7 +212,7 @@ export default function AtendimentoPage() {
       if (pdvUpdates.length > 0) {
         for (let i = 0; i < pdvUpdates.length; i += 500) {
           const batch = pdvUpdates.slice(i, i + 500);
-          const { error } = await supabase.from("pdv_mapping").upsert(batch, { onConflict: "cod_parceiro" });
+          const { error } = await supabase.from("base_atendimento").upsert(batch, { onConflict: "cod_parceiro" });
           if (error) throw error;
         }
       }
@@ -298,7 +300,7 @@ export default function AtendimentoPage() {
         cod_parceiro: "12345",
         nome_parceiro: "NOME DO CLIENTE LTDA",
         uf: "SP",
-        manager: "Luciano",
+        manager: "Leandro",
         channel: "KA",
         rede: "REDE EXEMPLO",
       },
@@ -514,6 +516,17 @@ export default function AtendimentoPage() {
                       <option value="Todos">Todas as UFs</option>
                       {Array.from(new Set(pdvData.map(p => p.uf).filter(Boolean))).sort().map(u => (
                         <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                    <select 
+                      value={managerFilter}
+                      onChange={(e) => { setManagerFilter(e.target.value); setPdvPage(0); }}
+                      className="dash-filter-select"
+                      style={{ background: "var(--background)", minWidth: 140 }}
+                    >
+                      <option value="Todos">Todos Gerentes</option>
+                      {MANAGERS_LIST.map(m => (
+                        <option key={m} value={m}>{m}</option>
                       ))}
                     </select>
                   </div>

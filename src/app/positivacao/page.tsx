@@ -9,6 +9,9 @@ import {
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
+import { Skeleton, SkeletonGrid, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { GlassTooltip } from "@/components/GlassTooltip";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -235,8 +238,29 @@ export default function PositivacaoPage() {
 
         {/* MAIN */}
         <main className="cm-main" style={{ paddingTop: 4 }}>
-          {loading && <div style={{ position: "absolute", right: 16, top: 8, width: 12, height: 12, border: "2px solid var(--accent-gold)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
-
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 14 }}>
+               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                  <div className="glass-card flex items-center justify-center p-4 min-h-[90px]"><Skeleton className="w-[80%] h-6 rounded" /></div>
+                  <div className="glass-card flex items-center justify-center p-4 min-h-[90px]"><Skeleton className="w-[80%] h-6 rounded" /></div>
+                  <div className="glass-card flex items-center justify-center p-4 min-h-[90px]"><Skeleton className="w-[80%] h-6 rounded" /></div>
+                  <div className="glass-card flex items-center justify-center p-4 min-h-[90px]"><Skeleton className="w-[80%] h-6 rounded" /></div>
+               </div>
+               <SkeletonChart height={240} />
+               <SkeletonTable />
+               <SkeletonTable />
+            </div>
+          ) : byMonth.length === 0 ? (
+            <div style={{ padding: "40px 0" }}>
+              <EmptyState 
+                title="Sem dados de positivação" 
+                message="Nenhum cliente positivado com a combinação de filtros selecionada para este período." 
+                minHeight={500} 
+                onClearFilters={handleClearFilters} 
+              />
+            </div>
+          ) : (
+            <>
           {/* KPI CARDS */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 14 }}>
             <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
@@ -270,9 +294,10 @@ export default function PositivacaoPage() {
                   }} axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} interval={0} angle={-45} textAnchor="end" dy={5} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} />
                   <Tooltip
-                    formatter={(value, name) => [formatNumber(Number(value), 0), name === 'clientes' ? 'Clientes' : String(name)]}
+                    content={<GlassTooltip
+                      formatter={(value, name) => [formatNumber(Number(value), 0), name === 'clientes' ? 'Clientes' : String(name)]}
+                    />}
                     cursor={{ fill: 'var(--border)', opacity: 0.2 }}
-                    contentStyle={{ background: 'var(--background)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
                   />
                   <Bar dataKey="clientes" fill="#3f51b5" radius={[4, 4, 0, 0]} barSize={28}>
                     <LabelList dataKey="clientes" position="top" fill="#1f2937" fontSize={10} fontWeight="600" />
@@ -405,6 +430,8 @@ export default function PositivacaoPage() {
               </table>
             </div>
           </div>
+          </>
+        )}
         </main>
       </div>
 

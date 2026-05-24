@@ -8,10 +8,12 @@ interface SearchableSelectProps {
   onChange: (val: string) => void;
   options: string[];
   placeholder?: string;
+  searchPlaceholder?: string;
+  showTodos?: boolean;
   className?: string;
 }
 
-export function SearchableSelect({ value, onChange, options, placeholder = "Selecione...", className = "" }: SearchableSelectProps) {
+export function SearchableSelect({ value, onChange, options, placeholder = "Selecione...", searchPlaceholder = "Pesquisar...", showTodos = false, className = "" }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -90,7 +92,7 @@ export function SearchableSelect({ value, onChange, options, placeholder = "Sele
             <input
               autoFocus
               type="text"
-              placeholder="Pesquisar SKU..."
+              placeholder={searchPlaceholder}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -104,23 +106,24 @@ export function SearchableSelect({ value, onChange, options, placeholder = "Sele
             />
           </div>
 
-          {/* OPTIONS LIST */}
           <div style={{ overflowY: "auto" }}>
-            <div
-              onClick={(e) => handleSelect("Todos", e)}
-              style={{
-                padding: "8px 12px",
-                fontSize: "0.75rem",
-                cursor: "pointer",
-                backgroundColor: value === "Todos" ? "var(--accent-light)" : "transparent",
-                color: value === "Todos" ? "var(--accent-gold)" : "var(--foreground)",
-                fontWeight: value === "Todos" ? 600 : 400
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--accent-light)"}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = value === "Todos" ? "var(--accent-light)" : "transparent"}
-            >
-              Todos
-            </div>
+            {showTodos && (
+              <div
+                onClick={(e) => handleSelect("Todos", e)}
+                style={{
+                  padding: "8px 12px",
+                  fontSize: "0.75rem",
+                  cursor: "pointer",
+                  backgroundColor: value === "Todos" ? "var(--accent-light)" : "transparent",
+                  color: value === "Todos" ? "var(--accent-gold)" : "var(--foreground)",
+                  fontWeight: value === "Todos" ? 600 : 400
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "var(--accent-light)"}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = value === "Todos" ? "var(--accent-light)" : "transparent"}
+              >
+                Todos
+              </div>
+            )}
             
             {filteredOptions.length === 0 ? (
               <div style={{ padding: "8px 12px", fontSize: "0.75rem", color: "var(--foreground-muted)", textAlign: "center" }}>

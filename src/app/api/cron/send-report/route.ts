@@ -45,12 +45,54 @@ export async function GET(request: Request) {
     if (salesError) throw salesError;
 
     const baseData = sales || [];
+
+    // Calcular o label do dia anterior (fuso horário de São Paulo)
+    const ontem = new Date();
+    ontem.setHours(ontem.getHours() - 3); // Ajuste BRT aproximado
+    ontem.setDate(ontem.getDate() - 1);
+    const diaAnteriorFallback = ontem.toLocaleDateString('pt-BR');
+
     if (baseData.length === 0) {
-       return NextResponse.json({ success: true, message: "Sem vendas recentes para relatar." });
+       // Enviar email informativo de que não houve vendas (sem PDF)
+       if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+         return NextResponse.json({ success: false, error: "SMTP_USER ou SMTP_PASS faltantes" }, { status: 500 });
+       }
+
+       const transporter = nodemailer.createTransport({
+         host: "smtp.gmail.com",
+         port: 465,
+         secure: true,
+         auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+         tls: { rejectUnauthorized: false }
+       });
+
+       const emailList = recps.map(r => r.email).join(', ');
+       console.log("[Send Report] Sem vendas. Enviando aviso para:", emailList);
+
+       await transporter.sendMail({
+         from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+         to: emailList,
+         subject: `Venda do dia anterior (${diaAnteriorFallback}) — Sem Registros`,
+         text: `Não foram registradas vendas no dia ${diaAnteriorFallback}.`,
+         html: `
+           <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 8px;">
+              <h2 style="color: #d97706; margin-bottom: 0;">Coffee++ Mais</h2>
+              <h3 style="color: #333; margin-top: 5px;">Relatório Diário de Faturamento</h3>
+              <p>Olá,</p>
+              <p>Informamos que <strong>não foram registradas vendas</strong> referentes ao dia <strong>${diaAnteriorFallback}</strong>.</p>
+              <p>Nenhum PDF foi gerado para esta data.</p>
+              <br/>
+              <hr style="border: none; border-top: 1px solid #eee;" />
+              <p><small style="color: #999;">Este é um e-mail gerado automaticamente pelas automações Cron da Vercel.<br/>Não é necessário responder.</small></p>
+           </div>
+         `
+       });
+
+       return NextResponse.json({ success: true, message: "Sem vendas. Email de aviso enviado." });
     }
 
     const diaRefData = baseData[0]?.dia_referencia;
-    const diaReferenciaLabel = diaRefData ? formatDateBr(diaRefData) : new Date().toLocaleDateString('pt-BR');
+    const diaReferenciaLabel = diaRefData ? formatDateBr(diaRefData) : diaAnteriorFallback;
 
     // Agrupar e Calcular o total do dia e da compra anterior
     const grouped: Record<string, any[]> = {};
@@ -58,7 +100,8 @@ export async function GET(request: Request) {
     let totalFatAnterior = 0;
     
     baseData.forEach((sale: any) => {
-      const g = sale.manager || 'Sem Gerente';
+      if (!sale.manager) return; // Ignorar vendas sem gerente atribuído
+      const g = sale.manager;
       if (!grouped[g]) grouped[g] = [];
       grouped[g].push(sale);
       totalFatTop += Number(sale.fat_dia || 0);

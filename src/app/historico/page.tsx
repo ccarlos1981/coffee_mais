@@ -18,6 +18,9 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
+import { Skeleton, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
+import { GlassTooltip } from "@/components/GlassTooltip";
 import {
   BarChart,
   Bar,
@@ -28,6 +31,7 @@ import {
   Cell,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
   ResponsiveContainer,
   Legend,
@@ -248,30 +252,63 @@ export default function HistoricoDashboard() {
 
         {/* MAIN DASHBOARD */}
         <main className="dash-content">
-          <div style={{ position: "relative", marginBottom: 12, height: 14 }}>
-            {loading && <div style={{ position: "absolute", right: 0, top: 0, width: 12, height: 12, border: "2px solid var(--accent-gold)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />}
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          {loading ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <SkeletonChart height={320} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                   <div className="glass-card flex items-center justify-center h-[320px]"><Skeleton className="w-[80%] aspect-square rounded-full bg-[var(--border)]" /></div>
+                   <div className="glass-card flex items-center justify-center h-[320px]"><Skeleton className="w-[80%] aspect-square rounded-full bg-[var(--border)]" /></div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <SkeletonChart height={320} />
+                <SkeletonChart height={320} />
+              </div>
+            </div>
+          ) : monthlyHistory.length === 0 ? (
+            <div style={{ padding: "20px 0" }}>
+              <EmptyState 
+                title="Sem histórico para o período" 
+                message="Nenhuma venda registrada com os filtros selecionados. Tente expandir o período ou remover filtros." 
+                minHeight={500} 
+                onClearFilters={handleClearFilters} 
+              />
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }} className="animate-stagger">
             {/* Faturamento Histórico (Bar Chart) */}
             <div className="glass-card" style={{ padding: 16, height: 320 }}>
               <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>Faturamento Histórico (R$ 000)</h3>
               <ResponsiveContainer width="100%" height="90%">
-                <BarChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={40} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "var(--foreground-muted)" }} tickFormatter={(val) => (val / 1000).toFixed(0)} />
+                <BarChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 15 }}>
+                  <defs>
+                    <linearGradient id="gradFat" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.95} />
+                      <stop offset="100%" stopColor="#b45309" stopOpacity={0.7} />
+                    </linearGradient>
+                    <linearGradient id="gradFatHighlight" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#60a5fa" stopOpacity={1} />
+                      <stop offset="100%" stopColor="#2563eb" stopOpacity={0.85} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={60} tick={{ fontSize: 13, fill: "var(--foreground-muted)" }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 13, fill: "var(--foreground-muted)" }} tickFormatter={(val) => Math.round(val / 1000).toLocaleString("pt-BR")} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "var(--background-card)", borderColor: "var(--border)", borderRadius: 6, fontSize: "0.75rem" }}
-                    labelStyle={{ color: "var(--foreground-secondary)", fontWeight: 600, marginBottom: 4 }}
-                    formatter={(value) => [formatCurrency(Number(value)), "Fat."]}
-                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullLabel || label}
+                    content={<GlassTooltip
+                      formatter={(value) => [formatCurrency(Number(value)), "Fat."]}
+                      labelFormatter={(label, payload) => String(payload?.[0]?.payload?.fullLabel || label)}
+                    />}
+                    cursor={{ fill: 'var(--border)', opacity: 0.15 }}
                   />
-                  <Bar dataKey="fat" radius={[2, 2, 0, 0]}>
-                    <LabelList dataKey="fat" position="center" angle={-90} fill="#fff" fontSize={9} formatter={(val) => (Number(val) / 1000).toFixed(0)} />
+                  <Bar dataKey="fat" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="fat" position="center" angle={-90} fill="#fff" fontSize={13} fontWeight={600} formatter={(val: unknown) => Math.round(Number(val) / 1000).toLocaleString("pt-BR")} />
                     {monthlyHistory.map((entry, index) => {
                       const isChosenMonth = (entry.monthKey as string).endsWith(`-${String(filterEndMonth).padStart(2, "0")}`);
                       return (
-                        <Cell key={`cell-${index}`} fill={isChosenMonth ? "#2b81d6" : "var(--accent-light)"} />
+                        <Cell key={`cell-${index}`} fill={isChosenMonth ? "url(#gradFatHighlight)" : "url(#gradFat)"} />
                       );
                     })}
                   </Bar>
@@ -294,13 +331,14 @@ export default function HistoricoDashboard() {
                       paddingAngle={2}
                       label={({ name = '', percent = 0 }) => `${name.length > 12 ? name.substring(0, 11) + '.' : name} ${(percent * 100).toFixed(1)}%`}
                       labelLine={{ stroke: 'var(--foreground-muted)' }}
-                      style={{ fontSize: "0.6rem" }}
+                      style={{ fontSize: "0.80rem", fontWeight: 500 }}
                     >
                       {byFamilia.map((e, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--background-card)", borderColor: "var(--border)", borderRadius: 6, fontSize: "0.75rem" }}
-                      formatter={(val) => formatCurrency(Number(val))}
+                      content={<GlassTooltip
+                        formatter={(val) => [formatCurrency(Number(val)), "Fat."]}
+                      />}
                     />
                   </RechartsPieChart>
                 </ResponsiveContainer>
@@ -319,13 +357,14 @@ export default function HistoricoDashboard() {
                       paddingAngle={2}
                       label={({ name = '', percent = 0 }) => `${name.length > 15 ? name.substring(0, 14) + '.' : name} ${(percent * 100).toFixed(1)}%`}
                       labelLine={{ stroke: 'var(--foreground-muted)' }}
-                      style={{ fontSize: "0.55rem" }}
+                      style={{ fontSize: "0.75rem", fontWeight: 500 }}
                     >
                       {byClient.map((e, index) => <Cell key={`cell-${index}`} fill={PIE_COLORS[(index + 4) % PIE_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
-                      contentStyle={{ backgroundColor: "var(--background-card)", borderColor: "var(--border)", borderRadius: 6, fontSize: "0.75rem" }}
-                      formatter={(val) => formatCurrency(Number(val))}
+                      content={<GlassTooltip
+                        formatter={(val) => [formatCurrency(Number(val)), "Fat."]}
+                      />}
                     />
                   </RechartsPieChart>
                 </ResponsiveContainer>
@@ -339,20 +378,34 @@ export default function HistoricoDashboard() {
             <div className="glass-card" style={{ padding: 16, height: 320 }}>
               <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>Volume (Unid) e Preço Médio (R$/Unid)</h3>
               <ResponsiveContainer width="100%" height="90%">
-                <ComposedChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={40} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} />
-                  <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatNumber(val, 0)} />
-                  <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val)} />
+                <ComposedChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 15 }}>
+                  <defs>
+                    <linearGradient id="gradVol" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#0284c7" stopOpacity={0.65} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={60} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} />
+                  <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatNumber(val, 0)} />
+                  <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val)} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "var(--background-card)", borderColor: "var(--border)", borderRadius: 6, fontSize: "0.75rem" }}
-                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullLabel || label}
+                    content={<GlassTooltip
+                      formatter={(val, name) => {
+                        if (name === "Preço/Unid") return [Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, style: "currency", currency: "BRL" }), name];
+                        if (name === "Volume (Unid)") return [formatNumber(Number(val), 0), name];
+                        return [String(val), name];
+                      }}
+                      labelFormatter={(label, payload) => String(payload?.[0]?.payload?.fullLabel || label)}
+                    />}
+                    cursor={{ fill: 'var(--border)', opacity: 0.15 }}
                   />
-                  <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: "0.65rem" }} />
-                  <Bar yAxisId="left" dataKey="qty" name="Volume (Unid)" fill="#6b8fad" radius={[2, 2, 0, 0]}>
-                    <LabelList dataKey="qty" position="center" angle={-90} fill="#fff" fontSize={9} formatter={(val) => formatNumber(Number(val), 0)} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "0.85rem" }} />
+                  <Bar yAxisId="left" dataKey="qty" name="Volume (Unid)" fill="url(#gradVol)" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="qty" position="center" angle={-90} fill="#fff" fontSize={11} fontWeight={600} formatter={(val: unknown) => Math.round(Number(val)).toLocaleString("pt-BR")} />
                   </Bar>
-                  <Line yAxisId="right" type="monotone" dataKey="precoUnid" name="Preço/Unid" stroke="var(--danger)" strokeWidth={2} dot={{ r: 3 }}>
-                    <LabelList dataKey="precoUnid" position="top" fill="var(--danger)" fontSize={9} formatter={(val) => Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
+                  <Line yAxisId="right" type="monotone" dataKey="precoUnid" name="Preço/Unid" stroke="#f87171" strokeWidth={2.5} dot={{ r: 3, fill: "#f87171", stroke: "#fff", strokeWidth: 1 }}>
+                    <LabelList dataKey="precoUnid" position="top" fill="#f87171" fontSize={11} fontWeight={600} formatter={(val: unknown) => Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} />
                   </Line>
                 </ComposedChart>
               </ResponsiveContainer>
@@ -362,23 +415,40 @@ export default function HistoricoDashboard() {
             <div className="glass-card" style={{ padding: 16, height: 320 }}>
               <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>MaCo (R$ 000) e MaCo Médio (R$/Unid)</h3>
               <ResponsiveContainer width="100%" height="90%">
-                <ComposedChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={40} tick={{ fontSize: 9, fill: "var(--foreground-muted)" }} />
-                  <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "var(--foreground-muted)" }} tickFormatter={(val) => (val / 1000).toFixed(0)} />
-                  <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val)} />
+                <ComposedChart data={monthlyHistory} margin={{ top: 10, right: 10, left: -20, bottom: 15 }}>
+                  <defs>
+                    <linearGradient id="gradMaco" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.9} />
+                      <stop offset="100%" stopColor="#059669" stopOpacity={0.65} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} interval={0} angle={-45} textAnchor="end" height={60} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} />
+                  <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} tickFormatter={(val) => Math.round(val / 1000).toLocaleString("pt-BR")} />
+                  <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val)} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: "var(--background-card)", borderColor: "var(--border)", borderRadius: 6, fontSize: "0.75rem" }}
-                    labelFormatter={(label, payload) => payload?.[0]?.payload?.fullLabel || label}
+                    content={<GlassTooltip
+                      formatter={(val, name) => {
+                        if (name === "MaCo/Unid") return [Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2, style: "currency", currency: "BRL" }), name];
+                        if (name === "MaCo") return [formatCurrency(Number(val)), name];
+                        return [String(val), name];
+                      }}
+                      labelFormatter={(label, payload) => String(payload?.[0]?.payload?.fullLabel || label)}
+                    />}
+                    cursor={{ fill: 'var(--border)', opacity: 0.15 }}
                   />
-                  <Legend iconType="circle" iconSize={6} wrapperStyle={{ fontSize: "0.65rem" }} />
-                  <Bar yAxisId="left" dataKey="maco" name="MaCo" fill="#5a805a" radius={[2, 2, 0, 0]}>
-                    <LabelList dataKey="maco" position="center" angle={-90} fill="#fff" fontSize={9} formatter={(val) => (Number(val) / 1000).toFixed(0)} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "0.85rem" }} />
+                  <Bar yAxisId="left" dataKey="maco" name="MaCo" fill="url(#gradMaco)" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="maco" position="center" angle={-90} fill="#fff" fontSize={11} fontWeight={600} formatter={(val: unknown) => Math.round(Number(val) / 1000).toLocaleString("pt-BR")} />
                   </Bar>
-                  <Line yAxisId="right" type="monotone" dataKey="macoUnid" name="MaCo/Unid" stroke="var(--accent-gold)" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="macoUnid" name="MaCo/Unid" stroke="#fbbf24" strokeWidth={2.5} dot={{ r: 3, fill: "#fbbf24", stroke: "#fff", strokeWidth: 1 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
           </div>
+
+          </div>
+          )}
 
         </main>
       </div>
