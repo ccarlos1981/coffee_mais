@@ -524,7 +524,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
                     <Bar xAxisId="left" yAxisId="left" dataKey="qty2026" name="2026" fill="#0284c7" radius={[4, 4, 0, 0]}>
@@ -535,7 +535,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                       <LabelList
                         dataKey="qtyVar"
@@ -543,7 +543,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="var(--foreground)"
                         fontSize={9}
                         fontWeight={600}
-                        formatter={(val: number) => {
+                        formatter={(val: any) => {
                           if (val === 100 || val === 0 || val === undefined || val === null || !isFinite(val)) return "";
                           return `${val > 0 ? "+" : ""}${Math.round(val)}%`;
                         }}
@@ -557,7 +557,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
                     <Bar xAxisId="right" yAxisId="right" dataKey="qtyAccum2026" name="2026" fill="#0284c7" radius={[4, 4, 0, 0]} legendType="none">
@@ -568,7 +568,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                       <LabelList
                         dataKey="qtyVar"
@@ -576,7 +576,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="var(--foreground)"
                         fontSize={9}
                         fontWeight={600}
-                        formatter={(val: number) => {
+                        formatter={(val: any) => {
                           if (val === 100 || val === 0 || val === undefined || val === null || !isFinite(val)) return "";
                           return `${val > 0 ? "+" : ""}${Math.round(val)}%`;
                         }}
@@ -631,7 +631,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
                     <Bar xAxisId="left" yAxisId="left" dataKey="fat2026" name="2026" fill="#d97706" radius={[4, 4, 0, 0]}>
@@ -642,7 +642,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                       <LabelList
                         dataKey="fatVar"
@@ -650,7 +650,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="var(--foreground)"
                         fontSize={9}
                         fontWeight={600}
-                        formatter={(val: number) => {
+                        formatter={(val: any) => {
                           if (val === 100 || val === 0 || val === undefined || val === null || !isFinite(val)) return "";
                           return `${val > 0 ? "+" : ""}${Math.round(val)}%`;
                         }}
@@ -664,7 +664,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
                     <Bar xAxisId="right" yAxisId="right" dataKey="fatAccum2026" name="2026" fill="#d97706" radius={[4, 4, 0, 0]} legendType="none">
@@ -675,7 +675,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
+                        formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                       <LabelList
                         dataKey="fatVar"
@@ -683,7 +683,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="var(--foreground)"
                         fontSize={9}
                         fontWeight={600}
-                        formatter={(val: number) => {
+                        formatter={(val: any) => {
                           if (val === 100 || val === 0 || val === undefined || val === null || !isFinite(val)) return "";
                           return `${val > 0 ? "+" : ""}${Math.round(val)}%`;
                         }}
@@ -732,7 +732,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
+                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
                       />
                     </Bar>
                     <Bar dataKey="price2026" name="2026" fill="#65a30d" radius={[4, 4, 0, 0]}>
@@ -743,7 +743,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: number) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
+                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
                       />
                       <LabelList
                         dataKey="priceVar"
@@ -751,7 +751,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="var(--foreground)"
                         fontSize={9}
                         fontWeight={600}
-                        formatter={(val: number) => {
+                        formatter={(val: any) => {
                           if (val === 100 || val === 0 || val === undefined || val === null || !isFinite(val)) return "";
                           return `${val > 0 ? "+" : ""}${Math.round(val)}%`;
                         }}
