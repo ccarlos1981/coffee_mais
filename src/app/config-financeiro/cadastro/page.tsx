@@ -142,7 +142,7 @@ export default function ClienteCadastroPage() {
                 value="novo" 
                 checked={tipoCadastro === "novo"} 
                 onChange={(e) => setTipoCadastro(e.target.value)}
-                className="accent-[var(--accent-gold)]"
+                className="accent-gold"
               /> 
               Novo Cadastro
             </label>
@@ -153,7 +153,7 @@ export default function ClienteCadastroPage() {
                 value="atualizacao" 
                 checked={tipoCadastro === "atualizacao"} 
                 onChange={(e) => setTipoCadastro(e.target.value)}
-                className="accent-[var(--accent-gold)]"
+                className="accent-gold"
               /> 
               Atualização
             </label>
@@ -222,7 +222,7 @@ export default function ClienteCadastroPage() {
                     value={formData.matriz}
                     onChange={handleInputChange}
                     placeholder="Ex: VERDEMAR"
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="space-y-2">
@@ -235,7 +235,7 @@ export default function ClienteCadastroPage() {
                     value={formData.tipo_parceiro}
                     onChange={handleInputChange}
                     placeholder="Ex: Supermercado, Atacado..."
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -251,7 +251,7 @@ export default function ClienteCadastroPage() {
                     name="nome_parceiro"
                     value={formData.nome_parceiro}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="space-y-2">
@@ -263,7 +263,7 @@ export default function ClienteCadastroPage() {
                     name="razao_social"
                     value={formData.razao_social}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -279,7 +279,7 @@ export default function ClienteCadastroPage() {
                     name="inscricao_estadual"
                     value={formData.inscricao_estadual}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="space-y-2">
@@ -291,7 +291,7 @@ export default function ClienteCadastroPage() {
                     name="cep"
                     value={formData.cep}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -307,7 +307,7 @@ export default function ClienteCadastroPage() {
                     name="endereco"
                     value={formData.endereco}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -319,7 +319,7 @@ export default function ClienteCadastroPage() {
                     name="numero"
                     value={formData.numero}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="md:col-span-4 space-y-2">
@@ -331,7 +331,7 @@ export default function ClienteCadastroPage() {
                     name="complemento"
                     value={formData.complemento}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -348,7 +348,7 @@ export default function ClienteCadastroPage() {
                     name="cidade"
                     value={formData.cidade}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -372,7 +372,7 @@ export default function ClienteCadastroPage() {
                     name="condicao_pagamento"
                     value={formData.condicao_pagamento}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -393,7 +393,7 @@ export default function ClienteCadastroPage() {
                     name="classificacao_icms"
                     value={formData.classificacao_icms}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   >
                     <option value="">Selecione...</option>
                     <option value="Consumidor Final Contribuinte">Consumidor Final Contribuinte</option>
@@ -412,7 +412,7 @@ export default function ClienteCadastroPage() {
                     name="retirar_st"
                     value={formData.retirar_st}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   >
                     <option value="">Selecione...</option>
                     <option value="Sim">Sim</option>
@@ -441,7 +441,7 @@ export default function ClienteCadastroPage() {
                     name="empresa_preferencial"
                     value={formData.empresa_preferencial}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
                 <div className="space-y-2">
@@ -454,7 +454,7 @@ export default function ClienteCadastroPage() {
                     name="tipo_geracao_boleto"
                     value={formData.tipo_geracao_boleto}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -488,7 +488,7 @@ export default function ClienteCadastroPage() {
                     name="email_nfe"
                     value={formData.email_nfe}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                   />
                 </div>
               </div>
@@ -546,7 +546,7 @@ export default function ClienteCadastroPage() {
                   name="banco"
                   value={formData.banco}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
               <div className="space-y-2">
@@ -558,7 +558,7 @@ export default function ClienteCadastroPage() {
                   name="agencia"
                   value={formData.agencia}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
               <div className="space-y-2">
@@ -570,7 +570,7 @@ export default function ClienteCadastroPage() {
                   name="conta"
                   value={formData.conta}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
             </div>
@@ -593,7 +593,7 @@ export default function ClienteCadastroPage() {
                   value={formData.desconto_contratual}
                   onChange={handleInputChange}
                   placeholder="Ex: 5%"
-                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
               <div className="space-y-2">
@@ -603,7 +603,7 @@ export default function ClienteCadastroPage() {
                 <input
                   type="file"
                   onChange={(e) => setAnexoTabela(e.target.files?.[0] || null)}
-                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
               <div className="space-y-2">
@@ -615,7 +615,7 @@ export default function ClienteCadastroPage() {
                   name="data_vigor"
                   value={formData.data_vigor}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-[var(--accent-gold)] transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-4 py-3 focus:outline-none focus:border-gold transition-colors"
                 />
               </div>
             </div>

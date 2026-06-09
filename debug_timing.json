@@ -1,12 +1,12 @@
 {
-  "durationMs": 28609,
-  "pmSalesCount": 33581,
-  "pySalesCount": 29747,
-  "currentSalesCount": 31684,
+  "durationMs": 52999,
+  "pmSalesCount": 54127,
+  "pySalesCount": 48623,
+  "currentSalesCount": 61991,
   "rawFetched": {
-    "pm": 33581,
-    "py": 29747,
-    "curr": 31684
+    "pm": 54127,
+    "py": 48623,
+    "curr": 61991
   },
   "loops": {
     "pm": 0,

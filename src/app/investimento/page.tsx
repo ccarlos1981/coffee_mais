@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -139,6 +139,12 @@ export default function InvestimentoPage() {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "" });
   const [boletosAbertos, setBoletosAbertos] = useState<any[]>([]);
+  const [boletoSearchTerm, setBoletoSearchTerm] = useState("");
+  const [boletoSearchResults, setBoletoSearchResults] = useState<any[]>([]);
+  const [boletoSearchLoading, setBoletoSearchLoading] = useState(false);
+  const [showBoletoDropdown, setShowBoletoDropdown] = useState(false);
+  const [selectedBoletoLabel, setSelectedBoletoLabel] = useState("");
+  const boletoDropdownRef = useRef<HTMLDivElement>(null);
 
   // Calendar State
   const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
@@ -164,9 +170,56 @@ export default function InvestimentoPage() {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedAction, setSelectedAction] = useState<AcaoInvestimento | null>(null);
   const fetchBoletosDaRede = async (rede: string) => {
-    const { data } = await supabase.from('cm_boletos').select('*').eq('rede', rede.toUpperCase()).eq('status', 'Aberto');
+    const redeUpper = rede.toUpperCase().trim();
+    const { data } = await supabase
+      .from('cm_boletos')
+      .select('*')
+      .or(`rede.eq.${redeUpper},rede.ilike.%${redeUpper}%`)
+      .eq('status', 'Aberto')
+      .order('vencimento', { ascending: true });
     if (data) setBoletosAbertos(data);
+    setBoletoSearchTerm("");
+    setBoletoSearchResults([]);
+    setSelectedBoletoLabel("");
   };
+
+  const searchBoletosGlobal = useCallback(async (term: string) => {
+    if (term.length < 1) {
+      setBoletoSearchResults([]);
+      return;
+    }
+    setBoletoSearchLoading(true);
+    const { data } = await supabase
+      .from('cm_boletos')
+      .select('*')
+      .ilike('rede', `%${term.toUpperCase()}%`)
+      .eq('status', 'Aberto')
+      .order('vencimento', { ascending: true })
+      .limit(30);
+    setBoletoSearchResults(data || []);
+    setBoletoSearchLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (boletoSearchTerm.length >= 1) {
+        searchBoletosGlobal(boletoSearchTerm);
+      } else {
+        setBoletoSearchResults([]);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [boletoSearchTerm, searchBoletosGlobal]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (boletoDropdownRef.current && !boletoDropdownRef.current.contains(e.target as Node)) {
+        setShowBoletoDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (selectedAction) {
@@ -186,7 +239,21 @@ export default function InvestimentoPage() {
       });
       
       if ((selectedAction.fase_atual || 1) >= 3) {
-        fetchBoletosDaRede(selectedAction.rede);
+        fetchBoletosDaRede(selectedAction.rede).then(() => {
+          // If action already has a boleto linked, restore the label
+          if (selectedAction.apuracao_boleto_id) {
+            supabase
+              .from('cm_boletos')
+              .select('*')
+              .eq('id', selectedAction.apuracao_boleto_id)
+              .single()
+              .then(({ data: b }) => {
+                if (b) {
+                  setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
+                }
+              });
+          }
+        });
       }
       setDetailsExpanded(false);
     }
@@ -486,13 +553,15 @@ export default function InvestimentoPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-            <Link 
-              href="/financeiro/boletos"
-              className="flex w-full sm:w-auto items-center justify-center gap-2 bg-elevated hover:bg-border text-foreground border border-border px-4 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-sm"
-            >
-              <FileText className="w-4 h-4" />
-              Financeiro (Boletos)
-            </Link>
+            {(userRole === 'Admin' || userRole === 'Financeiro') && (
+              <Link 
+                href="/financeiro/boletos"
+                className="flex w-full sm:w-auto items-center justify-center gap-2 bg-elevated hover:bg-border text-foreground border border-border px-4 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-sm"
+              >
+                <FileText className="w-4 h-4" />
+                Financeiro (Boletos)
+              </Link>
+            )}
             <Link 
               href="/investimento/lancar"
               className="flex w-full sm:w-auto items-center justify-center gap-2 bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-sm"
@@ -501,8 +570,8 @@ export default function InvestimentoPage() {
               LANÇAR
             </Link>
 
-            {/* AI Button - Only visible to Admin and CEO */}
-            {(userRole === 'Admin' || userRole === 'CEO') && (
+            {/* AI Button - Only visible to Admin */}
+            {userRole === 'Admin' && (
               <button
                 onClick={generateInvestimentoInsight}
                 disabled={loading || data.length === 0}
@@ -1326,22 +1395,128 @@ export default function InvestimentoPage() {
                           <label className="block text-xs font-medium text-muted mb-1">Valor Realizado (R$) - Automático</label>
                           <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado)) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
                         </div>
-                        <div className="md:col-span-2">
+                        <div className="md:col-span-2" ref={boletoDropdownRef}>
                           <label className="block text-xs font-medium text-muted mb-1">Vincular a um Boleto do Financeiro</label>
-                          <select 
-                            value={apuracaoForm.boleto_id} 
-                            onChange={e => setApuracaoForm({...apuracaoForm, boleto_id: e.target.value})}
-                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                          >
-                            <option value="">Selecione um boleto em aberto da rede {selectedAction.rede}...</option>
-                            {boletosAbertos.map(b => (
-                              <option key={b.id} value={b.id}>
-                                Boleto {b.numero_boleto} - {formatCurrency(b.valor_total)} - Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}
-                              </option>
-                            ))}
-                          </select>
-                          {boletosAbertos.length === 0 && (
-                            <p className="text-[10px] text-amber-500 mt-1">Nenhum boleto em aberto encontrado para esta rede.</p>
+                          
+                          {/* Selected boleto display */}
+                          {apuracaoForm.boleto_id && selectedBoletoLabel ? (
+                            <div className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                              <CheckCircle className="w-4 h-4 text-purple-400 flex-shrink-0" />
+                              <span className="text-sm text-purple-300 font-medium truncate flex-1">{selectedBoletoLabel}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setApuracaoForm({...apuracaoForm, boleto_id: ""});
+                                  setSelectedBoletoLabel("");
+                                }}
+                                className="p-0.5 hover:bg-purple-500/20 rounded transition-colors"
+                              >
+                                <X className="w-3.5 h-3.5 text-purple-400" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                                <input
+                                  type="text"
+                                  value={boletoSearchTerm}
+                                  onChange={e => {
+                                    setBoletoSearchTerm(e.target.value);
+                                    setShowBoletoDropdown(true);
+                                  }}
+                                  onFocus={() => setShowBoletoDropdown(true)}
+                                  placeholder={`Buscar boleto... (mostrando ${boletosAbertos.length} da rede ${selectedAction.rede})`}
+                                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder:text-muted/60"
+                                />
+                                {boletoSearchLoading && (
+                                  <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-purple-400 animate-spin" />
+                                )}
+                              </div>
+
+                              {showBoletoDropdown && (
+                                <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-2xl max-h-[240px] overflow-y-auto">
+                                  {/* Boletos da rede (default) */}
+                                  {boletoSearchTerm.length === 0 && boletosAbertos.length > 0 && (
+                                    <>
+                                      <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
+                                        Boletos da rede {selectedAction.rede}
+                                      </div>
+                                      {boletosAbertos.map(b => (
+                                        <button
+                                          key={b.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setApuracaoForm({...apuracaoForm, boleto_id: b.id});
+                                            setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
+                                            setShowBoletoDropdown(false);
+                                            setBoletoSearchTerm("");
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
+                                              <span className="text-xs text-muted">{b.rede}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-0.5">
+                                              <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                            </div>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </>
+                                  )}
+
+                                  {/* Empty rede default */}
+                                  {boletoSearchTerm.length === 0 && boletosAbertos.length === 0 && (
+                                    <div className="px-3 py-3 text-center">
+                                      <p className="text-xs text-amber-500">Nenhum boleto em aberto para a rede {selectedAction.rede}.</p>
+                                      <p className="text-[10px] text-muted mt-1">Digite acima para buscar em todas as redes.</p>
+                                    </div>
+                                  )}
+
+                                  {/* Search results */}
+                                  {boletoSearchTerm.length >= 1 && (
+                                    <>
+                                      <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
+                                        {boletoSearchLoading ? 'Buscando...' : `${boletoSearchResults.length} resultado(s) para "${boletoSearchTerm}"`}
+                                      </div>
+                                      {boletoSearchResults.length === 0 && !boletoSearchLoading && (
+                                        <div className="px-3 py-3 text-center text-xs text-muted">
+                                          Nenhum boleto encontrado.
+                                        </div>
+                                      )}
+                                      {boletoSearchResults.map(b => (
+                                        <button
+                                          key={b.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setApuracaoForm({...apuracaoForm, boleto_id: b.id});
+                                            setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
+                                            setShowBoletoDropdown(false);
+                                            setBoletoSearchTerm("");
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
+                                              <span className="text-xs text-muted truncate">{b.rede}</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 mt-0.5">
+                                              <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                            </div>
+                                          </div>
+                                        </button>
+                                      ))}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div className="md:col-span-2">

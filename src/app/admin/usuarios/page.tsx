@@ -1,19 +1,25 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createUser, deleteUser } from "./actions";
-import { DeleteUserButton } from "./DeleteUserButton";
-import { EditUserRoleSelect } from "./EditUserRoleSelect";
-import { EditUserPdfPreferences } from "./EditUserPdfPreferences";
 import { UserList } from "./UserList";
-import { Coffee, Mail, Lock, Plus, Trash2, UserPlus, AlertCircle } from "lucide-react";
+import { Coffee, Mail, Lock, UserPlus, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import Link from "next/link";
+import { User } from "@supabase/supabase-js";
+
+interface UserProfile {
+  id: string;
+  role?: string;
+  receber_pdf_vendas?: boolean;
+  receber_pdf_investimento?: boolean;
+}
 
 export const metadata = {
   title: "Gestão de Usuários - Coffee Mais",
 };
 
 export default async function AdminUsuariosPage() {
-  let users: any[] = [];
-  let profilesMap: Record<string, any> = {};
+  let users: User[] = [];
+  let profilesMap: Record<string, UserProfile> = {};
   let fetchError = null;
 
   try {
@@ -24,7 +30,7 @@ export default async function AdminUsuariosPage() {
     users = data.users || [];
 
     // Busca os perfis (funções) tentando as novas colunas de PDF
-    let profilesData: any[] | null = null;
+    let profilesData: UserProfile[] | null = null;
     const response = await adminClient
       .from('cm_user_profiles')
       .select('id, role, receber_pdf_vendas, receber_pdf_investimento');
@@ -40,13 +46,13 @@ export default async function AdminUsuariosPage() {
     }
 
     if (profilesData) {
-      profilesMap = profilesData.reduce((acc: any, curr: any) => {
+      profilesMap = profilesData.reduce((acc: Record<string, UserProfile>, curr: UserProfile) => {
         acc[curr.id] = curr;
         return acc;
       }, {});
     }
-  } catch (err: any) {
-    fetchError = err.message || "Erro ao carregar usuários. Verifique se a SUPABASE_SERVICE_ROLE_KEY está configurada.";
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : "Erro ao carregar usuários. Verifique se a SUPABASE_SERVICE_ROLE_KEY está configurada.";
   }
 
   const ROLES = [
@@ -80,12 +86,12 @@ export default async function AdminUsuariosPage() {
             </div>
             <div className="flex items-center gap-4">
               <ThemeToggle />
-              <a href="/admin/permissoes" className="px-4 py-2 text-sm text-foreground-secondary border border-border rounded-lg hover:bg-foreground/5 transition-colors">
+              <Link href="/admin/permissoes" className="px-4 py-2 text-sm text-foreground-secondary border border-border rounded-lg hover:bg-foreground/5 transition-colors">
                 Configurar Acessos
-              </a>
-              <a href="/" className="px-4 py-2 text-sm text-accent-gold border border-accent-gold/30 rounded-lg hover:bg-accent-gold/10 transition-colors">
+              </Link>
+              <Link href="/" className="px-4 py-2 text-sm text-accent-gold border border-accent-gold/30 rounded-lg hover:bg-accent-gold/10 transition-colors">
                 Voltar ao Dashboard
-              </a>
+              </Link>
             </div>
           </div>
 
@@ -121,7 +127,7 @@ export default async function AdminUsuariosPage() {
               <h2 className="text-xl font-semibold text-foreground mb-4">Adicionar Acesso</h2>
               <div className="bg-background-card border border-border rounded-2xl p-6 shadow-2xl relative overflow-hidden">
                 {/* Glow Effect */}
-                <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-accent-gold/30 to-transparent" />
+                <div className="absolute top-0 inset-x-0 h-px bg-linear-to-r from-transparent via-gold/30 to-transparent" />
                 
                 <form action={async (formData) => { "use server"; await createUser(formData); }} className="space-y-4">
                   <div>

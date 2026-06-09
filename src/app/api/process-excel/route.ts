@@ -458,7 +458,17 @@ export async function POST(request: NextRequest) {
       } catch (syncErr) {
         console.error("Sync error (non-fatal):", syncErr);
       }
+
+      // Refresh materialized views for dashboard performance
+      try {
+        console.log("[process-excel] Refreshing materialized views...");
+        await supabase.rpc("refresh_materialized_views");
+        console.log("[process-excel] Materialized views refreshed successfully");
+      } catch (mvErr) {
+        console.error("MV refresh error (non-fatal):", mvErr);
+      }
     }
+
 
     return Response.json({
       recordsProcessed: totalRecords,

@@ -142,101 +142,167 @@ export default function VendasDashboard() {
   const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
 
   /* ─── Fetch filters ─── */
-  const fetchFilters = useCallback(async () => {
-    setFiltersLoading(true);
-    try {
-      const res = await fetch(`/api/dashboard/filters?year=${filterYear}&month=${filterMonth}`);
-      const json = await res.json();
-      if (json.success) setFilterOptions(json.filters);
-    } catch (e) { console.error(e); }
-    setFiltersLoading(false);
+  useEffect(() => {
+    let active = true;
+    async function loadFilters() {
+      setFiltersLoading(true);
+      try {
+        const res = await fetch(`/api/dashboard/filters?year=${filterYear}&month=${filterMonth}`);
+        const json = await res.json();
+        if (active && json.success) {
+          setFilterOptions(json.filters);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (active) setFiltersLoading(false);
+      }
+    }
+    loadFilters();
+    return () => {
+      active = false;
+    };
   }, [filterYear, filterMonth]);
 
   /* ─── Fetch data ─── */
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  useEffect(() => {
+    let active = true;
 
-    const stD = new Date(filterYear, filterMonth - 1, 1);
-    const startDate = stD.toISOString().split("T")[0];
-    const enD = new Date(filterYear, filterMonth, 0);
-    const endDate = enD.toISOString().split("T")[0];
+    async function loadData() {
+      setLoading(true);
 
-    // Business Days
-    const { data: bdData } = await supabase
-      .from("business_days")
-      .select("*")
-      .eq("year", filterYear)
-      .eq("month", filterMonth)
-      .single();
-    setBusinessDays(bdData || null);
+      const startDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-01`;
+      const lastDay = new Date(filterYear, filterMonth, 0).getDate();
+      const endDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
-    // Targets
-    const { data: targetData } = await supabase
-      .from("targets")
-      .select("*")
-      .eq("year", filterYear)
-      .eq("month", filterMonth);
-    const allTargets: TargetRecord[] = targetData || [];
+      try {
+        const [bdRes, targetRes, apiRes] = await Promise.all([
+          supabase
+            .from("business_days")
+            .select("*")
+            .eq("year", filterYear)
+            .eq("month", filterMonth)
+            .single(),
+          supabase
+            .from("targets")
+            .select("*")
+            .eq("year", filterYear)
+            .eq("month", filterMonth),
+          fetch(`/api/dashboard?${new URLSearchParams({
+            startDate,
+            endDate,
+            investment: "0",
+            ...(filterManager.length > 0 && { manager: filterManager.join(',') }),
+            ...(filterFamilia.length > 0 && { familia: filterFamilia.join(',') }),
+            ...(filterUf.length > 0 && { uf: filterUf.join(',') }),
+            ...(filterChannel.length > 0 && { channel: filterChannel.join(',') }),
+            ...(filterProduct.length > 0 && { product: filterProduct.join(',') })
+          })}`, { cache: "no-store" })
+        ]);
 
-    // Dashboard API
-    const params = new URLSearchParams({ startDate, endDate, investment: "0" });
-    if (filterManager.length > 0) params.set("manager", filterManager.join(','));
-    if (filterFamilia.length > 0) params.set("familia", filterFamilia.join(','));
-    if (filterUf.length > 0) params.set("uf", filterUf.join(','));
-    if (filterChannel.length > 0) params.set("channel", filterChannel.join(','));
-    if (filterProduct.length > 0) params.set("product", filterProduct.join(','));
+        if (!active) return;
 
-    try {
-      const apiRes = await fetch(`/api/dashboard?${params}`);
-      const json = await apiRes.json();
+        setBusinessDays(bdRes.data || null);
+        const allTargets: TargetRecord[] = targetRes.data || [];
 
-      if (json.success) {
-        const byManager: ManagerData[] = json.byManager || [];
-        setFamiliaData(json.byFamilia || []);
-        setPreviousMonth(json.previousMonth || { fat: 0, qty: 0, maco: 0 });
-        setPreviousYear(json.previousYear || { fat: 0, qty: 0, maco: 0 });
+        const json = await apiRes.json();
+        if (!active) return;
 
-        const allManagerNames = new Set<string>();
-        allTargets.forEach(t => allManagerNames.add(t.manager));
-        byManager.forEach(m => allManagerNames.add(m.manager));
+        if (json.success) {
+          const byManager: ManagerData[] = json.byManager || [];
+          setFamiliaData(json.byFamilia || []);
+          setPreviousMonth(json.previousMonth || { fat: 0, qty: 0, maco: 0 });
+          setPreviousYear(json.previousYear || { fat: 0, qty: 0, maco: 0 });
 
-        const rows: ManagerRow[] = [];
-        allManagerNames.forEach(m => {
-          if (filterManager.length > 0 && !filterManager.includes(m)) return;
-          const target = allTargets.find(t => t.manager === m);
-          const sales = byManager.find(s => s.manager === m);
+          const allManagerNames = new Set<string>();
+          allTargets.forEach(t => allManagerNames.add(t.manager));
+          byManager.forEach(m => allManagerNames.add(m.manager));
 
-          rows.push({
-            manager: m,
-            fat: sales?.fat || 0,
-            qty: sales?.qty || 0,
-            maco: sales?.maco || 0,
-            paceFat: sales?.paceFat || 0,
-            paceQty: sales?.paceQty || 0,
-            paceMaco: sales?.paceMaco || 0,
-            topClients: sales?.topClients || [],
-            metaFat: target?.target_revenue || 0,
-            metaUnd: target?.target_tons || 0,
-            metaMaco: target?.target_maco || 0,
+          const rows: ManagerRow[] = [];
+          allManagerNames.forEach(m => {
+            if (filterManager.length > 0 && !filterManager.includes(m)) return;
+            const target = allTargets.find(t => t.manager === m);
+            const sales = byManager.find(s => s.manager === m);
+
+            rows.push({
+              manager: m,
+              fat: sales?.fat || 0,
+              qty: sales?.qty || 0,
+              maco: sales?.maco || 0,
+              paceFat: sales?.paceFat || 0,
+              paceQty: sales?.paceQty || 0,
+              paceMaco: sales?.paceMaco || 0,
+              topClients: sales?.topClients || [],
+              metaFat: target?.target_revenue || 0,
+              metaUnd: target?.target_tons || 0,
+              metaMaco: target?.target_maco || 0,
+            });
           });
-        });
 
-        rows.sort((a, b) => {
-          const pA = a.metaFat > 0 ? (a.fat / a.metaFat) * 100 : -1;
-          const pB = b.metaFat > 0 ? (b.fat / b.metaFat) * 100 : -1;
-          
-          if (pA === pB) return b.fat - a.fat;
-          return pB - pA;
-        });
-        setManagerRows(rows);
+          rows.sort((a, b) => {
+            const pA = a.metaFat > 0 ? (a.fat / a.metaFat) * 100 : -1;
+            const pB = b.metaFat > 0 ? (b.fat / b.metaFat) * 100 : -1;
+            
+            if (pA === pB) return b.fat - a.fat;
+            return pB - pA;
+          });
+          setManagerRows(rows);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (active) setLoading(false);
       }
-    } catch (e) { console.error(e); }
+    }
 
-    setLoading(false);
+    loadData();
+
+    return () => {
+      active = false;
+    };
   }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
 
-  useEffect(() => { fetchFilters(); }, [fetchFilters]);
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    async function initDefaultPeriod() {
+      try {
+        const today = new Date();
+        const currYear = today.getFullYear();
+        const currMonth = today.getMonth() + 1;
+
+        const startStr = `${currYear}-${String(currMonth).padStart(2, "0")}-01`;
+        const endStr = `${currYear}-${String(currMonth).padStart(2, "0")}-31`;
+
+        // Check if there is any data for the current calendar month
+        const { count, error: countErr } = await supabase
+          .from("cm_faturamento_sankhya")
+          .select("id", { count: "exact", head: true })
+          .gte("dt_faturamento", startStr)
+          .lte("dt_faturamento", endStr);
+
+        if (count === 0 || count === null || countErr) {
+          // If no data, find the latest month that has data
+          const { data: latestRecords, error: dateErr } = await supabase
+            .from("cm_faturamento_sankhya")
+            .select("dt_faturamento")
+            .order("dt_faturamento", { ascending: false })
+            .limit(1);
+
+          if (latestRecords && latestRecords.length > 0 && latestRecords[0].dt_faturamento) {
+            const parts = latestRecords[0].dt_faturamento.split("-");
+            if (parts.length === 3) {
+              const latestYear = parseInt(parts[0], 10);
+              const latestMonth = parseInt(parts[1], 10);
+              setFilterYear(latestYear);
+              setFilterMonth(latestMonth);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error adjusting default period:", err);
+      }
+    }
+    initDefaultPeriod();
+  }, []);
 
   /* ─── Totals ─── */
   const totals = useMemo(() => {
@@ -739,6 +805,9 @@ export default function VendasDashboard() {
         </Link>
         <Link href="/historico" className="bottom-tab">
           <History className="bottom-tab-icon" /> Hist.
+        </Link>
+        <Link href="/historico-matriz" className="bottom-tab">
+          <History className="bottom-tab-icon" /> Hist. Matriz
         </Link>
         <span className="bottom-tab disabled">
           <DollarSign className="bottom-tab-icon" /> MaCo

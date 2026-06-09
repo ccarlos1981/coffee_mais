@@ -6,8 +6,18 @@ import { History, Search, ArrowLeft, Database, Clock, User, FileJson, ArrowRight
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
+interface AuditLog {
+  id: string;
+  created_at: string;
+  action: string;
+  table_name: string;
+  user_id: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+}
+
 export default function AdminLogsPage() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,11 +27,10 @@ export default function AdminLogsPage() {
   const [tableFilter, setTableFilter] = useState("all");
   
   // Modal for details
-  const [selectedLog, setSelectedLog] = useState<any | null>(null);
-
-  const supabase = createClient();
+  const [selectedLog, setSelectedLog] = useState<AuditLog | null>(null);
 
   useEffect(() => {
+    const supabase = createClient();
     async function loadLogs() {
       try {
         setLoading(true);
@@ -43,8 +52,8 @@ export default function AdminLogsPage() {
         // Actually, we can fetch all profiles and just show ID if no email. We can also create a server action.
         
         setLogs(logsData || []);
-      } catch (err: any) {
-        setError(err.message || "Erro ao carregar os logs de auditoria.");
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Erro ao carregar os logs de auditoria.");
       } finally {
         setLoading(false);
       }
@@ -62,12 +71,11 @@ export default function AdminLogsPage() {
           const map = await res.json();
           setUsersMap(map);
         }
-      } catch (e) {
+      } catch {
         // silently fail and fallback to IDs
       }
     }
-    // We will just fetch directly via server component later if needed, but for now client side is fine.
-    // Wait, let's just make the page a Server Component!
+    fetchEmails();
   }, []);
 
   const filteredLogs = useMemo(() => {
@@ -183,10 +191,10 @@ export default function AdminLogsPage() {
                           </span>
                         </td>
                         <td className="py-3 px-4 font-mono text-xs text-muted truncate max-w-[150px]">
-                          <span className="flex items-center gap-1.5" title={log.user_id}>
-                            <User className="w-3.5 h-3.5" />
-                            {usersMap[log.user_id] || (log.user_id ? log.user_id.substring(0, 8) + "..." : "Sistema")}
-                          </span>
+                           <span className="flex items-center gap-1.5" title={log.user_id || undefined}>
+                             <User className="w-3.5 h-3.5" />
+                             {(log.user_id && usersMap[log.user_id]) || (log.user_id ? log.user_id.substring(0, 8) + "..." : "Sistema")}
+                           </span>
                         </td>
                         <td className="py-3 px-4 text-right">
                           <button 
@@ -227,7 +235,7 @@ export default function AdminLogsPage() {
               <div className="flex items-center gap-4 text-sm text-muted mb-6 bg-card p-3 rounded-xl border border-border">
                 <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> {formatDate(selectedLog.created_at)}</span>
                 <span className="text-border">|</span>
-                <span className="flex items-center gap-1.5"><User className="w-4 h-4" /> {usersMap[selectedLog.user_id] || selectedLog.user_id || "Sistema"}</span>
+                 <span className="flex items-center gap-1.5"><User className="w-4 h-4" /> {(selectedLog.user_id && usersMap[selectedLog.user_id]) || selectedLog.user_id || "Sistema"}</span>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

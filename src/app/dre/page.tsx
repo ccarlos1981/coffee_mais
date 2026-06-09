@@ -12,9 +12,6 @@ import {
   Users,
   TrendingUp,
   Target,
-  Lock,
-  Eye,
-  EyeOff,
   CalendarDays,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -136,21 +133,20 @@ export default function DREPage() {
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [],
   });
-  const [filtersLoading, setFiltersLoading] = useState(true);
 
   // Fetch filters (same endpoint as Vendas)
   const fetchFilters = useCallback(async () => {
-    setFiltersLoading(true);
     try {
       const res = await fetch(`/api/dashboard/filters?year=${filterYear}&month=${filterMonth}`);
       const json = await res.json();
       if (json.success) setFilterOptions(json.filters);
     } catch (e) { console.error(e); }
-    setFiltersLoading(false);
   }, [filterYear, filterMonth]);
 
   useEffect(() => {
-    fetchFilters();
+    Promise.resolve().then(() => {
+      fetchFilters();
+    });
   }, [fetchFilters]);
 
   const handleClearFilters = () => {
@@ -593,6 +589,7 @@ export default function DREPage() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/dre" className="bottom-tab active"><DollarSign className="bottom-tab-icon" /> DRE</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>

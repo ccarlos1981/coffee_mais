@@ -1,29 +1,33 @@
 import { NextResponse } from 'next/server';
-import { fetchAllSales, aggregate } from '../route';
 import { createClient } from '@supabase/supabase-js';
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     
-    const { data: baseData } = await supabase.from('base_atendimento').select('*');
-    const baseAtendimentoMap = new Map();
-    if (baseData) {
-      for (const row of baseData) if (row.cod_parceiro) baseAtendimentoMap.set(String(row.cod_parceiro), row);
+    const { data, error } = await supabase
+      .from('mv_vendas_mensal')
+      .select('mes, manager, fat, qty, maco')
+      .eq('mes', '2026-05');
+
+    if (error) throw error;
+
+    // Aggregate by manager
+    const managerMap = new Map<string, { fat: number; qty: number; maco: number }>();
+    for (const row of (data || [])) {
+      const m = row.manager || 'Outros';
+      const existing = managerMap.get(m) || { fat: 0, qty: 0, maco: 0 };
+      existing.fat += Number(row.fat || 0);
+      existing.qty += Number(row.qty || 0);
+      existing.maco += Number(row.maco || 0);
+      managerMap.set(m, existing);
     }
+
+    const byManager = Array.from(managerMap.entries())
+      .map(([manager, data]) => ({ manager, ...data }))
+      .sort((a, b) => b.fat - a.fat);
     
-    const filters = {
-      manager: null,
-      familia: null,
-      uf: null,
-      channel: null,
-      product: null
-    };
-    
-    const sales = await fetchAllSales(supabase, '2026-05-01', '2026-05-31', filters, baseAtendimentoMap);
-    const result = aggregate(sales, 0);
-    
-    return NextResponse.json({ success: true, byManager: result.byManager });
+    return NextResponse.json({ success: true, byManager, mvRows: data?.length || 0 });
   } catch (e: any) {
     return NextResponse.json({ error: e.message });
   }

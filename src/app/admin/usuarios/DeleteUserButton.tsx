@@ -3,7 +3,7 @@
 import { Trash2 } from "lucide-react";
 import { useTransition } from "react";
 
-export function DeleteUserButton({ userId, deleteAction }: { userId: string, deleteAction: (id: string) => Promise<any> }) {
+export function DeleteUserButton({ userId, deleteAction }: { userId: string, deleteAction: (id: string) => Promise<{ success?: boolean; error?: string }> }) {
   const [isPending, startTransition] = useTransition();
 
   return (

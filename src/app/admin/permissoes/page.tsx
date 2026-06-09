@@ -1,7 +1,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { Coffee, Shield, AlertCircle } from "lucide-react";
+import { Shield, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { PermissionToggle } from "./PermissionToggle";
+import Link from "next/link";
+
+interface RolePermission {
+  id?: string;
+  role: string;
+  module_name: string;
+  has_access: boolean;
+  created_at?: string;
+}
 
 export const metadata = {
   title: "Configurar Acesso - Coffee Mais",
@@ -25,6 +34,7 @@ const MODULES = [
   "Vendas",
   "DRE",
   "Histórico",
+  "Hist. Matriz",
   "MaCo",
   "Dia",
   "Matriz",
@@ -52,7 +62,7 @@ const MODULES = [
 ];
 
 export default async function AdminPermissoesPage() {
-  let permissions: any[] = [];
+  let permissions: RolePermission[] = [];
   let fetchError = null;
 
   try {
@@ -71,8 +81,8 @@ export default async function AdminPermissoesPage() {
     } else {
       permissions = data || [];
     }
-  } catch (err: any) {
-    fetchError = err.message || "Erro ao carregar permissões.";
+  } catch (err) {
+    fetchError = err instanceof Error ? err.message : "Erro ao carregar permissões.";
   }
 
   // Mapa para acesso fácil: permissionsMap['CEO']['Resumo'] = true/false
@@ -109,12 +119,12 @@ export default async function AdminPermissoesPage() {
             </div>
             <div className="flex items-center gap-4">
               <ThemeToggle />
-              <a href="/admin/usuarios" className="px-4 py-2 text-sm text-foreground-secondary hover:text-foreground transition-colors">
+              <Link href="/admin/usuarios" className="px-4 py-2 text-sm text-foreground-secondary hover:text-foreground transition-colors">
                 Voltar para Usuários
-              </a>
-              <a href="/" className="px-4 py-2 text-sm text-accent-gold border border-accent-gold/30 rounded-lg hover:bg-accent-gold/10 transition-colors">
+              </Link>
+              <Link href="/" className="px-4 py-2 text-sm text-accent-gold border border-accent-gold/30 rounded-lg hover:bg-accent-gold/10 transition-colors">
                 Voltar ao Dashboard
-              </a>
+              </Link>
             </div>
           </div>
 

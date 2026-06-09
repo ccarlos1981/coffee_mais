@@ -93,3 +93,71 @@ export function getValueClass(value: number): string {
   if (value < 0) return "num-negative";
   return "num-neutral";
 }
+
+/** Simplifica e encurta nomes de Redes/Clientes muito extensos */
+export function shortenRedeName(name: string): string {
+  if (!name) return "";
+  const clean = name.trim().toUpperCase();
+
+  // Mapeamentos conhecidos de grandes redes
+  if (clean.includes("AMAZON")) return "Amazon";
+  if (clean.includes("ANGELONI")) return "Angeloni";
+  if (clean.includes("DONA DE CASA")) return "Dona de Casa";
+  if (clean.includes("ZONA SUL")) return "Zona Sul";
+  if (clean.includes("VERDEMAR")) return "Verdemar";
+  if (clean.includes("ZAFFARI")) return "Zaffari";
+  if (clean.includes("SUPERNOSSO")) return "Supernosso";
+  if (clean.includes("REDEMIX")) return "Redemix";
+  if (clean.includes("MAMBO")) return "Mambo";
+  if (clean.includes("COMPER")) return "Comper";
+  if (clean.includes("DUFRY")) return "Dufry";
+  if (clean.includes("SDB")) return "SDB";
+  if (clean.includes("NOVO ATACAREJO")) return "Novo Atacarejo";
+  if (clean.includes("ABC")) return "ABC";
+  if (clean.includes("MARCELA ACCO BASSO")) return "Marcela Acco Basso";
+
+  // Limpeza genérica de prefixos e sufixos comuns
+  let cleanName = clean;
+
+  const prefixes = [
+    "CENTRO DE DISTRIBUICAO",
+    "CENTRO DE DISTRIBUIÇÃO",
+    "SUPERMERCADO",
+    "SUPERMERCADOS",
+    "SUPER MERCADO",
+    "SUPER MERCADOS",
+    "COMERCIAL DE ALIMENTOS",
+    "COMERCIAL",
+    "ORGANIZACAO",
+    "ORGANIZAÇÃO",
+    "DISTRIBUIDORA",
+    "DISTRIBUIDOR"
+  ];
+
+  for (const prefix of prefixes) {
+    if (cleanName.startsWith(prefix)) {
+      cleanName = cleanName.substring(prefix.length).trim();
+    }
+  }
+
+  const suffixes = [
+    "S/A", "S.A", "S.A.", "LTDA", "LTDA.", "LIMITADA", "EIRELI", "ME", "EPP"
+  ];
+
+  const words = cleanName.split(/\s+/);
+  const cleanWords = words.filter(word => !suffixes.includes(word));
+  cleanName = cleanWords.join(" ");
+
+  if (cleanName.startsWith("DE ") || cleanName.startsWith("DO ") || cleanName.startsWith("DA ")) {
+    cleanName = cleanName.substring(3).trim();
+  }
+
+  const prepositions = ["de", "do", "da", "e", "o", "a", "em", "para", "com"];
+  return cleanName.toLowerCase()
+    .split(" ")
+    .map((word, idx) => {
+      if (prepositions.includes(word) && idx > 0) return word;
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}

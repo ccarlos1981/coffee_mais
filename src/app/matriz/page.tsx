@@ -537,6 +537,7 @@ export default function MatrizPage() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
         <Link href="/dre" className="bottom-tab"><DollarSign className="bottom-tab-icon" /> DRE</Link>
         <Link href="/matriz" className="bottom-tab active"><Users className="bottom-tab-icon" /> Matriz</Link>
         <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>

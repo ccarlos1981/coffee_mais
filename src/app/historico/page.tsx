@@ -18,7 +18,7 @@ import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
-import { Skeleton, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
+import { Skeleton, SkeletonChart } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
 import {
@@ -36,6 +36,7 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
+  ReferenceLine,
 } from "recharts";
 
 const MONTHS = [
@@ -60,7 +61,6 @@ interface FiltersData {
 
 export default function HistoricoDashboard() {
   const [loading, setLoading] = useState(true);
-  const [filtersLoading, setFiltersLoading] = useState(true);
 
   // Períodos (Padrão 14 meses)
   const now = new Date();
@@ -88,15 +88,23 @@ export default function HistoricoDashboard() {
   const [byFamilia, setByFamilia] = useState<Record<string, unknown>[]>([]);
   const [byClient, setByClient] = useState<Record<string, unknown>[]>([]);
 
+  // Find the record faturamento value
+  const maxFat = monthlyHistory.reduce((max, h) => {
+    const val = Number(h.fat || 0);
+    return val > max ? val : max;
+  }, 0);
+
+
   // Fetch filters matching the identical logic of Vendas
   const fetchFilters = useCallback(async () => {
-    setFiltersLoading(true);
     try {
-      const res = await fetch(`/api/dashboard/filters?year=${filterEndYear}&month=${filterEndMonth}`);
+      const res = await fetch(`/api/dashboard/filters?year=${filterEndYear}&month=${filterEndMonth}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       const json = await res.json();
       if (json.success) setFilterOptions(json.filters);
     } catch (e) { console.error(e); }
-    setFiltersLoading(false);
   }, [filterEndYear, filterEndMonth]);
 
   const fetchData = useCallback(async () => {
@@ -116,7 +124,10 @@ export default function HistoricoDashboard() {
     if (filterProduct.length > 0) params.set("product", filterProduct.join(","));
 
     try {
-      const res = await fetch(`/api/dashboard/history?${params}`);
+      const res = await fetch(`/api/dashboard/history?${params}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
       const json = await res.json();
       if (json.success) {
         // Prepare monthly mapping for beautiful axis labels
@@ -142,8 +153,8 @@ export default function HistoricoDashboard() {
     setLoading(false);
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
 
-  useEffect(() => { fetchFilters(); }, [fetchFilters]);
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
+  useEffect(() => { Promise.resolve().then(() => fetchData()); }, [fetchData]);
 
   const handleClearFilters = () => {
     setFilterManager([]);
@@ -303,6 +314,21 @@ export default function HistoricoDashboard() {
                     />}
                     cursor={{ fill: 'var(--border)', opacity: 0.15 }}
                   />
+                  {maxFat > 0 && (
+                    <ReferenceLine
+                      y={maxFat}
+                      stroke="#ef4444"
+                      strokeDasharray="3 3"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Record: R$ ${Math.round(maxFat / 1000).toLocaleString("pt-BR")}k`,
+                        position: "top",
+                        fill: "#ef4444",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    />
+                  )}
                   <Bar dataKey="fat" radius={[4, 4, 0, 0]}>
                     <LabelList dataKey="fat" position="center" angle={-90} fill="#fff" fontSize={13} fontWeight={600} formatter={(val: unknown) => Math.round(Number(val) / 1000).toLocaleString("pt-BR")} />
                     {monthlyHistory.map((entry, index) => {
@@ -458,6 +484,7 @@ export default function HistoricoDashboard() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab active"><History className="bottom-tab-icon" /> Hist.</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> MaCo</span>
         <Link href="/matriz" className="bottom-tab">
           <Users className="bottom-tab-icon" /> Matriz

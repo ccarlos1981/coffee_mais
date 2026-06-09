@@ -35,7 +35,7 @@ interface BusinessDay {
   elapsed_days: number;
 }
 
-const MANAGERS = ["Leandro", "Luiz", "Julliano", "Inside Sales"];
+const MANAGERS = ["Leandro", "Luiz", "Julliano", "Inside Sales", "Ecommerce", "Marketplace"];
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",

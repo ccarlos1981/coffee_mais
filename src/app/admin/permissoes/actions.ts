@@ -38,7 +38,8 @@ export async function togglePermission(role: string, moduleName: string, current
 
     revalidatePath("/admin/permissoes");
     return { success: true };
-  } catch (error: any) {
-    return { error: error.message || "Erro ao atualizar permissão." };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro ao atualizar permissão.";
+    return { error: errorMsg };
   }
 }

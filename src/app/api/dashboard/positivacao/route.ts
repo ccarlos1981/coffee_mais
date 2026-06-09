@@ -2,19 +2,77 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 const API_CACHE = new Map<string, { timestamp: number; data: unknown }>();
-const CACHE_TTL = 1000 * 60 * 15;
+const CACHE_TTL = 1000 * 60 * 5;
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey);
+  return createClient(supabaseUrl, supabaseKey, {
+    global: {
+      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
+    },
+  });
 }
 
 function escapeSqlValue(value: string | null) {
   if (!value) return "NULL";
   return "'" + value.replace(/'/g, "''") + "'";
+}
+
+function buildWhereClause(filters: Record<string, string | null>, startMonth: string | null, endMonth: string | null, tableAlias?: string) {
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  const clauses = ['1=1'];
+  if (startMonth) clauses.push(`${prefix}mes >= ${escapeSqlValue(startMonth)}`);
+  if (endMonth) clauses.push(`${prefix}mes <= ${escapeSqlValue(endMonth)}`);
+  if (filters.manager) clauses.push(`${prefix}manager IN (${filters.manager.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+  if (filters.familia) clauses.push(`${prefix}tipo_produto IN (${filters.familia.split(',').map(f => escapeSqlValue(f)).join(',')})`);
+  if (filters.uf) clauses.push(`${prefix}uf IN (${filters.uf.split(',').map(u => escapeSqlValue(u)).join(',')})`);
+  if (filters.channel) clauses.push(`${prefix}channel IN (${filters.channel.split(',').map(c => escapeSqlValue(c)).join(',')})`);
+  if (filters.matriz) clauses.push(`${prefix}rede IN (${filters.matriz.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+  if (filters.product) clauses.push(`${prefix}product IN (${filters.product.split(',').map(p => escapeSqlValue(p)).join(',')})`);
+  return 'WHERE ' + clauses.join(' AND ');
+}
+
+interface DBTotalsRow {
+  clientes: number;
+  matrizes: number;
+  fat: number;
+  meses: number;
+}
+
+interface DBByMonthRow {
+  month: string;
+  clientes: number;
+  matrizes: number;
+  fat: number;
+  qty: number;
+}
+
+interface DBByManagerRow {
+  manager: string;
+  clientes: number;
+  matrizes: number;
+  fat: number;
+}
+
+interface DBManagerMonthlyRow {
+  manager: string;
+  month: string;
+  clientes: number;
+}
+
+interface DBTopSkuRow {
+  sku: string;
+  total_qty: number;
+}
+
+interface DBBatalhaNavalMonthlyRow {
+  sku: string;
+  month: string;
+  clientes: number;
 }
 
 export async function GET(request: Request) {
@@ -34,168 +92,197 @@ export async function GET(request: Request) {
 
     const cacheKey = request.url;
     const cached = API_CACHE.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    const isDev = process.env.NODE_ENV === 'development';
+    if (!isDev && cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return NextResponse.json(cached.data);
     }
 
     const supabase = getSupabaseClient();
-    
-    let where_clause = 'WHERE invoice_date IS NOT NULL AND manager IS NOT NULL';
-    if (startDate) where_clause += ` AND invoice_date >= ${escapeSqlValue(startDate)}`;
-    if (endDate) where_clause += ` AND invoice_date <= ${escapeSqlValue(endDate)}`;
+    const startMonth = startDate ? startDate.substring(0, 7) : null;
+    const endMonth = endDate ? endDate.substring(0, 7) : null;
 
-    if (filters.manager) {
-      const list = filters.manager.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND manager IN (${list})`;
-    }
-    if (filters.familia) {
-      const list = filters.familia.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND tipo_produto IN (${list})`;
-    }
-    if (filters.uf) {
-      const list = filters.uf.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND uf IN (${list})`;
-    }
-    if (filters.channel) {
-      const list = filters.channel.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND channel IN (${list})`;
-    }
-    if (filters.product) {
-      const list = filters.product.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND product IN (${list})`;
-    }
-    if (filters.matriz) {
-      const list = filters.matriz.split(',').map(m => escapeSqlValue(m)).join(',');
-      where_clause += ` AND rede IN (${list})`;
-    }
+    const clientTable = filters.product ? 'mv_positivacao_sku_mensal' : 'mv_vendas_cliente_mensal';
+    const whereClause = buildWhereClause(filters, startMonth, endMonth);
 
-    const sql = `
-      
-    WITH sales_enriched AS (
+    const sqlTotals = `
       SELECT 
-        b.manager, 
-        b.rede, 
-        f.nome_parceiro, 
-        CASE 
-          WHEN UPPER(f.desc_produto) LIKE '%1KG%' THEN '1 KG'
-          WHEN UPPER(f.desc_produto) LIKE '%5KG%' OR UPPER(f.desc_produto) LIKE '%5 KG%' THEN '5 KG'
-          WHEN UPPER(f.desc_produto) LIKE '%CAPSULA%' OR UPPER(f.desc_produto) LIKE '%CÁPSULA%' THEN 'Cápsula'
-          WHEN UPPER(f.desc_produto) LIKE '%DRIP%' THEN 'Drip'
-          WHEN UPPER(f.desc_produto) LIKE '%GEISHA%' THEN 'Geisha'
-          WHEN UPPER(f.desc_produto) LIKE '%VERDE%' THEN 'Café Verde'
-          WHEN UPPER(f.desc_produto) LIKE '%GRAO%' OR UPPER(f.desc_produto) LIKE '%GRÃO%' THEN 'Grão'
-          WHEN UPPER(f.desc_produto) LIKE '%MOIDO%' OR UPPER(f.desc_produto) LIKE '%MOÍDO%' THEN 'Moído'
-          WHEN UPPER(f.desc_produto) LIKE '%ACESSORIO%' OR UPPER(f.desc_produto) LIKE '%GARRAFA%' OR UPPER(f.desc_produto) LIKE '%CANECA%' OR UPPER(f.desc_produto) LIKE '%KIT%' THEN 'Acessório'
-          ELSE 'Outros'
-        END as tipo_produto,
-        f.desc_produto as product, 
-        f.dt_faturamento as invoice_date, 
-        COALESCE(CAST(f.vlr_total_liq AS numeric), 0) as net_value,
-        COALESCE(CAST(f.quantidade AS numeric), 0) as quantity,
-        (COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0)) as imposto,
-        COALESCE(CAST(f.custo_total AS numeric), 0) as custo_total,
-        COALESCE(CAST(f.vlr_frete AS numeric), 0) as custo_frete,
-        b.uf,
-        b.canal as channel
-      FROM cm_faturamento_sankhya f
-      JOIN base_atendimento b ON CAST(b.cod_parceiro AS TEXT) = CAST(f.cod_parceiro AS TEXT)
-    ),
-    filtered_sales AS (
-        SELECT 
-          manager, rede, nome_parceiro, product, invoice_date, 
-          COALESCE(CAST(net_value AS numeric), 0) as net_value,
-          COALESCE(CAST(quantity AS numeric), 0) as quantity,
-          COALESCE(NULLIF(nome_parceiro, ''), COALESCE(NULLIF(rede, ''), 'Não Mapeado')) as client,
-          COALESCE(NULLIF(rede, ''), 'Não Mapeado') as matriz,
-          COALESCE(NULLIF(product, ''), 'Outros') as sku,
-          COALESCE(NULLIF(manager, ''), 'Outros') as manager_name,
-          SUBSTRING(CAST(invoice_date AS text), 1, 7) as month_key
-        FROM sales_enriched
-        ${where_clause}
-      ),
-      totals AS (
-        SELECT 
-          COUNT(DISTINCT client) as clientes,
-          COUNT(DISTINCT matriz) as matrizes,
-          COALESCE(SUM(net_value), 0) as fat,
-          COUNT(DISTINCT month_key) as meses,
-          COUNT(*) as record_count
-        FROM filtered_sales
-      ),
-      monthly_raw AS (
-        SELECT 
-          month_key as month,
-          COUNT(DISTINCT client) as clientes,
-          COUNT(DISTINCT matriz) as matrizes,
-          COALESCE(SUM(net_value),0) as fat,
-          COALESCE(SUM(quantity),0) as qty
-        FROM filtered_sales
-        GROUP BY 1
-        ORDER BY 1
-      ),
-      sku_qty AS (
-        SELECT sku, SUM(quantity) as total_qty
-        FROM filtered_sales
-        GROUP BY 1
-        ORDER BY 2 DESC
-        LIMIT 20
-      ),
-      batalha_naval AS (
-        SELECT 
-          s.sku,
-          s.total_qty as "totalQty",
-          COALESCE((
-            SELECT json_object_agg(f.month_key, (
-              SELECT COUNT(DISTINCT client) FROM filtered_sales fs2 WHERE fs2.sku = s.sku AND fs2.month_key = f.month_key
-            ))
-            FROM (SELECT DISTINCT month_key FROM filtered_sales) f
-          ), '{}'::json) as months
-        FROM sku_qty s
-      ),
-      manager_agg AS (
-        SELECT 
-          manager_name as manager,
-          COUNT(DISTINCT client) as clientes,
-          COUNT(DISTINCT matriz) as matrizes,
-          COALESCE(SUM(net_value), 0) as fat,
-          COALESCE((
-            SELECT json_object_agg(f.month_key, (
-              SELECT COUNT(DISTINCT client) FROM filtered_sales fs3 WHERE fs3.manager_name = fs.manager_name AND fs3.month_key = f.month_key
-            ))
-            FROM (
-               SELECT month_key FROM filtered_sales GROUP BY 1 ORDER BY 1 DESC LIMIT 12
-            ) f
-          ), '{}'::json) as monthly
-        FROM filtered_sales fs
-        GROUP BY 1
-        ORDER BY 2 DESC
-      )
-      SELECT 
-        (SELECT row_to_json(t) FROM (SELECT clientes, matrizes, fat, meses, record_count FROM totals) t) as totals,
-        (SELECT COALESCE(json_agg(t), '[]'::json) FROM monthly_raw t) as "byMonth",
-        (SELECT COALESCE(json_agg(t), '[]'::json) FROM manager_agg t) as "byManager",
-        (SELECT COALESCE(json_agg(t), '[]'::json) FROM batalha_naval t) as "batalhaNaval"
+        COUNT(DISTINCT nome_parceiro) as clientes,
+        COUNT(DISTINCT rede) as matrizes,
+        SUM(fat) as fat,
+        COUNT(DISTINCT mes) as meses
+      FROM ${clientTable}
+      ${whereClause}
     `;
 
-    const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: sql });
+    const sqlByMonth = `
+      SELECT 
+        mes as month,
+        COUNT(DISTINCT nome_parceiro) as clientes,
+        COUNT(DISTINCT rede) as matrizes,
+        SUM(fat) as fat,
+        SUM(qty) as qty
+      FROM ${clientTable}
+      ${whereClause}
+      GROUP BY mes
+      ORDER BY mes
+    `;
 
-    if (error) {
-      throw new Error(error.message);
+    const sqlByManager = `
+      SELECT 
+        COALESCE(manager, 'Outros') as manager,
+        COUNT(DISTINCT nome_parceiro) as clientes,
+        COUNT(DISTINCT rede) as matrizes,
+        SUM(fat) as fat
+      FROM ${clientTable}
+      ${whereClause}
+      GROUP BY COALESCE(manager, 'Outros')
+    `;
+
+    const sqlManagerMonthly = `
+      SELECT 
+        COALESCE(manager, 'Outros') as manager,
+        mes as month,
+        COUNT(DISTINCT nome_parceiro) as clientes
+      FROM ${clientTable}
+      ${whereClause}
+      GROUP BY COALESCE(manager, 'Outros'), mes
+    `;
+
+    const sqlTop20Skus = `
+      SELECT 
+        product as sku,
+        SUM(qty) as total_qty
+      FROM mv_positivacao_sku_mensal
+      ${whereClause}
+      GROUP BY product
+      ORDER BY total_qty DESC
+      LIMIT 20
+    `;
+
+    console.log(`[Positivação API] Running Step 1 parallel aggregations...`);
+    const [resTotals, resByMonth, resByManager, resManagerMonthly, resTopSkus] = await Promise.all([
+      supabase.rpc('execute_readonly_query', { query_text: sqlTotals }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlByMonth }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlByManager }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlManagerMonthly }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlTop20Skus }),
+    ]);
+
+    if (resTotals.error) throw new Error(resTotals.error.message);
+    if (resByMonth.error) throw new Error(resByMonth.error.message);
+    if (resByManager.error) throw new Error(resByManager.error.message);
+    if (resManagerMonthly.error) throw new Error(resManagerMonthly.error.message);
+    if (resTopSkus.error) throw new Error(resTopSkus.error.message);
+
+    const totalsRows = (resTotals.data || []) as DBTotalsRow[];
+    const byMonthRows = (resByMonth.data || []) as DBByMonthRow[];
+    const byManagerRows = (resByManager.data || []) as DBByManagerRow[];
+    const managerMonthlyRows = (resManagerMonthly.data || []) as DBManagerMonthlyRow[];
+    const topSkusRows = (resTopSkus.data || []) as DBTopSkuRow[];
+
+    const topSkusList = topSkusRows.map(r => r.sku);
+    let batalhaNavalMonthlyRows: DBBatalhaNavalMonthlyRow[] = [];
+
+    if (topSkusList.length > 0) {
+      const sqlBatalhaNavalMonthly = `
+        SELECT 
+          product as sku,
+          mes as month,
+          COUNT(DISTINCT nome_parceiro) as clientes
+        FROM mv_positivacao_sku_mensal
+        ${whereClause} AND product IN (${topSkusList.map(s => escapeSqlValue(s)).join(',')})
+        GROUP BY product, mes
+      `;
+      console.log(`[Positivação API] Running Step 2 Batalha Naval query for ${topSkusList.length} SKUs...`);
+      const resBatalhaNaval = await supabase.rpc('execute_readonly_query', { query_text: sqlBatalhaNavalMonthly });
+      if (resBatalhaNaval.error) throw new Error(resBatalhaNaval.error.message);
+      batalhaNavalMonthlyRows = (resBatalhaNaval.data || []) as DBBatalhaNavalMonthlyRow[];
     }
 
-    const payload = data && data.length > 0 ? data[0] : null;
+    // Totals
+    const totalsRow = totalsRows[0] || { clientes: 0, matrizes: 0, fat: 0, meses: 0 };
+    const totals = {
+      clientes: Number(totalsRow.clientes || 0),
+      matrizes: Number(totalsRow.matrizes || 0),
+      fat: Number(totalsRow.fat || 0),
+      meses: Number(totalsRow.meses || 0),
+    };
 
-    const byMonth = payload?.byMonth || [];
-    const months = byMonth.map((m: any) => m.month);
+    // By Month
+    const byMonth = byMonthRows.map(r => ({
+      month: r.month,
+      clientes: Number(r.clientes || 0),
+      matrizes: Number(r.matrizes || 0),
+      fat: Number(r.fat || 0),
+      qty: Number(r.qty || 0),
+    }));
+
+    const months = byMonth.map(m => m.month);
+
+    // By Manager
+    const managerMonthlyMap = new Map<string, Record<string, number>>();
+    for (const row of managerMonthlyRows) {
+      const mgr = row.manager || 'Outros';
+      const month = row.month;
+      const count = Number(row.clientes || 0);
+      if (!managerMonthlyMap.has(mgr)) {
+        managerMonthlyMap.set(mgr, {});
+      }
+      managerMonthlyMap.get(mgr)![month] = count;
+    }
+
+    const byManager = byManagerRows.map(r => {
+      const mgr = r.manager || 'Outros';
+      const monthlyObj: Record<string, number> = {};
+      for (const m of months) {
+        monthlyObj[m] = managerMonthlyMap.get(mgr)?.[m] || 0;
+      }
+      return {
+        manager: mgr,
+        clientes: Number(r.clientes || 0),
+        matrizes: Number(r.matrizes || 0),
+        fat: Number(r.fat || 0),
+        monthly: monthlyObj,
+      };
+    }).sort((a, b) => b.clientes - a.clientes);
+
+    // Batalha Naval SKUs
+    const skuMonthlyMap = new Map<string, Record<string, number>>();
+    for (const row of batalhaNavalMonthlyRows) {
+      const sku = row.sku;
+      const month = row.month;
+      const count = Number(row.clientes || 0);
+      if (!skuMonthlyMap.has(sku)) {
+        skuMonthlyMap.set(sku, {});
+      }
+      skuMonthlyMap.get(sku)![month] = count;
+    }
+
+    const topSkus = topSkusRows.map(r => ({
+      sku: r.sku,
+      totalQty: Number(r.total_qty || 0),
+    }));
+
+    const batalhaNaval = topSkus.map(s => {
+      const skuMonthsObj: Record<string, number> = {};
+      for (const m of months) {
+        skuMonthsObj[m] = skuMonthlyMap.get(s.sku)?.[m] || 0;
+      }
+      return {
+        sku: s.sku,
+        totalQty: s.totalQty,
+        months: skuMonthsObj,
+      };
+    });
 
     const result = {
       success: true,
-      totals: payload?.totals || { clientes: 0, matrizes: 0, fat: 0, meses: 0 },
+      totals,
       byMonth,
-      byManager: payload?.byManager || [],
-      batalhaNaval: payload?.batalhaNaval || [],
+      byManager,
+      batalhaNaval,
       months,
-      recordCount: payload?.totals?.record_count || 0,
+      recordCount: byMonth.length,
     };
 
     API_CACHE.set(cacheKey, { timestamp: Date.now(), data: result });

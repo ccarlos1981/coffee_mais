@@ -5,12 +5,20 @@ import { Search } from "lucide-react";
 import { DeleteUserButton } from "./DeleteUserButton";
 import { EditUserRoleSelect } from "./EditUserRoleSelect";
 import { EditUserPdfPreferences } from "./EditUserPdfPreferences";
+import { User } from "@supabase/supabase-js";
+
+interface UserProfile {
+  id: string;
+  role?: string;
+  receber_pdf_vendas?: boolean;
+  receber_pdf_investimento?: boolean;
+}
 
 interface UserListProps {
-  users: any[];
-  profilesMap: Record<string, any>;
+  users: User[];
+  profilesMap: Record<string, UserProfile>;
   roles: string[];
-  deleteAction: (userId: string) => Promise<any>;
+  deleteAction: (userId: string) => Promise<{ success?: boolean; error?: string }>;
 }
 
 export function UserList({ users, profilesMap, roles, deleteAction }: UserListProps) {
@@ -60,8 +68,8 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
             {filteredUsers.map((user) => (
               <li key={user.id} className="p-4 flex items-center justify-between hover:bg-foreground/5 transition-colors group">
                 <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent-gold/20 to-transparent flex items-center justify-center border border-accent-gold/20">
-                    <span className="text-accent-gold font-semibold text-sm">
+                  <div className="w-10 h-10 rounded-full bg-linear-to-br from-gold/20 to-transparent flex items-center justify-center border border-gold/20">
+                    <span className="text-gold font-semibold text-sm">
                       {user.email?.charAt(0).toUpperCase()}
                     </span>
                   </div>

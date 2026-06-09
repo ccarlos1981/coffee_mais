@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { 
   PlusIcon, UploadIcon, FileTextIcon, AlertCircleIcon, CheckCircleIcon,
-  TrashIcon, Edit2Icon, SaveIcon, XIcon, ChevronLeft
+  TrashIcon, Edit2Icon, SaveIcon, XIcon, ChevronLeft, Filter
 } from "lucide-react";
 import Link from "next/link";
 import { importarBoletos, listarBoletos, Boleto, listarRedesDisponiveis, atualizarBoleto } from "./actions";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { shortenRedeName } from "@/lib/formatters";
 
 export default function BoletosPage() {
   const [boletos, setBoletos] = useState<Boleto[]>([]);
@@ -28,6 +29,45 @@ export default function BoletosPage() {
     valor_total: "",
     vencimento: ""
   });
+
+  // Filter states
+  const [filterRede, setFilterRede] = useState("");
+  const [filterNumeroBoleto, setFilterNumeroBoleto] = useState("");
+  const [filterVencimentoDe, setFilterVencimentoDe] = useState("");
+  const [filterVencimentoAte, setFilterVencimentoAte] = useState("");
+  const [filterStatus, setFilterStatus] = useState("Todos");
+
+  // Filtering Logic
+  const filteredBoletos = useMemo(() => {
+    return boletos.filter((boleto) => {
+      if (filterRede) {
+        const original = boleto.rede.toLowerCase();
+        const matriz = shortenRedeName(boleto.rede).toLowerCase();
+        const search = filterRede.toLowerCase();
+        if (!original.includes(search) && !matriz.includes(search)) {
+          return false;
+        }
+      }
+      if (filterNumeroBoleto && !boleto.numero_boleto.toLowerCase().includes(filterNumeroBoleto.toLowerCase())) {
+        return false;
+      }
+      if (filterStatus !== "Todos" && boleto.status !== filterStatus) {
+        return false;
+      }
+      if (boleto.vencimento) {
+        const dateStr = String(boleto.vencimento).split("T")[0];
+        if (filterVencimentoDe && dateStr < filterVencimentoDe) {
+          return false;
+        }
+        if (filterVencimentoAte && dateStr > filterVencimentoAte) {
+          return false;
+        }
+      } else if (filterVencimentoDe || filterVencimentoAte) {
+        return false;
+      }
+      return true;
+    });
+  }, [boletos, filterRede, filterNumeroBoleto, filterVencimentoDe, filterVencimentoAte, filterStatus]);
 
   const fetchBoletos = async () => {
     setLoading(true);
@@ -58,14 +98,28 @@ export default function BoletosPage() {
     setImporting(true);
     setFeedback(null);
 
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const text = event.target?.result as string;
+    try {
+      if (file.name.endsWith('.xls') || file.name.endsWith('.xlsx')) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const response = await fetch('/api/trade/boletos/importar', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+          setFeedback({ type: "success", msg: data.message });
+          fetchBoletos();
+        } else {
+          throw new Error(data.error || 'Erro na importação.');
+        }
+      } else {
+        // Fallback for old CSV format
+        const text = await file.text();
         const lines = text.split('\n');
         
-        // Skip header and parse lines
-        // Expected format: Rede,Numero,Valor,Vencimento(YYYY-MM-DD)
         const newBoletos = [];
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
@@ -93,14 +147,13 @@ export default function BoletosPage() {
         } else {
           throw new Error(res.error);
         }
-      } catch (err: any) {
-        setFeedback({ type: "error", msg: err.message || "Erro ao processar arquivo." });
-      } finally {
-        setImporting(false);
-        if (e.target) e.target.value = ''; // reset file input
       }
-    };
-    reader.readAsText(file);
+    } catch (err: any) {
+      setFeedback({ type: "error", msg: err.message || "Erro ao processar arquivo." });
+    } finally {
+      setImporting(false);
+      if (e.target) e.target.value = ''; // reset file input
+    }
   };
 
   const handleAddManual = async () => {
@@ -192,8 +245,8 @@ export default function BoletosPage() {
           <div className="flex items-center gap-3 w-full md:w-auto">
             <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-elevated border border-border rounded-xl text-sm font-medium hover:bg-border transition-colors cursor-pointer">
               <UploadIcon className="w-4 h-4" />
-              {importing ? "Importando..." : "Importar CSV"}
-              <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={importing} />
+              {importing ? "Importando..." : "Importar Planilha"}
+              <input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} disabled={importing} />
             </label>
             <button 
               onClick={() => setShowManualForm(!showManualForm)}
@@ -204,8 +257,7 @@ export default function BoletosPage() {
             </button>
           </div>
         </div>
-
-        {feedback && (
+                {feedback && (
           <div className={`p-4 rounded-xl flex items-center gap-3 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'}`}>
             {feedback.type === 'success' ? <CheckCircleIcon className="w-5 h-5" /> : <AlertCircleIcon className="w-5 h-5" />}
             <p className="text-sm font-medium">{feedback.msg}</p>
@@ -243,6 +295,93 @@ export default function BoletosPage() {
           </div>
         )}
 
+        {/* Filtros */}
+        <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+              <Filter className="w-4 h-4 text-gold" />
+              Filtros
+            </h3>
+            {(filterRede || filterNumeroBoleto || filterVencimentoDe || filterVencimentoAte || filterStatus !== "Todos") && (
+              <button
+                onClick={() => {
+                  setFilterRede("");
+                  setFilterNumeroBoleto("");
+                  setFilterVencimentoDe("");
+                  setFilterVencimentoAte("");
+                  setFilterStatus("Todos");
+                }}
+                className="text-xs font-semibold text-gold hover:text-yellow-600 transition-colors flex items-center gap-1"
+              >
+                Limpar Filtros
+              </button>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+            {/* Filtro Rede */}
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Cliente / Rede</label>
+              <input
+                type="text"
+                placeholder="Buscar cliente..."
+                value={filterRede}
+                onChange={(e) => setFilterRede(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] text-foreground"
+              />
+            </div>
+
+            {/* Filtro Número do Boleto */}
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Número do Boleto</label>
+              <input
+                type="text"
+                placeholder="Buscar número..."
+                value={filterNumeroBoleto}
+                onChange={(e) => setFilterNumeroBoleto(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] text-foreground"
+              />
+            </div>
+
+            {/* Filtro Status */}
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] text-foreground"
+              >
+                <option value="Todos">Todos</option>
+                <option value="Aberto">Aberto</option>
+                <option value="Abatido">Abatido</option>
+                <option value="Pago">Pago</option>
+              </select>
+            </div>
+
+            {/* Filtro Vencimento De */}
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Vencimento (De)</label>
+              <input
+                type="date"
+                value={filterVencimentoDe}
+                onChange={(e) => setFilterVencimentoDe(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] text-foreground [color-scheme:dark]"
+              />
+            </div>
+
+            {/* Filtro Vencimento Até */}
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Vencimento (Até)</label>
+              <input
+                type="date"
+                value={filterVencimentoAte}
+                onChange={(e) => setFilterVencimentoAte(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] text-foreground [color-scheme:dark]"
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -259,19 +398,33 @@ export default function BoletosPage() {
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
                   </tr>
                 ) : boletos.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
+                  </tr>
+                ) : filteredBoletos.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Nenhum boleto encontrado com os filtros selecionados.</td>
                   </tr>
                 ) : (
-                  boletos.map((boleto) => {
+                  filteredBoletos.map((boleto) => {
                     const isEditing = editBoletoId === boleto.id;
+                    const matriz = shortenRedeName(boleto.rede);
 
                     return (
                     <tr key={boleto.id} className="hover:bg-elevated/50 transition-colors">
-                      <td className="px-6 py-4 font-medium">{boleto.rede}</td>
+                      <td className="px-6 py-4 font-medium">
+                        <div className="flex flex-col">
+                          <span>{matriz}</span>
+                          {matriz.toUpperCase() !== boleto.rede.toUpperCase() && (
+                            <span className="text-[10px] text-muted font-normal block max-w-[250px] truncate" title={boleto.rede}>
+                              {boleto.rede}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-muted">
                         {isEditing ? (
                           <input 
@@ -334,14 +487,13 @@ export default function BoletosPage() {
                         )}
                       </td>
                     </tr>
-                  );
-                })
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
-
       </div>
     </div>
   );

@@ -314,6 +314,9 @@ export default function CadastroPage() {
                   {showPassword ? <EyeOff style={{ width: 16, height: 16 }} /> : <Eye style={{ width: 16, height: 16 }} />}
                 </button>
               </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--foreground-muted)", marginTop: "6px", marginLeft: "2px" }}>
+                Somente números
+              </p>
             </div>
 
             <button

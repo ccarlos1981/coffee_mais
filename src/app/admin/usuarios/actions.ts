@@ -57,8 +57,9 @@ export async function createUser(formData: FormData) {
     revalidatePath("/admin/usuarios");
     return { success: true, message: `Usuário ${email} criado com sucesso!` };
 
-  } catch (error: any) {
-    return { error: error.message || "Erro interno ao criar usuário." };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao criar usuário.";
+    return { error: errorMsg };
   }
 }
 
@@ -74,8 +75,9 @@ export async function deleteUser(userId: string) {
     
     revalidatePath("/admin/usuarios");
     return { success: true };
-  } catch (error: any) {
-    return { error: error.message || "Erro interno ao excluir usuário." };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao excluir usuário.";
+    return { error: errorMsg };
   }
 }
 
@@ -100,8 +102,9 @@ export async function updateUserRole(userId: string, newRole: string) {
 
     revalidatePath("/admin/usuarios");
     return { success: true, message: "Cargo atualizado com sucesso!" };
-  } catch (error: any) {
-    return { error: error.message || "Erro interno ao atualizar cargo." };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar cargo.";
+    return { error: errorMsg };
   }
 }
 
@@ -113,7 +116,7 @@ export async function updateUserPdfPreferences(userId: string, field: "vendas" |
       return { error: "Usuário é obrigatório." };
     }
 
-    const updateObj: any = {};
+    const updateObj: { receber_pdf_vendas?: boolean; receber_pdf_investimento?: boolean } = {};
     if (field === "vendas") updateObj.receber_pdf_vendas = value;
     if (field === "investimento") updateObj.receber_pdf_investimento = value;
 
@@ -128,7 +131,8 @@ export async function updateUserPdfPreferences(userId: string, field: "vendas" |
 
     revalidatePath("/admin/usuarios");
     return { success: true };
-  } catch (error: any) {
-    return { error: error.message || "Erro interno ao atualizar preferências." };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar preferências.";
+    return { error: errorMsg };
   }
 }

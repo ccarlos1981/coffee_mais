@@ -274,7 +274,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           {/* Pagamento */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Pagamento</label>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {["Abatimento", "Transferência", "Bonificação"].map((opcao) => (
                 <label key={opcao} className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
                   <input 
