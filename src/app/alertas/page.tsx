@@ -19,7 +19,8 @@ import {
   Briefcase,
   Layers,
   Package,
-  Calendar
+  Calendar,
+  TrendingUp
 } from "lucide-react";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -298,18 +299,18 @@ export default function SmartActionHub() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> MaCo</span>
         <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
         {/* NEW SMART ACTION HUB LINK */}
         <Link href="/alertas" className="bottom-tab active"><Bell className="bottom-tab-icon" /> Alertas</Link>
-        <span className="bottom-tab disabled"><Calendar className="bottom-tab-icon" /> Dia</span>
-        <span className="bottom-tab disabled"><PieChart className="bottom-tab-icon" /> Preço</span>
+        <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
+        <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <span className="bottom-tab disabled"><Briefcase className="bottom-tab-icon" /> Carteira</span>
         <span className="bottom-tab disabled"><Package className="bottom-tab-icon" /> Bonif.</span>
         <span className="bottom-tab disabled"><Layers className="bottom-tab-icon" /> Devol.</span>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
         <Link href="/atendimento" className="bottom-tab"><Users className="bottom-tab-icon" /> Atendimento</Link>
+        <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
     </div>
   );

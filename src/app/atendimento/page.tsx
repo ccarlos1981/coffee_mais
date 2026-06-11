@@ -21,7 +21,9 @@ import {
   Plus,
   Lock,
   Eye,
-  EyeOff
+  EyeOff,
+  Calendar,
+  DollarSign
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -658,7 +660,15 @@ export default function AtendimentoPage() {
         <Link href="/historico" className="bottom-tab">
           <History className="bottom-tab-icon" /> Hist.
         </Link>
-        <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
+        <Link href="/preco" className="bottom-tab">
+          <TrendingUp className="bottom-tab-icon" /> Preço
+        </Link>
+        <Link href="/dia" className="bottom-tab">
+          <Calendar className="bottom-tab-icon" /> Dia
+        </Link>
+        <Link href="/investimento" className="bottom-tab">
+          <TrendingUp className="bottom-tab-icon" /> Inv.
+        </Link>
         <Link href="/metas" className="bottom-tab">
           <Target className="bottom-tab-icon" /> Metas
         </Link>
@@ -668,6 +678,9 @@ export default function AtendimentoPage() {
         <Link href="/atendimento" className="bottom-tab active">
           <Users className="bottom-tab-icon" /> Atendimento
         </Link>
+        <span className="bottom-tab disabled">
+          <DollarSign className="bottom-tab-icon" /> DRE
+        </span>
       </nav>
     </div>
   );

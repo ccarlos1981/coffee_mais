@@ -41,6 +41,24 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
+    // Query max date from cm_faturamento_sankhya to find the latest period with data
+    let latestPeriod = { year: 2026, month: 5 };
+    try {
+      const { data: maxDateRes, error: maxDateErr } = await supabase.rpc('execute_readonly_query', {
+        query_text: "SELECT max(dt_faturamento)::text as max_date FROM cm_faturamento_sankhya"
+      });
+      if (!maxDateErr && maxDateRes && maxDateRes.length > 0 && maxDateRes[0].max_date) {
+        const maxDateStr = maxDateRes[0].max_date;
+        const parts = maxDateStr.split('-');
+        latestPeriod = {
+          year: Number(parts[0]),
+          month: Number(parts[1])
+        };
+      }
+    } catch (e) {
+      console.error("[Filters API] Error querying max date:", e);
+    }
+
     // The RPC returns { managers: [...], ufs: [...], channels: [...], produtos: [...], familias: [...], matrizes: [...] }
     return NextResponse.json({
       success: true,
@@ -52,6 +70,7 @@ export async function GET(request: Request) {
         products: dbFilters.produtos || [],
         matrizes: dbFilters.matrizes || [],
       },
+      latestPeriod,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

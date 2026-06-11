@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Target,
   CalendarDays,
+  Calendar,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { SearchableSelect } from "@/components/SearchableSelect";
@@ -590,11 +591,13 @@ export default function DREPage() {
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
         <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
+        <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
+        <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
-        <Link href="/dre" className="bottom-tab active"><DollarSign className="bottom-tab-icon" /> DRE</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
         <Link href="/atendimento" className="bottom-tab"><Users className="bottom-tab-icon" /> Atendimento</Link>
+        <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
     </div>
   );

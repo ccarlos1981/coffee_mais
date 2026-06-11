@@ -806,27 +806,24 @@ export default function VendasDashboard() {
         <Link href="/historico" className="bottom-tab">
           <History className="bottom-tab-icon" /> Hist.
         </Link>
-        <Link href="/historico-matriz" className="bottom-tab">
-          <History className="bottom-tab-icon" /> Hist. Matriz
-        </Link>
-        <span className="bottom-tab disabled">
-          <DollarSign className="bottom-tab-icon" /> MaCo
-        </span>
         <Link href="/matriz" className="bottom-tab">
           <Users className="bottom-tab-icon" /> Matriz
+        </Link>
+        <Link href="/historico-matriz" className="bottom-tab">
+          <History className="bottom-tab-icon" /> Hist. Matriz
         </Link>
         <Link href="/alertas" className="bottom-tab">
           <Bell className="bottom-tab-icon" /> Alertas
         </Link>
-        <span className="bottom-tab disabled">
-          <TrendingUp className="bottom-tab-icon" /> Inv.
-        </span>
-        <span className="bottom-tab disabled">
+        <Link href="/preco" className="bottom-tab">
+          <TrendingUp className="bottom-tab-icon" /> Preço
+        </Link>
+        <Link href="/dia" className="bottom-tab">
           <Calendar className="bottom-tab-icon" /> Dia
-        </span>
-        <span className="bottom-tab disabled">
-          <PieChart className="bottom-tab-icon" /> Preço
-        </span>
+        </Link>
+        <Link href="/investimento" className="bottom-tab">
+          <TrendingUp className="bottom-tab-icon" /> Inv.
+        </Link>
         <span className="bottom-tab disabled">
           <Briefcase className="bottom-tab-icon" /> Carteira
         </span>
@@ -845,6 +842,9 @@ export default function VendasDashboard() {
         <Link href="/atendimento" className="bottom-tab">
           <Users className="bottom-tab-icon" /> Atendimento
         </Link>
+        <span className="bottom-tab disabled">
+          <DollarSign className="bottom-tab-icon" /> DRE
+        </span>
       </nav>
     </div>
   );

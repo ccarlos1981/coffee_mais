@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Filter, BarChart3, Upload, Home, DollarSign,
-  History, Users, Target, TrendingUp, CheckCircle2
+  History, Users, Target, TrendingUp, CheckCircle2, Calendar
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -440,13 +440,16 @@ export default function PositivacaoPage() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
-        <Link href="/dre" className="bottom-tab"><DollarSign className="bottom-tab-icon" /> DRE</Link>
         <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
+        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Matriz</Link>
+        <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
+        <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
+        <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
     </div>
   );
