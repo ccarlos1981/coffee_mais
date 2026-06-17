@@ -48,6 +48,7 @@ export async function updateSession(request: NextRequest) {
   const isCadastroPage = pathname.startsWith("/cadastro");
   const isEsqueciPage = pathname.startsWith("/esqueci-senha");
   const isPendentePage = pathname.startsWith("/pendente");
+  const isUpdatePasswordPage = pathname.startsWith("/update-password");
 
   if (
     !user &&
@@ -55,7 +56,8 @@ export async function updateSession(request: NextRequest) {
     !isAuthPage &&
     !isCadastroPage &&
     !isEsqueciPage &&
-    !isPendentePage
+    !isPendentePage &&
+    !isUpdatePasswordPage
   ) {
     // No user — redirect to login
     const url = request.nextUrl.clone();
@@ -78,7 +80,8 @@ export async function updateSession(request: NextRequest) {
         !isAuthPage &&
         !isCadastroPage &&
         !isEsqueciPage &&
-        !isPendentePage
+        !isPendentePage &&
+        !isUpdatePasswordPage
       ) {
         const url = request.nextUrl.clone();
         url.pathname = "/pendente";
