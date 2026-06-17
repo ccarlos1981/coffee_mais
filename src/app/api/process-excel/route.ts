@@ -232,6 +232,119 @@ function parsePortalVendas(
   return rows;
 }
 
+/* ─── Parser: Faturamento Sankhya (novo formato) ─── */
+interface FaturamentoRow {
+  cod_cfop: string | null;
+  cfop_desc: string | null;
+  dt_faturamento: string;
+  nro_unico: string | null;
+  nro_nota: string | null;
+  cod_parceiro: string | null;
+  nome_parceiro: string | null;
+  cod_produto: string | null;
+  desc_produto: string | null;
+  quantidade: number;
+  vlr_unitario: number;
+  vlr_desconto: number;
+  vlr_total_liq: number;
+  cod_top: string | null;
+  desc_top: string | null;
+  custo_icms: number;
+  cod_vendedor: string | null;
+  nome_vendedor: string | null;
+  controle: string | null;
+  custo_total: number;
+  cod_natureza: string | null;
+  desc_natureza: string | null;
+  status_nfe: string | null;
+  vlr_frete: number;
+  vlr_substituicao: number;
+  vlr_total_st: number;
+  cod_cr: string | null;
+  centro_resultado: string | null;
+}
+
+function parseFaturamento(sheet: XLSX.WorkSheet): FaturamentoRow[] {
+  const expectedKeys = ["Cód. CFOP", "Dt. Neg", "Produto"];
+  const range = findHeaderRange(sheet, expectedKeys);
+  
+  // Verify headers are indeed present
+  const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+  const headers = rawData[range];
+  if (!headers || !headers.includes("Cód. CFOP") || !headers.includes("Dt. Neg") || !headers.includes("Produto")) {
+    return [];
+  }
+
+  const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: null,
+    range
+  });
+
+  const getVal = (row: Record<string, unknown>, headerName: string) => {
+    return row[headerName] !== undefined ? row[headerName] : null;
+  };
+
+  const parseNumber = (val: any): number => {
+    if (val === null || val === undefined || val === '') return 0;
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      const cleaned = val.replace(/\./g, '').replace(',', '.');
+      const parsed = parseFloat(cleaned);
+      return isNaN(parsed) ? 0 : parsed;
+    }
+    return 0;
+  };
+
+  const parseRowDate = (rawDate: any): string | null => {
+    if (!rawDate) return null;
+    if (rawDate instanceof Date) return formatDateISO(rawDate);
+    if (typeof rawDate === 'number') return formatDateISO(excelDateToDate(rawDate));
+    if (typeof rawDate === 'string') {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) return formatDateISO(d);
+    }
+    return null;
+  };
+
+  const rows: FaturamentoRow[] = [];
+  for (const row of jsonData) {
+    const dtFaturamento = parseRowDate(getVal(row, 'Dt. Neg'));
+    if (!dtFaturamento) continue;
+
+    rows.push({
+      cod_cfop: getVal(row, 'Cód. CFOP') ? String(getVal(row, 'Cód. CFOP')) : null,
+      cfop_desc: getVal(row, 'CFOP') ? String(getVal(row, 'CFOP')) : null,
+      dt_faturamento: dtFaturamento,
+      nro_unico: getVal(row, 'Nro. Único') ? String(getVal(row, 'Nro. Único')) : null,
+      nro_nota: getVal(row, 'Nro. Nota') ? String(getVal(row, 'Nro. Nota')) : null,
+      cod_parceiro: getVal(row, 'Cód. Parceiro') ? String(getVal(row, 'Cód. Parceiro')) : null,
+      nome_parceiro: getVal(row, 'Parceiro') ? String(getVal(row, 'Parceiro')) : null,
+      cod_produto: getVal(row, 'Cód. Produto') ? String(getVal(row, 'Cód. Produto')) : null,
+      desc_produto: getVal(row, 'Produto') ? String(getVal(row, 'Produto')) : null,
+      quantidade: parseNumber(getVal(row, 'Qtd.')),
+      vlr_unitario: parseNumber(getVal(row, 'Vlr. Unitário')),
+      vlr_desconto: parseNumber(getVal(row, 'Vlr. Desconto')),
+      vlr_total_liq: parseNumber(getVal(row, 'Vlr. Total Líq.')),
+      cod_top: getVal(row, 'Cód. TOP') ? String(getVal(row, 'Cód. TOP')) : null,
+      desc_top: getVal(row, 'TOP') ? String(getVal(row, 'TOP')) : null,
+      custo_icms: parseNumber(getVal(row, 'Custo s/ ICMS')),
+      cod_vendedor: getVal(row, 'Cód. Vendedor') ? String(getVal(row, 'Cód. Vendedor')) : null,
+      nome_vendedor: getVal(row, 'Vendedor') ? String(getVal(row, 'Vendedor')) : null,
+      controle: getVal(row, 'Controle') ? String(getVal(row, 'Controle')) : null,
+      custo_total: parseNumber(getVal(row, 'Custo Total')),
+      cod_natureza: getVal(row, 'Cód. Natureza') ? String(getVal(row, 'Cód. Natureza')) : null,
+      desc_natureza: getVal(row, 'Natureza') ? String(getVal(row, 'Natureza')) : null,
+      status_nfe: getVal(row, 'Status NFe') ? String(getVal(row, 'Status NFe')) : null,
+      vlr_frete: parseNumber(getVal(row, 'Vlr. Frete')),
+      vlr_substituicao: parseNumber(getVal(row, 'Vlr. Substituição')),
+      vlr_total_st: parseNumber(getVal(row, 'Vlr. Total ST')),
+      cod_cr: getVal(row, 'Cód. CR') ? String(getVal(row, 'Cód. CR')) : null,
+      centro_resultado: getVal(row, 'Centro de Resultado') ? String(getVal(row, 'Centro de Resultado')) : null
+    });
+  }
+  return rows;
+}
+
 /* ─── Parser: Itens de Nota (formato padrão) ─── */
 function parseItensNota(
   sheet: XLSX.WorkSheet,
@@ -356,14 +469,32 @@ function parseItensNota(
 }
 
 export async function POST(request: NextRequest) {
+  let batchId = "";
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const batchId = formData.get("batch_id") as string;
 
     if (!file) {
       return Response.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
     }
+
+    // 1. Create upload batch record on server (ignores RLS using service role)
+    const { data: batch, error: batchError } = await supabase
+      .from("upload_batches")
+      .insert({
+        filename: file.name,
+        file_type: file.name.split(".").pop()?.toLowerCase(),
+        status: "processing",
+      })
+      .select()
+      .single();
+
+    if (batchError) {
+      console.error("Error creating upload batch:", batchError);
+      return Response.json({ error: `Erro ao registrar lote de upload: ${batchError.message}` }, { status: 500 });
+    }
+
+    batchId = batch.id;
 
     // Read file buffer
     const buffer = await file.arrayBuffer();
@@ -376,6 +507,130 @@ export async function POST(request: NextRequest) {
 
     // Process known sheets
     const allSalesRows: SalesRow[] = [];
+    const allFaturamentoRows: FaturamentoRow[] = [];
+    let isFaturamentoType = false;
+
+    // First try to detect if it's a faturamento upload by checking all sheets
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const fatRows = parseFaturamento(sheet);
+      if (fatRows.length > 0) {
+        allFaturamentoRows.push(...fatRows);
+        sheetsDetected.push(sheetName);
+        isFaturamentoType = true;
+      }
+    }
+
+    let insertedCount = 0;
+    let syncedCount = 0;
+
+    if (isFaturamentoType) {
+      if (allFaturamentoRows.length > 0) {
+        // Find date range
+        const dates = allFaturamentoRows.map(r => r.dt_faturamento).sort();
+        dateMin = dates[0];
+        dateMax = dates[dates.length - 1];
+
+        // Delete existing records in that range
+        const { error: deleteErr } = await supabase
+          .from('cm_faturamento_sankhya')
+          .delete()
+          .gte('dt_faturamento', dateMin)
+          .lte('dt_faturamento', dateMax);
+
+        if (deleteErr) {
+          console.error("Error deleting existing faturamento records:", deleteErr);
+          // Update batch status to error
+          await supabase
+            .from("upload_batches")
+            .update({ status: "error", completed_at: new Date().toISOString() })
+            .eq("id", batchId);
+          return Response.json({ error: `Erro ao limpar faturamento existente: ${deleteErr.message}` }, { status: 500 });
+        }
+
+        // Insert in batches of 100 with retry mechanism
+        const batchSize = 100;
+        for (let i = 0; i < allFaturamentoRows.length; i += batchSize) {
+          const batch = allFaturamentoRows.slice(i, i + batchSize);
+          
+          let success = false;
+          let retries = 3;
+          let lastError = null;
+
+          while (retries > 0 && !success) {
+            try {
+              const { error: insertErr } = await supabase
+                .from('cm_faturamento_sankhya')
+                .insert(batch);
+
+              if (insertErr) {
+                lastError = insertErr;
+                retries--;
+                if (retries > 0) {
+                  console.warn(`[process-excel] Faturamento insert error, retrying in 500ms... Retries left: ${retries}`);
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                }
+              } else {
+                success = true;
+              }
+            } catch (err) {
+              lastError = err;
+              retries--;
+              if (retries > 0) {
+                console.warn(`[process-excel] Faturamento insert fetch failed, retrying in 500ms... Retries left: ${retries}`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            }
+          }
+
+          if (!success) {
+            const errMsg = lastError instanceof Error ? lastError.message : ((lastError as any)?.message || String(lastError));
+            console.error(`Error inserting faturamento batch at ${i}:`, lastError);
+            // Update batch status to error
+            await supabase
+              .from("upload_batches")
+              .update({ status: "error", completed_at: new Date().toISOString() })
+              .eq("id", batchId);
+            return Response.json({ error: `Erro ao inserir faturamento: ${errMsg}` }, { status: 500 });
+          }
+          insertedCount += batch.length;
+        }
+        totalRecords = allFaturamentoRows.length;
+
+        // Refresh materialized views
+        try {
+          console.log("[process-excel] Refreshing materialized views...");
+          await supabase.rpc("refresh_materialized_views");
+          console.log("[process-excel] Materialized views refreshed successfully");
+        } catch (mvErr) {
+          console.error("MV refresh error (non-fatal):", mvErr);
+        }
+      }
+
+      // Update batch status to completed on success
+      await supabase
+        .from("upload_batches")
+        .update({
+          records_processed: totalRecords,
+          status: "done",
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", batchId);
+
+      return Response.json({
+        batchId,
+        recordsProcessed: totalRecords,
+        recordsInserted: insertedCount,
+        duplicatesSkipped: 0,
+        recordsSynced: 0,
+        sheetsDetected,
+        sheetsAvailable: workbook.SheetNames,
+        period: dateMin && dateMax ? { start: dateMin, end: dateMax } : null,
+        isFaturamento: true
+      });
+    }
+
+    // Normal sales flow
     let usedItensNota = false;
 
     // If no known sheets... try every sheet with all parsers (ItensNota first)
@@ -418,23 +673,50 @@ export async function POST(request: NextRequest) {
     const uniqueRows = Array.from(deduped.values());
     console.log(`[process-excel] ${allSalesRows.length} rows parsed → ${uniqueRows.length} after dedup`);
 
-    // Insert sales in batches of 500
-    let insertedCount = 0;
-    let syncedCount = 0;
+    // Insert sales in batches of 100 with retry mechanism
     if (uniqueRows.length > 0) {
-      const batchSize = 500;
+      const batchSize = 100;
       for (let i = 0; i < uniqueRows.length; i += batchSize) {
         const batch = uniqueRows.slice(i, i + batchSize);
-        const { data, error: insertError } = await supabase
-          .from("sales_v2")
-          .upsert(batch, { onConflict: 'chave', ignoreDuplicates: false })
-          .select("id");
+        
+        let success = false;
+        let retries = 3;
+        let lastError = null;
+        let dataResult = null;
 
-        if (insertError) {
-          console.error(`Insert error at batch ${i}:`, insertError);
-          // Continue with next batch
+        while (retries > 0 && !success) {
+          try {
+            const { data, error: insertError } = await supabase
+              .from("sales_v2")
+              .upsert(batch, { onConflict: 'chave', ignoreDuplicates: false })
+              .select("id");
+
+            if (insertError) {
+              lastError = insertError;
+              retries--;
+              if (retries > 0) {
+                console.warn(`[process-excel] Sales upsert error, retrying in 500ms... Retries left: ${retries}`);
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+            } else {
+              success = true;
+              dataResult = data;
+            }
+          } catch (err) {
+            lastError = err;
+            retries--;
+            if (retries > 0) {
+              console.warn(`[process-excel] Sales upsert fetch failed, retrying in 500ms... Retries left: ${retries}`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        }
+
+        if (success) {
+          insertedCount += dataResult?.length ?? 0;
         } else {
-          insertedCount += data?.length ?? 0;
+          console.error(`Insert error at batch ${i}:`, lastError);
+          // Continue with next batch (non-fatal for total execution in sales flow as original code)
         }
       }
       totalRecords = uniqueRows.length;
@@ -469,8 +751,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Update batch status to completed on success
+    await supabase
+      .from("upload_batches")
+      .update({
+        records_processed: totalRecords,
+        status: "done",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", batchId);
 
     return Response.json({
+      batchId,
       recordsProcessed: totalRecords,
       recordsInserted: insertedCount,
       duplicatesSkipped: totalRecords - insertedCount,
@@ -481,6 +773,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("Process Excel error:", err);
+    if (batchId) {
+      try {
+        await supabase
+          .from("upload_batches")
+          .update({
+            status: "error",
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", batchId);
+      } catch (dbErr) {
+        console.error("Failed to update batch error status:", dbErr);
+      }
+    }
     const message = err instanceof Error ? err.message : "Erro no processamento";
     return Response.json({ error: message }, { status: 500 });
   }

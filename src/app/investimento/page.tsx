@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -33,13 +33,37 @@ import {
   Banknote,
   Eye,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  HelpCircle
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote } from "./lancar/actions";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
-import { ThemeToggle } from "@/components/ThemeProvider";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, parseISO, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { ThemeToggle } from "@/components/ThemeProvider";
+
+
+const formatCompactCurrency = (value: number) => {
+  if (value === 0) return "-";
+  if (value >= 1_000_000) {
+    return "R$ " + (value / 1_000_000).toFixed(1).replace(".", ",") + "M";
+  }
+  if (value >= 1_000) {
+    return "R$ " + (value / 1_000).toFixed(0) + "k";
+  }
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);
+};
+
+const MATRIX_MONTHS = [
+  { value: "2026-06", label: "Jun/26" },
+  { value: "2026-07", label: "Jul/26" },
+  { value: "2026-08", label: "Ago/26" },
+  { value: "2026-09", label: "Set/26" },
+  { value: "2026-10", label: "Out/26" },
+  { value: "2026-11", label: "Nov/26" },
+  { value: "2026-12", label: "Dez/26" }
+];
 
 interface AcaoInvestimento {
   id: string;
@@ -48,6 +72,8 @@ interface AcaoInvestimento {
   data_inicio: string;
   data_fim: string;
   tipo_acao: string;
+  mes_referencia?: string | null;
+  codigo_matriz?: string | null;
   familia_produto?: string | null;
   preco_flat?: number | null;
   preco_acao?: number | null;
@@ -89,6 +115,7 @@ interface AcaoInvestimento {
   financeiro_pago_por?: string | null;
   financeiro_comprovante_url?: string | null;
   financeiro_observacoes?: string | null;
+  gerente_responsavel?: string | null;
 }
 
 const FASE_CONFIG: Record<number, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
@@ -125,6 +152,13 @@ export default function InvestimentoPage() {
   const [data, setData] = useState<AcaoInvestimento[]>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
 
+  // Faturamento e status por Matriz
+  const [faturamentoMap, setFaturamentoMap] = useState<Record<string, Record<string, number>>>({});
+  const [faturamentoTotalMap, setFaturamentoTotalMap] = useState<Record<string, number>>({});
+  const [matrizSearch, setMatrizSearch] = useState("");
+
+  const [matrizes, setMatrizes] = useState<any[]>([]);
+
   // Filters & Pagination
   const [filterRede, setFilterRede] = useState("");
   const [filterFamilia, setFilterFamilia] = useState("");
@@ -135,7 +169,13 @@ export default function InvestimentoPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterFase, setFilterFase] = useState<number | null>(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
+  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false });
+  const [filterMes, setFilterMes] = useState("");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [parsedAcoes, setParsedAcoes] = useState<any[]>([]);
+  const [importFileName, setImportFileName] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportPending, startImportTransition] = useTransition();
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "" });
   const [boletosAbertos, setBoletosAbertos] = useState<any[]>([]);
@@ -147,8 +187,9 @@ export default function InvestimentoPage() {
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
 
   // Calendar State
-  const [viewMode, setViewMode] = useState<"table" | "calendar">("table");
+  const [viewMode, setViewMode] = useState<"table" | "calendar" | "matrix">("table");
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   
   // AI Insight Modal
   const [showAiModal, setShowAiModal] = useState(false);
@@ -227,8 +268,7 @@ export default function InvestimentoPage() {
         comunicacao: selectedAction.checklist_comunicacao || false, 
         logistica: selectedAction.checklist_logistica || false, 
         auditoria: selectedAction.checklist_auditoria || false, 
-        garantia: selectedAction.checklist_garantia || false,
-        conferencia: selectedAction.checklist_conferencia || false 
+        garantia: selectedAction.checklist_garantia || false
       });
       setApuracaoForm({
         numero_acordo: selectedAction.apuracao_numero_acordo || "",
@@ -266,7 +306,7 @@ export default function InvestimentoPage() {
     const newChecklist = { ...tradeChecklist, [field]: checked };
     setTradeChecklist(newChecklist);
     try {
-      await atualizarChecklistTrade(selectedAction.id, newChecklist);
+      await atualizarChecklistTrade(selectedAction.id, { ...newChecklist, conferencia: true });
       // Update local data to reflect changes silently
       setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [`checklist_${field}`]: checked } : item));
     } catch (err) {
@@ -275,8 +315,552 @@ export default function InvestimentoPage() {
     }
   };
 
-  const redesDisponiveis = useMemo(() => Array.from(new Set(data.map(d => d.rede))).sort(), [data]);
-  const familiasDisponiveis = useMemo(() => Array.from(new Set(data.map(d => d.familia_produto).filter(Boolean) as string[])).sort(), [data]);
+  const managerFilteredAcoes = useMemo(() => {
+    if (userRole !== "Gerente Regional" || !userEmail) {
+      return data;
+    }
+    const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+    return data.filter(r => {
+      if (!r.gerente_responsavel) return false;
+      const cleanGerente = r.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
+    });
+  }, [data, userRole, userEmail]);
+
+  const redesDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.rede))).sort(), [managerFilteredAcoes]);
+  const familiasDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.familia_produto).filter(Boolean) as string[])).sort(), [managerFilteredAcoes]);
+
+  const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO';
+
+  const myMatrizes = useMemo(() => {
+    if (isRegionalManager && userEmail) {
+      const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+      return matrizes.filter(m => {
+        if (!m.gerente) return false;
+        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
+      });
+    }
+    return matrizes;
+  }, [matrizes, isRegionalManager, userEmail]);
+
+  const temInvestimentoNoMes = useCallback((m: any, mes: string) => {
+    return data.some(action => 
+      (action.codigo_matriz === m.codigo || (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())) &&
+      action.mes_referencia === mes
+    );
+  }, [data]);
+
+  const sortedMatrizesWithInvestimento = useMemo(() => {
+    return myMatrizes.map(m => {
+      const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
+      const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
+      return {
+        ...m,
+        faturamentoTotal
+      };
+    }).sort((a, b) => b.faturamentoTotal - a.faturamentoTotal);
+  }, [myMatrizes, faturamentoTotalMap]);
+
+  const filteredMatrizesInView = useMemo(() => {
+    if (!matrizSearch) return sortedMatrizesWithInvestimento;
+    const searchLower = matrizSearch.toLowerCase();
+    return sortedMatrizesWithInvestimento.filter(m => 
+      (m.nome && m.nome.toLowerCase().includes(searchLower)) ||
+      (m.codigo && m.codigo.toLowerCase().includes(searchLower)) ||
+      (m.gerente && m.gerente.toLowerCase().includes(searchLower))
+    );
+  }, [sortedMatrizesWithInvestimento, matrizSearch]);
+
+  // Auxiliares de parsing de data
+  const parseDateString = (dateStr: any): string | null => {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) {
+      const y = dateStr.getFullYear();
+      const m = String(dateStr.getMonth() + 1).padStart(2, '0');
+      const d = String(dateStr.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    const str = String(dateStr).trim();
+    const parts = str.split("/");
+    if (parts.length === 3) {
+      const day = parts[0].padStart(2, '0');
+      const month = parts[1].padStart(2, '0');
+      const year = parts[2];
+      if (year.length === 4 && !isNaN(Number(day)) && !isNaN(Number(month)) && !isNaN(Number(year))) {
+        return `${year}-${month}-${day}`;
+      }
+    }
+    const yyyyMmDd = str.split("-");
+    if (yyyyMmDd.length === 3 && yyyyMmDd[0].length === 4) {
+      return str;
+    }
+    return null;
+  };
+
+  const excelSerialToDate = (serial: number): string | null => {
+    try {
+      const utc_days = Math.floor(serial - 25569);
+      const utc_value = utc_days * 86400;
+      const date_info = new Date(utc_value * 1000);
+      const y = date_info.getUTCFullYear();
+      const m = String(date_info.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(date_info.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Download do modelo Excel de investimentos
+  const downloadModelExcel = () => {
+    try {
+      const headers = [
+        ["Código da Matriz", "Rede", "UF", "Gerente", "Canal", "Tipo de Ação", "Pagamento", "Mês de Referência", "Data Início", "Data Fim", "Família ou SKU", "Família de Produto", "SKU", "Preço Flat", "Preço da Ação", "Investimento", "Expectativa de Volume"]
+      ];
+
+      let rows: any[][] = [];
+
+      if (userRole === "Gerente Regional" && userEmail) {
+        // Filter matrices assigned to this manager
+        const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+        const myMatrizes = matrizes.filter(m => {
+          if (!m.gerente) return false;
+          const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+          return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
+        });
+
+        if (myMatrizes.length > 0) {
+          rows = myMatrizes.map(m => [
+            m.codigo,          // Código da Matriz
+            m.nome,            // Rede
+            m.uf || "",        // UF
+            m.gerente || "",   // Gerente
+            m.canal || "",     // Canal
+            "", "", "", "", "", "", "", "", "", "", "", "" // Empty blanks for action info
+          ]);
+        }
+      }
+
+      if (rows.length === 0) {
+        rows = [
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "Família", "Grão", "", "129,90", "129,90", "10,00", "300"],
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Tradicional 250g", "24,99", "24,99", "2,50", "1000"],
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Extra Forte 250g", "24,99", "24,99", "2,50", "1000"]
+        ];
+      }
+
+      const dataExcel = [...headers, ...rows];
+      const worksheet = XLSX.utils.aoa_to_sheet(dataExcel);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Modelo Investimentos");
+      
+      worksheet['!cols'] = [
+        { wch: 18 }, // Código da Matriz
+        { wch: 20 }, // Rede
+        { wch: 8 },  // UF
+        { wch: 15 }, // Gerente
+        { wch: 12 }, // Canal
+        { wch: 15 }, // Tipo de Ação
+        { wch: 15 }, // Pagamento
+        { wch: 18 }, // Mês de Referência
+        { wch: 15 }, // Data Início
+        { wch: 15 }, // Data Fim
+        { wch: 15 }, // Abrangência
+        { wch: 18 }, // Família de Produto
+        { wch: 25 }, // SKU
+        { wch: 12 }, // Preço Flat
+        { wch: 12 }, // Preço da Ação
+        { wch: 12 }, // Investimento
+        { wch: 20 }  // Expectativa de Volume
+      ];
+
+      XLSX.writeFile(workbook, "modelo_lancamento_investimentos.xlsx");
+      setFeedback({ type: "success", msg: "Modelo de planilha baixado com sucesso!" });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", msg: "Erro ao gerar modelo de planilha." });
+      setTimeout(() => setFeedback(null), 3000);
+    }
+  };
+
+  // Importação em lote
+  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportFileName(file.name);
+    const reader = new FileReader();
+
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: "binary" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        
+        const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (rawRows.length === 0) {
+          setFeedback({ type: "error", msg: "A planilha está vazia." });
+          setTimeout(() => setFeedback(null), 3000);
+          return;
+        }
+
+        const headers = rawRows[0].map(h => String(h || "").trim().toLowerCase());
+        
+        const colIndices = {
+          codigo_matriz: headers.findIndex(h => h.includes("código") || h.includes("codigo") || h.includes("matriz")),
+          rede: headers.findIndex(h => h.includes("rede")),
+          uf: headers.findIndex(h => h.includes("uf") || h.includes("estado")),
+          gerente: headers.findIndex(h => h.includes("gerente") || h.includes("responsavel")),
+          canal: headers.findIndex(h => h.includes("canal")),
+          tipo: headers.findIndex(h => h.includes("tipo")),
+          pagamento: headers.findIndex(h => h.includes("pagamento")),
+          mes: headers.findIndex(h => h.includes("mês") || h.includes("mes") || h.includes("ref")),
+          inicio: headers.findIndex(h => h.includes("início") || h.includes("inicio")),
+          fim: headers.findIndex(h => h.includes("fim") || h.includes("final")),
+          abrangencia: headers.findIndex(h => h.includes("abrangência") || h.includes("abrangencia") || h.includes("família ou sku") || h.includes("familia ou sku")),
+          familia: headers.findIndex(h => h.includes("família") || h.includes("familia")),
+          sku: headers.findIndex(h => h.includes("sku")),
+          flat: headers.findIndex(h => h.includes("flat")),
+          acao: headers.findIndex(h => (h.includes("preço") || h.includes("preco")) && (h.includes("ação") || h.includes("acao"))),
+          investimento: headers.findIndex(h => h.includes("investimento") || h.includes("inv")),
+          volume: headers.findIndex(h => h.includes("volume") || h.includes("vol"))
+        };
+
+        if (colIndices.codigo_matriz === -1 || colIndices.tipo === -1 || colIndices.pagamento === -1 || colIndices.mes === -1 || colIndices.inicio === -1 || colIndices.fim === -1 || colIndices.abrangencia === -1) {
+          setFeedback({ type: "error", msg: "Cabeçalhos obrigatórios (Código da Matriz, Tipo, Pagamento, Mês, Datas, Família ou SKU) não encontrados." });
+          setTimeout(() => setFeedback(null), 3000);
+          return;
+        }
+
+        const parsedLines: any[] = [];
+
+        for (let i = 1; i < rawRows.length; i++) {
+          const row = rawRows[i];
+          if (!row || row.length === 0 || row.every(cell => cell === null || cell === undefined || cell === "")) {
+            continue;
+          }
+
+          const errors: string[] = [];
+          
+          const rawCodigoMatriz = colIndices.codigo_matriz !== -1 ? row[colIndices.codigo_matriz] : "";
+          const rawRede = colIndices.rede !== -1 ? row[colIndices.rede] : "";
+          const rawUf = colIndices.uf !== -1 ? row[colIndices.uf] : "";
+          const rawGerente = colIndices.gerente !== -1 ? row[colIndices.gerente] : "";
+          const rawCanal = colIndices.canal !== -1 ? row[colIndices.canal] : "";
+          const rawTipo = colIndices.tipo !== -1 ? row[colIndices.tipo] : "";
+          const rawPagamento = colIndices.pagamento !== -1 ? row[colIndices.pagamento] : "";
+          const rawMes = colIndices.mes !== -1 ? row[colIndices.mes] : "";
+          const rawInicio = colIndices.inicio !== -1 ? row[colIndices.inicio] : "";
+          const rawFim = colIndices.fim !== -1 ? row[colIndices.fim] : "";
+          const rawAbrangencia = colIndices.abrangencia !== -1 ? row[colIndices.abrangencia] : "";
+          const rawFamilia = colIndices.familia !== -1 ? row[colIndices.familia] : "";
+          const rawSku = colIndices.sku !== -1 ? row[colIndices.sku] : "";
+          const rawFlat = colIndices.flat !== -1 ? row[colIndices.flat] : "";
+          const rawAcao = colIndices.acao !== -1 ? row[colIndices.acao] : "";
+          const rawInvestimento = colIndices.investimento !== -1 ? row[colIndices.investimento] : "";
+          const rawVolume = colIndices.volume !== -1 ? row[colIndices.volume] : "";
+
+          let codigoMatrizVal = rawCodigoMatriz ? String(rawCodigoMatriz).trim() : "";
+          let redeVal = rawRede ? String(rawRede).trim() : "";
+
+          if (!codigoMatrizVal) {
+            errors.push("Código da Matriz é obrigatório.");
+          } else {
+            // Se o código for lido como inteiro (ex: 146775) no Excel
+            let matched = matrizes.find(m => m.codigo === codigoMatrizVal);
+            if (!matched && !codigoMatrizVal.includes(".")) {
+              matched = matrizes.find(m => m.codigo === codigoMatrizVal + ".0" || m.codigo.startsWith(codigoMatrizVal + "."));
+            }
+            if (matched) {
+              codigoMatrizVal = matched.codigo;
+              redeVal = matched.nome; // Nome da rede correto
+            } else {
+              errors.push(`Código de Matriz "${codigoMatrizVal}" não encontrado no cadastro.`);
+            }
+          }
+
+          let tipoVal = rawTipo ? String(rawTipo).trim() : "";
+          if (!tipoVal) {
+            errors.push("Tipo de Ação é obrigatório.");
+          } else {
+            const tLower = tipoVal.toLowerCase();
+            if (tLower.includes("out")) tipoVal = "Sell Out";
+            else if (tLower.includes("in")) tipoVal = "Sell In";
+            else errors.push("Tipo de Ação inválido.");
+          }
+
+          let pagamentoVal = rawPagamento ? String(rawPagamento).trim() : "";
+          if (!pagamentoVal) {
+            errors.push("Pagamento é obrigatório.");
+          } else {
+            const pLower = pagamentoVal.toLowerCase();
+            if (pLower.includes("abat")) pagamentoVal = "Abatimento";
+            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transferência";
+            else if (pLower.includes("boni")) pagamentoVal = "Bonificação";
+            else errors.push("Pagamento inválido.");
+          }
+
+          let mesVal: string | null = null;
+          if (!rawMes) {
+            errors.push("Mês de referência é obrigatório.");
+          } else {
+            if (typeof rawMes === "number") {
+              const d = excelSerialToDate(rawMes);
+              if (d) mesVal = d.slice(0, 7);
+            } else {
+              const str = String(rawMes).trim();
+              const parts = str.split("/");
+              if (parts.length === 2) {
+                const m = parts[0].padStart(2, '0');
+                const y = parts[1];
+                if (y.length === 4 && !isNaN(Number(m)) && !isNaN(Number(y))) {
+                  mesVal = `${y}-${m}`;
+                }
+              } else if (str.split("-").length === 2) {
+                mesVal = str;
+              }
+            }
+            if (!mesVal) errors.push("Mês inválido. Use MM/AAAA.");
+          }
+
+          let inicioVal: string | null = null;
+          if (!rawInicio) {
+            errors.push("Data início é obrigatória.");
+          } else {
+            inicioVal = typeof rawInicio === "number" ? excelSerialToDate(rawInicio) : parseDateString(rawInicio);
+            if (!inicioVal) errors.push("Data início inválida.");
+          }
+
+          let fimVal: string | null = null;
+          if (!rawFim) {
+            errors.push("Data fim é obrigatória.");
+          } else {
+            fimVal = typeof rawFim === "number" ? excelSerialToDate(rawFim) : parseDateString(rawFim);
+            if (!fimVal) errors.push("Data fim inválida.");
+          }
+
+          let abrangenciaVal = rawAbrangencia ? String(rawAbrangencia).trim() : "";
+          if (!abrangenciaVal) {
+            errors.push("Abrangência é obrigatória.");
+          } else {
+            const aLower = abrangenciaVal.toLowerCase();
+            if (aLower.includes("fam")) abrangenciaVal = "Família";
+            else if (aLower.includes("sku")) abrangenciaVal = "SKU";
+            else errors.push("Abrangência inválida.");
+          }
+
+          let familiaVal: string | null = null;
+          let skuVal = "";
+          let flatVal: number | null = null;
+          let acaoVal: number | null = null;
+          let investVal: number | null = null;
+          let volVal: number | null = null;
+
+          const parseExcelNum = (val: any) => {
+            if (val === undefined || val === null || val === "") return null;
+            if (typeof val === "number") return val;
+            const clean = String(val).replace(/[R$\s\.]/g, '').replace(',', '.');
+            const n = parseFloat(clean);
+            return isNaN(n) ? null : n;
+          };
+
+          flatVal = parseExcelNum(rawFlat);
+          acaoVal = parseExcelNum(rawAcao);
+          investVal = parseExcelNum(rawInvestimento);
+
+          if (rawVolume !== undefined && rawVolume !== null && rawVolume !== "") {
+            if (typeof rawVolume === "number") volVal = rawVolume;
+            else {
+              const clean = String(rawVolume).replace(/\./g, '').replace(',', '.');
+              const n = parseFloat(clean);
+              volVal = isNaN(n) ? null : n;
+            }
+          }
+
+          if (abrangenciaVal === "Família") {
+            familiaVal = rawFamilia ? String(rawFamilia).trim() : "";
+            if (!familiaVal) {
+              errors.push("Família é obrigatória para abrangência Família.");
+            } else {
+              const validFams = ["Grão", "Moído", "Drip", "Capsula", "KG"];
+              const match = validFams.find(vf => vf.toLowerCase() === familiaVal!.toLowerCase());
+              if (match) familiaVal = match;
+              else errors.push("Família inválida.");
+            }
+            if (investVal === null) errors.push("Investimento é obrigatório.");
+            if (volVal === null) errors.push("Volume é obrigatório.");
+          } else if (abrangenciaVal === "SKU") {
+            skuVal = rawSku ? String(rawSku).trim() : "";
+            if (!skuVal) {
+              errors.push("SKU é obrigatório.");
+            }
+          }
+
+          parsedLines.push({
+            originalRow: row,
+            data: {
+              rede: redeVal,
+              codigo_matriz: codigoMatrizVal,
+              uf: rawUf ? String(rawUf).trim() : "",
+              gerente: rawGerente ? String(rawGerente).trim() : "",
+              canal: rawCanal ? String(rawCanal).trim() : "",
+              tipo_acao: tipoVal,
+              tipo_pagamento: pagamentoVal,
+              mes_referencia: mesVal || "",
+              data_inicio: inicioVal || "",
+              data_fim: fimVal || "",
+              abrangencia: abrangenciaVal,
+              familia_produto: familiaVal,
+              sku: skuVal,
+              preco_flat: flatVal,
+              preco_acao: acaoVal,
+              valor_investimento: investVal,
+              expectativa_volume: volVal
+            },
+            valid: errors.length === 0,
+            errors
+          });
+        }
+
+        // Agrupamento de SKUs
+        const groupedAcoes: any[] = [];
+        const skuGroups: Record<string, any[]> = {};
+
+        parsedLines.forEach(line => {
+          if (!line.valid) {
+            groupedAcoes.push({
+              originalRow: line.originalRow,
+              data: {
+                ...line.data,
+                skus_detalhes: []
+              },
+              valid: false,
+              errors: line.errors
+            });
+            return;
+          }
+
+          if (line.data.abrangencia === "Família") {
+            groupedAcoes.push({
+              originalRow: line.originalRow,
+              data: {
+                rede: line.data.rede,
+                codigo_matriz: line.data.codigo_matriz,
+                uf: line.data.uf,
+                gerente: line.data.gerente,
+                canal: line.data.canal,
+                tipo_acao: line.data.tipo_acao,
+                tipo_pagamento: line.data.tipo_pagamento,
+                mes_referencia: line.data.mes_referencia,
+                data_inicio: line.data.data_inicio,
+                data_fim: line.data.data_fim,
+                abrangencia: "Família",
+                familia_produto: line.data.familia_produto,
+                preco_flat: line.data.preco_flat,
+                preco_acao: line.data.preco_acao,
+                valor_investimento: line.data.valor_investimento,
+                expectativa_volume: line.data.expectativa_volume,
+                skus_detalhes: [],
+                fase_atual: 1
+              },
+              valid: true,
+              errors: []
+            });
+          } else {
+            const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
+            if (!skuGroups[key]) {
+              skuGroups[key] = [];
+            }
+            skuGroups[key].push(line);
+          }
+        });
+
+        Object.entries(skuGroups).forEach(([key, lines]) => {
+          const first = lines[0].data;
+          const skusDetails = lines.map(line => ({
+            sku: line.data.sku,
+            preco_flat: line.data.preco_flat,
+            preco_acao: line.data.preco_acao,
+            investimento: line.data.valor_investimento,
+            expectativa_volume: line.data.expectativa_volume
+          }));
+
+          const skusList = skusDetails.map(s => s.sku);
+          const duplicateSkus = skusList.filter((item, index) => skusList.indexOf(item) !== index);
+          const groupErrors: string[] = [];
+          if (duplicateSkus.length > 0) {
+            groupErrors.push(`SKUs duplicados: ${Array.from(new Set(duplicateSkus)).join(", ")}`);
+          }
+
+          groupedAcoes.push({
+            originalRow: lines[0].originalRow,
+            data: {
+              rede: first.rede,
+              codigo_matriz: first.codigo_matriz,
+              uf: first.uf,
+              gerente: first.gerente,
+              canal: first.canal,
+              tipo_acao: first.tipo_acao,
+              tipo_pagamento: first.tipo_pagamento,
+              mes_referencia: first.mes_referencia,
+              data_inicio: first.data_inicio,
+              data_fim: first.data_fim,
+              abrangencia: "SKU",
+              familia_produto: null,
+              preco_flat: null,
+              preco_acao: null,
+              valor_investimento: null,
+              expectativa_volume: null,
+              skus_detalhes: skusDetails,
+              fase_atual: 1
+            },
+            valid: groupErrors.length === 0,
+            errors: groupErrors
+          });
+        });
+
+        setParsedAcoes(groupedAcoes);
+      } catch (err) {
+        console.error(err);
+        setFeedback({ type: "error", msg: "Erro ao processar o arquivo Excel." });
+      }
+    };
+
+    reader.readAsBinaryString(file);
+  };
+
+  const handleConfirmImport = () => {
+    const validAcoes = parsedAcoes
+      .filter(item => item.valid)
+      .map(item => {
+        // Strip out columns that don't exist in the database table
+        const { uf, gerente, canal, ...dbFields } = item.data;
+        return { ...dbFields, is_planejamento: false };
+      });
+
+    if (validAcoes.length === 0) {
+      setFeedback({ type: "error", msg: "Nenhum investimento válido." });
+      return;
+    }
+
+    startImportTransition(async () => {
+      try {
+        const res = await importarInvestimentosEmLote(validAcoes);
+        if (res.success) {
+          setFeedback({ type: "success", msg: `${res.count} investimentos importados com sucesso!` });
+          setIsImportModalOpen(false);
+          setParsedAcoes([]);
+          setImportFileName("");
+          loadData();
+        }
+      } catch (err: any) {
+        setFeedback({ type: "error", msg: err.message || "Erro ao salvar importação." });
+      }
+    });
+  };
 
   const handleFileUpload = async (id: string, file: File | null) => {
     if (!file) return;
@@ -336,12 +920,44 @@ export default function InvestimentoPage() {
     setFeedback(null);
     try {
       const { data: rows, error } = await supabase
-        .from("cm_acoes_investimento")
+        .from("v_acoes_investimento_com_gerente")
         .select("*")
+        .eq("is_planejamento", false)
         .order("created_at", { ascending: false });
         
       if (error) throw error;
       setData(rows || []);
+
+      const { data: mRows, error: mError } = await supabase
+        .from("v_redes_matrizes_detalhes")
+        .select("*")
+        .order("nome", { ascending: true });
+        
+      if (mError) throw mError;
+      setMatrizes(mRows || []);
+
+      // Fetch faturamento for June 2026 onwards
+      const { data: salesRows } = await supabase
+        .from("mv_vendas_mensal")
+        .select("rede, mes, fat")
+        .gte("mes", "2026-06");
+
+      const fatMap: Record<string, Record<string, number>> = {};
+      const totalFatMap: Record<string, number> = {};
+      if (salesRows) {
+        salesRows.forEach(row => {
+          const redeKey = row.rede ? row.rede.toUpperCase().trim() : "";
+          const mesKey = row.mes || "";
+          if (redeKey) {
+            if (!fatMap[redeKey]) fatMap[redeKey] = {};
+            const fatVal = Number(row.fat) || 0;
+            fatMap[redeKey][mesKey] = (fatMap[redeKey][mesKey] || 0) + fatVal;
+            totalFatMap[redeKey] = (totalFatMap[redeKey] || 0) + fatVal;
+          }
+        });
+      }
+      setFaturamentoMap(fatMap);
+      setFaturamentoTotalMap(totalFatMap);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
@@ -354,6 +970,7 @@ export default function InvestimentoPage() {
     const fetchUserRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        setUserEmail(user.email || null);
         const { data } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
         if (data) setUserRole(data.role);
       }
@@ -362,22 +979,44 @@ export default function InvestimentoPage() {
     loadData();
   }, [loadData]);
 
+  const formatMesReferencia = (mesStr: string | null | undefined) => {
+    if (!mesStr) return "-";
+    const parts = mesStr.split("-");
+    if (parts.length !== 2) return mesStr;
+    const [year, month] = parts;
+    const meses = [
+      "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+      "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ];
+    const idx = parseInt(month, 10) - 1;
+    if (idx >= 0 && idx < 12) {
+      return `${meses[idx]}/${year}`;
+    }
+    return mesStr;
+  };
+
+  const mesesDisponiveis = useMemo(() => {
+    const meses = managerFilteredAcoes.map(d => d.mes_referencia).filter(Boolean) as string[];
+    return Array.from(new Set(meses)).sort((a, b) => b.localeCompare(a));
+  }, [managerFilteredAcoes]);
+
   const filteredData = useMemo(() => {
-    return data.filter(r => {
+    return managerFilteredAcoes.filter(r => {
       if (filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
       if (filterRede && r.rede !== filterRede) return false;
       if (filterFamilia && r.familia_produto !== filterFamilia) return false;
       if (filterDataInicio && r.data_inicio < filterDataInicio) return false;
       if (filterDataFim && r.data_inicio > filterDataFim) return false;
+      if (filterMes && r.mes_referencia !== filterMes) return false;
       return true;
     });
-  }, [data, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase]);
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes]);
 
   const faseCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-    data.forEach(r => { const f = r.fase_atual || 1; if (counts[f] !== undefined) counts[f]++; });
+    managerFilteredAcoes.forEach(r => { const f = r.fase_atual || 1; if (counts[f] !== undefined) counts[f]++; });
     return counts;
-  }, [data]);
+  }, [managerFilteredAcoes]);
 
   const handlePhaseAction = async (id: string, action: () => Promise<void>) => {
     setActionLoading(id);
@@ -513,7 +1152,7 @@ export default function InvestimentoPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          investimentos: data,
+          investimentos: managerFilteredAcoes,
           dataAtual: new Date().toISOString().split('T')[0],
         }),
       });
@@ -552,21 +1191,30 @@ export default function InvestimentoPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
             {(userRole === 'Admin' || userRole === 'Financeiro') && (
               <Link 
                 href="/financeiro/boletos"
-                className="flex w-full sm:w-auto items-center justify-center gap-2 bg-elevated hover:bg-border text-foreground border border-border px-4 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-sm"
+                className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+                title="Visualizar Boletos do Financeiro"
               >
-                <FileText className="w-4 h-4" />
-                Financeiro (Boletos)
+                <FileText className="w-3.5 h-3.5 text-muted" />
+                Financeiro
               </Link>
             )}
             <Link 
-              href="/investimento/lancar"
-              className="flex w-full sm:w-auto items-center justify-center gap-2 bg-[#10b981] hover:bg-[#059669] text-white px-5 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-sm"
+              href="/investimento/ajuda"
+              className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+              title="Guia Passo a Passo"
             >
-              <TrendingUp className="w-4 h-4" />
+              <HelpCircle className="w-3.5 h-3.5 text-gold" />
+              Guia
+            </Link>
+            <Link 
+              href="/investimento/lancar"
+              className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-[#10b981] hover:bg-[#059669] text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
               LANÇAR
             </Link>
 
@@ -574,56 +1222,84 @@ export default function InvestimentoPage() {
             {userRole === 'Admin' && (
               <button
                 onClick={generateInvestimentoInsight}
-                disabled={loading || data.length === 0}
-                className="group relative flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-2 rounded-xl text-sm font-bold tracking-wide transition-all shadow-lg shadow-purple-500/20 border border-purple-400/50 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white disabled:opacity-50 overflow-hidden"
+                disabled={loading || managerFilteredAcoes.length === 0}
+                className="group relative flex w-full sm:w-auto items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-md shadow-purple-500/10 border border-purple-400/50 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white disabled:opacity-50 overflow-hidden"
                 title="Análise IA dos Investimentos"
               >
                 <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-                <Sparkles className="w-4 h-4 relative z-10" />
-                <span className="relative z-10 hidden sm:inline">Coffee IA</span>
+                <Sparkles className="w-3.5 h-3.5 text-purple-200 relative z-10" />
+                <span className="relative z-10">IA</span>
               </button>
             )}
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                onClick={() => {
-                  setViewMode(prev => {
-                    const next = prev === 'table' ? 'calendar' : 'table';
-                    if (next === 'calendar') setFilterFase(null);
-                    return next;
-                  });
-                }}
-                className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all"
-                title="Alternar Visualização"
-              >
-                {viewMode === 'table' ? (
-                  <><CalendarIcon className="w-4 h-4" /><span className="hidden xl:inline">Calendário</span></>
-                ) : (
-                  <><List className="w-4 h-4" /><span className="hidden xl:inline">Lista</span></>
-                )}
-              </button>
+            <div className="flex items-center gap-1.5 w-full sm:w-auto">
+              <div className="flex items-center gap-1 p-0.5 bg-elevated border border-border rounded-lg">
+                <button
+                  onClick={() => setViewMode('table')}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${viewMode === 'table' ? 'bg-gold text-black shadow-sm font-bold' : 'text-muted hover:text-foreground'}`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Lista</span>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setViewMode('calendar');
+                    setFilterFase(null);
+                  }}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${viewMode === 'calendar' ? 'bg-gold text-black shadow-sm font-bold' : 'text-muted hover:text-foreground'}`}
+                >
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  <span>Calendário</span>
+                </button>
+
+                <button
+                  onClick={() => setViewMode('matrix')}
+                  className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${viewMode === 'matrix' ? 'bg-gold text-black shadow-sm font-bold' : 'text-muted hover:text-foreground'}`}
+                >
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Matrizes</span>
+                </button>
+              </div>
 
               <button
                 onClick={exportToCSV}
                 disabled={loading || filteredData.length === 0}
-                className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all disabled:opacity-50"
+                className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all disabled:opacity-50"
                 title="Exportar dados filtrados"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5" />
                 <span className="hidden xl:inline">Exportar</span>
+              </button>
+
+              <button
+                onClick={downloadModelExcel}
+                className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all"
+                title="Planilha Modelo para Lote"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden xl:inline">Modelo</span>
+              </button>
+
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all"
+                title="Importar planilha em lote"
+              >
+                <Upload className="w-3.5 h-3.5 text-cyan-500" />
+                <span className="hidden xl:inline">Importar</span>
               </button>
 
               <button
                 onClick={loadData}
                 disabled={loading}
-                className="flex flex-1 sm:flex-none items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all disabled:opacity-50"
-                title="Recarregar"
+                className="flex items-center justify-center p-2 text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all disabled:opacity-50"
+                title="Atualizar dados"
               >
-                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                <span className="hidden xl:inline">Recarregar</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               </button>
               
-              <div className="hidden sm:block ml-2 pl-4 border-l border-border">
+              <div className="flex items-center ml-1 pl-2 border-l border-border h-7">
                 <ThemeToggle />
               </div>
             </div>
@@ -652,7 +1328,7 @@ export default function InvestimentoPage() {
                   filterFase === null ? 'bg-gold/15 text-gold border-gold/30 shadow-sm' : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
                 }`}
               >
-                Todas <span className="text-xs opacity-70">({data.length})</span>
+                Todas <span className="text-xs opacity-70">({managerFilteredAcoes.length})</span>
               </button>
               {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
                 const faseNum = Number(key);
@@ -684,6 +1360,17 @@ export default function InvestimentoPage() {
 
             <div className={`flex-col lg:flex-row gap-3 ${showFilters ? 'flex' : 'hidden lg:flex'}`}>
               <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                <select
+                  value={filterMes}
+                  onChange={(e) => setFilterMes(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                >
+                  <option value="">Todos os Meses</option>
+                  {mesesDisponiveis.map(m => (
+                    <option key={m} value={m}>{formatMesReferencia(m)}</option>
+                  ))}
+                </select>
+
                 <select
                   value={filterRede}
                   onChange={(e) => setFilterRede(e.target.value)}
@@ -732,6 +1419,7 @@ export default function InvestimentoPage() {
                   setFilterDataInicio("");
                   setFilterDataFim("");
                   setFilterFase(null);
+                  setFilterMes("");
                 }}
                 className="flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap"
               >
@@ -756,6 +1444,7 @@ export default function InvestimentoPage() {
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Cód.</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Data Registro</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Rede</th>
+                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Mês</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Período Ação</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Tipo</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Fase</th>
@@ -792,7 +1481,15 @@ export default function InvestimentoPage() {
                           {new Date(row.created_at).toLocaleDateString('pt-BR')}
                         </td>
                         <td className="px-6 py-4 font-medium text-foreground">
-                          {row.rede}
+                          <div>
+                            <span>{row.rede}</span>
+                            {row.codigo_matriz && (
+                              <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-foreground/80 font-semibold">
+                          {formatMesReferencia(row.mes_referencia)}
                         </td>
                         <td className="px-6 py-4 text-foreground/80">
                           <div className="flex flex-col gap-0.5 text-xs font-medium">
@@ -921,7 +1618,10 @@ export default function InvestimentoPage() {
                           {row.codigo && <span className="font-mono text-xs font-bold text-gold bg-gold/10 px-1.5 py-0.5 rounded">#{row.codigo}</span>}
                           <span className="text-xs text-muted font-medium">{new Date(row.created_at).toLocaleDateString('pt-BR')}</span>
                         </div>
-                        <h3 className="font-bold text-foreground text-lg leading-tight">{row.rede}</h3>
+                        <h3 className="font-bold text-foreground text-lg leading-tight flex items-baseline gap-2">
+                          {row.rede}
+                          {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
+                        </h3>
                         <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : row.familia_produto}</p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1045,7 +1745,7 @@ export default function InvestimentoPage() {
               </div>
             )}
               </>
-            ) : (
+            ) : viewMode === "calendar" ? (
               <div className="flex-1 flex flex-col p-4 bg-background/50 overflow-y-auto">
                 <div className="flex items-center justify-between mb-4 bg-elevated p-3 rounded-2xl border border-border">
                   <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-border rounded-xl transition-colors">
@@ -1105,6 +1805,80 @@ export default function InvestimentoPage() {
                   })}
                 </div>
               </div>
+            ) : (
+              <div className="flex-1 flex flex-col min-h-0 bg-card overflow-hidden">
+                {/* Matrix view header */}
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 border-b border-border bg-elevated/30 gap-4">
+                  <div>
+                    <h3 className="text-base font-bold text-foreground">Histórico de Investimentos por Matriz</h3>
+                    <p className="text-xs text-muted mt-0.5">Status de investimentos mensal por Matriz (Jun/2026+)</p>
+                  </div>
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <input
+                      type="text"
+                      placeholder="Buscar rede, código ou gerente..."
+                      value={matrizSearch}
+                      onChange={(e) => setMatrizSearch(e.target.value)}
+                      className="w-full md:w-64 bg-elevated border border-border rounded-xl px-3.5 py-1.5 text-xs text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Matrix view body */}
+                <div className="flex-1 overflow-auto">
+                  <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+                    <thead className="sticky top-0 bg-elevated border-b border-border z-10 shadow-sm">
+                      <tr>
+                        <th className="p-3 font-semibold text-muted w-64 min-w-[240px]">Matriz</th>
+                        {MATRIX_MONTHS.map(m => (
+                          <th key={m.value} className="p-3 font-semibold text-muted text-center w-28 min-w-[100px]">{m.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/60">
+                      {filteredMatrizesInView.length > 0 ? (
+                        filteredMatrizesInView.map((m) => (
+                          <tr key={m.codigo} className="hover:bg-elevated/20 transition-colors">
+                            <td className="p-3 min-w-[240px]">
+                              <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-[10px] text-gold bg-gold/10 px-1 py-0.5 rounded font-bold">{m.codigo}</span>
+                                  <span className="font-bold text-foreground text-sm">{m.nome}</span>
+                                </div>
+                                <span className="text-[10px] text-muted mt-1">Gerente: <span className="text-foreground/80 font-medium">{m.gerente || 'Não definido'}</span></span>
+                              </div>
+                            </td>
+                            {MATRIX_MONTHS.map(month => {
+                              const hasInv = temInvestimentoNoMes(m, month.value);
+                              return (
+                                <td key={month.value} className="p-2 text-center">
+                                  <div className="flex items-center justify-center">
+                                    {hasInv ? (
+                                      <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#10b981]/15 text-[#10b981] font-bold text-sm">
+                                        ✓
+                                      </span>
+                                    ) : (
+                                      <span className="text-muted/30 font-bold text-sm">
+                                        0
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={1 + MATRIX_MONTHS.length} className="text-center py-8 text-muted text-sm">
+                            Nenhuma matriz encontrada.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -1149,6 +1923,173 @@ export default function InvestimentoPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Importação de Investimentos em Lote */}
+        {isImportModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-card w-full max-w-5xl max-h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-border">
+              {/* Header */}
+              <div className="p-4 border-b border-border flex justify-between items-center bg-elevated">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gold/10 flex items-center justify-center">
+                    <Upload className="w-5 h-5 text-gold" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">Importar Investimentos em Lote</h3>
+                    <p className="text-xs text-muted">Importe múltiplas ações por planilha Excel</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setParsedAcoes([]);
+                    setImportFileName("");
+                  }} 
+                  className="p-2 hover:bg-border rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-muted" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                {/* Dropzone */}
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-border hover:border-gold/30 rounded-2xl p-6 text-center cursor-pointer transition-colors bg-background/30 hover:bg-foreground/[0.02] flex flex-col items-center justify-center gap-2"
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    onChange={handleImportFileChange}
+                    accept=".xlsx, .xls"
+                    className="hidden"
+                  />
+                  <Upload className="w-8 h-8 text-muted" />
+                  <div>
+                    <p className="font-semibold text-xs text-foreground">
+                      {importFileName ? importFileName : "Clique para selecionar ou arraste sua planilha aqui"}
+                    </p>
+                    <p className="text-[10px] text-muted mt-1">
+                      Suporta arquivos Excel (.xlsx, .xls) baseados no modelo.
+                    </p>
+                  </div>
+                </div>
+
+                {parsedAcoes.length > 0 && (
+                  <div className="space-y-4">
+                    {/* Resumo */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-2.5 bg-foreground/5 border border-border rounded-xl text-center">
+                        <p className="text-[9px] font-bold text-muted uppercase tracking-wider">Ações Lidas</p>
+                        <p className="text-lg font-bold text-foreground mt-0.5">{parsedAcoes.length}</p>
+                      </div>
+                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
+                        <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Válidas</p>
+                        <p className="text-lg font-bold text-emerald-400 mt-0.5">{parsedAcoes.filter(e => e.valid).length}</p>
+                      </div>
+                      <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                        <p className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Com Erros</p>
+                        <p className="text-lg font-bold text-red-400 mt-0.5">{parsedAcoes.filter(e => !e.valid).length}</p>
+                      </div>
+                    </div>
+
+                    {/* Tabela de Pré-visualização */}
+                    <div className="border border-border rounded-xl overflow-hidden bg-background/50 text-xs">
+                      <div className="max-h-[30vh] overflow-y-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-elevated border-b border-border sticky top-0">
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Status</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Rede</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">UF</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Gerente</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Canal</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Mês</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Abrangência</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Detalhes</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Erros/Observações</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {parsedAcoes.map((item, index) => (
+                              <tr key={index} className="hover:bg-foreground/[0.01]">
+                                <td className="p-2.5 whitespace-nowrap">
+                                  {item.valid ? (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                                      ✓ Válida
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[9px] font-bold text-red-400 bg-red-500/15 border border-red-500/20 px-2 py-0.5 rounded-full">
+                                      ✗ Erro
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-2.5 font-semibold text-foreground">{item.data.rede || <span className="text-red-400 italic">Vazia</span>}</td>
+                                <td className="p-2.5 text-muted">{item.data.uf || "-"}</td>
+                                <td className="p-2.5 text-muted">{item.data.gerente || "-"}</td>
+                                <td className="p-2.5 text-muted">{item.data.canal || "-"}</td>
+                                <td className="p-2.5 text-muted">{formatMesReferencia(item.data.mes_referencia) || <span className="text-red-400 italic">Vazio</span>}</td>
+                                <td className="p-2.5 whitespace-nowrap">
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${item.data.abrangencia === 'Família' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-purple-500/10 text-purple-500 border-purple-500/20'}`}>
+                                    {item.data.abrangencia}
+                                  </span>
+                                </td>
+                                <td className="p-2.5">
+                                  {item.data.abrangencia === "Família" ? (
+                                    <span className="text-foreground-secondary">{item.data.familia_produto} — {item.data.expectativa_volume} un.</span>
+                                  ) : (
+                                    <span className="text-foreground-secondary">{item.data.skus_detalhes?.length || 0} SKU(s) detalhado(s)</span>
+                                  )}
+                                </td>
+                                <td className="p-2.5">
+                                  {item.valid ? (
+                                    <span className="text-muted">Pronto</span>
+                                  ) : (
+                                    <ul className="list-disc pl-4 text-red-400 space-y-0.5">
+                                      {item.errors.map((err: string, errIdx: number) => (
+                                        <li key={errIdx}>{err}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-border flex justify-end gap-3 bg-elevated">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setParsedAcoes([]);
+                    setImportFileName("");
+                  }}
+                  disabled={isImportPending}
+                  className="px-4 py-2 text-sm font-semibold text-muted hover:bg-border rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={isImportPending || parsedAcoes.length === 0 || parsedAcoes.filter(e => e.valid).length === 0}
+                  className="px-4 py-2 text-sm font-bold bg-gold text-black rounded-xl hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {isImportPending && <RefreshCw className="w-4 h-4 animate-spin" />}
+                  Importar ({parsedAcoes.filter(e => e.valid).length}) Registros
+                </button>
               </div>
             </div>
           </div>
@@ -1202,7 +2143,14 @@ export default function InvestimentoPage() {
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Rede</span>
-                      <span className="font-bold text-foreground">{selectedAction.rede}</span>
+                      <span className="font-bold text-foreground">
+                        {selectedAction.rede}
+                        {selectedAction.codigo_matriz && <span className="text-xs text-muted font-mono ml-1.5">({selectedAction.codigo_matriz})</span>}
+                      </span>
+                    </div>
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Mês de Referência</span>
+                      <span className="font-bold text-foreground">{formatMesReferencia(selectedAction.mes_referencia)}</span>
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Família</span>
@@ -1349,19 +2297,13 @@ export default function InvestimentoPage() {
                           <span className="text-xs text-muted block">Validação de que o que foi planejado está sendo executado.</span>
                         </div>
                       </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" className="mt-1 flex-shrink-0 w-4 h-4 rounded border-border text-gold focus:ring-gold/50" checked={tradeChecklist.conferencia} onChange={(e) => handleChecklistChange('conferencia', e.target.checked)} />
-                        <div>
-                          <span className="font-bold text-sm text-foreground block group-hover:text-gold transition-colors">5) Conferência</span>
-                          <span className="text-xs text-muted block">Confirmação financeira dos valores apurados.</span>
-                        </div>
-                      </label>
+
                     </div>
                   )}
 
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <button
-                      onClick={() => handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, tradeChecklist))}
+                      onClick={() => handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, { ...tradeChecklist, conferencia: true }))}
                       disabled={actionLoading === selectedAction.id}
                       className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                     >
@@ -1558,7 +2500,7 @@ export default function InvestimentoPage() {
                       </div>
                       <button
                         onClick={handleApuracaoSubmit}
-                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || !apuracaoForm.boleto_id || !selectedAction.documento_url}
+                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || !selectedAction.documento_url}
                         className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
@@ -1673,6 +2615,8 @@ export default function InvestimentoPage() {
           </div>
         )}
 
+
+
         {/* AI Insight Modal */}
         {showAiModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" onClick={() => setShowAiModal(false)}>
@@ -1710,7 +2654,7 @@ export default function InvestimentoPage() {
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-medium text-foreground">Analisando investimentos...</p>
-                      <p className="text-xs text-muted mt-1">O Coffee IA está processando {data.length} ações</p>
+                      <p className="text-xs text-muted mt-1">O Coffee IA está processando {managerFilteredAcoes.length} ações</p>
                     </div>
                   </div>
                 ) : aiInsight ? (
@@ -1757,6 +2701,7 @@ export default function InvestimentoPage() {
             </div>
           </div>
         )}
+
 
       </main>
     </div>

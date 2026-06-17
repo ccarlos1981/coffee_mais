@@ -35,7 +35,7 @@ export async function signUp(formData: FormData) {
   if (data.user) {
     const { error: profileError } = await adminClient
       .from('cm_user_profiles')
-      .upsert({ id: data.user.id, role });
+      .upsert({ id: data.user.id, role, approved: false });
 
     if (profileError) {
       console.error("Erro ao criar perfil:", profileError);

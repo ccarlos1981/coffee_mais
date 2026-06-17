@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  BarChart3,
+import { BarChart3,
   Home,
   DollarSign,
   History,
@@ -11,8 +10,7 @@ import {
   Upload,
   TrendingUp,
   Receipt,
-  Calendar,
-} from "lucide-react";
+  Calendar, Package, CheckCircle2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
 /* ═══ FAKE DATA ═══ */
@@ -205,6 +203,8 @@ export default function TributosPage() {
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
+        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/tributos" className="bottom-tab active"><Receipt className="bottom-tab-icon" /> Tributos</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -12,8 +12,7 @@ import {
   Calendar,
   Users,
   TrendingUp,
-  PieChart,
-} from "lucide-react";
+  PieChart, Package } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -73,17 +72,18 @@ export default function HistoricoDashboard() {
   const [filterStartYear, setFilterStartYear] = useState(startY);
   const [filterStartMonth, setFilterStartMonth] = useState(startM);
 
-  // Sidebar filters
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
+  // Sidebar filters (persisted and synced)
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [],
   });
 
+  const fetchRequestIdRef = useRef(0);
   const [monthlyHistory, setMonthlyHistory] = useState<Record<string, unknown>[]>([]);
   const [byFamilia, setByFamilia] = useState<Record<string, unknown>[]>([]);
   const [byClient, setByClient] = useState<Record<string, unknown>[]>([]);
@@ -108,6 +108,7 @@ export default function HistoricoDashboard() {
   }, [filterEndYear, filterEndMonth]);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
     const startDate = `${filterStartYear}-${String(filterStartMonth).padStart(2, "0")}`;
     const endDate = `${filterEndYear}-${String(filterEndMonth).padStart(2, "0")}`;
@@ -129,6 +130,7 @@ export default function HistoricoDashboard() {
         headers: { 'Cache-Control': 'no-cache' }
       });
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         // Prepare monthly mapping for beautiful axis labels
         const mappedHistory = (json.monthlyHistory || []).map((h: Record<string, unknown>) => {
@@ -148,9 +150,15 @@ export default function HistoricoDashboard() {
         setByFamilia(json.byFamilia || []);
         setByClient(json.byClient || []);
       }
-    } catch (e) { console.error(e); }
-    
-    setLoading(false);
+    } catch (e) {
+      if (requestId === fetchRequestIdRef.current) {
+        console.error(e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
 
   useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
@@ -490,6 +498,7 @@ export default function HistoricoDashboard() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>

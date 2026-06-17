@@ -74,8 +74,7 @@ export async function GET(request: Request) {
                CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
                SUM(fat) as fat, SUM(qty) as qty
         FROM mv_positivacao_sku_mensal
-        WHERE ((mes >= '2025-${startMonthStr}' AND mes <= '2025-${endMonthStr}')
-           OR (mes >= '2026-${startMonthStr}' AND mes <= '2026-${endMonthStr}'))
+        WHERE (mes >= '2025-01' AND mes <= '2026-12')
            ${filterSql}
         GROUP BY SUBSTRING(mes, 1, 4), CAST(SUBSTRING(mes, 6, 2) AS integer)
       `;
@@ -85,8 +84,7 @@ export async function GET(request: Request) {
                CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
                SUM(fat) as fat, SUM(qty) as qty
         FROM mv_vendas_mensal
-        WHERE ((mes >= '2025-${startMonthStr}' AND mes <= '2025-${endMonthStr}')
-           OR (mes >= '2026-${startMonthStr}' AND mes <= '2026-${endMonthStr}'))
+        WHERE (mes >= '2025-01' AND mes <= '2026-12')
            ${filterSql}
         GROUP BY SUBSTRING(mes, 1, 4), CAST(SUBSTRING(mes, 6, 2) AS integer)
       `;
@@ -106,50 +104,88 @@ export async function GET(request: Request) {
       console.log(`[History Matriz API] First row sample:`, JSON.stringify(rows[0]));
     }
 
-    // Consolidate data for the 12 months
-    const monthsData = Array.from({ length: 12 }, (_, i) => ({
-      mesNum: i + 1,
-      mesLabel: MONTHS[i].slice(0, 3),
-      mesFull: MONTHS[i],
-      fat2025: 0,
-      qty2025: 0,
-      price2025: 0,
-      fat2026: 0,
-      qty2026: 0,
-      price2026: 0,
-      fatVar: 0,
-      qtyVar: 0,
-      priceVar: 0,
-    }));
-
-    for (const row of (rows || [])) {
-      const monthIndex = Number(row.mes_num) - 1;
-      if (monthIndex >= 0 && monthIndex < 12) {
-        const is2025 = row.ano === '2025';
-        const is2026 = row.ano === '2026';
-        const fat = Number(row.fat || 0);
-        const qty = Number(row.qty || 0);
-
-        if (is2025) {
-          monthsData[monthIndex].fat2025 += fat;
-          monthsData[monthIndex].qty2025 += qty;
+    // Helper function to get previous 3 months keys
+    function getPrevious3Months(ano: number, mesNum: number): string[] {
+      const dates: string[] = [];
+      let currAno = ano;
+      let currMes = mesNum;
+      for (let i = 0; i < 3; i++) {
+        currMes--;
+        if (currMes === 0) {
+          currMes = 12;
+          currAno--;
         }
-        if (is2026) {
-          monthsData[monthIndex].fat2026 += fat;
-          monthsData[monthIndex].qty2026 += qty;
-        }
+        dates.push(`${currAno}-${String(currMes).padStart(2, '0')}`);
       }
+      return dates;
     }
 
-    // Calculate prices and variations
-    for (const m of monthsData) {
-      m.price2025 = m.qty2025 > 0 ? m.fat2025 / m.qty2025 : 0;
-      m.price2026 = m.qty2026 > 0 ? m.fat2026 / m.qty2026 : 0;
-
-      m.fatVar = m.fat2025 > 0 ? ((m.fat2026 - m.fat2025) / m.fat2025) * 100 : 0;
-      m.qtyVar = m.qty2025 > 0 ? ((m.qty2026 - m.qty2025) / m.qty2025) * 100 : 0;
-      m.priceVar = m.price2025 > 0 ? ((m.price2026 - m.price2025) / m.price2025) * 100 : 0;
+    // Map rows in a dictionary for easy retrieval
+    const dataMap: Record<string, { fat: number; qty: number }> = {};
+    for (const row of (rows || [])) {
+      const key = `${row.ano}-${String(row.mes_num).padStart(2, '0')}`;
+      if (!dataMap[key]) {
+        dataMap[key] = { fat: 0, qty: 0 };
+      }
+      dataMap[key].fat += Number(row.fat || 0);
+      dataMap[key].qty += Number(row.qty || 0);
     }
+
+    // Consolidate data for the 12 months using the rolling trimester average as the comparator (represented by *2025 variables)
+    const monthsData = Array.from({ length: 12 }, (_, i) => {
+      const mNum = i + 1;
+      const currKey = `2026-${String(mNum).padStart(2, '0')}`;
+      const currVal = dataMap[currKey] || { fat: 0, qty: 0 };
+      
+      const fat2026 = currVal.fat;
+      const qty2026 = currVal.qty;
+      const price2026 = qty2026 > 0 ? fat2026 / qty2026 : 0;
+
+      // Calculate the sum of preceding 3 months
+      const prevMonthsKeys = getPrevious3Months(2026, mNum);
+      let sumFatPrev = 0;
+      let sumQtyPrev = 0;
+      for (const k of prevMonthsKeys) {
+        const val = dataMap[k] || { fat: 0, qty: 0 };
+        sumFatPrev += val.fat;
+        sumQtyPrev += val.qty;
+      }
+
+      const prevMonthsLabels = prevMonthsKeys.map(key => {
+        const m = Number(key.split("-")[1]);
+        const shortMonths = [
+          "jan", "fev", "mar", "abr", "mai", "jun",
+          "jul", "ago", "set", "out", "nov", "dez"
+        ];
+        return shortMonths[m - 1];
+      });
+
+      // Calculate averages (comparative period)
+      const fat2025 = sumFatPrev / 3;
+      const qty2025 = sumQtyPrev / 3;
+      const price2025 = qty2025 > 0 ? fat2025 / qty2025 : 0;
+
+      // Variations
+      const fatVar = fat2025 > 0 ? ((fat2026 - fat2025) / fat2025) * 100 : 0;
+      const qtyVar = qty2025 > 0 ? ((qty2026 - qty2025) / qty2025) * 100 : 0;
+      const priceVar = price2025 > 0 ? ((price2026 - price2025) / price2025) * 100 : 0;
+
+      return {
+        mesNum: mNum,
+        mesLabel: MONTHS[i].slice(0, 3),
+        mesFull: MONTHS[i],
+        prevMonthsList: prevMonthsLabels,
+        fat2025,
+        qty2025,
+        price2025,
+        fat2026,
+        qty2026,
+        price2026,
+        fatVar,
+        qtyVar,
+        priceVar,
+      };
+    });
 
     const filteredMonthsData = monthsData.filter(m => m.mesNum >= startMonth && m.mesNum <= endMonth);
     console.log(`[History Matriz API] Returning success: true. monthsData count:`, filteredMonthsData.length);

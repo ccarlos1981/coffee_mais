@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -11,8 +11,7 @@ import {
   History,
   Users,
   TrendingUp,
-  Calendar,
-} from "lucide-react";
+  Calendar, Package } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -115,16 +114,17 @@ const VariationLabel = (props: any) => {
 
 export default function HistoricoPorMatrizPage() {
   const [loading, setLoading] = useState(true);
+  const fetchRequestIdRef = useRef(0);
 
-  // Sidebar filters
+  // Sidebar filters (persisted and synced)
   const [filterStartMonth, setFilterStartMonth] = useState<number>(1);
   const [filterEndMonth, setFilterEndMonth] = useState<number>(new Date().getMonth() + 1);
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
@@ -152,6 +152,7 @@ export default function HistoricoPorMatrizPage() {
 
   // Fetch comparison data
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
 
     const params = new URLSearchParams();
@@ -170,6 +171,7 @@ export default function HistoricoPorMatrizPage() {
         headers: { 'Cache-Control': 'no-cache' }
       });
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setMode(json.mode);
         if (json.mode === "top10") {
@@ -181,10 +183,14 @@ export default function HistoricoPorMatrizPage() {
         }
       }
     } catch (e) {
-      console.error("[Hist. por Matriz] Fetch error:", e);
+      if (requestId === fetchRequestIdRef.current) {
+        console.error("[Hist. por Matriz] Fetch error:", e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-
-    setLoading(false);
   }, [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz, filterStartMonth, filterEndMonth]);
 
   useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
@@ -749,6 +755,7 @@ export default function HistoricoPorMatrizPage() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>

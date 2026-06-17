@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter, Home, DollarSign,
-  Users, Target, Upload, CheckCircle2, TrendingUp, Calendar, BarChart3
-} from "lucide-react";
+import { Filter, Home, DollarSign,
+  Users, Target, Upload, CheckCircle2, TrendingUp, Calendar, BarChart3, Package } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { formatNumber } from "@/lib/formatters";
@@ -56,18 +55,21 @@ export default function PositivacaoMatrizPage() {
   const [filterEndYear, setFilterEndYear] = useState(defaultEndYear);
   const [filterEndMonth, setFilterEndMonth] = useState(defaultEndMonth);
 
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  // Sidebar filters (persisted and synced)
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
   });
 
   const [totals, setTotals] = useState({ matrizes: 0, clientes: 0, meses: 0 });
+  const fetchRequestIdRef = useRef(0);
+
   interface HeatmapRow {
     name: string;
     months: Record<string, number>;
@@ -95,6 +97,7 @@ export default function PositivacaoMatrizPage() {
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth]);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
     const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
     const startDate = stD.toISOString().split("T")[0];
@@ -112,6 +115,7 @@ export default function PositivacaoMatrizPage() {
     try {
       const res = await fetch(`/api/dashboard/positivacao-matriz?${params}`);
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setTotals(json.totals || { matrizes: 0, clientes: 0, meses: 0 });
         setByMatriz(json.byMatriz || []);
@@ -120,8 +124,15 @@ export default function PositivacaoMatrizPage() {
         setMatrizPage(1);
         setClientePage(1);
       }
-    } catch(e) { console.error(e); }
-    setLoading(false);
+    } catch(e) {
+      if (requestId === fetchRequestIdRef.current) {
+        console.error(e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz]);
 
   useEffect(() => { fetchFilters(); }, [fetchFilters]);
@@ -364,6 +375,7 @@ export default function PositivacaoMatrizPage() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/positivacao-matriz" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Pos.Matriz</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>

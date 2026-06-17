@@ -12,8 +12,6 @@ import {
   Coffee,
   Trash2,
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
-
 type UploadStatus = "idle" | "selected" | "uploading" | "processing" | "done" | "error";
 
 interface UploadResult {
@@ -76,28 +74,15 @@ export default function UploadPage() {
   const processUpload = async () => {
     if (!file) return;
     setStatus("uploading");
-    setProgress(10);
+    setProgress(20);
 
     try {
-      // 1. Create upload batch record
-      const { data: batch, error: batchError } = await supabase
-        .from("upload_batches")
-        .insert({
-          filename: file.name,
-          file_type: file.name.split(".").pop()?.toLowerCase(),
-          status: "processing",
-        })
-        .select()
-        .single();
-
-      if (batchError) throw new Error(`Erro ao registrar upload: ${batchError.message}`);
-      setProgress(30);
-      setStatus("processing");
-
-      // 2. Send file directly to API for processing (skip Storage)
+      // Send file directly to API for processing
       const formData = new FormData();
       formData.append("file", file);
-      formData.append("batch_id", batch.id);
+
+      setProgress(40);
+      setStatus("processing");
 
       const response = await fetch("/api/process-excel", {
         method: "POST",
@@ -114,18 +99,8 @@ export default function UploadPage() {
       const resultData = await response.json();
       setProgress(100);
 
-      // 3. Update batch status
-      await supabase
-        .from("upload_batches")
-        .update({
-          records_processed: resultData.recordsProcessed,
-          status: "done",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", batch.id);
-
       setResult({
-        batchId: batch.id,
+        batchId: resultData.batchId,
         recordsProcessed: resultData.recordsProcessed,
         sheetsDetected: resultData.sheetsDetected,
         period: resultData.period,

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -11,8 +11,7 @@ import {
   History,
   Users,
   TrendingUp,
-  Calendar,
-} from "lucide-react";
+  Calendar, Package } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -46,6 +45,7 @@ interface MonthlyHistoryRow {
   mesNum: number;
   mesLabel: string;
   mesFull: string;
+  prevMonthsList?: string[];
   fat2025: number;
   qty2025: number;
   price2025: number;
@@ -61,6 +61,7 @@ interface ChartDataRow {
   mesNum: number;
   mesLabel: string;
   mesFull: string;
+  prevMonthsList?: string[];
   fat2025: number | null;
   qty2025: number | null;
   price2025: number | null;
@@ -81,18 +82,81 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
 
+const PREV_MONTHS_MAP: Record<string, string[]> = {
+  "Jan": ["dez", "nov", "out"],
+  "Fev": ["jan", "dez", "nov"],
+  "Mar": ["fev", "jan", "dez"],
+  "Abr": ["mar", "fev", "jan"],
+  "Mai": ["abr", "mar", "fev"],
+  "Jun": ["mai", "abr", "mar"],
+  "Jul": ["jun", "mai", "abr"],
+  "Ago": ["jul", "jun", "mai"],
+  "Set": ["ago", "jul", "jun"],
+  "Out": ["set", "ago", "jul"],
+  "Nov": ["out", "set", "ago"],
+  "Dez": ["nov", "out", "set"]
+};
+
+const CustomXAxisTick = (props: any) => {
+  const { x, y, payload, data, width } = props;
+  const monthLabel = payload.value;
+  const prevMonths = PREV_MONTHS_MAP[monthLabel] || [];
+
+  const ticksCount = props.visibleTicksCount || data?.length || 7;
+  const categoryWidth = width && width > 0 
+    ? (width > 250 ? width / ticksCount : width) 
+    : 110;
+  const offset = categoryWidth * 0.25;
+
+  if (monthLabel === "Acum.") {
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text x={offset} y={0} dy={14} textAnchor="middle" fill="#000" fontSize={11} fontWeight={600}>
+          Acum.
+        </text>
+      </g>
+    );
+  }
+
+  return (
+    <g transform={`translate(${x},${y})`}>
+      {/* Mês atual embaixo da barra correspondente (direita, offset positivo) */}
+      <text x={offset} y={0} dy={14} textAnchor="middle" fill="#000" fontSize={11} fontWeight={600}>
+        {monthLabel}
+      </text>
+      {/* Trimestre comparado embaixo da barra correspondente (esquerda, offset negativo) */}
+      {prevMonths.map((m: string, i: number) => (
+        <text
+          key={i}
+          x={-offset}
+          y={0}
+          dy={14 + i * 12}
+          textAnchor="middle"
+          fill="#000"
+          fontSize={9}
+          fontWeight={600}
+        >
+          {m}
+        </text>
+      ))}
+    </g>
+  );
+};
+
 export default function HistoricoMatrizDashboard() {
   const [loading, setLoading] = useState(true);
+  const fetchRequestIdRef = useRef(0);
 
-  // Sidebar filters
-  const [filterStartMonth, setFilterStartMonth] = useState<number>(1);
-  const [filterEndMonth, setFilterEndMonth] = useState<number>(12);
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  // Sidebar filters (persisted in localStorage and synced)
+  const defaultEndMonth = useMemo(() => new Date().getMonth() + 1, []);
+  const [filterStartMonth, setFilterStartMonth] = usePersistedState<number>("db_filter_startMonth", 1);
+  const [filterEndMonth, setFilterEndMonth] = usePersistedState<number>("db_filter_endMonth", defaultEndMonth);
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
@@ -114,6 +178,7 @@ export default function HistoricoMatrizDashboard() {
 
   // Fetch YoY comparison data by month
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
 
     const params = new URLSearchParams();
@@ -132,16 +197,21 @@ export default function HistoricoMatrizDashboard() {
         headers: { 'Cache-Control': 'no-cache' }
       });
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setMonthlyHistory(json.byMonth || []);
       } else {
         console.error("[Client History Matriz] API returned success: false, error:", json.error);
       }
     } catch (e) {
-      console.error("[Client History Matriz] Fetch catch block error:", e);
+      if (requestId === fetchRequestIdRef.current) {
+        console.error("[Client History Matriz] Fetch catch block error:", e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-    
-    setLoading(false);
   }, [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz, filterStartMonth, filterEndMonth]);
 
   useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
@@ -155,11 +225,11 @@ export default function HistoricoMatrizDashboard() {
     setFilterProduct([]);
     setFilterMatriz([]);
     setFilterStartMonth(1);
-    setFilterEndMonth(12);
+    setFilterEndMonth(defaultEndMonth);
   };
 
-  const hasActiveFilters = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz].some(f => f.length > 0) || filterStartMonth !== 1 || filterEndMonth !== 12;
-  const activeFilterCount = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz].filter(f => f.length > 0).length + (filterStartMonth !== 1 || filterEndMonth !== 12 ? 1 : 0);
+  const hasActiveFilters = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz].some(f => f.length > 0) || filterStartMonth !== 1 || filterEndMonth !== defaultEndMonth;
+  const activeFilterCount = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz].filter(f => f.length > 0).length + (filterStartMonth !== 1 || filterEndMonth !== defaultEndMonth ? 1 : 0);
 
   // Calculos de KPIs totais
   const totals = useMemo(() => {
@@ -275,7 +345,7 @@ export default function HistoricoMatrizDashboard() {
             Histórico por Matriz
           </h1>
           <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", marginTop: 2 }}>
-            Comparativo de Vendas YoY (2025 vs 2026) — <span style={{ opacity: 0.7 }}>*Valores /1k p/ Faturamento e Volumes</span>
+            Comparativo de Vendas vs Último Trimestre — <span style={{ opacity: 0.7 }}>*Valores /1k p/ Faturamento e Volumes</span>
           </p>
         </div>
 
@@ -403,7 +473,7 @@ export default function HistoricoMatrizDashboard() {
                   {/* FATURAMENTO */}
                   <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                     <p style={{ fontSize: "0.62rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 2 }}>
-                      Faturamento Acumulado (2026)
+                      Faturamento Acumulado (Mês Atual)
                     </p>
                     <p style={{ fontSize: "0.55rem", color: "var(--foreground-dim)", marginTop: -2, marginBottom: 6 }}>
                       Período: {periodLabel}
@@ -422,14 +492,14 @@ export default function HistoricoMatrizDashboard() {
                       }}>
                         {totals.fatVar >= 0 ? "+" : ""}{totals.fatVar.toFixed(1)}%
                       </span>
-                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Ano Ant. ({formatCurrency(totals.fat2025 / 1000, 0)}k)</span>
+                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Últ. Trim. ({formatCurrency(totals.fat2025 / 1000, 0)}k)</span>
                     </div>
                   </div>
 
                   {/* VOLUME */}
                   <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                     <p style={{ fontSize: "0.62rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 2 }}>
-                      Volume Acumulado (2026)
+                      Volume Acumulado (Mês Atual)
                     </p>
                     <p style={{ fontSize: "0.55rem", color: "var(--foreground-dim)", marginTop: -2, marginBottom: 6 }}>
                       Período: {periodLabel}
@@ -448,20 +518,20 @@ export default function HistoricoMatrizDashboard() {
                       }}>
                         {totals.qtyVar >= 0 ? "+" : ""}{totals.qtyVar.toFixed(1)}%
                       </span>
-                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Ano Ant. ({formatNumber(totals.qty2025, 0)})</span>
+                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Últ. Trim. ({formatNumber(totals.qty2025, 0)})</span>
                     </div>
                   </div>
 
                   {/* PREÇO MÉDIO */}
                   <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                     <p style={{ fontSize: "0.62rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 2 }}>
-                      Preço Médio Acumulado (2026)
+                      Preço Médio Acumulado (Mês Atual)
                     </p>
                     <p style={{ fontSize: "0.55rem", color: "var(--foreground-dim)", marginTop: -2, marginBottom: 6 }}>
                       Período: {periodLabel}
                     </p>
                     <p style={{ fontSize: "1.45rem", fontWeight: 800, color: "#65a30d" }}>
-                      {formatCurrency(totals.price2026)}
+                      {formatCurrency(totals.price2026, 2)}
                     </p>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 4 }}>
                       <span style={{ 
@@ -474,7 +544,7 @@ export default function HistoricoMatrizDashboard() {
                       }}>
                         {totals.priceVar >= 0 ? "+" : ""}{totals.priceVar.toFixed(1)}%
                       </span>
-                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Ano Ant. ({formatCurrency(totals.price2025)})</span>
+                      <span style={{ fontSize: "0.62rem", color: "var(--foreground-muted)" }}>vs Últ. Trim. ({formatCurrency(totals.price2025, 2)})</span>
                     </div>
                   </div>
                 </div>
@@ -483,12 +553,12 @@ export default function HistoricoMatrizDashboard() {
               {/* 1. VOLUME CHART (Qty) */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 320 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  VOLUME MENSAL (UNIDADES) — 2025 x 2026
+                  VOLUME MENSAL (UNIDADES) — Mês Atual vs Último Trimestre
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={chartData} margin={{ top: 20, right: 15, left: 15, bottom: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis xAxisId="left" dataKey="mesLabel" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} />
+                    <XAxis xAxisId="left" dataKey="mesLabel" axisLine={false} tickLine={false} tick={<CustomXAxisTick data={chartData} />} height={60} />
                     <XAxis xAxisId="right" dataKey="mesLabel" hide={true} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatNumber(val, 0)} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatNumber(val, 0)} />
@@ -496,7 +566,7 @@ export default function HistoricoMatrizDashboard() {
                       content={<GlassTooltip
                         formatter={(val, name) => [
                           formatNumber(Number(val), 0),
-                          name === "qty2025" || name === "qtyAccum2025" ? "2025" : "2026"
+                          name === "qty2025" || name === "qtyAccum2025" ? "Último Trimestre" : "Mês Atual"
                         ]}
                         labelFormatter={(label, payload) => String(payload?.[0]?.payload?.mesFull || label)}
                       />}
@@ -517,7 +587,7 @@ export default function HistoricoMatrizDashboard() {
                         }} 
                       />
                     )}
-                    <Bar xAxisId="left" yAxisId="left" dataKey="qty2025" name="2025" fill="#64748b" radius={[4, 4, 0, 0]}>
+                    <Bar xAxisId="left" yAxisId="left" dataKey="qty2025" name="Último Trimestre" fill="#64748b" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="qty2025"
                         position="center"
@@ -528,7 +598,7 @@ export default function HistoricoMatrizDashboard() {
                         formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
-                    <Bar xAxisId="left" yAxisId="left" dataKey="qty2026" name="2026" fill="#0284c7" radius={[4, 4, 0, 0]}>
+                    <Bar xAxisId="left" yAxisId="left" dataKey="qty2026" name="Mês Atual" fill="#0284c7" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="qty2026"
                         position="center"
@@ -550,7 +620,7 @@ export default function HistoricoMatrizDashboard() {
                         }}
                       />
                     </Bar>
-                    <Bar xAxisId="right" yAxisId="right" dataKey="qtyAccum2025" name="2025" fill="#64748b" radius={[4, 4, 0, 0]} legendType="none">
+                    <Bar xAxisId="right" yAxisId="right" dataKey="qtyAccum2025" name="Último Trimestre" fill="#64748b" radius={[4, 4, 0, 0]} legendType="none">
                       <LabelList
                         dataKey="qtyAccum2025"
                         position="center"
@@ -561,7 +631,7 @@ export default function HistoricoMatrizDashboard() {
                         formatter={(val: any) => val > 0 ? Math.round(Number(val)).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
-                    <Bar xAxisId="right" yAxisId="right" dataKey="qtyAccum2026" name="2026" fill="#0284c7" radius={[4, 4, 0, 0]} legendType="none">
+                    <Bar xAxisId="right" yAxisId="right" dataKey="qtyAccum2026" name="Mês Atual" fill="#0284c7" radius={[4, 4, 0, 0]} legendType="none">
                       <LabelList
                         dataKey="qtyAccum2026"
                         position="center"
@@ -590,12 +660,12 @@ export default function HistoricoMatrizDashboard() {
               {/* 2. FATURAMENTO CHART (Fat) */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 320 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  FATURAMENTO MENSAL (R$ 000) — 2025 x 2026
+                  FATURAMENTO MENSAL (R$ 000) — Mês Atual vs Último Trimestre
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={chartData} margin={{ top: 20, right: 15, left: 15, bottom: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis xAxisId="left" dataKey="mesLabel" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} />
+                    <XAxis xAxisId="left" dataKey="mesLabel" axisLine={false} tickLine={false} tick={<CustomXAxisTick data={chartData} />} height={60} />
                     <XAxis xAxisId="right" dataKey="mesLabel" hide={true} />
                     <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => Math.round(val / 1000).toLocaleString("pt-BR")} />
                     <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => Math.round(val / 1000).toLocaleString("pt-BR")} />
@@ -603,7 +673,7 @@ export default function HistoricoMatrizDashboard() {
                       content={<GlassTooltip
                         formatter={(val, name) => [
                           formatCurrency(Number(val)),
-                          name === "fat2025" || name === "fatAccum2025" ? "2025" : "2026"
+                          name === "fat2025" || name === "fatAccum2025" ? "Último Trimestre" : "Mês Atual"
                         ]}
                         labelFormatter={(label, payload) => String(payload?.[0]?.payload?.mesFull || label)}
                       />}
@@ -624,7 +694,7 @@ export default function HistoricoMatrizDashboard() {
                         }} 
                       />
                     )}
-                    <Bar xAxisId="left" yAxisId="left" dataKey="fat2025" name="2025" fill="#78350f" radius={[4, 4, 0, 0]}>
+                    <Bar xAxisId="left" yAxisId="left" dataKey="fat2025" name="Último Trimestre" fill="#78350f" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="fat2025"
                         position="center"
@@ -635,7 +705,7 @@ export default function HistoricoMatrizDashboard() {
                         formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
-                    <Bar xAxisId="left" yAxisId="left" dataKey="fat2026" name="2026" fill="#d97706" radius={[4, 4, 0, 0]}>
+                    <Bar xAxisId="left" yAxisId="left" dataKey="fat2026" name="Mês Atual" fill="#d97706" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="fat2026"
                         position="center"
@@ -657,7 +727,7 @@ export default function HistoricoMatrizDashboard() {
                         }}
                       />
                     </Bar>
-                    <Bar xAxisId="right" yAxisId="right" dataKey="fatAccum2025" name="2025" fill="#78350f" radius={[4, 4, 0, 0]} legendType="none">
+                    <Bar xAxisId="right" yAxisId="right" dataKey="fatAccum2025" name="Último Trimestre" fill="#78350f" radius={[4, 4, 0, 0]} legendType="none">
                       <LabelList
                         dataKey="fatAccum2025"
                         position="center"
@@ -668,7 +738,7 @@ export default function HistoricoMatrizDashboard() {
                         formatter={(val: any) => val > 0 ? Math.round(Number(val) / 1000).toLocaleString("pt-BR") : ""}
                       />
                     </Bar>
-                    <Bar xAxisId="right" yAxisId="right" dataKey="fatAccum2026" name="2026" fill="#d97706" radius={[4, 4, 0, 0]} legendType="none">
+                    <Bar xAxisId="right" yAxisId="right" dataKey="fatAccum2026" name="Mês Atual" fill="#d97706" radius={[4, 4, 0, 0]} legendType="none">
                       <LabelList
                         dataKey="fatAccum2026"
                         position="center"
@@ -697,16 +767,16 @@ export default function HistoricoMatrizDashboard() {
               {/* 3. PREÇO MÉDIO CHART (Preço/Unid) */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 320 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  PREÇO MÉDIO MENSAL (R$/UNIDADE) — 2025 x 2026
+                  PREÇO MÉDIO MENSAL (R$/UNIDADE) — Mês Atual vs Último Trimestre
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={chartData} margin={{ top: 20, right: 15, left: 15, bottom: 15 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
-                    <XAxis dataKey="mesLabel" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val)} />
+                    <XAxis dataKey="mesLabel" axisLine={false} tickLine={false} tick={<CustomXAxisTick data={chartData} />} height={60} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "var(--foreground-muted)" }} tickFormatter={(val) => formatCurrency(val, 2)} />
                     <Tooltip
                       content={<GlassTooltip
-                        formatter={(val, name) => [formatCurrency(Number(val)), name === "price2025" ? "2025" : "2026"]}
+                        formatter={(val, name) => [formatCurrency(Number(val), 2), name === "price2025" ? "Último Trimestre" : "Mês Atual"]}
                         labelFormatter={(label, payload) => String(payload?.[0]?.payload?.mesFull || label)}
                       />}
                     />
@@ -725,7 +795,7 @@ export default function HistoricoMatrizDashboard() {
                         }} 
                       />
                     )}
-                    <Bar dataKey="price2025" name="2025" fill="#3f6212" radius={[4, 4, 0, 0]}>
+                    <Bar dataKey="price2025" name="Último Trimestre" fill="#3f6212" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="price2025"
                         position="center"
@@ -733,10 +803,10 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
+                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                       />
                     </Bar>
-                    <Bar dataKey="price2026" name="2026" fill="#65a30d" radius={[4, 4, 0, 0]}>
+                    <Bar dataKey="price2026" name="Mês Atual" fill="#65a30d" radius={[4, 4, 0, 0]}>
                       <LabelList
                         dataKey="price2026"
                         position="center"
@@ -744,7 +814,7 @@ export default function HistoricoMatrizDashboard() {
                         fill="#fff"
                         fontSize={10}
                         fontWeight={600}
-                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) : ""}
+                        formatter={(val: any) => val > 0 ? Number(val).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}
                       />
                       <LabelList
                         dataKey="priceVar"
@@ -778,6 +848,7 @@ export default function HistoricoMatrizDashboard() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>

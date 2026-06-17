@@ -72,15 +72,27 @@ export async function GET(request: Request) {
     const sql = `
       SELECT 
         f.dt_faturamento::text as date_str,
-        SUM(f.vlr_total_liq) as fat,
-        SUM(f.quantidade) as qty
+        SUM(
+          CASE 
+            WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(f.vlr_total_liq, 0))
+            ELSE COALESCE(f.vlr_total_liq, 0)
+          END
+        ) as fat,
+        SUM(
+          CASE 
+            WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(f.quantidade, 0))
+            ELSE COALESCE(f.quantidade, 0)
+          END
+        ) as qty
       FROM cm_faturamento_sankhya f
       LEFT JOIN base_atendimento a ON f.cod_parceiro = a.cod_parceiro
       ${joinProductSql}
       WHERE f.dt_faturamento >= '${startDateStr}' AND f.dt_faturamento <= '${endDateStr}'
+        AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+        AND (f.cod_top IS NULL OR f.cod_top != '1117')
         ${filterSql}
       GROUP BY f.dt_faturamento
-      ORDER BY f.dt_faturamento;
+      ORDER BY f.dt_faturamento
     `;
 
     console.log(`[Daily API] Querying ${startDateStr} to ${endDateStr}`);

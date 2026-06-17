@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, Fragment, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -12,7 +12,7 @@ import {
   Users,
   TrendingUp,
   Calendar,
-} from "lucide-react";
+  ChevronRight, Package } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -31,6 +31,24 @@ interface FiltersData {
 
 interface PrecoChannelRow {
   channel: string;
+  totalQty: number;
+  totalFat: number;
+  avgPrice: number;
+  monthPrices: Record<number, number>;
+}
+
+interface PrecoFamilyRow {
+  channel: string;
+  family: string;
+  totalQty: number;
+  totalFat: number;
+  avgPrice: number;
+  monthPrices: Record<number, number>;
+}
+
+interface PrecoMatrizFamilyRow {
+  matriz: string;
+  family: string;
   totalQty: number;
   totalFat: number;
   avgPrice: number;
@@ -59,15 +77,16 @@ const YEARS = [2026, 2025, 2024, 2023];
 
 export default function PrecoDashboardPage() {
   const [loading, setLoading] = useState(true);
+  const fetchRequestIdRef = useRef(0);
 
-  // Filter States
+  // Filter States (persisted and synced)
   const [filterYear, setFilterYear] = useState<number>(2026);
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
@@ -75,6 +94,10 @@ export default function PrecoDashboardPage() {
 
   const [channelsData, setChannelsData] = useState<PrecoChannelRow[]>([]);
   const [matrizesData, setMatrizesData] = useState<PrecoRow[]>([]);
+  const [familiesData, setFamiliesData] = useState<PrecoFamilyRow[]>([]);
+  const [matrizFamiliesData, setMatrizFamiliesData] = useState<PrecoMatrizFamilyRow[]>([]);
+  const [expandedChannel, setExpandedChannel] = useState<string | null>(null);
+  const [expandedMatriz, setExpandedMatriz] = useState<string | null>(null);
 
   // Fetch filter options
   const fetchFilters = useCallback(async () => {
@@ -92,6 +115,7 @@ export default function PrecoDashboardPage() {
 
   // Fetch price matrix data
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
 
     const params = new URLSearchParams();
@@ -109,15 +133,24 @@ export default function PrecoDashboardPage() {
         headers: { 'Cache-Control': 'no-cache' }
       });
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setChannelsData(json.channels || []);
         setMatrizesData(json.matrizes || []);
+        setFamiliesData(json.families || []);
+        setMatrizFamiliesData(json.matrizFamilies || []);
+        setExpandedChannel(null);
+        setExpandedMatriz(null);
       }
     } catch (e) {
-      console.error("[Preço] Error fetching matrix data:", e);
+      if (requestId === fetchRequestIdRef.current) {
+        console.error("[Preço] Error fetching matrix data:", e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-
-    setLoading(false);
   }, [filterYear, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz]);
 
   useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
@@ -262,6 +295,24 @@ export default function PrecoDashboardPage() {
       }
       exportRow["Média Anual"] = row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 ? row.avgPrice : "";
       rows.push(exportRow);
+
+      // Add families for this channel
+      const channelFamilies = familiesData
+        .filter(f => f.channel === row.channel)
+        .sort((a, b) => b.totalQty - a.totalQty);
+
+      channelFamilies.forEach(fam => {
+        const exportFamRow: Record<string, any> = {
+          "Matriz": `  — ${fam.family}`,
+          "Faturamento Acumulado": fam.totalFat || 0,
+        };
+        for (let m = 1; m <= 12; m++) {
+          const val = fam.monthPrices[m];
+          exportFamRow[MONTHS_FULL[m - 1]] = val !== undefined && val !== null && val > 0 ? val : "";
+        }
+        exportFamRow["Média Anual"] = fam.avgPrice !== undefined && fam.avgPrice !== null && fam.avgPrice > 0 ? fam.avgPrice : "";
+        rows.push(exportFamRow);
+      });
     });
 
     // Separator
@@ -280,10 +331,28 @@ export default function PrecoDashboardPage() {
       }
       exportRow["Média Anual"] = row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 ? row.avgPrice : "";
       rows.push(exportRow);
+
+      // Add families for this matriz
+      const matrizFamilies = matrizFamiliesData
+        .filter(f => f.matriz === row.matriz)
+        .sort((a, b) => b.totalQty - a.totalQty);
+
+      matrizFamilies.forEach(fam => {
+        const exportFamRow: Record<string, any> = {
+          "Matriz": `  — ${fam.family}`,
+          "Faturamento Acumulado": fam.totalFat || 0,
+        };
+        for (let m = 1; m <= 12; m++) {
+          const val = fam.monthPrices[m];
+          exportFamRow[MONTHS_FULL[m - 1]] = val !== undefined && val !== null && val > 0 ? val : "";
+        }
+        exportFamRow["Média Anual"] = fam.avgPrice !== undefined && fam.avgPrice !== null && fam.avgPrice > 0 ? fam.avgPrice : "";
+        rows.push(exportFamRow);
+      });
     });
 
     return rows;
-  }, [channelsData, matrizesData]);
+  }, [channelsData, matrizesData, familiesData, matrizFamiliesData]);
 
   const hasData = channelsData.length > 0 || matrizesData.length > 0;
 
@@ -437,79 +506,185 @@ export default function PrecoDashboardPage() {
                           .map(m => row.monthPrices[m])
                           .filter((p): p is number => p !== undefined && p !== null && p > 0);
 
+                        const isExpanded = expandedChannel === row.channel;
+                        const channelFamilies = familiesData
+                          .filter(f => f.channel === row.channel)
+                          .sort((a, b) => b.totalQty - a.totalQty);
+
                         return (
-                          <tr key={idx} className="hover:bg-foreground/5 transition-colors">
-                            {/* Sticky first column */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Canal"),
-                                position: "sticky", 
-                                left: 0, 
-                                zIndex: 1, 
-                                textAlign: "left", 
-                                fontWeight: 600,
-                                background: "var(--table-row-odd)",
-                                borderRight: "1px solid var(--border)",
-                                boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap"
-                              }}
-                            >
-                              {row.channel}
-                            </td>
-                            {/* Faturamento Acumulado */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Fat. Acumulado"),
-                                textAlign: "right", 
-                                borderRight: "1px solid var(--border-light)",
-                                padding: "6px 8px",
-                                fontWeight: 500,
-                                color: "var(--foreground)"
-                              }}
-                            >
-                              {formatCurrency(row.totalFat, 0)}
-                            </td>
-                            {/* Monthly price cells */}
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
-                              const val = row.monthPrices[m];
-                              const displayVal = val !== undefined && val !== null && val > 0 
-                                ? formatCurrency(val, 2) 
-                                : "-";
-                              const highlight = getCellHighlight(val, rowPrices);
+                          <Fragment key={row.channel}>
+                            <tr className="hover:bg-foreground/5 transition-colors">
+                              {/* Sticky first column */}
+                              <td 
+                                onClick={() => setExpandedChannel(isExpanded ? null : row.channel)}
+                                style={{ 
+                                  ...getColStyle("Canal"),
+                                  position: "sticky", 
+                                  left: 0, 
+                                  zIndex: 1, 
+                                  textAlign: "left", 
+                                  fontWeight: 600,
+                                  background: "var(--table-row-odd)",
+                                  borderRight: "1px solid var(--border)",
+                                  boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  cursor: "pointer"
+                                }}
+                              >
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <ChevronRight style={{
+                                    width: 12,
+                                    height: 12,
+                                    color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                    flexShrink: 0
+                                  }} />
+                                  {row.channel}
+                                </span>
+                              </td>
+                              {/* Faturamento Acumulado */}
+                              <td 
+                                style={{ 
+                                  ...getColStyle("Fat. Acumulado"),
+                                  textAlign: "right", 
+                                  borderRight: "1px solid var(--border-light)",
+                                  padding: "6px 8px",
+                                  fontWeight: 500,
+                                  color: "var(--foreground)"
+                                }}
+                              >
+                                {formatCurrency(row.totalFat, 0)}
+                              </td>
+                              {/* Monthly price cells */}
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
+                                const val = row.monthPrices[m];
+                                const displayVal = val !== undefined && val !== null && val > 0 
+                                  ? formatCurrency(val, 2) 
+                                  : "-";
+                                const highlight = getCellHighlight(val, rowPrices);
+
+                                return (
+                                  <td 
+                                    key={m} 
+                                    style={{ 
+                                      ...getColStyle("Month"),
+                                      textAlign: "center", 
+                                      borderRight: "1px solid var(--border-light)",
+                                      padding: "6px 8px",
+                                      ...highlight.style 
+                                    }}
+                                  >
+                                    {displayVal}
+                                  </td>
+                                );
+                              })}
+                              {/* Average Price column */}
+                              <td 
+                                style={{ 
+                                  ...getColStyle("Média"),
+                                  textAlign: "center", 
+                                  fontWeight: 700, 
+                                  color: "var(--foreground)",
+                                  background: "rgba(200, 169, 110, 0.05)",
+                                  padding: "6px 8px"
+                                }}
+                              >
+                                {row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 
+                                  ? formatCurrency(row.avgPrice, 2) 
+                                  : "-"}
+                              </td>
+                            </tr>
+
+                            {/* Expanded family rows */}
+                            {isExpanded && channelFamilies.map((fam) => {
+                              const famRowPrices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                                .map(m => fam.monthPrices[m])
+                                .filter((p): p is number => p !== undefined && p !== null && p > 0);
 
                               return (
-                                <td 
-                                  key={m} 
-                                  style={{ 
-                                    ...getColStyle("Month"),
-                                    textAlign: "center", 
-                                    borderRight: "1px solid var(--border-light)",
-                                    padding: "6px 8px",
-                                    ...highlight.style 
-                                  }}
-                                >
-                                  {displayVal}
-                                </td>
+                                <tr key={`${row.channel}-${fam.family}`} className="hover:bg-foreground/5 transition-colors" style={{ background: "rgba(200, 169, 110, 0.015)" }}>
+                                  {/* Sticky family first column */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Canal"),
+                                      position: "sticky", 
+                                      left: 0, 
+                                      zIndex: 1, 
+                                      textAlign: "left", 
+                                      background: "var(--table-row-odd)",
+                                      borderRight: "1px solid var(--border)",
+                                      boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      paddingLeft: "24px",
+                                      color: "var(--foreground-muted)",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    — {fam.family}
+                                  </td>
+                                  {/* Faturamento Acumulado */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Fat. Acumulado"),
+                                      textAlign: "right", 
+                                      borderRight: "1px solid var(--border-light)",
+                                      padding: "6px 8px",
+                                      fontWeight: 400,
+                                      color: "var(--foreground-muted)",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    {formatCurrency(fam.totalFat, 0)}
+                                  </td>
+                                  {/* Monthly prices */}
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
+                                    const val = fam.monthPrices[m];
+                                    const displayVal = val !== undefined && val !== null && val > 0 
+                                      ? formatCurrency(val, 2) 
+                                      : "-";
+                                    const highlight = getCellHighlight(val, famRowPrices);
+
+                                    return (
+                                      <td 
+                                        key={m} 
+                                        style={{ 
+                                          ...getColStyle("Month"),
+                                          textAlign: "center", 
+                                          borderRight: "1px solid var(--border-light)",
+                                          padding: "6px 8px",
+                                          fontSize: "0.65rem",
+                                          ...highlight.style 
+                                        }}
+                                      >
+                                        {displayVal}
+                                      </td>
+                                    );
+                                  })}
+                                  {/* Average Price */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Média"),
+                                      textAlign: "center", 
+                                      fontWeight: 600, 
+                                      color: "var(--foreground-muted)",
+                                      background: "rgba(200, 169, 110, 0.02)",
+                                      padding: "6px 8px",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    {fam.avgPrice !== undefined && fam.avgPrice !== null && fam.avgPrice > 0 
+                                      ? formatCurrency(fam.avgPrice, 2) 
+                                      : "-"}
+                                  </td>
+                                </tr>
                               );
                             })}
-                            {/* Average Price column */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Média"),
-                                textAlign: "center", 
-                                fontWeight: 700, 
-                                color: "var(--foreground)",
-                                background: "rgba(200, 169, 110, 0.05)",
-                                padding: "6px 8px"
-                              }}
-                            >
-                              {row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 
-                                ? formatCurrency(row.avgPrice, 2) 
-                                : "-"}
-                            </td>
-                          </tr>
+                          </Fragment>
                         );
                       })}
 
@@ -588,79 +763,185 @@ export default function PrecoDashboardPage() {
                           .map(m => row.monthPrices[m])
                           .filter((p): p is number => p !== undefined && p !== null && p > 0);
 
+                        const isExpanded = expandedMatriz === row.matriz;
+                        const matrizFamilies = matrizFamiliesData
+                          .filter(f => f.matriz === row.matriz)
+                          .sort((a, b) => b.totalQty - a.totalQty);
+
                         return (
-                          <tr key={idx} className="hover:bg-foreground/5 transition-colors">
-                            {/* Sticky first column */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Matriz"),
-                                position: "sticky", 
-                                left: 0, 
-                                zIndex: 1, 
-                                textAlign: "left", 
-                                fontWeight: 600,
-                                background: "var(--table-row-odd)",
-                                borderRight: "1px solid var(--border)",
-                                boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap"
-                              }}
-                            >
-                              {row.matriz}
-                            </td>
-                            {/* Faturamento Acumulado */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Fat. Acumulado"),
-                                textAlign: "right", 
-                                borderRight: "1px solid var(--border-light)",
-                                padding: "6px 8px",
-                                fontWeight: 500,
-                                color: "var(--foreground)"
-                              }}
-                            >
-                              {formatCurrency(row.totalFat, 0)}
-                            </td>
-                            {/* Monthly price cells */}
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
-                              const val = row.monthPrices[m];
-                              const displayVal = val !== undefined && val !== null && val > 0 
-                                ? formatCurrency(val, 2) 
-                                : "-";
-                              const highlight = getCellHighlight(val, rowPrices);
+                          <Fragment key={row.matriz}>
+                            <tr className="hover:bg-foreground/5 transition-colors">
+                              {/* Sticky first column */}
+                              <td 
+                                onClick={() => setExpandedMatriz(isExpanded ? null : row.matriz)}
+                                style={{ 
+                                  ...getColStyle("Matriz"),
+                                  position: "sticky", 
+                                  left: 0, 
+                                  zIndex: 1, 
+                                  textAlign: "left", 
+                                  fontWeight: 600,
+                                  background: "var(--table-row-odd)",
+                                  borderRight: "1px solid var(--border)",
+                                  boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                  cursor: "pointer"
+                                }}
+                              >
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                                  <ChevronRight style={{
+                                    width: 12,
+                                    height: 12,
+                                    color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                    flexShrink: 0
+                                  }} />
+                                  {row.matriz}
+                                </span>
+                              </td>
+                              {/* Faturamento Acumulado */}
+                              <td 
+                                style={{ 
+                                  ...getColStyle("Fat. Acumulado"),
+                                  textAlign: "right", 
+                                  borderRight: "1px solid var(--border-light)",
+                                  padding: "6px 8px",
+                                  fontWeight: 500,
+                                  color: "var(--foreground)"
+                                }}
+                              >
+                                {formatCurrency(row.totalFat, 0)}
+                              </td>
+                              {/* Monthly price cells */}
+                              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
+                                const val = row.monthPrices[m];
+                                const displayVal = val !== undefined && val !== null && val > 0 
+                                  ? formatCurrency(val, 2) 
+                                  : "-";
+                                const highlight = getCellHighlight(val, rowPrices);
+
+                                return (
+                                  <td 
+                                    key={m} 
+                                    style={{ 
+                                      ...getColStyle("Month"),
+                                      textAlign: "center", 
+                                      borderRight: "1px solid var(--border-light)",
+                                      padding: "6px 8px",
+                                      ...highlight.style 
+                                    }}
+                                  >
+                                    {displayVal}
+                                  </td>
+                                );
+                              })}
+                              {/* Average Price column */}
+                              <td 
+                                style={{ 
+                                  ...getColStyle("Média"),
+                                  textAlign: "center", 
+                                  fontWeight: 700, 
+                                  color: "var(--foreground)",
+                                  background: "rgba(200, 169, 110, 0.05)",
+                                  padding: "6px 8px"
+                                }}
+                              >
+                                {row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 
+                                  ? formatCurrency(row.avgPrice, 2) 
+                                  : "-"}
+                              </td>
+                            </tr>
+
+                            {/* Expanded family rows */}
+                            {isExpanded && matrizFamilies.map((fam) => {
+                              const famRowPrices = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+                                .map(m => fam.monthPrices[m])
+                                .filter((p): p is number => p !== undefined && p !== null && p > 0);
 
                               return (
-                                <td 
-                                  key={m} 
-                                  style={{ 
-                                    ...getColStyle("Month"),
-                                    textAlign: "center", 
-                                    borderRight: "1px solid var(--border-light)",
-                                    padding: "6px 8px",
-                                    ...highlight.style 
-                                  }}
-                                >
-                                  {displayVal}
-                                </td>
+                                <tr key={`${row.matriz}-${fam.family}`} className="hover:bg-foreground/5 transition-colors" style={{ background: "rgba(200, 169, 110, 0.015)" }}>
+                                  {/* Sticky family first column */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Matriz"),
+                                      position: "sticky", 
+                                      left: 0, 
+                                      zIndex: 1, 
+                                      textAlign: "left", 
+                                      background: "var(--table-row-odd)",
+                                      borderRight: "1px solid var(--border)",
+                                      boxShadow: "2px 0 0 rgba(0,0,0,0.05)",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      paddingLeft: "24px",
+                                      color: "var(--foreground-muted)",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    — {fam.family}
+                                  </td>
+                                  {/* Faturamento Acumulado */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Fat. Acumulado"),
+                                      textAlign: "right", 
+                                      borderRight: "1px solid var(--border-light)",
+                                      padding: "6px 8px",
+                                      fontWeight: 400,
+                                      color: "var(--foreground-muted)",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    {formatCurrency(fam.totalFat, 0)}
+                                  </td>
+                                  {/* Monthly prices */}
+                                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => {
+                                    const val = fam.monthPrices[m];
+                                    const displayVal = val !== undefined && val !== null && val > 0 
+                                      ? formatCurrency(val, 2) 
+                                      : "-";
+                                    const highlight = getCellHighlight(val, famRowPrices);
+
+                                    return (
+                                      <td 
+                                        key={m} 
+                                        style={{ 
+                                          ...getColStyle("Month"),
+                                          textAlign: "center", 
+                                          borderRight: "1px solid var(--border-light)",
+                                          padding: "6px 8px",
+                                          fontSize: "0.65rem",
+                                          ...highlight.style 
+                                        }}
+                                      >
+                                        {displayVal}
+                                      </td>
+                                    );
+                                  })}
+                                  {/* Average Price */}
+                                  <td 
+                                    style={{ 
+                                      ...getColStyle("Média"),
+                                      textAlign: "center", 
+                                      fontWeight: 600, 
+                                      color: "var(--foreground-muted)",
+                                      background: "rgba(200, 169, 110, 0.02)",
+                                      padding: "6px 8px",
+                                      fontSize: "0.65rem"
+                                    }}
+                                  >
+                                    {fam.avgPrice !== undefined && fam.avgPrice !== null && fam.avgPrice > 0 
+                                      ? formatCurrency(fam.avgPrice, 2) 
+                                      : "-"}
+                                  </td>
+                                </tr>
                               );
                             })}
-                            {/* Average Price column */}
-                            <td 
-                              style={{ 
-                                ...getColStyle("Média"),
-                                textAlign: "center", 
-                                fontWeight: 700, 
-                                color: "var(--foreground)",
-                                background: "rgba(200, 169, 110, 0.05)",
-                                padding: "6px 8px"
-                              }}
-                            >
-                              {row.avgPrice !== undefined && row.avgPrice !== null && row.avgPrice > 0 
-                                ? formatCurrency(row.avgPrice, 2) 
-                                : "-"}
-                            </td>
-                          </tr>
+                          </Fragment>
                         );
                       })}
 
@@ -715,6 +996,7 @@ export default function PrecoDashboardPage() {
         <Link href="/preco" className="bottom-tab active"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>

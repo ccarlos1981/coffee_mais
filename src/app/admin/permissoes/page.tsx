@@ -53,12 +53,15 @@ const MODULES = [
   "Devol.",
   "Alertas",
   "Investimento",
+  "Planej. de Invest.",
   "Calendário",
   "Dashboard",
   "Usuários",
   "Logs",
   "Cadastro",
-  "Clientes"
+  "Clientes",
+  "Gente e Gestão",
+  "RPS"
 ];
 
 export default async function AdminPermissoesPage() {

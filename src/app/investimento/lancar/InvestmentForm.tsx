@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package } from "lucide-react";
 import Link from "next/link";
 import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
 
 interface InvestmentFormProps {
-  redes: string[];
+  redes: Array<{ codigo: string; nome: string; canal: string }>;
   familias: string[];
   skus?: string[];
   initialData?: any;
@@ -18,13 +18,26 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-  
-  // Combobox state for Rede
-  const [searchRede, setSearchRede] = useState(initialData?.rede || "");
-  const [isRedeOpen, setIsRedeOpen] = useState(false);
-  const [selectedRede, setSelectedRede] = useState(initialData?.rede || "");
+  const searchParams = useSearchParams();
 
-  const filteredRedes = redes.filter(r => r.toLowerCase().includes(searchRede.toLowerCase()));
+  const isPlanejamento = initialData 
+    ? !!initialData.is_planejamento 
+    : searchParams.get("planejamento") === "true";
+  
+  // Find initial network object if editing
+  const initRedeObj = initialData?.codigo_matriz
+    ? redes.find(r => r.codigo === initialData.codigo_matriz)
+    : (initialData?.rede ? redes.find(r => r.nome.toLowerCase() === initialData.rede.toLowerCase()) : null);
+
+  // Combobox state for Rede
+  const [searchRede, setSearchRede] = useState("");
+  const [isRedeOpen, setIsRedeOpen] = useState(false);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(initRedeObj || null);
+
+  const filteredRedes = redes.filter(r => 
+    r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
+    r.codigo.toLowerCase().includes(searchRede.toLowerCase())
+  );
 
   // Helpers
   const formatCurrencyValue = (num: number) => {
@@ -122,13 +135,20 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       return;
     }
 
+    const mes_referencia = new FormData(e.currentTarget).get("mes_referencia") as string;
+    if (!mes_referencia) {
+      setError("Por favor, selecione o mês de referência.");
+      return;
+    }
+
     if (abrangencia === "SKU" && selectedSkus.length === 0) {
       setError("Por favor, selecione ao menos um SKU.");
       return;
     }
 
     const formData = new FormData(e.currentTarget);
-    formData.append("rede", selectedRede);
+    formData.append("rede", selectedRede.nome);
+    formData.append("codigo_matriz", selectedRede.codigo);
     formData.append("tipo_pagamento", tipoPagamento);
     formData.append("abrangencia", abrangencia);
 
@@ -154,6 +174,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       formData.append("skus_detalhes", JSON.stringify(packedSkus));
     }
 
+    formData.append("is_planejamento", isPlanejamento ? "true" : "false");
+
     startTransition(async () => {
       try {
         let result;
@@ -165,10 +187,15 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         
         if (result?.success) {
           router.refresh();
-          router.push("/investimento");
+          if (result.is_planejamento) {
+            router.push("/investimento/planejamento");
+          } else {
+            router.push("/investimento");
+          }
         }
-      } catch (err: any) {
-        setError(err.message || "Ocorreu um erro ao salvar.");
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        setError(errMsg || "Ocorreu um erro ao salvar.");
       }
     });
   };
@@ -181,13 +208,17 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link 
-          href="/investimento" 
+          href={isPlanejamento ? "/investimento/planejamento" : "/investimento"} 
           className="p-2 rounded-xl bg-elevated border border-border text-muted hover:text-foreground hover:bg-border transition-colors"
         >
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div>
-          <h1 className="text-xl font-bold text-foreground">{initialData ? "Editar Investimento" : "Lançar Investimento"}</h1>
+          <h1 className="text-xl font-bold text-foreground">
+            {initialData 
+              ? (isPlanejamento ? "Editar Planejamento" : "Editar Investimento") 
+              : (isPlanejamento ? "Lançar Planejamento" : "Lançar Investimento")}
+          </h1>
           <p className="text-sm text-muted flex items-center gap-2 mt-1">
             <Calendar className="w-4 h-4" />
             Data do Registro: <span className="font-medium text-foreground">{todayStr}</span>
@@ -214,7 +245,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                 type="text"
                 placeholder="Digite para buscar a rede..."
                 className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50"
-                value={isRedeOpen ? searchRede : (selectedRede || searchRede)}
+                value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.codigo} - ${selectedRede.nome}` : "")}
                 onChange={(e) => {
                   setSearchRede(e.target.value);
                   if (!isRedeOpen) setIsRedeOpen(true);
@@ -230,16 +261,20 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                 {filteredRedes.length > 0 ? (
                   filteredRedes.map(r => (
                     <button
-                      key={r}
+                      key={r.codigo}
                       type="button"
-                      className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-gold/10 hover:text-gold transition-colors"
+                      className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-gold/10 hover:text-gold transition-colors flex items-center justify-between"
                       onClick={() => {
                         setSelectedRede(r);
                         setSearchRede("");
                         setIsRedeOpen(false);
                       }}
                     >
-                      {r}
+                      <div>
+                        <span className="font-semibold text-gold mr-2">{r.codigo}</span>
+                        <span>{r.nome}</span>
+                      </div>
+                      <span className="text-xs text-muted">({r.canal})</span>
                     </button>
                   ))
                 ) : (
@@ -294,8 +329,19 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           </div>
         </div>
 
-        {/* BLOCK 2: Datas */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-border">
+        {/* BLOCK 2: Datas e Mês de Referência */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-border">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-muted">Mês de Referência</label>
+            <input 
+              type="month"
+              name="mes_referencia"
+              required
+              defaultValue={initialData?.mes_referencia || ""}
+              onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+            />
+          </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Data Início da Ação</label>
             <input 

@@ -27,29 +27,9 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
     notFound();
   }
 
-  // Fetch unique redes handling Supabase 1000 rows limit
-  let allRedesData: any[] = [];
-  let hasMore = true;
-  let page = 0;
-  
-  while (hasMore) {
-    const { data } = await supabase
-      .from("base_atendimento")
-      .select("rede")
-      .not("rede", "is", null)
-      .range(page * 1000, (page + 1) * 1000 - 1);
-      
-    if (data && data.length > 0) {
-      allRedesData = [...allRedesData, ...data];
-      page++;
-      if (data.length < 1000) hasMore = false;
-    } else {
-      hasMore = false;
-    }
-  }
-
-  const redesList = allRedesData ? Array.from(new Set(allRedesData.map(r => r.rede))).filter(Boolean) as string[] : [];
-  redesList.sort();
+  // Fetch matrices with their codes from database
+  const { obterRedesMatrizes } = require("../../lancar/actions");
+  const redesList = await obterRedesMatrizes();
 
   // Hardcoded product families as requested
   const familiasList = [

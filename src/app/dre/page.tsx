@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -13,8 +12,7 @@ import {
   TrendingUp,
   Target,
   CalendarDays,
-  Calendar,
-} from "lucide-react";
+  Calendar, Package, CheckCircle2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { SearchableSelect } from "@/components/SearchableSelect";
 
@@ -135,6 +133,61 @@ export default function DREPage() {
     managers: [], familias: [], ufs: [], channels: [], products: [],
   });
 
+  // Sync DRE single-value filters with multi-select filters in localStorage
+  useEffect(() => {
+    const syncFilters = () => {
+      const savedManager = localStorage.getItem("db_filter_manager");
+      if (savedManager) {
+        const arr = JSON.parse(savedManager);
+        setFilterManager(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedFamilia = localStorage.getItem("db_filter_familia");
+      if (savedFamilia) {
+        const arr = JSON.parse(savedFamilia);
+        setFilterFamilia(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedUf = localStorage.getItem("db_filter_uf");
+      if (savedUf) {
+        const arr = JSON.parse(savedUf);
+        setFilterUf(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedChannel = localStorage.getItem("db_filter_channel");
+      if (savedChannel) {
+        const arr = JSON.parse(savedChannel);
+        setFilterChannel(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedProduct = localStorage.getItem("db_filter_product");
+      if (savedProduct) {
+        const arr = JSON.parse(savedProduct);
+        setFilterProduct(arr.length > 0 ? arr[0] : "Todos");
+      }
+    };
+    syncFilters();
+    window.addEventListener("storage", syncFilters);
+    return () => window.removeEventListener("storage", syncFilters);
+  }, []);
+
+  const changeManager = (val: string) => {
+    setFilterManager(val);
+    localStorage.setItem("db_filter_manager", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeFamilia = (val: string) => {
+    setFilterFamilia(val);
+    localStorage.setItem("db_filter_familia", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeUf = (val: string) => {
+    setFilterUf(val);
+    localStorage.setItem("db_filter_uf", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeChannel = (val: string) => {
+    setFilterChannel(val);
+    localStorage.setItem("db_filter_channel", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeProduct = (val: string) => {
+    setFilterProduct(val);
+    localStorage.setItem("db_filter_product", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+
   // Fetch filters (same endpoint as Vendas)
   const fetchFilters = useCallback(async () => {
     try {
@@ -156,6 +209,11 @@ export default function DREPage() {
     setFilterUf("Todos");
     setFilterChannel("Todos");
     setFilterProduct("Todos");
+    localStorage.setItem("db_filter_manager", JSON.stringify([]));
+    localStorage.setItem("db_filter_familia", JSON.stringify([]));
+    localStorage.setItem("db_filter_uf", JSON.stringify([]));
+    localStorage.setItem("db_filter_channel", JSON.stringify([]));
+    localStorage.setItem("db_filter_product", JSON.stringify([]));
   };
 
   const hasActiveFilters = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct].some(f => f !== "Todos");
@@ -240,25 +298,25 @@ export default function DREPage() {
           </div>
 
           <p className="dash-sidebar-title">Gerente</p>
-          <select value={filterManager} onChange={(e) => setFilterManager(e.target.value)} className="dash-filter-select">
+          <select value={filterManager} onChange={(e) => changeManager(e.target.value)} className="dash-filter-select">
             <option value="Todos">Todos</option>
             {filterOptions.managers.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
 
           <p className="dash-sidebar-title">Família</p>
-          <select value={filterFamilia} onChange={(e) => setFilterFamilia(e.target.value)} className="dash-filter-select">
+          <select value={filterFamilia} onChange={(e) => changeFamilia(e.target.value)} className="dash-filter-select">
             <option value="Todos">Todos</option>
             {filterOptions.familias.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
 
           <p className="dash-sidebar-title">Região (UF)</p>
-          <select value={filterUf} onChange={(e) => setFilterUf(e.target.value)} className="dash-filter-select">
+          <select value={filterUf} onChange={(e) => changeUf(e.target.value)} className="dash-filter-select">
             <option value="Todos">Todos</option>
             {filterOptions.ufs.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
           <p className="dash-sidebar-title">Canal</p>
-          <select value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)} className="dash-filter-select">
+          <select value={filterChannel} onChange={(e) => changeChannel(e.target.value)} className="dash-filter-select">
             <option value="Todos">Todos</option>
             {filterOptions.channels.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -266,7 +324,7 @@ export default function DREPage() {
           <p className="dash-sidebar-title">Linha SKU</p>
           <SearchableSelect
             value={filterProduct}
-            onChange={setFilterProduct}
+            onChange={changeProduct}
             options={filterOptions.products}
             className="dash-filter-select"
             placeholder="Todos"
@@ -593,6 +651,8 @@ export default function DREPage() {
         <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
+        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>

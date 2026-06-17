@@ -76,6 +76,40 @@ export async function GET(request: Request) {
 
     if (error) throw new Error(error.message);
 
+    // Query for families aggregated by channel
+    const sqlFamilies = `
+      SELECT COALESCE(channel, 'Não Mapeado') as channel,
+             COALESCE(tipo_produto, 'Não Mapeado') as family,
+             CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
+             SUM(fat) as fat,
+             SUM(qty) as qty
+      FROM ${tableName}
+      WHERE mes >= '${year}-01' AND mes <= '${year}-12'
+        ${filterSql}
+      GROUP BY COALESCE(channel, 'Não Mapeado'), COALESCE(tipo_produto, 'Não Mapeado'), CAST(SUBSTRING(mes, 6, 2) AS integer)
+    `;
+
+    console.log(`[Preço Matriz API] Querying families for ${year}`);
+    const { data: rowsFamilies, error: errorFamilies } = await supabase.rpc('execute_readonly_query', { query_text: sqlFamilies });
+    if (errorFamilies) throw new Error(errorFamilies.message);
+
+    // Query for families aggregated by matriz (rede)
+    const sqlMatrizFamilies = `
+      SELECT COALESCE(rede, 'Não Mapeado') as matriz,
+             COALESCE(tipo_produto, 'Não Mapeado') as family,
+             CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
+             SUM(fat) as fat,
+             SUM(qty) as qty
+      FROM ${tableName}
+      WHERE mes >= '${year}-01' AND mes <= '${year}-12'
+        ${filterSql}
+      GROUP BY COALESCE(rede, 'Não Mapeado'), COALESCE(tipo_produto, 'Não Mapeado'), CAST(SUBSTRING(mes, 6, 2) AS integer)
+    `;
+
+    console.log(`[Preço Matriz API] Querying matriz families for ${year}`);
+    const { data: rowsMatrizFamilies, error: errorMatrizFamilies } = await supabase.rpc('execute_readonly_query', { query_text: sqlMatrizFamilies });
+    if (errorMatrizFamilies) throw new Error(errorMatrizFamilies.message);
+
     // Build maps for channels and matrizes
     const channelMap = new Map<string, {
       channel: string;
@@ -135,6 +169,78 @@ export async function GET(request: Request) {
       mEntry.months[mesNum].qty += qty;
     }
 
+    // Process Families Aggregation
+    const familyMap = new Map<string, {
+      channel: string;
+      family: string;
+      totalQty: number;
+      totalFat: number;
+      months: Record<number, { fat: number; qty: number }>;
+    }>();
+
+    for (const row of (rowsFamilies || [])) {
+      const channelName = (row.channel || 'Não Mapeado') as string;
+      const familyName = (row.family || 'Não Mapeado') as string;
+      const mesNum = Number(row.mes_num);
+      const fat = Number(row.fat || 0);
+      const qty = Number(row.qty || 0);
+
+      const key = `${channelName}::${familyName}`;
+      if (!familyMap.has(key)) {
+        familyMap.set(key, {
+          channel: channelName,
+          family: familyName,
+          totalQty: 0,
+          totalFat: 0,
+          months: {},
+        });
+      }
+      const fEntry = familyMap.get(key)!;
+      fEntry.totalQty += qty;
+      fEntry.totalFat += fat;
+      if (!fEntry.months[mesNum]) {
+        fEntry.months[mesNum] = { fat: 0, qty: 0 };
+      }
+      fEntry.months[mesNum].fat += fat;
+      fEntry.months[mesNum].qty += qty;
+    }
+
+    // Process Matriz Families Aggregation
+    const matrizFamilyMap = new Map<string, {
+      matriz: string;
+      family: string;
+      totalQty: number;
+      totalFat: number;
+      months: Record<number, { fat: number; qty: number }>;
+    }>();
+
+    for (const row of (rowsMatrizFamilies || [])) {
+      const matrizName = (row.matriz || 'Não Mapeado') as string;
+      const familyName = (row.family || 'Não Mapeado') as string;
+      const mesNum = Number(row.mes_num);
+      const fat = Number(row.fat || 0);
+      const qty = Number(row.qty || 0);
+
+      const key = `${matrizName}::${familyName}`;
+      if (!matrizFamilyMap.has(key)) {
+        matrizFamilyMap.set(key, {
+          matriz: matrizName,
+          family: familyName,
+          totalQty: 0,
+          totalFat: 0,
+          months: {},
+        });
+      }
+      const fEntry = matrizFamilyMap.get(key)!;
+      fEntry.totalQty += qty;
+      fEntry.totalFat += fat;
+      if (!fEntry.months[mesNum]) {
+        fEntry.months[mesNum] = { fat: 0, qty: 0 };
+      }
+      fEntry.months[mesNum].fat += fat;
+      fEntry.months[mesNum].qty += qty;
+    }
+
     // Process Channels Result
     const channelsResult = Array.from(channelMap.values())
       .map(c => {
@@ -175,11 +281,55 @@ export async function GET(request: Request) {
       })
       .sort((a, b) => b.totalQty - a.totalQty);
 
+    // Process Families Result
+    const familiesResult = Array.from(familyMap.values())
+      .map(f => {
+        const monthPrices: Record<number, number> = {};
+        for (let i = 1; i <= 12; i++) {
+          if (f.months[i] && f.months[i].qty > 0) {
+            monthPrices[i] = f.months[i].fat / f.months[i].qty;
+          }
+        }
+        const avgPrice = f.totalQty > 0 ? f.totalFat / f.totalQty : 0;
+        return {
+          channel: f.channel,
+          family: f.family,
+          totalQty: f.totalQty,
+          totalFat: f.totalFat,
+          avgPrice,
+          monthPrices,
+        };
+      })
+      .sort((a, b) => b.totalQty - a.totalQty);
+
+    // Process Matriz Families Result
+    const matrizFamiliesResult = Array.from(matrizFamilyMap.values())
+      .map(f => {
+        const monthPrices: Record<number, number> = {};
+        for (let i = 1; i <= 12; i++) {
+          if (f.months[i] && f.months[i].qty > 0) {
+            monthPrices[i] = f.months[i].fat / f.months[i].qty;
+          }
+        }
+        const avgPrice = f.totalQty > 0 ? f.totalFat / f.totalQty : 0;
+        return {
+          matriz: f.matriz,
+          family: f.family,
+          totalQty: f.totalQty,
+          totalFat: f.totalFat,
+          avgPrice,
+          monthPrices,
+        };
+      })
+      .sort((a, b) => b.totalQty - a.totalQty);
+
     return NextResponse.json({
       success: true,
       data: matrizesResult, // backward compatibility
       channels: channelsResult,
       matrizes: matrizesResult,
+      families: familiesResult,
+      matrizFamilies: matrizFamiliesResult,
       year,
     });
   } catch (error: unknown) {

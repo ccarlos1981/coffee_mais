@@ -214,7 +214,7 @@ export default function AcompAnualPage() {
   
   const renderTable = (dataLines: JoinedData[], type: "forecast" | "internal", channel: string) => {
     const isForecast = type === "forecast";
-    const title = isForecast ? `Meta Forecast ${YEAR}` : `Plano Interno ${YEAR}`;
+    const title = isForecast ? `Meta Forecast ${YEAR}` : `Desafio ${YEAR}`;
     const desc = isForecast ? "Acompanhamento orçamentário mensal" : "Acompanhamento da meta corporativa estipulada";
     const bgGradient = isForecast ? "from-blue-600/10 to-indigo-600/5" : "from-violet-600/10 to-fuchsia-600/5";
     const iconColor = isForecast ? "text-blue-500" : "text-violet-500";

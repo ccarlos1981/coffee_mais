@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter, BarChart3, Upload, Home, DollarSign,
-  History, Users, Target, TrendingUp, CheckCircle2, Calendar
-} from "lucide-react";
+import { Filter, BarChart3, Upload, Home, DollarSign,
+  History, Users, Target, TrendingUp, CheckCircle2, Calendar,
+  ChevronRight, ChevronDown, ChevronLeft, Package } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
@@ -73,18 +73,21 @@ export default function PositivacaoPage() {
   const [filterEndYear, setFilterEndYear] = useState(defaultEndYear);
   const [filterEndMonth, setFilterEndMonth] = useState(defaultEndMonth);
 
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  // Sidebar filters (persisted and synced)
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
   });
 
   const [totals, setTotals] = useState({ clientes: 0, matrizes: 0, fat: 0, meses: 0 });
+  const fetchRequestIdRef = useRef(0);
+
   interface MonthlyByManagerRow {
     manager: string;
     clientes: number;
@@ -104,6 +107,104 @@ export default function PositivacaoPage() {
   const [batalhaNaval, setBatalhaNaval] = useState<BatalhaNavalRow[]>([]);
   const [months, setMonths] = useState<string[]>([]);
 
+  interface ManagerDetailState {
+    type: 'client' | 'matriz';
+    page: number;
+    loading: boolean;
+    total: number;
+    data: { name: string; matriz?: string | null; uf?: string | null; total_fat?: number | null; months: string[] }[];
+  }
+
+  const [expandedManagers, setExpandedManagers] = useState<string[]>([]);
+  const [managerDetails, setManagerDetails] = useState<Record<string, ManagerDetailState>>({});
+
+  const fetchManagerDetail = useCallback(async (manager: string, type: 'client' | 'matriz', page: number) => {
+    setManagerDetails(prev => ({
+      ...prev,
+      [manager]: {
+        ...(prev[manager] || { total: 0, data: [] }),
+        type,
+        page,
+        loading: true
+      }
+    }));
+
+    const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
+    const startDate = stD.toISOString().split("T")[0];
+    const enD = new Date(filterEndYear, filterEndMonth, 0);
+    const endDate = enD.toISOString().split("T")[0];
+
+    const params = new URLSearchParams({
+      startDate,
+      endDate,
+      manager,
+      type,
+      page: String(page),
+      limit: "10",
+      t: String(Date.now())
+    });
+
+    if (filterManager.length > 0) params.set("filterManager", filterManager.join(","));
+    if (filterFamilia.length > 0) params.set("familia", filterFamilia.join(","));
+    if (filterUf.length > 0) params.set("uf", filterUf.join(","));
+    if (filterChannel.length > 0) params.set("channel", filterChannel.join(","));
+    if (filterProduct.length > 0) params.set("product", filterProduct.join(","));
+    if (filterMatriz.length > 0) params.set("matriz", filterMatriz.join(","));
+
+    try {
+      const res = await fetch(`/api/dashboard/positivacao/detail?${params}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+      const json = await res.json();
+      if (json.success) {
+        setManagerDetails(prev => ({
+          ...prev,
+          [manager]: {
+            type,
+            page,
+            loading: false,
+            total: json.total,
+            data: json.data || []
+          }
+        }));
+      } else {
+        setManagerDetails(prev => ({
+          ...prev,
+          [manager]: {
+            ...(prev[manager] || { total: 0, data: [] }),
+            type,
+            page,
+            loading: false
+          }
+        }));
+      }
+    } catch (e) {
+      console.error(e);
+      setManagerDetails(prev => ({
+        ...prev,
+        [manager]: {
+          ...(prev[manager] || { total: 0, data: [] }),
+          type,
+          page,
+          loading: false
+        }
+      }));
+    }
+  }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz]);
+
+  const handleToggleManager = (manager: string) => {
+    if (expandedManagers.includes(manager)) {
+      setExpandedManagers(prev => prev.filter(m => m !== manager));
+    } else {
+      setExpandedManagers(prev => [...prev, manager]);
+      const current = managerDetails[manager];
+      if (!current) {
+        fetchManagerDetail(manager, 'client', 1);
+      }
+    }
+  };
+
   const fetchFilters = useCallback(async () => {
     setFiltersLoading(true);
     const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
@@ -119,7 +220,10 @@ export default function PositivacaoPage() {
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth]);
 
   const fetchData = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
+    setExpandedManagers([]);
+    setManagerDetails({});
     const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
     const startDate = stD.toISOString().split("T")[0];
     const enD = new Date(filterEndYear, filterEndMonth, 0);
@@ -136,6 +240,7 @@ export default function PositivacaoPage() {
     try {
       const res = await fetch(`/api/dashboard/positivacao?${params}`);
       const json = await res.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setTotals(json.totals || { clientes: 0, matrizes: 0, fat: 0, meses: 0 });
         setByMonth(json.byMonth || []);
@@ -143,8 +248,15 @@ export default function PositivacaoPage() {
         setBatalhaNaval(json.batalhaNaval || []);
         setMonths(json.months || []);
       }
-    } catch(e) { console.error(e); }
-    setLoading(false);
+    } catch(e) {
+      if (requestId === fetchRequestIdRef.current) {
+        console.error(e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
+    }
   }, [filterStartYear, filterStartMonth, filterEndYear, filterEndMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz]);
 
   useEffect(() => { fetchFilters(); }, [fetchFilters]);
@@ -339,18 +451,241 @@ export default function PositivacaoPage() {
                 <tbody>
                   {byManager.map((row, i) => {
                     const monthKeys = Object.keys(row.monthly || {}).sort();
+                    const isExpanded = expandedManagers.includes(row.manager);
+                    const detail = managerDetails[row.manager];
+                    
                     return (
-                      <tr key={i} style={{ borderBottom: "1px solid var(--border)" }}>
-                        <td style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500 }}>{row.manager}</td>
-                        <td style={{ textAlign: "center", padding: "6px 6px", fontWeight: 700, color: "#3f51b5" }}>{row.clientes}</td>
-                        <td style={{ textAlign: "center", padding: "6px 6px" }}>{row.matrizes}</td>
-                        {monthKeys.map(m => (
-                          <td key={m} style={{ textAlign: "center", padding: "6px 4px", fontWeight: 600, color: (row.monthly[m] || 0) > 0 ? "#2e7d32" : "var(--foreground-muted)", borderLeft: "1px dashed rgba(0,0,0,0.08)" }}>
-                            {row.monthly[m] || 0}
+                      <Fragment key={row.manager}>
+                        <tr style={{ borderBottom: "1px solid var(--border)", background: isExpanded ? "rgba(0,0,0,0.01)" : "transparent" }}>
+                          <td 
+                            onClick={() => handleToggleManager(row.manager)} 
+                            style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500, cursor: "pointer" }}
+                          >
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <ChevronRight 
+                                style={{ 
+                                  width: 12, 
+                                  height: 12, 
+                                  color: "var(--foreground-muted)",
+                                  transition: "transform 0.2s", 
+                                  transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                  flexShrink: 0
+                                }} 
+                              />
+                              {row.manager}
+                            </div>
                           </td>
-                        ))}
-                        <td style={{ textAlign: "right", padding: "6px 6px" }}>{formatCurrency(row.fat, 0)}</td>
-                      </tr>
+                          <td style={{ textAlign: "center", padding: "6px 6px", fontWeight: 700, color: "#3f51b5" }}>{row.clientes}</td>
+                          <td style={{ textAlign: "center", padding: "6px 6px" }}>{row.matrizes}</td>
+                          {monthKeys.map(m => (
+                            <td key={m} style={{ textAlign: "center", padding: "6px 4px", fontWeight: 600, color: (row.monthly[m] || 0) > 0 ? "#2e7d32" : "var(--foreground-muted)", borderLeft: "1px dashed rgba(0,0,0,0.08)" }}>
+                              {row.monthly[m] || 0}
+                            </td>
+                          ))}
+                          <td style={{ textAlign: "right", padding: "6px 6px" }}>{formatCurrency(row.fat, 0)}</td>
+                        </tr>
+                        
+                        {isExpanded && detail && (
+                          <tr style={{ background: "rgba(0,0,0,0.01)", borderBottom: "1px solid var(--border)" }}>
+                            <td colSpan={4 + monthKeys.length} style={{ padding: "10px 16px 14px 28px" }}>
+                              <div className="glass-card" style={{ padding: "12px", border: "1px solid var(--border)", background: "var(--background-card)" }}>
+                                {/* Header of Detail */}
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                  <h4 style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--foreground-secondary)", margin: 0 }}>
+                                    Detalhamento de Positivação — {row.manager}
+                                  </h4>
+                                  
+                                  {/* Toggle Switch */}
+                                  <div style={{ display: "flex", background: "var(--border)", padding: 2, borderRadius: 6, gap: 2 }}>
+                                    <button 
+                                      onClick={() => fetchManagerDetail(row.manager, 'client', 1)}
+                                      style={{
+                                        border: "none",
+                                        padding: "3px 8px",
+                                        fontSize: "0.6rem",
+                                        fontWeight: 600,
+                                        borderRadius: 4,
+                                        cursor: "pointer",
+                                        background: detail.type === 'client' ? "var(--card-bg, #fff)" : "transparent",
+                                        color: detail.type === 'client' ? "var(--foreground)" : "var(--foreground-muted)",
+                                        transition: "all 0.2s"
+                                      }}
+                                    >
+                                      Clientes (CNPJ)
+                                    </button>
+                                    <button 
+                                      onClick={() => fetchManagerDetail(row.manager, 'matriz', 1)}
+                                      style={{
+                                        border: "none",
+                                        padding: "3px 8px",
+                                        fontSize: "0.6rem",
+                                        fontWeight: 600,
+                                        borderRadius: 4,
+                                        cursor: "pointer",
+                                        background: detail.type === 'matriz' ? "var(--card-bg, #fff)" : "transparent",
+                                        color: detail.type === 'matriz' ? "var(--foreground)" : "var(--foreground-muted)",
+                                        transition: "all 0.2s"
+                                      }}
+                                    >
+                                      Matrizes (Rede)
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Table inside detail */}
+                                <div style={{ overflowX: "auto" }}>
+                                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.65rem" }}>
+                                    <thead>
+                                      <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                                        <th style={{ textAlign: "left", padding: "6px 8px", color: "var(--foreground-muted)" }}>
+                                          {detail.type === 'matriz' ? 'Matriz' : 'Cliente / CNPJ'}
+                                        </th>
+                                        {detail.type === 'client' && (
+                                          <>
+                                            <th style={{ textAlign: "left", padding: "6px 8px", color: "var(--foreground-muted)", width: 100 }}>
+                                              Matriz (Rede)
+                                            </th>
+                                            <th style={{ textAlign: "center", padding: "6px 8px", color: "var(--foreground-muted)", width: 50 }}>
+                                              UF
+                                            </th>
+                                          </>
+                                        )}
+                                        <th style={{ textAlign: "right", padding: "6px 8px", color: "var(--foreground-muted)", width: 90 }}>
+                                          Faturamento
+                                        </th>
+                                        {monthKeys.map(m => {
+                                          const [_y, _mm] = m.split("-");
+                                          return (
+                                            <th key={m} style={{ textAlign: "center", padding: "6px 4px", width: 48, fontWeight: 600, color: "var(--foreground-muted)" }}>
+                                              {MONTHS[parseInt(_mm)-1].slice(0,3)}<br/><span style={{ fontWeight: 400, opacity: 0.6 }}>{_y.slice(2)}</span>
+                                            </th>
+                                          );
+                                        })}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {detail.loading ? (
+                                        <tr>
+                                          <td colSpan={(detail.type === 'client' ? 4 : 2) + monthKeys.length} style={{ textAlign: "center", padding: "20px 0", color: "var(--foreground-muted)" }}>
+                                            Carregando listagem detalhada...
+                                          </td>
+                                        </tr>
+                                      ) : detail.data.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={(detail.type === 'client' ? 4 : 2) + monthKeys.length} style={{ textAlign: "center", padding: "14px 0", color: "var(--foreground-muted)" }}>
+                                            Nenhum registro encontrado.
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        detail.data.map((detRow, detIdx) => (
+                                          <tr key={detIdx} style={{ borderBottom: "1px solid rgba(0,0,0,0.03)" }}>
+                                            <td style={{ textAlign: "left", padding: "5px 8px", fontWeight: 500, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={detRow.name}>
+                                              {detRow.name}
+                                            </td>
+                                            {detail.type === 'client' && (
+                                              <>
+                                                <td style={{ textAlign: "left", padding: "5px 8px", color: "var(--foreground-muted)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={detRow.matriz || '-'}>
+                                                  {detRow.matriz || '-'}
+                                                </td>
+                                                <td style={{ textAlign: "center", padding: "5px 8px", color: "var(--foreground-muted)", fontWeight: 600 }}>
+                                                  {detRow.uf || '-'}
+                                                </td>
+                                              </>
+                                            )}
+                                            <td style={{ textAlign: "right", padding: "5px 8px", fontWeight: 600, color: "#2e7d32" }}>
+                                              {formatCurrency(detRow.total_fat || 0, 0)}
+                                            </td>
+                                            {monthKeys.map(m => {
+                                              const isPositive = detRow.months.includes(m);
+                                              return (
+                                                <td key={m} style={{ textAlign: "center", padding: "5px 4px", borderLeft: "1px dashed rgba(0,0,0,0.03)" }}>
+                                                  {isPositive ? (
+                                                    <span style={{ color: "#2e7d32", fontWeight: 700, fontSize: "0.75rem" }}>✓</span>
+                                                  ) : (
+                                                    <span style={{ 
+                                                      display: "inline-flex",
+                                                      alignItems: "center",
+                                                      justifyContent: "center",
+                                                      width: "16px",
+                                                      height: "16px",
+                                                      borderRadius: "4px",
+                                                      backgroundColor: "#fca5a5", // vermelho claro
+                                                      color: "#ffffff",           // letra na cor branca
+                                                      fontWeight: 700, 
+                                                      fontSize: "0.65rem"
+                                                    }}>
+                                                      0
+                                                    </span>
+                                                  )}
+                                                </td>
+                                              );
+                                            })}
+                                          </tr>
+                                        ))
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+
+                                {/* Pagination inside detail */}
+                                {!detail.loading && detail.total > 0 && (
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+                                    <span style={{ fontSize: "0.6rem", color: "var(--foreground-muted)" }}>
+                                      Mostrando {((detail.page - 1) * 10) + 1} a {Math.min(detail.page * 10, detail.total)} de {detail.total} {detail.type === 'matriz' ? 'matrizes' : 'clientes'}
+                                    </span>
+                                    
+                                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                      <button 
+                                        disabled={detail.page <= 1}
+                                        onClick={() => fetchManagerDetail(row.manager, detail.type, detail.page - 1)}
+                                        style={{
+                                          padding: "3px 8px",
+                                          borderRadius: 4,
+                                          border: "1px solid var(--border)",
+                                          background: detail.page <= 1 ? "var(--border)" : "var(--card-bg, #fff)",
+                                          color: detail.page <= 1 ? "var(--foreground-muted)" : "var(--foreground)",
+                                          fontSize: "0.6rem",
+                                          cursor: detail.page <= 1 ? "not-allowed" : "pointer",
+                                          opacity: detail.page <= 1 ? 0.5 : 1,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 2
+                                        }}
+                                      >
+                                        <ChevronLeft style={{ width: 10, height: 10 }} /> Anterior
+                                      </button>
+                                      
+                                      <span style={{ fontSize: "0.6rem", fontWeight: 600 }}>
+                                        {detail.page} / {Math.ceil(detail.total / 10)}
+                                      </span>
+
+                                      <button 
+                                        disabled={detail.page >= Math.ceil(detail.total / 10)}
+                                        onClick={() => fetchManagerDetail(row.manager, detail.type, detail.page + 1)}
+                                        style={{
+                                          padding: "3px 8px",
+                                          borderRadius: 4,
+                                          border: "1px solid var(--border)",
+                                          background: detail.page >= Math.ceil(detail.total / 10) ? "var(--border)" : "var(--card-bg, #fff)",
+                                          color: detail.page >= Math.ceil(detail.total / 10) ? "var(--foreground-muted)" : "var(--foreground)",
+                                          fontSize: "0.6rem",
+                                          cursor: detail.page >= Math.ceil(detail.total / 10) ? "not-allowed" : "pointer",
+                                          opacity: detail.page >= Math.ceil(detail.total / 10) ? 0.5 : 1,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 2
+                                        }}
+                                      >
+                                        Próximo <ChevronRight style={{ width: 10, height: 10 }} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
@@ -446,6 +781,7 @@ export default function PositivacaoPage() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
