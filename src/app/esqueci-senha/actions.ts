@@ -6,8 +6,13 @@ export async function resetPassword(formData: FormData) {
   const supabase = await createClient();
   const email = (formData.get("email") as string).trim().toLowerCase();
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL 
+    || (process.env.VERCEL_PROJECT_PRODUCTION_URL 
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` 
+        : 'http://localhost:3000');
+
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'}/auth/callback?next=/update-password`,
+    redirectTo: `${siteUrl}/auth/callback?next=/update-password`,
   });
 
   if (error) {
