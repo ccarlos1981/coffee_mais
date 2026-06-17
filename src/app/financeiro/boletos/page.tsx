@@ -10,6 +10,7 @@ import Link from "next/link";
 import { importarBoletos, listarBoletos, Boleto, listarRedesDisponiveis, atualizarBoleto } from "./actions";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { shortenRedeName } from "@/lib/formatters";
+import { supabase } from "@/lib/supabase";
 
 export default function BoletosPage() {
   const [boletos, setBoletos] = useState<Boleto[]>([]);
@@ -20,6 +21,7 @@ export default function BoletosPage() {
   
   const [editBoletoId, setEditBoletoId] = useState<string | null>(null);
   const [editBoletoData, setEditBoletoData] = useState<Partial<Boleto>>({});
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // Form states for manual addition
   const [showManualForm, setShowManualForm] = useState(false);
@@ -81,6 +83,14 @@ export default function BoletosPage() {
   };
 
   useEffect(() => {
+    const fetchUserRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
+        if (data) setUserRole(data.role);
+      }
+    };
+    fetchUserRole();
     fetchBoletos();
   }, []);
 
@@ -119,19 +129,54 @@ export default function BoletosPage() {
         // Fallback for old CSV format
         const text = await file.text();
         const lines = text.split('\n');
+
+        // Helper to parse CSV line respecting quotes
+        const parseCSVLine = (lineText: string): string[] => {
+          const result = [];
+          let current = '';
+          let inQuotes = false;
+          for (let i = 0; i < lineText.length; i++) {
+            const char = lineText[i];
+            if (char === '"') {
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              result.push(current);
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+          result.push(current);
+          return result;
+        };
+
+        // Helper to parse currency values in Brazilian (1.500,00) or US (1,500.00) format
+        const parseCurrency = (valStr: string): number => {
+          let cleaned = valStr.trim().replace(/^["']|["']$/g, '');
+          const lastComma = cleaned.lastIndexOf(',');
+          const lastDot = cleaned.lastIndexOf('.');
+          if (lastComma > lastDot) {
+            cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+          } else if (lastDot > lastComma) {
+            cleaned = cleaned.replace(/,/g, '');
+          } else if (lastComma !== -1) {
+            cleaned = cleaned.replace(',', '.');
+          }
+          return parseFloat(cleaned) || 0;
+        };
         
         const newBoletos = [];
         for (let i = 1; i < lines.length; i++) {
           const line = lines[i].trim();
           if (!line) continue;
           
-          const cols = line.split(',');
+          const cols = parseCSVLine(line);
           if (cols.length >= 4) {
             newBoletos.push({
-              rede: cols[0].trim(),
-              numero_boleto: cols[1].trim(),
-              valor_total: parseFloat(cols[2].trim().replace(',', '.')),
-              vencimento: cols[3].trim()
+              rede: cols[0].trim().replace(/^["']|["']$/g, ''),
+              numero_boleto: cols[1].trim().replace(/^["']|["']$/g, ''),
+              valor_total: parseCurrency(cols[2]),
+              vencimento: cols[3].trim().replace(/^["']|["']$/g, '')
             });
           }
         }
@@ -242,20 +287,22 @@ export default function BoletosPage() {
             <h2 className="text-2xl font-bold tracking-tight">Gestão de Boletos</h2>
             <p className="text-muted text-sm mt-1">Importe a planilha de boletos das redes para o processo de Apuração.</p>
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto">
-            <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-elevated border border-border rounded-xl text-sm font-medium hover:bg-border transition-colors cursor-pointer">
-              <UploadIcon className="w-4 h-4" />
-              {importing ? "Importando..." : "Importar Planilha"}
-              <input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} disabled={importing} />
-            </label>
-            <button 
-              onClick={() => setShowManualForm(!showManualForm)}
-              className="flex items-center justify-center gap-2 px-4 py-2 bg-gold hover:bg-yellow-600 text-white rounded-xl text-sm font-medium transition-colors"
-            >
-              <PlusIcon className="w-4 h-4" />
-              Adicionar Manual
-            </button>
-          </div>
+          {(userRole === 'Admin' || userRole === 'Financeiro') && (
+            <div className="flex items-center gap-3 w-full md:w-auto">
+              <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-elevated border border-border rounded-xl text-sm font-medium hover:bg-border transition-colors cursor-pointer">
+                <UploadIcon className="w-4 h-4" />
+                {importing ? "Importando..." : "Importar Planilha"}
+                <input type="file" accept=".csv,.xls,.xlsx" className="hidden" onChange={handleFileUpload} disabled={importing} />
+              </label>
+              <button 
+                onClick={() => setShowManualForm(!showManualForm)}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-gold hover:bg-yellow-600 text-white rounded-xl text-sm font-medium transition-colors"
+              >
+                <PlusIcon className="w-4 h-4" />
+                Adicionar Manual
+              </button>
+            </div>
+          )}
         </div>
                 {feedback && (
           <div className={`p-4 rounded-xl flex items-center gap-3 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'}`}>
@@ -264,7 +311,7 @@ export default function BoletosPage() {
           </div>
         )}
 
-        {showManualForm && (
+        {showManualForm && (userRole === 'Admin' || userRole === 'Financeiro') && (
           <div className="bg-card border border-border p-5 rounded-2xl shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
             <div>
               <label className="block text-xs font-medium text-muted mb-1.5">Rede</label>
@@ -471,19 +518,21 @@ export default function BoletosPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <button onClick={() => handleSaveEdit(boleto.id)} className="p-1.5 bg-green-500/10 text-green-600 rounded-md hover:bg-green-500/20 transition-colors" title="Salvar">
-                              <SaveIcon className="w-4 h-4" />
+                        {(userRole === 'Admin' || userRole === 'Financeiro') && (
+                          isEditing ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => handleSaveEdit(boleto.id)} className="p-1.5 bg-green-500/10 text-green-600 rounded-md hover:bg-green-500/20 transition-colors" title="Salvar">
+                                <SaveIcon className="w-4 h-4" />
+                              </button>
+                              <button onClick={cancelEdit} className="p-1.5 bg-red-500/10 text-red-600 rounded-md hover:bg-red-500/20 transition-colors" title="Cancelar">
+                                <XIcon className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => handleEditBoleto(boleto)} className="p-1.5 text-muted hover:text-foreground hover:bg-elevated rounded-md transition-colors" title="Editar Boleto">
+                              <Edit2Icon className="w-4 h-4" />
                             </button>
-                            <button onClick={cancelEdit} className="p-1.5 bg-red-500/10 text-red-600 rounded-md hover:bg-red-500/20 transition-colors" title="Cancelar">
-                              <XIcon className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <button onClick={() => handleEditBoleto(boleto)} className="p-1.5 text-muted hover:text-foreground hover:bg-elevated rounded-md transition-colors" title="Editar Boleto">
-                            <Edit2Icon className="w-4 h-4" />
-                          </button>
+                          )
                         )}
                       </td>
                     </tr>

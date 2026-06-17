@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
-import {
-  Users,
+import { Users,
   Search,
   Save,
   Download,
@@ -23,8 +22,7 @@ import {
   Eye,
   EyeOff,
   Calendar,
-  DollarSign
-} from "lucide-react";
+  DollarSign, Package, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
@@ -666,6 +664,8 @@ export default function AtendimentoPage() {
         <Link href="/dia" className="bottom-tab">
           <Calendar className="bottom-tab-icon" /> Dia
         </Link>
+        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab">
           <TrendingUp className="bottom-tab-icon" /> Inv.
         </Link>

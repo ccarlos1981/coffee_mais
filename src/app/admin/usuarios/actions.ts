@@ -10,6 +10,7 @@ export async function createUser(formData: FormData) {
     let email = formData.get("email") as string;
     const password = formData.get("password") as string;
     const role = formData.get("role") as string;
+    const managerName = (formData.get("manager_name") as string) || null;
     
     const receber_pdf_vendas = formData.get("receber_pdf_vendas") === "on";
     const receber_pdf_investimento = formData.get("receber_pdf_investimento") === "on";
@@ -43,8 +44,10 @@ export async function createUser(formData: FormData) {
         .insert({
           id: data.user.id,
           role: role,
+          manager_name: managerName,
           receber_pdf_vendas,
-          receber_pdf_investimento
+          receber_pdf_investimento,
+          approved: true
         });
         
       if (profileError) {
@@ -133,6 +136,56 @@ export async function updateUserPdfPreferences(userId: string, field: "vendas" |
     return { success: true };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar preferências.";
+    return { error: errorMsg };
+  }
+}
+
+export async function updateUserApproval(userId: string, approved: boolean) {
+  try {
+    const adminClient = createAdminClient();
+    
+    if (!userId) {
+      return { error: "Usuário é obrigatório." };
+    }
+
+    const { error } = await adminClient
+      .from('cm_user_profiles')
+      .update({ approved })
+      .eq('id', userId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/admin/usuarios");
+    return { success: true, message: "Aprovação atualizada com sucesso!" };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar aprovação.";
+    return { error: errorMsg };
+  }
+}
+
+export async function updateManagerName(userId: string, managerName: string | null) {
+  try {
+    const adminClient = createAdminClient();
+    
+    if (!userId) {
+      return { error: "Usuário é obrigatório." };
+    }
+
+    const { error } = await adminClient
+      .from('cm_user_profiles')
+      .update({ manager_name: managerName || null })
+      .eq('id', userId);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/admin/usuarios");
+    return { success: true, message: "Gerente atualizado com sucesso!" };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar gerente.";
     return { error: errorMsg };
   }
 }

@@ -5,13 +5,16 @@ import { Search } from "lucide-react";
 import { DeleteUserButton } from "./DeleteUserButton";
 import { EditUserRoleSelect } from "./EditUserRoleSelect";
 import { EditUserPdfPreferences } from "./EditUserPdfPreferences";
+import { ApproveUserToggle } from "./ApproveUserToggle";
 import { User } from "@supabase/supabase-js";
 
 interface UserProfile {
   id: string;
   role?: string;
+  manager_name?: string | null;
   receber_pdf_vendas?: boolean;
   receber_pdf_investimento?: boolean;
+  approved?: boolean;
 }
 
 interface UserListProps {
@@ -84,8 +87,13 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
                         />
                       )}
                     </div>
-                    <p className="text-xs text-foreground-muted mt-1">
+                    <p className="text-xs text-foreground-muted mt-1 flex items-center gap-2">
                       Criado em {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                      {profilesMap[user.id]?.manager_name && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent-gold/10 border border-accent-gold/20 text-accent-gold text-[10px] font-semibold uppercase">
+                          RPS: {profilesMap[user.id].manager_name}
+                        </span>
+                      )}
                     </p>
                     {profilesMap[user.id] !== undefined && (
                       <EditUserPdfPreferences
@@ -97,7 +105,15 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
                   </div>
                 </div>
                 
-                <DeleteUserButton userId={user.id} deleteAction={deleteAction} />
+                <div className="flex items-center gap-3">
+                  {profilesMap[user.id] !== undefined && (
+                    <ApproveUserToggle 
+                      userId={user.id} 
+                      initialApproved={profilesMap[user.id].approved || false} 
+                    />
+                  )}
+                  <DeleteUserButton userId={user.id} deleteAction={deleteAction} />
+                </div>
               </li>
             ))}
           </ul>

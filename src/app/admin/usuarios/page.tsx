@@ -9,8 +9,10 @@ import { User } from "@supabase/supabase-js";
 interface UserProfile {
   id: string;
   role?: string;
+  manager_name?: string | null;
   receber_pdf_vendas?: boolean;
   receber_pdf_investimento?: boolean;
+  approved?: boolean;
 }
 
 export const metadata = {
@@ -33,13 +35,13 @@ export default async function AdminUsuariosPage() {
     let profilesData: UserProfile[] | null = null;
     const response = await adminClient
       .from('cm_user_profiles')
-      .select('id, role, receber_pdf_vendas, receber_pdf_investimento');
+      .select('id, role, manager_name, receber_pdf_vendas, receber_pdf_investimento, approved');
 
     if (response.error) {
       // Se deu erro (ex: colunas não existem ainda), faz fallback apenas para role
       const fallbackResponse = await adminClient
         .from('cm_user_profiles')
-        .select('id, role');
+        .select('id, role, manager_name, approved');
       profilesData = fallbackResponse.data;
     } else {
       profilesData = response.data;
@@ -165,6 +167,28 @@ export default async function AdminUsuariosPage() {
                         <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                       </div>
                     </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground-secondary mb-1.5 ml-1">
+                      Gerente Comercial (RPS)
+                    </label>
+                    <div className="relative">
+                      <select
+                        name="manager_name"
+                        defaultValue=""
+                        className="w-full bg-background-elevated border border-border rounded-xl py-2.5 px-4 text-foreground focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all appearance-none"
+                      >
+                        <option value="">— Nenhum (Acesso total)</option>
+                        <option value="Julliano">Julliano</option>
+                        <option value="Leandro">Leandro</option>
+                        <option value="Luiz">Luiz</option>
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-foreground-muted">
+                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-foreground-muted mt-1 ml-1">Se preenchido, o usuário verá apenas os dados deste gerente na RPS.</p>
                   </div>
 
                   <div>

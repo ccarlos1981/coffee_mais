@@ -26,7 +26,22 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
 import { createClient } from "@/lib/supabase/server";
 
-const allModules = [
+interface NavigationItem {
+  title: string;
+  description: string;
+  href: string;
+  icon: any;
+  color: string;
+  ready: boolean;
+  permission?: string;
+}
+
+interface NavigationGroup {
+  category: string;
+  items: NavigationItem[];
+}
+
+const allModules: NavigationGroup[] = [
   {
     category: "Faturamento e Volume",
     items: [
@@ -51,10 +66,18 @@ const allModules = [
     ],
   },
   {
+    category: "Processo Comercial",
+    items: [
+      { title: "RPS", description: "Processamento de RPS", href: "/processo-comercial/rps", icon: Receipt, color: "from-blue-600 to-blue-800", ready: true },
+      { title: "RDM", description: "Reunião Mensal", href: "/processo-comercial/rdm", icon: Layers, color: "from-violet-600 to-violet-800", ready: true },
+    ],
+  },
+  {
     category: "Trade",
     items: [
       { title: "Dashboard", description: "Visão executiva", href: "/investimento/dashboard", icon: BarChart3, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
       { title: "Calendário", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
+      { title: "Planej. de Invest.", permission: "Planej. de Invest.", description: "Planejamento de ações", href: "/investimento/planejamento", icon: Target, color: "from-amber-600 to-amber-800", ready: true },
       { title: "Investimento", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-emerald-600 to-emerald-800", ready: true },
     ],
   },
@@ -69,6 +92,12 @@ const allModules = [
       { title: "Tributos", description: "Tributação SKU", href: "/tributos", icon: Receipt, color: "from-sky-600 to-sky-800", ready: true },
       { title: "Bonif.", description: "Bonificações", href: "/bonif", icon: Package, color: "from-indigo-600 to-indigo-800", ready: false },
       { title: "Devol.", description: "Devoluções", href: "/devol", icon: Layers, color: "from-slate-600 to-slate-800", ready: false },
+    ],
+  },
+  {
+    category: "Gente e Gestão",
+    items: [
+      { title: "Cadastro", permission: "Gente e Gestão", description: "Cadastro de funcionários", href: "/gente-gestao/cadastro", icon: Users, color: "from-teal-600 to-teal-800", ready: true },
     ],
   },
   {
@@ -135,7 +164,7 @@ export default async function HomePage() {
   const filteredModules = allModules.map(group => {
     return {
       ...group,
-      items: group.items.filter(item => isSuperAdmin || allowedModuleNames.includes(item.title)).map(({ icon: Icon, ...rest }) => ({
+      items: group.items.filter(item => isSuperAdmin || allowedModuleNames.includes(item.permission || item.title)).map(({ icon: Icon, ...rest }) => ({
         ...rest,
         iconNode: <Icon className="w-3 h-3 text-white" />
       }))

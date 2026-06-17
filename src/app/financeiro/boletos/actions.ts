@@ -64,33 +64,28 @@ export async function listarBoletosAbertosPorRede(rede: string): Promise<Boleto[
 }
 
 export async function listarRedesDisponiveis(): Promise<string[]> {
-  let allRedesData: any[] = [];
-  let hasMore = true;
-  let page = 0;
-  
-  while (hasMore) {
-    const { data, error } = await supabase
+  const { data, error } = await supabase
+    .from("view_redes_disponiveis")
+    .select("rede");
+
+  if (error) {
+    console.error("Erro ao listar redes da view view_redes_disponiveis:", error);
+    // Fallback in case the view is not created yet (failsafe)
+    const { data: fallbackData, error: fallbackError } = await supabase
       .from("base_atendimento")
       .select("rede")
       .not("rede", "is", null)
-      .range(page * 1000, (page + 1) * 1000 - 1);
+      .limit(1000);
 
-    if (error) {
-      console.error("Erro ao listar redes:", error);
+    if (fallbackError) {
+      console.error("Erro ao listar redes via fallback:", fallbackError);
       return [];
     }
-
-    if (data && data.length > 0) {
-      allRedesData = [...allRedesData, ...data];
-      page++;
-      if (data.length < 1000) hasMore = false;
-    } else {
-      hasMore = false;
-    }
+    const redesSet = new Set(fallbackData.map((r: any) => r.rede));
+    return Array.from(redesSet).sort() as string[];
   }
-  
-  const redesSet = new Set(allRedesData.map((r: any) => r.rede));
-  return Array.from(redesSet).sort() as string[];
+
+  return (data || []).map((r: any) => r.rede);
 }
 
 export async function atualizarBoleto(id: string, updates: Partial<Boleto>) {

@@ -19,7 +19,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
@@ -27,7 +27,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -47,7 +47,7 @@ WITH sales_enriched AS (
     END as tipo_produto,
     COALESCE(
       CASE 
-        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'SP'
+        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'SP'
         ELSE b.uf
       END,
       'SP'
@@ -55,7 +55,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
@@ -86,10 +86,12 @@ WITH sales_enriched AS (
   FROM cm_faturamento_sankhya f
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
+    AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+    AND (f.cod_top IS NULL OR f.cod_top != '1117')
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND f.cod_top::numeric = 1100)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
     )
 )
 SELECT
@@ -134,7 +136,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
@@ -142,7 +144,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -163,7 +165,7 @@ WITH sales_enriched AS (
     END as tipo_produto,
     COALESCE(
       CASE 
-        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'SP'
+        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'SP'
         ELSE b.uf
       END,
       'SP'
@@ -171,7 +173,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
@@ -199,10 +201,12 @@ WITH sales_enriched AS (
   FROM cm_faturamento_sankhya f
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
+    AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+    AND (f.cod_top IS NULL OR f.cod_top != '1117')
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND f.cod_top::numeric = 1100)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
     )
 )
 SELECT
@@ -241,7 +245,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
@@ -249,7 +253,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -271,7 +275,7 @@ WITH sales_enriched AS (
     END as tipo_produto,
     COALESCE(
       CASE 
-        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'SP'
+        WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'SP'
         ELSE b.uf
       END,
       'SP'
@@ -279,7 +283,7 @@ WITH sales_enriched AS (
     COALESCE(
       CASE 
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
@@ -295,10 +299,12 @@ WITH sales_enriched AS (
   FROM cm_faturamento_sankhya f
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
+    AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+    AND (f.cod_top IS NULL OR f.cod_top != '1117')
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND f.cod_top::numeric = 1100)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'AMAZON 1P') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
     )
 )
 SELECT
@@ -332,7 +338,7 @@ AS $$
 BEGIN
   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_vendas_mensal;
   REFRESH MATERIALIZED VIEW CONCURRENTLY mv_vendas_cliente_mensal;
-  REFRESH MATERIALIZED VIEW CONCURRENTLY mv_positivacao_sku_mensal;
+  REFRESH MATERIALIZED VIEW mv_positivacao_sku_mensal;
 END;
 $$;
 

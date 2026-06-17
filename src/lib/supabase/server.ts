@@ -14,12 +14,16 @@ export async function createClient() {
         },
         setAll(cookiesToSet) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
+            const rememberMe = cookieStore.get("coffee-remember")?.value !== "0";
+            cookiesToSet.forEach(({ name, value, options }) => {
+              const opts = rememberMe
+                ? options
+                : { ...options, maxAge: undefined, expires: undefined };
+              cookieStore.set(name, value, opts);
+            });
           } catch {
             // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have proxy refreshing user sessions.
+            // This can be ignored if you have middleware refreshing user sessions.
           }
         },
       },

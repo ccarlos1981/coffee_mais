@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export default async function InvestimentoDashboardPage() {
   const supabase = await createClient();
 
-  const { data: acoes } = await supabase.from('cm_acoes_investimento').select('*');
+  const { data: acoes } = await supabase.from('cm_acoes_investimento').select('*').eq('is_planejamento', false);
   
   // Need to loop because there could be more than 1000 PDVs
   let allPdvs: any[] = [];

@@ -39,18 +39,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
 
-  // Prevent flash of wrong theme
-  if (!mounted) {
-    return (
-      <div style={{ visibility: "hidden" }}>
-        {children}
-      </div>
-    );
-  }
-
+  // Always render the same DOM structure to avoid unmount/remount cycles.
+  // The visibility is toggled on a wrapper div rather than switching between
+  // a <div> and <Provider>, which would cause React to destroy child state.
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
-      {children}
+      <div style={!mounted ? { visibility: "hidden" } : undefined}>
+        {children}
+      </div>
     </ThemeContext.Provider>
   );
 }

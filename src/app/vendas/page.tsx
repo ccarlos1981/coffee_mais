@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   Bell,
   ChevronRight,
   TrendingUp,
@@ -20,8 +20,7 @@ import {
   PieChart,
   Target,
   Package,
-  Layers,
-} from "lucide-react";
+  Layers, CheckCircle2, X, Menu } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -51,11 +50,16 @@ const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; v
   { label: "KA", type: "channel", value: "KA", color: "#f59e0b" },
   { label: "Distrib.", type: "channel", value: "Distribuidor", color: "#10b981" },
   { label: "Inside S.", type: "channel", value: "Inside Sales", color: "#06b6d4" },
+  { label: "Amazon 1P", type: "channel", value: "Amazon 1P", color: "#f97316" },
+  { label: "Priv. Label", type: "channel", value: "Private Label", color: "#14b8a6" },
   { label: "1 KG", type: "familia", value: "1 KG", color: "#c8a96e" },
   { label: "5 KG", type: "familia", value: "5 KG", color: "#7d6b45" },
   { label: "Cápsula", type: "familia", value: "Cápsula", color: "#5a805a" },
   { label: "Drip", type: "familia", value: "Drip", color: "#6b8fad" },
 ];
+
+// Canais que mapeiam diretamente para um manager de mesmo nome
+const STANDALONE_CHANNEL_MANAGERS = new Set(['Ecommerce', 'Marketplace', 'Inside Sales', 'Amazon 1P', 'Private Label', 'Distribuidor']);
 
 /* ───────────────── types ───────────────── */
 interface FiltersData {
@@ -118,12 +122,12 @@ export default function VendasDashboard() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
 
-  // Sidebar filters
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
+  // Sidebar filters (persisted and synced)
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
 
   // Dynamic filter options
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
@@ -140,6 +144,10 @@ export default function VendasDashboard() {
   // Drill-down state
   const [expandedManager, setExpandedManager] = useState<string | null>(null);
   const [activeQuickFilter, setActiveQuickFilter] = useState<string | null>(null);
+
+  // Mobile Drawers
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
   /* ─── Fetch filters ─── */
   useEffect(() => {
@@ -211,8 +219,12 @@ export default function VendasDashboard() {
         if (json.success) {
           const byManager: ManagerData[] = json.byManager || [];
           setFamiliaData(json.byFamilia || []);
-          setPreviousMonth(json.previousMonth || { fat: 0, qty: 0, maco: 0 });
-          setPreviousYear(json.previousYear || { fat: 0, qty: 0, maco: 0 });
+          
+          const pm = json.previousMonth || { fat: 0, qty: 0, maco: 0 };
+          setPreviousMonth({ ...pm, maco: 0 });
+          
+          const py = json.previousYear || { fat: 0, qty: 0, maco: 0 };
+          setPreviousYear({ ...py, maco: 0 });
 
           const allManagerNames = new Set<string>();
           allTargets.forEach(t => allManagerNames.add(t.manager));
@@ -221,6 +233,20 @@ export default function VendasDashboard() {
           const rows: ManagerRow[] = [];
           allManagerNames.forEach(m => {
             if (filterManager.length > 0 && !filterManager.includes(m)) return;
+
+            // Filter by channel selection
+            if (filterChannel.length > 0) {
+              const isKA = filterChannel.includes("KA");
+
+              if (STANDALONE_CHANNEL_MANAGERS.has(m)) {
+                // Canal que mapeia direto para manager de mesmo nome
+                if (!filterChannel.includes(m)) return;
+              } else {
+                // KA managers: Leandro, Julliano, Luiz, etc.
+                if (!isKA) return;
+              }
+            }
+
             const target = allTargets.find(t => t.manager === m);
             const sales = byManager.find(s => s.manager === m);
 
@@ -228,14 +254,14 @@ export default function VendasDashboard() {
               manager: m,
               fat: sales?.fat || 0,
               qty: sales?.qty || 0,
-              maco: sales?.maco || 0,
+              maco: 0,
               paceFat: sales?.paceFat || 0,
               paceQty: sales?.paceQty || 0,
-              paceMaco: sales?.paceMaco || 0,
-              topClients: sales?.topClients || [],
+              paceMaco: 0,
+              topClients: (sales?.topClients || []).map(c => ({ ...c, maco: 0 })),
               metaFat: target?.target_revenue || 0,
               metaUnd: target?.target_tons || 0,
-              metaMaco: target?.target_maco || 0,
+              metaMaco: 0,
             });
           });
 
@@ -303,6 +329,83 @@ export default function VendasDashboard() {
     }
     initDefaultPeriod();
   }, []);
+
+  const renderSidebarContent = () => {
+    return (
+      <>
+        <p className="dash-sidebar-title" style={{ marginTop: 0 }}>Período</p>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
+          <select title="Mês" value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="dash-filter-select">
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m.slice(0, 3)}</option>)}
+          </select>
+          <select title="Ano" value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="dash-filter-select">
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+
+        <p className="dash-sidebar-title">Gerente</p>
+        <MultiSelect value={filterManager} onChange={setFilterManager} options={filterOptions.managers} className="dash-filter-select" placeholder="Todos" />
+
+        <p className="dash-sidebar-title">Família</p>
+        <MultiSelect value={filterFamilia} onChange={setFilterFamilia} options={filterOptions.familias} className="dash-filter-select" placeholder="Todas" />
+
+        <p className="dash-sidebar-title">Região (UF)</p>
+        <MultiSelect value={filterUf} onChange={setFilterUf} options={filterOptions.ufs} className="dash-filter-select" placeholder="Todos" />
+
+        <p className="dash-sidebar-title">Canal</p>
+        <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todos" />
+
+        <p className="dash-sidebar-title">Linha SKU</p>
+        <MultiSelect 
+          value={filterProduct} 
+          onChange={setFilterProduct} 
+          options={filterOptions.products} 
+          className="dash-filter-select"
+          placeholder="Todos"
+        />
+
+        {hasActiveFilters && (
+          <button onClick={handleClearFilters} className="cm-btn-clear">
+            <Filter style={{ width: 11, height: 11 }} />
+            Limpar Filtros ({activeFilterCount})
+          </button>
+        )}
+
+        <ExportButton 
+          data={managerRows.flatMap(m => m.topClients.map(c => ({
+            Gerente: m.manager,
+            Cliente: c.client,
+            Faturamento_R$: Number(c.fat.toFixed(2)),
+            Volume_un: c.qty,
+            Margem_Maco_R$: Number((c.maco || 0).toFixed(2)),
+            Mes_Anterior_R$: Number((c.prevMonthFat || 0).toFixed(2)),
+            Ano_Anterior_R$: Number((c.prevYearFat || 0).toFixed(2))
+          })))}
+          filename={`Painel_Vendas_${MONTHS[filterMonth - 1]}`}
+          className="w-full mt-4 justify-center"
+          variant="outline"
+        />
+
+        {hasActiveFilters && (
+          <div className="sidebar-info-box">
+            {filterManager.length > 0 && <div>Gerente: <strong style={{color:"var(--foreground)"}}>{filterManager.join(", ")}</strong></div>}
+            {filterFamilia.length > 0 && <div>Família: <strong style={{color:"var(--foreground)"}}>{filterFamilia.join(", ")}</strong></div>}
+            {filterUf.length > 0 && <div>UF: <strong style={{color:"var(--foreground)"}}>{filterUf.join(", ")}</strong></div>}
+            {filterChannel.length > 0 && <div>Canal: <strong style={{color:"var(--foreground)"}}>{filterChannel.join(", ")}</strong></div>}
+            {filterProduct.length > 0 && <div>SKU: <strong style={{color:"var(--foreground)"}}>{filterProduct.join(", ")}</strong></div>}
+          </div>
+        )}
+
+        {businessDays && (
+          <div className="sidebar-info-box">
+            <div>Dias Úteis: <strong style={{color:'var(--foreground)'}}>{businessDays.elapsed_days}/{businessDays.total_days}</strong></div>
+            <div>Restam: <strong style={{color:'var(--accent-gold)'}}>{Math.max(0, businessDays.total_days - businessDays.elapsed_days)}</strong></div>
+            <div>Percorrido: <strong style={{color:'var(--foreground)'}}>{formatPercent(timeElapsedPct)}</strong></div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   /* ─── Totals ─── */
   const totals = useMemo(() => {
@@ -394,136 +497,96 @@ export default function VendasDashboard() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)" }}>
       {/* ═══ NAVBAR — Coffee++ style ═══ */}
-      <nav className="cm-navbar" style={{ position: "relative" }}>
-        <Link href="/" className="cm-logo">
-          Coffee<span>++</span>
-        </Link>
-
-        <div className="cm-nav-links">
-          <Link href="/vendas" className="cm-nav-link active">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <BarChart3 style={{ width: 12, height: 12 }} /> Dashboard
-            </span>
+      <nav className="cm-navbar">
+        {/* Row 1: Logo + Links (Desktop) / Logo + Toggle (Mobile) */}
+        <div className="cm-navbar-top-row">
+          <Link href="/" className="cm-logo">
+            Coffee<span>++</span>
           </Link>
-          <Link href="/metas" className="cm-nav-link">Metas</Link>
-          <Link href="/upload" className="cm-nav-link">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <Upload style={{ width: 12, height: 12 }} /> Upload
-            </span>
-          </Link>
-          <Link href="/atendimento" className="cm-nav-link">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <Users style={{ width: 12, height: 12 }} /> Atendimento
-            </span>
-          </Link>
-        </div>
 
-        {/* Centered Title exactly like Forno */}
-        <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
-          <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
-            Resumo do Mês
-          </h1>
-          <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
-            {MONTHS[filterMonth - 1]} {filterYear} — <span style={{ opacity: 0.7 }}>*Valores /1k</span>
-          </p>
-        </div>
-
-        <div className="cm-nav-right">
-          {businessDays && (
-            <div style={{ fontSize: "0.62rem", color: "var(--foreground-muted)", textAlign: "right" }}>
-              <span style={{ color: "var(--foreground-secondary)" }}>
-                {businessDays.elapsed_days}/{businessDays.total_days}
+          <div className="cm-nav-links">
+            <Link href="/vendas" className="cm-nav-link active">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <BarChart3 style={{ width: 12, height: 12 }} /> Dashboard
               </span>
-              {" "}dias úteis
-            </div>
-          )}
-          <div style={{
-            fontSize: "0.58rem", color: "var(--foreground-dim)", textAlign: "right", lineHeight: 1.4,
-          }}>
-            <div style={{ color: "var(--foreground-muted)" }}>
-              {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
-            </div>
+            </Link>
+            <Link href="/metas" className="cm-nav-link">Metas</Link>
+            <Link href="/upload" className="cm-nav-link">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Upload style={{ width: 12, height: 12 }} /> Upload
+              </span>
+            </Link>
+            <Link href="/atendimento" className="cm-nav-link">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Users style={{ width: 12, height: 12 }} /> Atendimento
+              </span>
+            </Link>
           </div>
 
-          {/* ── Theme Toggle ── */}
-          <ThemeToggle />
+          {/* Centered Title — Desktop Only */}
+          <div className="desktop-only cm-navbar-center-title">
+            <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
+              Resumo do Mês
+            </h1>
+            <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
+              {MONTHS[filterMonth - 1]} {filterYear} — <span style={{ opacity: 0.7 }}>*Valores /1k</span>
+            </p>
+          </div>
+
+          <div className="cm-nav-right">
+            {businessDays && (
+              <div className="desktop-only" style={{ fontSize: "0.62rem", color: "var(--foreground-muted)", textAlign: "right" }}>
+                <span style={{ color: "var(--foreground-secondary)" }}>
+                  {businessDays.elapsed_days}/{businessDays.total_days}
+                </span>
+                {" "}dias úteis
+              </div>
+            )}
+            <div className="desktop-only" style={{
+              fontSize: "0.58rem", color: "var(--foreground-dim)", textAlign: "right", lineHeight: 1.4,
+            }}>
+              <div style={{ color: "var(--foreground-muted)" }}>
+                {new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+              </div>
+            </div>
+
+            {/* Theme Toggle is always on the top row */}
+            <ThemeToggle />
+          </div>
+        </div>
+
+        {/* Row 2: Mobile only, containing filters sandwich on left, Resumo do mês in center, summary trigger on right */}
+        <div className="cm-navbar-mobile-row">
+          <button 
+            onClick={() => setIsFiltersOpen(true)} 
+            className="mobile-sandwich-btn"
+            title="Filtros"
+          >
+            <Menu style={{ width: 20, height: 20 }} />
+          </button>
+
+          <div className="cm-navbar-mobile-title">
+            <h1>Resumo do Mês</h1>
+            <p>
+              {MONTHS[filterMonth - 1]} {filterYear} — <span>*Valores /1k</span>
+            </p>
+          </div>
+
+          <button 
+            onClick={() => setIsSummaryOpen(true)} 
+            className="mobile-summary-trigger-btn"
+            title="Resumo do Mês"
+          >
+            <BarChart3 style={{ width: 18, height: 18 }} />
+          </button>
         </div>
       </nav>
 
       {/* ═══ BODY: SIDEBAR + MAIN ═══ */}
       <div className="dash-body">
         {/* ═══ SIDEBAR — Filtros Verticais ═══ */}
-        <aside className="dash-sidebar">
-          <p className="dash-sidebar-title" style={{ marginTop: 0 }}>Período</p>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
-            <select title="Mês" value={filterMonth} onChange={(e) => setFilterMonth(Number(e.target.value))} className="dash-filter-select">
-              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m.slice(0, 3)}</option>)}
-            </select>
-            <select title="Ano" value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="dash-filter-select">
-              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-
-          <p className="dash-sidebar-title">Gerente</p>
-          <MultiSelect value={filterManager} onChange={setFilterManager} options={filterOptions.managers} className="dash-filter-select" placeholder="Todos" />
-
-          <p className="dash-sidebar-title">Família</p>
-          <MultiSelect value={filterFamilia} onChange={setFilterFamilia} options={filterOptions.familias} className="dash-filter-select" placeholder="Todas" />
-
-          <p className="dash-sidebar-title">Região (UF)</p>
-          <MultiSelect value={filterUf} onChange={setFilterUf} options={filterOptions.ufs} className="dash-filter-select" placeholder="Todos" />
-
-          <p className="dash-sidebar-title">Canal</p>
-          <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todos" />
-
-          <p className="dash-sidebar-title">Linha SKU</p>
-          <MultiSelect 
-            value={filterProduct} 
-            onChange={setFilterProduct} 
-            options={filterOptions.products} 
-            className="dash-filter-select"
-            placeholder="Todos"
-          />
-
-          {hasActiveFilters && (
-            <button onClick={handleClearFilters} className="cm-btn-clear">
-              <Filter style={{ width: 11, height: 11 }} />
-              Limpar Filtros ({activeFilterCount})
-            </button>
-          )}
-
-          <ExportButton 
-            data={managerRows.flatMap(m => m.topClients.map(c => ({
-              Gerente: m.manager,
-              Cliente: c.client,
-              Faturamento_R$: Number(c.fat.toFixed(2)),
-              Volume_un: c.qty,
-              Margem_Maco_R$: Number((c.maco || 0).toFixed(2)),
-              Mes_Anterior_R$: Number((c.prevMonthFat || 0).toFixed(2)),
-              Ano_Anterior_R$: Number((c.prevYearFat || 0).toFixed(2))
-            })))}
-            filename={`Painel_Vendas_${MONTHS[filterMonth - 1]}`}
-            className="w-full mt-4 justify-center"
-            variant="outline"
-          />
-
-          {hasActiveFilters && (
-            <div className="sidebar-info-box">
-              {filterManager.length > 0 && <div>Gerente: <strong style={{color:"var(--foreground)"}}>{filterManager.join(", ")}</strong></div>}
-              {filterFamilia.length > 0 && <div>Família: <strong style={{color:"var(--foreground)"}}>{filterFamilia.join(", ")}</strong></div>}
-              {filterUf.length > 0 && <div>UF: <strong style={{color:"var(--foreground)"}}>{filterUf.join(", ")}</strong></div>}
-              {filterChannel.length > 0 && <div>Canal: <strong style={{color:"var(--foreground)"}}>{filterChannel.join(", ")}</strong></div>}
-              {filterProduct.length > 0 && <div>SKU: <strong style={{color:"var(--foreground)"}}>{filterProduct.join(", ")}</strong></div>}
-            </div>
-          )}
-
-          {businessDays && (
-            <div className="sidebar-info-box">
-              <div>Dias Úteis: <strong style={{color:'var(--foreground)'}}>{businessDays.elapsed_days}/{businessDays.total_days}</strong></div>
-              <div>Restam: <strong style={{color:'var(--accent-gold)'}}>{Math.max(0, businessDays.total_days - businessDays.elapsed_days)}</strong></div>
-              <div>Percorrido: <strong style={{color:'var(--foreground)'}}>{formatPercent(timeElapsedPct)}</strong></div>
-            </div>
-          )}
+        <aside className="dash-sidebar desktop-only">
+          {renderSidebarContent()}
         </aside>
 
         {/* ═══ MAIN CONTENT ═══ */}
@@ -556,240 +619,598 @@ export default function VendasDashboard() {
             );
           })}
         </div>
+
         {/* ═══ TOP SECTION: KPIs + Gauge + Pie ═══ */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 240px", gap: 14, marginBottom: 16 }}>
-          <div className="kpi-grid" style={{ marginBottom: 0 }}>
-            {/* FATURAMENTO */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
-              <KPICard
-                label="Real Fat."
-                value={formatCurrency(totals.fat / 1000, 0)}
-                variant="real"
-                pctVal={pct(totals.fat, totals.metaFat)}
-                compare={compareVariation(totals.fat, previousMonth.fat)}
-                compareLabel="mês ant."
-              />
-            </div>
-            
-            {/* UNIDADES */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
-              <KPICard
-                label="Real Unid."
-                value={formatNumber(totals.qty, 0)}
-                variant="real"
-                pctVal={pct(totals.qty, totals.metaUnd)}
-                compare={compareVariation(totals.qty, previousMonth.qty)}
-                compareLabel="mês ant."
-              />
+        <div className="desktop-only">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 240px", gap: 14, marginBottom: 16 }}>
+            <div className="kpi-grid" style={{ marginBottom: 0 }}>
+              {/* FATURAMENTO */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
+                <KPICard
+                  label="Real Fat."
+                  value={formatCurrency(totals.fat / 1000, 0)}
+                  variant="real"
+                  pctVal={pct(totals.fat, totals.metaFat)}
+                  compare={compareVariation(totals.fat, previousMonth.fat)}
+                  compareLabel="mês ant."
+                />
+              </div>
+              
+              {/* UNIDADES */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
+                <KPICard
+                  label="Real Unid."
+                  value={formatNumber(totals.qty, 0)}
+                  variant="real"
+                  pctVal={pct(totals.qty, totals.metaUnd)}
+                  compare={compareVariation(totals.qty, previousMonth.qty)}
+                  compareLabel="mês ant."
+                />
+              </div>
+
+              {/* MACO */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
+                <KPICard
+                  label="Real MaCo"
+                  value={formatCurrency(totals.maco / 1000, 0)}
+                  variant="real"
+                  pctVal={pct(totals.maco, totals.metaMaco)}
+                  compare={compareVariation(totals.maco, previousYear.maco)}
+                  compareLabel="ano ant."
+                />
+              </div>
             </div>
 
-            {/* MACO */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
-              <KPICard
-                label="Real MaCo"
-                value={formatCurrency(totals.maco / 1000, 0)}
-                variant="real"
-                pctVal={pct(totals.maco, totals.metaMaco)}
-                compare={compareVariation(totals.maco, previousYear.maco)}
-                compareLabel="ano ant."
-              />
+            {/* Gauge */}
+            <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+              <GaugeChart value={faturamentoPct} label="Atingimento" />
             </div>
-          </div>
 
-          {/* Gauge */}
-          <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-            <GaugeChart value={faturamentoPct} label="Atingimento" />
-          </div>
-
-          {/* Pie */}
-          <div className="glass-card" style={{ padding: 14 }}>
-            <DonutChart data={familiaData} />
+            {/* Pie */}
+            <div className="glass-card" style={{ padding: 14 }}>
+              <DonutChart data={familiaData} />
+            </div>
           </div>
         </div>
 
         {/* ═══ Pace Row ═══ */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 16 }}>
-          <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
-          <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
-          <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
-          <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
-          <MiniStat
-            label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
-            value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
-            color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-          />
-          <MiniStat
-            label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
-            value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
-            color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-          />
+        <div className="desktop-only">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 16 }}>
+            <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
+            <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
+            <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
+            <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
+            <MiniStat
+              label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
+              value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
+              color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+            />
+            <MiniStat
+              label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
+              value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
+              color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+            />
+          </div>
         </div>
 
-        {/* ═══ MAIN TABLE ═══ */}
-        <div className="glass-card" style={{ overflow: "hidden" }}>
-          <div style={{ overflowX: "auto" }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
-                  <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento (R$)</th>
-                  <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
-                  <th colSpan={4} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MaCo (R$)</th>
-                </tr>
-                <tr>
-                  <th className="col-group-fat col-divider">Meta</th>
-                  <th className="col-group-fat">Real</th>
-                  <th className="col-group-fat">%</th>
-                  <th className="col-group-fat">Pace</th>
-                  <th className="col-group-und col-divider">Meta</th>
-                  <th className="col-group-und">Real</th>
-                  <th className="col-group-und">%</th>
-                  <th className="col-group-maco col-divider">Meta</th>
-                  <th className="col-group-maco">Real</th>
-                  <th className="col-group-maco">%</th>
-                  <th className="col-group-maco">Pace</th>
-                </tr>
-              </thead>
-              <tbody>
-                {managerRows.length === 0 && !loading ? (
+        {/* ═══ MAIN TABLE (DESKTOP) ═══ */}
+        <div className="desktop-only">
+          <div className="glass-card" style={{ overflow: "hidden" }}>
+            <div style={{ overflowX: "auto" }}>
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan={12} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
-                      Sem dados para o período selecionado
-                    </td>
+                    <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
+                    <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento (R$)</th>
+                    <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
+                    <th colSpan={4} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MaCo (R$)</th>
                   </tr>
-                ) : (
-                  <>
-                    {managerRows.map((row) => {
-                      const pFat = pct(row.fat, row.metaFat);
-                      const pUnd = pct(row.qty, row.metaUnd);
-                      const pMaco = pct(row.maco, row.metaMaco);
-                      const isExpanded = expandedManager === row.manager;
+                  <tr>
+                    <th className="col-group-fat col-divider">Meta</th>
+                    <th className="col-group-fat">Real</th>
+                    <th className="col-group-fat">%</th>
+                    <th className="col-group-fat">Pace</th>
+                    <th className="col-group-und col-divider">Meta</th>
+                    <th className="col-group-und">Real</th>
+                    <th className="col-group-und">%</th>
+                    <th className="col-group-maco col-divider">Meta</th>
+                    <th className="col-group-maco">Real</th>
+                    <th className="col-group-maco">%</th>
+                    <th className="col-group-maco">Pace</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {managerRows.length === 0 && !loading ? (
+                    <tr>
+                      <td colSpan={12} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
+                        Sem dados para o período selecionado
+                      </td>
+                    </tr>
+                  ) : (
+                    <>
+                      {managerRows.map((row) => {
+                        const pFat = pct(row.fat, row.metaFat);
+                        const pUnd = pct(row.qty, row.metaUnd);
+                        const pMaco = pct(row.maco, row.metaMaco);
+                        const isExpanded = expandedManager === row.manager;
 
-                      return [
-                        <tr key={row.manager}>
-                          <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                              <ChevronRight style={{
-                                width: 12, height: 12, color: "var(--foreground-muted)",
-                                transition: "transform 0.2s",
-                                transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
-                              }} />
-                              {row.manager}
-                            </span>
-                          </td>
-                          <td className="col-divider">{formatCurrency(row.metaFat / 1000)}</td>
-                          <td>{formatCurrency(row.fat / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
-                            {row.metaFat > 0 ? formatPercent(pFat) : "-"}
-                          </td>
-                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
-                            {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
-                          </td>
-                          <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
-                          <td>{formatNumber(row.qty, 0)}</td>
-                          <td className="pct-cell" style={getPctStyle(pUnd, row.metaUnd)}>
-                            {row.metaUnd > 0 ? formatPercent(pUnd) : "-"}
-                          </td>
-                          <td className="col-divider">{formatCurrency(row.metaMaco / 1000)}</td>
-                          <td>{formatCurrency(row.maco / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pMaco, row.metaMaco)}>
-                            {row.metaMaco > 0 ? formatPercent(pMaco) : "-"}
-                          </td>
-                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
-                            {row.paceMaco && row.paceMaco > 0 ? formatCurrency(row.paceMaco / 1000) : "-"}
-                          </td>
-                        </tr>,
-                        isExpanded && (
-                          <tr key={`${row.manager}-drill`} className="drill-down-row">
-                            <td colSpan={12}>
-                              <div className="drill-down-container">
-                                <p style={{
-                                  fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
-                                  textTransform: "uppercase", letterSpacing: "0.1em",
-                                  marginBottom: 8,
-                                }}>
-                                  Top Matrizes — {row.manager}
-                                </p>
-                                {row.topClients.length === 0 ? (
-                                  <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
-                                ) : (
-                                  <div style={{ maxHeight: 300, overflowY: "auto" }}>
-                                    <table className="drill-table">
-                                      <thead>
-                                        <tr>
-                                          <th style={{ width: 30 }}>#</th>
-                                          <th>Matriz</th>
-                                          <th>Faturamento</th>
-                                          <th>vs Mês Ant.</th>
-                                          <th>vs Ano Ant.</th>
-                                          <th>Unidades</th>
-                                          <th>MaCo</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {row.topClients.map((c: TopClientRow, i: number) => {
-                                          const vsPM = c.prevMonthFat > 0 ? ((c.fat - c.prevMonthFat) / c.prevMonthFat) * 100 : null;
-                                          const vsPY = c.prevYearFat > 0 ? ((c.fat - c.prevYearFat) / c.prevYearFat) * 100 : null;
-                                          return (
-                                          <tr key={i}>
-                                            <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
-                                            <td>{c.client}</td>
-                                            <td>{formatCurrency(c.fat / 1000)}</td>
-                                            <td style={{ color: vsPM === null ? "var(--foreground-dim)" : vsPM >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.65rem" }}>
-                                              {vsPM === null ? "—" : `${vsPM >= 0 ? "+" : ""}${vsPM.toFixed(1)}%`}
-                                            </td>
-                                            <td style={{ color: vsPY === null ? "var(--foreground-dim)" : vsPY >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.65rem" }}>
-                                              {vsPY === null ? "—" : `${vsPY >= 0 ? "+" : ""}${vsPY.toFixed(1)}%`}
-                                            </td>
-                                            <td>{formatNumber(c.qty, 0)}</td>
-                                            <td>{formatCurrency(c.maco / 1000)}</td>
-                                          </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                )}
-                              </div>
+                        return [
+                          <tr key={row.manager}>
+                            <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                <ChevronRight style={{
+                                  width: 12, height: 12, color: "var(--foreground-muted)",
+                                  transition: "transform 0.2s",
+                                  transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                }} />
+                                {row.manager}
+                              </span>
                             </td>
-                          </tr>
-                        ),
-                      ];
-                    })}
+                            <td className="col-divider">{formatCurrency(row.metaFat / 1000)}</td>
+                            <td>{formatCurrency(row.fat / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
+                              {row.metaFat > 0 ? formatPercent(pFat) : "-"}
+                            </td>
+                            <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                              {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
+                            </td>
+                            <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
+                            <td>{formatNumber(row.qty, 0)}</td>
+                            <td className="pct-cell" style={getPctStyle(pUnd, row.metaUnd)}>
+                              {row.metaUnd > 0 ? formatPercent(pUnd) : "-"}
+                            </td>
+                            <td className="col-divider">{formatCurrency(row.metaMaco / 1000)}</td>
+                            <td>{formatCurrency(row.maco / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pMaco, row.metaMaco)}>
+                              {row.metaMaco > 0 ? formatPercent(pMaco) : "-"}
+                            </td>
+                            <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                              {row.paceMaco && row.paceMaco > 0 ? formatCurrency(row.paceMaco / 1000) : "-"}
+                            </td>
+                          </tr>,
+                          isExpanded && (
+                            <tr key={`${row.manager}-drill`} className="drill-down-row">
+                              <td colSpan={12}>
+                                <div className="drill-down-container">
+                                  <p style={{
+                                    fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
+                                    textTransform: "uppercase", letterSpacing: "0.1em",
+                                    marginBottom: 8,
+                                  }}>
+                                    Top Matrizes — {row.manager}
+                                  </p>
+                                  {row.topClients.length === 0 ? (
+                                    <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                  ) : (
+                                    <div style={{ maxHeight: 300, overflowY: "auto" }}>
+                                      <table className="drill-table">
+                                        <thead>
+                                          <tr>
+                                            <th style={{ width: 30 }}>#</th>
+                                            <th>Matriz</th>
+                                            <th>Faturamento</th>
+                                            <th>vs Mês Ant.</th>
+                                            <th>vs Ano Ant.</th>
+                                            <th>Unidades</th>
+                                            <th>MaCo</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {row.topClients.map((c: TopClientRow, i: number) => {
+                                            const vsPM = c.prevMonthFat > 0 ? ((c.fat - c.prevMonthFat) / c.prevMonthFat) * 100 : null;
+                                            const vsPY = c.prevYearFat > 0 ? ((c.fat - c.prevYearFat) / c.prevYearFat) * 100 : null;
+                                            return (
+                                              <tr key={i}>
+                                                <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
+                                                <td>{c.client}</td>
+                                                <td>{formatCurrency(c.fat / 1000)}</td>
+                                                <td style={{ color: vsPM === null ? "var(--foreground-dim)" : vsPM >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.65rem" }}>
+                                                  {vsPM === null ? "—" : `${vsPM >= 0 ? "+" : ""}${vsPM.toFixed(1)}%`}
+                                                </td>
+                                                <td style={{ color: vsPY === null ? "var(--foreground-dim)" : vsPY >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.65rem" }}>
+                                                  {vsPY === null ? "—" : `${vsPY >= 0 ? "+" : ""}${vsPY.toFixed(1)}%`}
+                                                </td>
+                                                <td>{formatNumber(c.qty, 0)}</td>
+                                                <td>{formatCurrency(c.maco / 1000)}</td>
+                                              </tr>
+                                            );
+                                          })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ),
+                        ];
+                      })}
 
-                    {managerRows.length > 0 && (
-                      <tr className="row-total">
-                        <td>TOTAL</td>
-                        <td className="col-divider">{formatCurrency(totals.metaFat / 1000)}</td>
-                        <td>{formatCurrency(totals.fat / 1000)}</td>
-                        <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
-                          {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
-                        </td>
-                        <td className="pct-cell" style={{ color: "var(--foreground)" }}>
-                          {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
-                        </td>
-                        <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
-                        <td>{formatNumber(totals.qty, 0)}</td>
-                        <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
-                          {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
-                        </td>
-                        <td className="col-divider">{formatCurrency(totals.metaMaco / 1000)}</td>
-                        <td>{formatCurrency(totals.maco / 1000)}</td>
-                        <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
-                          {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
-                        </td>
-                        <td className="pct-cell" style={{ color: "var(--foreground)" }}>
-                          {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
+                      {managerRows.length > 0 && (
+                        <tr className="row-total">
+                          <td>TOTAL</td>
+                          <td className="col-divider">{formatCurrency(totals.metaFat / 1000)}</td>
+                          <td>{formatCurrency(totals.fat / 1000)}</td>
+                          <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
+                          </td>
+                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                            {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
+                          </td>
+                          <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
+                          <td>{formatNumber(totals.qty, 0)}</td>
+                          <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                            {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
+                          </td>
+                          <td className="col-divider">{formatCurrency(totals.metaMaco / 1000)}</td>
+                          <td>{formatCurrency(totals.maco / 1000)}</td>
+                          <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                            {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
+                          </td>
+                          <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                            {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* ═══ MAIN TABLES (MOBILE STACKED) ═══ */}
+        <div className="mobile-only" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            
+            {/* Table 1: Faturamento (R$) */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 4, height: 16, backgroundColor: "var(--accent-gold)", borderRadius: 2 }} />
+                <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--accent-gold)" }}>
+                  Faturamento (R$)
+                </span>
+              </div>
+              <div className="glass-card" style={{ overflow: "hidden" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left" }}>Gerente</th>
+                      <th>Meta</th>
+                      <th>Real</th>
+                      <th>%</th>
+                      <th>Pace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerRows.length === 0 && !loading ? (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
+                          Sem dados para o período selecionado
                         </td>
                       </tr>
+                    ) : (
+                      <>
+                        {managerRows.map((row) => {
+                          const pFat = pct(row.fat, row.metaFat);
+                          const isExpanded = expandedManager === row.manager;
+                          return [
+                            <tr key={row.manager}>
+                              <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  <ChevronRight style={{
+                                    width: 12, height: 12, color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                  }} />
+                                  {row.manager}
+                                </span>
+                              </td>
+                              <td>{formatCurrency(row.metaFat / 1000)}</td>
+                              <td>{formatCurrency(row.fat / 1000)}</td>
+                              <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
+                                {row.metaFat > 0 ? formatPercent(pFat) : "-"}
+                              </td>
+                              <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                                {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
+                              </td>
+                            </tr>,
+                            isExpanded && (
+                              <tr key={`${row.manager}-drill`} className="drill-down-row">
+                                <td colSpan={5}>
+                                  <div className="drill-down-container" style={{ padding: 8 }}>
+                                    <p style={{
+                                      fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
+                                      textTransform: "uppercase", letterSpacing: "0.1em",
+                                      marginBottom: 8,
+                                    }}>
+                                      Top Matrizes — {row.manager}
+                                    </p>
+                                    {row.topClients.length === 0 ? (
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                    ) : (
+                                      <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                                        <table className="drill-table">
+                                          <thead>
+                                            <tr>
+                                              <th style={{ width: 20 }}>#</th>
+                                              <th>Matriz</th>
+                                              <th>Faturamento</th>
+                                              <th>vs Mês A.</th>
+                                              <th>vs Ano A.</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {row.topClients.map((c, i) => {
+                                              const vsPM = c.prevMonthFat > 0 ? ((c.fat - c.prevMonthFat) / c.prevMonthFat) * 100 : null;
+                                              const vsPY = c.prevYearFat > 0 ? ((c.fat - c.prevYearFat) / c.prevYearFat) * 100 : null;
+                                              return (
+                                                <tr key={i}>
+                                                  <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
+                                                  <td>{c.client}</td>
+                                                  <td>{formatCurrency(c.fat / 1000)}</td>
+                                                  <td style={{ color: vsPM === null ? "var(--foreground-dim)" : vsPM >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.62rem" }}>
+                                                    {vsPM === null ? "—" : `${vsPM >= 0 ? "+" : ""}${vsPM.toFixed(1)}%`}
+                                                  </td>
+                                                  <td style={{ color: vsPY === null ? "var(--foreground-dim)" : vsPY >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.62rem" }}>
+                                                    {vsPY === null ? "—" : `${vsPY >= 0 ? "+" : ""}${vsPY.toFixed(1)}%`}
+                                                  </td>
+                                                </tr>
+                                              );
+                                            })}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          ];
+                        })}
+                        {managerRows.length > 0 && (
+                          <tr className="row-total">
+                            <td>TOTAL</td>
+                            <td>{formatCurrency(totals.metaFat / 1000)}</td>
+                            <td>{formatCurrency(totals.fat / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
+                            </td>
+                            <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                              {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </tbody>
-            </table>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Table 2: Unidades */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 4, height: 16, backgroundColor: "var(--foreground-secondary)", borderRadius: 2 }} />
+                <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--foreground-secondary)" }}>
+                  Unidades
+                </span>
+              </div>
+              <div className="glass-card" style={{ overflow: "hidden" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left" }}>Gerente</th>
+                      <th>Meta</th>
+                      <th>Real</th>
+                      <th>%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerRows.length === 0 && !loading ? (
+                      <tr>
+                        <td colSpan={4} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
+                          Sem dados para o período selecionado
+                        </td>
+                      </tr>
+                    ) : (
+                      <>
+                        {managerRows.map((row) => {
+                          const pUnd = pct(row.qty, row.metaUnd);
+                          const isExpanded = expandedManager === row.manager;
+                          return [
+                            <tr key={row.manager}>
+                              <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  <ChevronRight style={{
+                                    width: 12, height: 12, color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                  }} />
+                                  {row.manager}
+                                </span>
+                              </td>
+                              <td>{formatNumber(row.metaUnd, 0)}</td>
+                              <td>{formatNumber(row.qty, 0)}</td>
+                              <td className="pct-cell" style={getPctStyle(pUnd, row.metaUnd)}>
+                                {row.metaUnd > 0 ? formatPercent(pUnd) : "-"}
+                              </td>
+                            </tr>,
+                            isExpanded && (
+                              <tr key={`${row.manager}-drill`} className="drill-down-row">
+                                <td colSpan={4}>
+                                  <div className="drill-down-container" style={{ padding: 8 }}>
+                                    <p style={{
+                                      fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
+                                      textTransform: "uppercase", letterSpacing: "0.1em",
+                                      marginBottom: 8,
+                                    }}>
+                                      Top Matrizes — {row.manager}
+                                    </p>
+                                    {row.topClients.length === 0 ? (
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                    ) : (
+                                      <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                                        <table className="drill-table">
+                                          <thead>
+                                            <tr>
+                                              <th style={{ width: 20 }}>#</th>
+                                              <th>Matriz</th>
+                                              <th>Unidades</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {row.topClients.map((c, i) => (
+                                              <tr key={i}>
+                                                <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
+                                                <td>{c.client}</td>
+                                                <td>{formatNumber(c.qty, 0)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          ];
+                        })}
+                        {managerRows.length > 0 && (
+                          <tr className="row-total">
+                            <td>TOTAL</td>
+                            <td>{formatNumber(totals.metaUnd, 0)}</td>
+                            <td>{formatNumber(totals.qty, 0)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                              {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Table 3: MaCo (R$) */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 4, height: 16, backgroundColor: "#5a805a", borderRadius: 2 }} />
+                <span style={{ fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color: "#7dba7d" }}>
+                  MaCo (R$)
+                </span>
+              </div>
+              <div className="glass-card" style={{ overflow: "hidden" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: "left" }}>Gerente</th>
+                      <th>Meta</th>
+                      <th>Real</th>
+                      <th>%</th>
+                      <th>Pace</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managerRows.length === 0 && !loading ? (
+                      <tr>
+                        <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
+                          Sem dados para o período selecionado
+                        </td>
+                      </tr>
+                    ) : (
+                      <>
+                        {managerRows.map((row) => {
+                          const pMaco = pct(row.maco, row.metaMaco);
+                          const isExpanded = expandedManager === row.manager;
+                          return [
+                            <tr key={row.manager}>
+                              <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                                  <ChevronRight style={{
+                                    width: 12, height: 12, color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s",
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                  }} />
+                                  {row.manager}
+                                </span>
+                              </td>
+                              <td>{formatCurrency(row.metaMaco / 1000)}</td>
+                              <td>{formatCurrency(row.maco / 1000)}</td>
+                              <td className="pct-cell" style={getPctStyle(pMaco, row.metaMaco)}>
+                                {row.metaMaco > 0 ? formatPercent(pMaco) : "-"}
+                              </td>
+                              <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                                {row.paceMaco && row.paceMaco > 0 ? formatCurrency(row.paceMaco / 1000) : "-"}
+                              </td>
+                            </tr>,
+                            isExpanded && (
+                              <tr key={`${row.manager}-drill`} className="drill-down-row">
+                                <td colSpan={5}>
+                                  <div className="drill-down-container" style={{ padding: 8 }}>
+                                    <p style={{
+                                      fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
+                                      textTransform: "uppercase", letterSpacing: "0.1em",
+                                      marginBottom: 8,
+                                    }}>
+                                      Top Matrizes — {row.manager}
+                                    </p>
+                                    {row.topClients.length === 0 ? (
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                    ) : (
+                                      <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                                        <table className="drill-table">
+                                          <thead>
+                                            <tr>
+                                              <th style={{ width: 20 }}>#</th>
+                                              <th>Matriz</th>
+                                              <th>MaCo</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {row.topClients.map((c, i) => (
+                                              <tr key={i}>
+                                                <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
+                                                <td>{c.client}</td>
+                                                <td>{formatCurrency(c.maco / 1000)}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          ];
+                        })}
+                        {managerRows.length > 0 && (
+                          <tr className="row-total">
+                            <td>TOTAL</td>
+                            <td>{formatCurrency(totals.metaMaco / 1000)}</td>
+                            <td>{formatCurrency(totals.maco / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                              {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
+                            </td>
+                            <td className="pct-cell" style={{ color: "var(--foreground)" }}>
+                              {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
           </div>
         </div>
         </main>
@@ -821,6 +1242,8 @@ export default function VendasDashboard() {
         <Link href="/dia" className="bottom-tab">
           <Calendar className="bottom-tab-icon" /> Dia
         </Link>
+        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab">
           <TrendingUp className="bottom-tab-icon" /> Inv.
         </Link>
@@ -846,6 +1269,100 @@ export default function VendasDashboard() {
           <DollarSign className="bottom-tab-icon" /> DRE
         </span>
       </nav>
+
+      {/* ═══ MOBILE DRAWER - FILTERS ═══ */}
+      {isFiltersOpen && (
+        <div 
+          className="mobile-drawer-overlay" 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsFiltersOpen(false);
+          }}
+        >
+          <div className="mobile-drawer-content" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-drawer-header">
+              <h3>Filtros</h3>
+              <button className="mobile-drawer-close" onClick={() => setIsFiltersOpen(false)}>&times;</button>
+            </div>
+            <div className="mobile-drawer-body">
+              {renderSidebarContent()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MOBILE DRAWER - SUMMARY ═══ */}
+      {isSummaryOpen && (
+        <div 
+          className="mobile-drawer-overlay" 
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsSummaryOpen(false);
+          }}
+        >
+          <div className="mobile-drawer-content summary-drawer" onClick={(e) => e.stopPropagation()}>
+            <div className="mobile-drawer-header">
+              <h3>Resumo do Mês</h3>
+              <button className="mobile-drawer-close" onClick={() => setIsSummaryOpen(false)}>&times;</button>
+            </div>
+            <div className="mobile-drawer-body">
+              <div className="mobile-summary-kpis">
+                <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
+                <KPICard
+                  label="Real Fat."
+                  value={formatCurrency(totals.fat / 1000, 0)}
+                  variant="real"
+                  pctVal={pct(totals.fat, totals.metaFat)}
+                  compare={compareVariation(totals.fat, previousMonth.fat)}
+                  compareLabel="mês ant."
+                />
+                <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
+                <KPICard
+                  label="Real Unid."
+                  value={formatNumber(totals.qty, 0)}
+                  variant="real"
+                  pctVal={pct(totals.qty, totals.metaUnd)}
+                  compare={compareVariation(totals.qty, previousMonth.qty)}
+                  compareLabel="mês ant."
+                />
+                <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
+                <KPICard
+                  label="Real MaCo"
+                  value={formatCurrency(totals.maco / 1000, 0)}
+                  variant="real"
+                  pctVal={pct(totals.maco, totals.metaMaco)}
+                  compare={compareVariation(totals.maco, previousYear.maco)}
+                  compareLabel="ano ant."
+                />
+              </div>
+
+              <div className="mobile-summary-charts">
+                <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                  <GaugeChart value={faturamentoPct} label="Atingimento" />
+                </div>
+                <div className="glass-card" style={{ padding: 14 }}>
+                  <DonutChart data={familiaData} />
+                </div>
+              </div>
+
+              <div className="mobile-summary-pace">
+                <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
+                <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
+                <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
+                <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
+                <MiniStat
+                  label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
+                  value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
+                  color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                />
+                <MiniStat
+                  label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
+                  value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
+                  color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

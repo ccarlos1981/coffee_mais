@@ -304,6 +304,8 @@ export default function SmartActionHub() {
         <Link href="/alertas" className="bottom-tab active"><Bell className="bottom-tab-icon" /> Alertas</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
+        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <span className="bottom-tab disabled"><Briefcase className="bottom-tab-icon" /> Carteira</span>
         <span className="bottom-tab disabled"><Package className="bottom-tab-icon" /> Bonif.</span>
         <span className="bottom-tab disabled"><Layers className="bottom-tab-icon" /> Devol.</span>

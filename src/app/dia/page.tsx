@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
-import {
-  Filter,
+import { Filter,
   BarChart3,
   Upload,
   Home,
@@ -11,8 +11,7 @@ import {
   History,
   Users,
   TrendingUp,
-  Calendar,
-} from "lucide-react";
+  Calendar, Package } from "lucide-react";
 import { formatCurrency, formatNumber } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -57,31 +56,38 @@ const YEARS = [2026, 2025, 2024, 2023];
 
 export default function DailyDashboardPage() {
   const [loading, setLoading] = useState(true);
+  const fetchRequestIdRef = useRef(0);
 
   // Filter States
   const [filterYear, setFilterYear] = useState<number | undefined>(undefined);
   const [filterMonth, setFilterMonth] = useState<number | undefined>(undefined);
   const [latestPeriod, setLatestPeriod] = useState<{ year: number; month: number } | null>(null);
-  const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
-  const [filterUf, setFilterUf] = useState<string[]>([]);
-  const [filterChannel, setFilterChannel] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]);
-  const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
+  // Sidebar filters (persisted and synced)
+  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
+  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
+  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
+  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
+  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  const [filterMatriz, setFilterMatriz] = usePersistedState<string[]>("db_filter_matriz", []);
 
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [], matrizes: []
   });
 
   const [chartData, setChartData] = useState<DailyRow[]>([]);
+  const [prevChartData, setPrevChartData] = useState<DailyRow[]>([]);
+  const [prevMonthName, setPrevMonthName] = useState<string>("");
+  const [prevYearNum, setPrevYearNum] = useState<number>(2026);
 
   // Fetch filter options
   const fetchFilters = useCallback(async () => {
     try {
-      const res = await fetch(`/api/dashboard/filters`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
+      // Prioritize using actual values if available
+      const now = new Date();
+      const currentYear = filterYear || now.getFullYear();
+      const currentMonth = filterMonth || (now.getMonth() + 1);
+
+      const res = await fetch(`/api/dashboard/filters?year=${currentYear}&month=${currentMonth}`);
       const json = await res.json();
       if (json.success) {
         setFilterOptions(json.filters);
@@ -105,6 +111,7 @@ export default function DailyDashboardPage() {
   // Fetch daily sales data
   const fetchData = useCallback(async () => {
     if (filterYear === undefined || filterMonth === undefined) return;
+    const requestId = ++fetchRequestIdRef.current;
     setLoading(true);
 
     const params = new URLSearchParams();
@@ -117,20 +124,51 @@ export default function DailyDashboardPage() {
     if (filterProduct.length > 0) params.set("product", filterProduct.join(","));
     if (filterMatriz.length > 0) params.set("matriz", filterMatriz.join(","));
 
+    let prevMonth = filterMonth - 1;
+    let prevYear = filterYear;
+    if (prevMonth === 0) {
+      prevMonth = 12;
+      prevYear = filterYear - 1;
+    }
+
+    const prevParams = new URLSearchParams(params);
+    prevParams.set("year", String(prevYear));
+    prevParams.set("month", String(prevMonth));
+
     try {
-      const res = await fetch(`/api/dashboard/daily?${params}`, {
-        cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
-      });
-      const json = await res.json();
+      const [res, prevRes] = await Promise.all([
+        fetch(`/api/dashboard/daily?${params}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        }),
+        fetch(`/api/dashboard/daily?${prevParams}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        })
+      ]);
+      const [json, prevJson] = await Promise.all([
+        res.json(),
+        prevRes.json()
+      ]);
+
+      if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setChartData(json.data || []);
       }
+      if (prevJson.success) {
+        setPrevChartData(prevJson.data || []);
+        setPrevMonthName(MONTHS[prevMonth - 1]);
+        setPrevYearNum(prevYear);
+      }
     } catch (e) {
-      console.error("[Dia] Error fetching daily sales data:", e);
+      if (requestId === fetchRequestIdRef.current) {
+        console.error("[Dia] Error fetching daily sales data:", e);
+      }
+    } finally {
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-
-    setLoading(false);
   }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, filterMatriz]);
 
   useEffect(() => { Promise.resolve().then(() => fetchFilters()); }, [fetchFilters]);
@@ -180,6 +218,66 @@ export default function DailyDashboardPage() {
     const totalQty = chartData.reduce((acc, d) => acc + d.qty, 0);
     return { totalFat, totalQty };
   }, [chartData]);
+
+  // Sums for day ranges: P1 (1-10), P2 (11-20), P3 (21-31) comparing current and previous months
+  const periodData = useMemo(() => {
+    const calcPeriod = (data: DailyRow[]) => {
+      const totalFat = data.reduce((acc, d) => acc + d.fat, 0);
+      const totalQty = data.reduce((acc, d) => acc + d.qty, 0);
+
+      const p1 = data.filter(d => d.day >= 1 && d.day <= 10);
+      const p2 = data.filter(d => d.day >= 11 && d.day <= 20);
+      const p3 = data.filter(d => d.day >= 21 && d.day <= 31);
+
+      const fat1 = p1.reduce((acc, d) => acc + d.fat, 0);
+      const qty1 = p1.reduce((acc, d) => acc + d.qty, 0);
+
+      const fat2 = p2.reduce((acc, d) => acc + d.fat, 0);
+      const qty2 = p2.reduce((acc, d) => acc + d.qty, 0);
+
+      const fat3 = p3.reduce((acc, d) => acc + d.fat, 0);
+      const qty3 = p3.reduce((acc, d) => acc + d.qty, 0);
+
+      return {
+        totalFat,
+        totalQty,
+        p1: { fat: fat1, qty: qty1, fatPct: totalFat > 0 ? (fat1 / totalFat) * 100 : 0, qtyPct: totalQty > 0 ? (qty1 / totalQty) * 100 : 0 },
+        p2: { fat: fat2, qty: qty2, fatPct: totalFat > 0 ? (fat2 / totalFat) * 100 : 0, qtyPct: totalQty > 0 ? (qty2 / totalQty) * 100 : 0 },
+        p3: { fat: fat3, qty: qty3, fatPct: totalFat > 0 ? (fat3 / totalFat) * 100 : 0, qtyPct: totalQty > 0 ? (qty3 / totalQty) * 100 : 0 },
+      };
+    };
+
+    return {
+      current: calcPeriod(chartData),
+      prev: calcPeriod(prevChartData)
+    };
+  }, [chartData, prevChartData]);
+
+  // Combined chart data for side-by-side bars
+  // bar1 = previous month (left), bar2 = current month (right)
+  const combinedChartData = useMemo(() => {
+    const maxDays = Math.max(
+      chartData.length,
+      prevChartData.length,
+      31
+    );
+    const result = [];
+    for (let i = 0; i < maxDays; i++) {
+      const cur = chartData[i];
+      const prev = prevChartData[i];
+      if (!cur && !prev) continue;
+      result.push({
+        day: cur?.day ?? prev?.day ?? (i + 1),
+        bar1Fat: prev?.fat ?? 0,
+        bar2Fat: cur?.fat ?? 0,
+        bar1Qty: prev?.qty ?? 0,
+        bar2Qty: cur?.qty ?? 0,
+      });
+    }
+    return result;
+  }, [chartData, prevChartData]);
+
+  const currentMonthLabel = filterMonth !== undefined ? MONTHS[filterMonth - 1] : "";
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)", paddingBottom: "80px" }}>
@@ -291,14 +389,118 @@ export default function DailyDashboardPage() {
                 </div>
               </div>
 
+              {/* Comparativo de Vendas por Períodos (Dezenas) */}
+              <div className="glass-card animate-fade-in" style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div>
+                  <h3 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--foreground)", marginBottom: 2 }}>
+                    Comparativo de Vendas por Períodos (Dezena)
+                  </h3>
+                  <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>
+                    Divisão das vendas acumuladas de faturamento e volume em períodos de 10 dias
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {/* Bloco Mês Atual */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--accent-gold)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Mês Atual ({filterMonth !== undefined ? MONTHS[filterMonth - 1] : ""} / {filterYear})
+                    </span>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                      {/* P1 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid rgba(217, 119, 6, 0.15)", background: "rgba(217, 119, 6, 0.02)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 01 ao 10</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--accent-gold)" }}>{formatCurrency(periodData.current.p1.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--accent-gold)", opacity: 0.85 }}>{periodData.current.p1.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground)" }}>{formatNumber(periodData.current.p1.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.current.p1.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                      {/* P2 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid rgba(217, 119, 6, 0.15)", background: "rgba(217, 119, 6, 0.02)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 11 ao 20</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--accent-gold)" }}>{formatCurrency(periodData.current.p2.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--accent-gold)", opacity: 0.85 }}>{periodData.current.p2.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground)" }}>{formatNumber(periodData.current.p2.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.current.p2.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                      {/* P3 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid rgba(217, 119, 6, 0.15)", background: "rgba(217, 119, 6, 0.02)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 21 ao 31</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--accent-gold)" }}>{formatCurrency(periodData.current.p3.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--accent-gold)", opacity: 0.85 }}>{periodData.current.p3.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground)" }}>{formatNumber(periodData.current.p3.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.current.p3.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bloco Mês Passado */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    <span style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--foreground-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      Mês Passado ({prevMonthName} / {prevYearNum})
+                    </span>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "10px" }}>
+                      {/* P1 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid var(--border)", background: "rgba(255, 255, 255, 0.01)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 01 ao 10</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--foreground)" }}>{formatCurrency(periodData.prev.p1.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--foreground-muted)" }}>{periodData.prev.p1.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground-secondary)" }}>{formatNumber(periodData.prev.p1.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.prev.p1.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                      {/* P2 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid var(--border)", background: "rgba(255, 255, 255, 0.01)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 11 ao 20</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--foreground)" }}>{formatCurrency(periodData.prev.p2.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--foreground-muted)" }}>{periodData.prev.p2.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground-secondary)" }}>{formatNumber(periodData.prev.p2.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.prev.p2.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                      {/* P3 */}
+                      <div className="glass-card" style={{ padding: "12px", border: "1px solid var(--border)", background: "rgba(255, 255, 255, 0.01)" }}>
+                        <span style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)" }}>Dia 21 ao 31</span>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 4 }}>
+                          <span style={{ fontSize: "1.1rem", fontWeight: 800, color: "var(--foreground)" }}>{formatCurrency(periodData.prev.p3.fat, 0)}</span>
+                          <span style={{ fontSize: "0.7rem", fontWeight: 600, color: "var(--foreground-muted)" }}>{periodData.prev.p3.fatPct.toFixed(1)}% fat</span>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: 2 }}>
+                          <span style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--foreground-secondary)" }}>{formatNumber(periodData.prev.p3.qty, 0)} un</span>
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>{periodData.prev.p3.qtyPct.toFixed(1)}% vol</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* 1. DAILY FATURAMENTO CHART */}
-              <div className="glass-card animate-fade-in" style={{ padding: 16, height: 320 }}>
+              <div className="glass-card animate-fade-in" style={{ padding: 16, height: 360 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  FATURAMENTO DIÁRIO (R$) — {filterMonth !== undefined ? MONTHS[filterMonth - 1].toUpperCase() : ""} {filterYear || ""}
+                  FATURAMENTO DIÁRIO (R$) — {prevMonthName.toUpperCase()} {prevYearNum} vs {currentMonthLabel.toUpperCase()} {filterYear || ""}
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
-                  <BarChart data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+                  <BarChart data={combinedChartData} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="4 4" horizontal={false} vertical={true} stroke="var(--foreground-muted)" opacity={0.35} />
                     <XAxis 
                       dataKey="day" 
                       axisLine={false} 
@@ -313,13 +515,33 @@ export default function DailyDashboardPage() {
                     />
                     <Tooltip
                       content={<GlassTooltip
-                        formatter={(val) => [formatCurrency(Number(val)), "Faturamento"]}
-                        labelFormatter={(label) => `Dia ${label} de ${filterMonth !== undefined ? MONTHS[filterMonth - 1] : ""}`}
+                        formatter={(val, name) => {
+                          const label = name === 'bar1Fat' ? prevMonthName : currentMonthLabel;
+                          return [formatCurrency(Number(val)), label];
+                        }}
+                        labelFormatter={(label) => `Dia ${label}`}
                       />}
                     />
-                    <Bar dataKey="fat" fill="#d97706" radius={[3, 3, 0, 0]}>
+                    <Legend 
+                      verticalAlign="top" 
+                      height={24}
+                      content={() => (
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', fontSize: '0.65rem', fontWeight: 600, paddingBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: 10, height: 10, backgroundColor: '#b0bec5', borderRadius: 2 }} />
+                            <span style={{ color: 'var(--foreground-muted)' }}>{prevMonthName}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: 10, height: 10, backgroundColor: '#d97706', borderRadius: 2 }} />
+                            <span style={{ color: 'var(--foreground-muted)' }}>{currentMonthLabel}</span>
+                          </div>
+                        </div>
+                      )}
+                    />
+                    <Bar dataKey="bar1Fat" name={prevMonthName} fill="#b0bec5" radius={[3, 3, 0, 0]} minPointSize={3} />
+                    <Bar dataKey="bar2Fat" name={currentMonthLabel} fill="#d97706" radius={[3, 3, 0, 0]} minPointSize={3}>
                       <LabelList 
-                        dataKey="fat" 
+                        dataKey="bar2Fat" 
                         position="top" 
                         fill="var(--foreground)" 
                         fontSize={8} 
@@ -336,13 +558,13 @@ export default function DailyDashboardPage() {
               </div>
 
               {/* 2. DAILY VOLUME CHART */}
-              <div className="glass-card animate-fade-in" style={{ padding: 16, height: 320 }}>
+              <div className="glass-card animate-fade-in" style={{ padding: 16, height: 360 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  VOLUME DIÁRIO (UNIDADES) — {filterMonth !== undefined ? MONTHS[filterMonth - 1].toUpperCase() : ""} {filterYear || ""}
+                  VOLUME DIÁRIO (UNIDADES) — {prevMonthName.toUpperCase()} {prevYearNum} vs {currentMonthLabel.toUpperCase()} {filterYear || ""}
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
-                  <BarChart data={chartData} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" opacity={0.3} />
+                  <BarChart data={combinedChartData} margin={{ top: 20, right: 10, left: 10, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="4 4" horizontal={false} vertical={true} stroke="var(--foreground-muted)" opacity={0.35} />
                     <XAxis 
                       dataKey="day" 
                       axisLine={false} 
@@ -357,13 +579,33 @@ export default function DailyDashboardPage() {
                     />
                     <Tooltip
                       content={<GlassTooltip
-                        formatter={(val) => [formatNumber(Number(val), 0), "Volume"]}
-                        labelFormatter={(label) => `Dia ${label} de ${filterMonth !== undefined ? MONTHS[filterMonth - 1] : ""}`}
+                        formatter={(val, name) => {
+                          const label = name === 'bar1Qty' ? prevMonthName : currentMonthLabel;
+                          return [formatNumber(Number(val), 0), label];
+                        }}
+                        labelFormatter={(label) => `Dia ${label}`}
                       />}
                     />
-                    <Bar dataKey="qty" fill="#0284c7" radius={[3, 3, 0, 0]}>
+                    <Legend 
+                      verticalAlign="top" 
+                      height={24}
+                      content={() => (
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', fontSize: '0.65rem', fontWeight: 600, paddingBottom: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: 10, height: 10, backgroundColor: '#b0bec5', borderRadius: 2 }} />
+                            <span style={{ color: 'var(--foreground-muted)' }}>{prevMonthName}</span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: 10, height: 10, backgroundColor: '#0284c7', borderRadius: 2 }} />
+                            <span style={{ color: 'var(--foreground-muted)' }}>{currentMonthLabel}</span>
+                          </div>
+                        </div>
+                      )}
+                    />
+                    <Bar dataKey="bar1Qty" name={prevMonthName} fill="#b0bec5" radius={[3, 3, 0, 0]} minPointSize={3} />
+                    <Bar dataKey="bar2Qty" name={currentMonthLabel} fill="#0284c7" radius={[3, 3, 0, 0]} minPointSize={3}>
                       <LabelList 
-                        dataKey="qty" 
+                        dataKey="bar2Qty" 
                         position="top" 
                         fill="var(--foreground)" 
                         fontSize={8} 
@@ -395,6 +637,7 @@ export default function DailyDashboardPage() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab active"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
