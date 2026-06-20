@@ -20,7 +20,9 @@ import {
   AlertTriangle,
   Mail,
   LogOut,
-  Settings
+  Settings,
+  CalendarDays,
+  ClipboardList
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
@@ -70,6 +72,8 @@ const allModules: NavigationGroup[] = [
     items: [
       { title: "RPS", description: "Processamento de RPS", href: "/processo-comercial/rps", icon: Receipt, color: "from-blue-600 to-blue-800", ready: true },
       { title: "RDM", description: "Reunião Mensal", href: "/processo-comercial/rdm", icon: Layers, color: "from-violet-600 to-violet-800", ready: true },
+      { title: "Agenda", description: "Agenda Comercial", href: "/processo-comercial/agenda", icon: CalendarDays, color: "from-emerald-600 to-emerald-800", ready: true },
+      { title: "Follow Up", description: "Acompanhamento", href: "/processo-comercial/follow-up", icon: ClipboardList, color: "from-amber-600 to-amber-800", ready: true },
     ],
   },
   {

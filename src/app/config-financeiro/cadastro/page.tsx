@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Save, FileText, Banknote, MapPin, Building, ArrowLeft } from "lucide-react";
+import { Search, Loader2, Save, FileText, Banknote, MapPin, Building, ArrowLeft, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
-import { notificarFinanceiroNovoCliente } from "../clientes/actions";
+import { notificarFinanceiroNovoCliente, notificarTransicaoFase } from "../clientes/actions";
 
 export default function ClienteCadastroPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [fetchingCnpj, setFetchingCnpj] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // States for search by client code
   const [codigoBusca, setCodigoBusca] = useState("");
@@ -46,6 +47,7 @@ export default function ClienteCadastroPage() {
     desconto_contratual: "",
     data_vigor: "",
     status: "ativo",
+    fase: "comercial",
   });
   const [tipoCadastro, setTipoCadastro] = useState("novo");
 
@@ -86,6 +88,7 @@ export default function ClienteCadastroPage() {
       desconto_contratual: "",
       data_vigor: "",
       status: "ativo",
+      fase: "comercial",
     });
   };
 
@@ -139,6 +142,7 @@ export default function ClienteCadastroPage() {
         desconto_contratual: data.desconto_contratual || "",
         data_vigor: data.data_vigor || "",
         status: data.status || "ativo",
+        fase: data.fase || "comercial",
       });
 
       setSelectedClientId(data.id);
@@ -152,8 +156,28 @@ export default function ClienteCadastroPage() {
     }
   };
 
-  // Load code from query parameter on mount
+  // Load user profile and code from query parameters on mount
   useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const supabaseClient = createClient();
+        const { data: { user } } = await supabaseClient.auth.getUser();
+        if (user) {
+          const { data } = await supabaseClient
+            .from("cm_user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+          if (data) {
+            setUserRole(data.role);
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao buscar papel do usuário:", err);
+      }
+    };
+    fetchUserRole();
+
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const code = params.get("codigo");
@@ -217,61 +241,112 @@ export default function ClienteCadastroPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Role & Permission Mappings
+  const isAdminOrCeo = userRole === "Admin" || userRole === "CEO";
+  const isCommercialUser = userRole === "Gerente Regional" || userRole === "Vendedor" || userRole === "Supervisor" || userRole === "Promotor";
+  const isFinancialUser = userRole === "Financeiro";
+  const isOperationsUser = userRole === "Trade";
+
+  // Lock logic
+  const isCommercialDisabled = !isAdminOrCeo && (formData.fase !== "comercial" || !isCommercialUser);
+  const isFinancialDisabled = !isAdminOrCeo && (formData.fase !== "financeiro" || !isFinancialUser);
+  const isAllDisabled = !isAdminOrCeo && formData.fase === "concluido";
+
+  const salvarCliente = async (nextPhase?: "comercial" | "financeiro" | "operacoes" | "concluido") => {
     setLoading(true);
     
     try {
       const supabase = createClient();
+      const targetPhase = nextPhase || formData.fase || "comercial";
+
+      // Validation before transition
+      if (nextPhase === "financeiro") {
+        if (!formData.cnpj) {
+          toast.error("CNPJ é obrigatório para concluir a fase comercial.");
+          setLoading(false);
+          return;
+        }
+        if (!formData.nome_parceiro || !formData.razao_social) {
+          toast.error("Razão Social e Nome Fantasia são obrigatórios.");
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (nextPhase === "operacoes") {
+        if (!formData.classificacao_icms || !formData.retirar_st || !formData.empresa_preferencial || !formData.tipo_geracao_boleto) {
+          toast.error("Por favor, preencha todos os campos financeiros obrigatórios.");
+          setLoading(false);
+          return;
+        }
+      }
       
+      const payload: any = {
+        cnpj: formData.cnpj,
+        matriz: formData.matriz,
+        codigo_matriz: formData.codigo_matriz || null,
+        responsavel: formData.responsavel || null,
+        tipo_parceiro: formData.tipo_parceiro,
+        nome_parceiro: formData.nome_parceiro,
+        razao_social: formData.razao_social,
+        inscricao_estadual: formData.inscricao_estadual,
+        cep: formData.cep,
+        endereco: formData.endereco,
+        numero: formData.numero,
+        complemento: formData.complemento,
+        cidade: formData.cidade,
+        uf: formData.uf || null,
+        condicao_pagamento: formData.condicao_pagamento,
+        classificacao_icms: formData.classificacao_icms,
+        retirar_st: formData.retirar_st,
+        empresa_preferencial: formData.empresa_preferencial,
+        tipo_geracao_boleto: formData.tipo_geracao_boleto,
+        enviar_danfe: formData.enviar_danfe,
+        email_nfe: formData.email_nfe,
+        banco: formData.banco,
+        agencia: formData.agencia,
+        conta: formData.conta,
+        desconto_contratual: formData.desconto_contratual,
+        data_vigor: formData.data_vigor || null,
+        status: formData.status,
+        fase: targetPhase,
+      };
+
+      let resultData: any = null;
+
       if (tipoCadastro === "novo") {
+        payload.tipo_cadastro = tipoCadastro;
         const { data, error } = await supabase
           .from("cm_clientes")
-          .insert([{
-            tipo_cadastro: tipoCadastro,
-            cnpj: formData.cnpj,
-            matriz: formData.matriz,
-            codigo_matriz: formData.codigo_matriz || null,
-            responsavel: formData.responsavel || null,
-            tipo_parceiro: formData.tipo_parceiro,
-            nome_parceiro: formData.nome_parceiro,
-            razao_social: formData.razao_social,
-            inscricao_estadual: formData.inscricao_estadual,
-            cep: formData.cep,
-            endereco: formData.endereco,
-            numero: formData.numero,
-            complemento: formData.complemento,
-            cidade: formData.cidade,
-            uf: formData.uf || null,
-            condicao_pagamento: formData.condicao_pagamento,
-            classificacao_icms: formData.classificacao_icms,
-            retirar_st: formData.retirar_st,
-            empresa_preferencial: formData.empresa_preferencial,
-            tipo_geracao_boleto: formData.tipo_geracao_boleto,
-            enviar_danfe: formData.enviar_danfe,
-            email_nfe: formData.email_nfe,
-            banco: formData.banco,
-            agencia: formData.agencia,
-            conta: formData.conta,
-            desconto_contratual: formData.desconto_contratual,
-            data_vigor: formData.data_vigor || null,
-            status: formData.status
-          }])
+          .insert([payload])
           .select();
 
         if (error) throw error;
+        resultData = data && data[0];
         
-        const createdCodigo = data && data[0]?.codigo;
+        const createdCodigo = resultData?.codigo;
         toast.success(createdCodigo ? `Cliente cadastrado com sucesso! Código: ${createdCodigo}` : "Cliente cadastrado com sucesso!");
-        
-        // Envia notificação por e-mail de forma assíncrona
-        if (data && data[0]) {
-          notificarFinanceiroNovoCliente(data[0], "novo").catch((err) => {
-            console.error("Erro ao enviar notificação de e-mail:", err);
+
+        // Trigger transition email
+        if (nextPhase && resultData) {
+          notificarTransicaoFase(resultData, "comercial").catch((err) => {
+            console.error("Erro ao enviar e-mail de transição:", err);
+          });
+        } else if (resultData) {
+          notificarFinanceiroNovoCliente(resultData, "novo").catch((err) => {
+            console.error("Erro ao enviar e-mail:", err);
           });
         }
         
-        handleTipoCadastroChange("novo");
+        if (resultData) {
+          setFormData((prev) => ({
+            ...prev,
+            fase: targetPhase,
+          }));
+          setSelectedClientId(resultData.id);
+          setCodigoBusca(String(resultData.codigo || ""));
+          setTipoCadastro("atualizacao");
+        }
       } else {
         if (!selectedClientId) {
           toast.error("Por favor, busque um cliente por código antes de salvar as atualizações.");
@@ -281,48 +356,42 @@ export default function ClienteCadastroPage() {
         
         const { data, error } = await supabase
           .from("cm_clientes")
-          .update({
-            cnpj: formData.cnpj,
-            matriz: formData.matriz,
-            codigo_matriz: formData.codigo_matriz || null,
-            responsavel: formData.responsavel || null,
-            tipo_parceiro: formData.tipo_parceiro,
-            nome_parceiro: formData.nome_parceiro,
-            razao_social: formData.razao_social,
-            inscricao_estadual: formData.inscricao_estadual,
-            cep: formData.cep,
-            endereco: formData.endereco,
-            numero: formData.numero,
-            complemento: formData.complemento,
-            cidade: formData.cidade,
-            uf: formData.uf || null,
-            condicao_pagamento: formData.condicao_pagamento,
-            classificacao_icms: formData.classificacao_icms,
-            retirar_st: formData.retirar_st,
-            empresa_preferencial: formData.empresa_preferencial,
-            tipo_geracao_boleto: formData.tipo_geracao_boleto,
-            enviar_danfe: formData.enviar_danfe,
-            email_nfe: formData.email_nfe,
-            banco: formData.banco,
-            agencia: formData.agencia,
-            conta: formData.conta,
-            desconto_contratual: formData.desconto_contratual,
-            data_vigor: formData.data_vigor || null,
-            status: formData.status
-          })
+          .update(payload)
           .eq("id", selectedClientId)
           .select();
 
         if (error) throw error;
+        resultData = data && data[0];
         
         toast.success("Dados do cliente atualizados com sucesso!");
 
-        // Envia notificação por e-mail de forma assíncrona
-        if (data && data[0]) {
-          notificarFinanceiroNovoCliente(data[0], "atualizacao").catch((err) => {
-            console.error("Erro ao enviar notificação de e-mail:", err);
+        // Trigger emails if transitioning
+        if (nextPhase && resultData) {
+          if (nextPhase === "financeiro") {
+            notificarTransicaoFase(resultData, "comercial").catch((err) => {
+              console.error("Erro ao enviar e-mail de transição:", err);
+            });
+          } else if (nextPhase === "operacoes") {
+            notificarTransicaoFase(resultData, "financeiro").catch((err) => {
+              console.error("Erro ao enviar e-mail de transição:", err);
+            });
+          }
+        } else if (resultData) {
+          notificarFinanceiroNovoCliente(resultData, "atualizacao").catch((err) => {
+            console.error("Erro ao enviar e-mail:", err);
           });
         }
+
+        if (resultData) {
+          setFormData((prev) => ({
+            ...prev,
+            fase: targetPhase,
+          }));
+        }
+      }
+
+      if (nextPhase && resultData) {
+        router.push("/config-financeiro/clientes");
       }
     } catch (err: any) {
       console.error(err);
@@ -330,6 +399,11 @@ export default function ClienteCadastroPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await salvarCliente();
   };
 
   return (
@@ -378,6 +452,54 @@ export default function ClienteCadastroPage() {
             </label>
           </div>
         </header>
+
+        {/* Stepper Visual */}
+        <div className="bg-background-card border border-border p-4 rounded-xl shadow-sm">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <span className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">Fase do Cadastro:</span>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-4 w-full sm:w-auto justify-center">
+              {(() => {
+                const phasesList = [
+                  { id: "comercial", label: "Comercial", color: "amber" },
+                  { id: "financeiro", label: "Financeiro", color: "blue" },
+                  { id: "operacoes", label: "Operações", color: "purple" },
+                  { id: "concluido", label: "Concluído", color: "green" },
+                ];
+                
+                const currentPhaseIndex = phasesList.findIndex(p => p.id === (formData.fase || 'comercial'));
+                
+                return phasesList.map((phase, idx) => {
+                  const isActive = phase.id === (formData.fase || 'comercial');
+                  const isCompleted = idx < currentPhaseIndex;
+                  
+                  let badgeStyles = "";
+                  if (isActive) {
+                    if (phase.color === "amber") badgeStyles = "bg-amber-500/15 text-amber-500 border-amber-500/30 ring-2 ring-amber-500/20";
+                    else if (phase.color === "blue") badgeStyles = "bg-blue-500/15 text-blue-500 border-blue-500/30 ring-2 ring-blue-500/20";
+                    else if (phase.color === "purple") badgeStyles = "bg-purple-500/15 text-purple-500 border-purple-500/30 ring-2 ring-purple-500/20";
+                    else badgeStyles = "bg-green-500/15 text-green-500 border-green-500/30 ring-2 ring-green-500/20";
+                  } else if (isCompleted) {
+                    badgeStyles = "bg-green-500/5 text-green-500/80 border-green-500/10";
+                  } else {
+                    badgeStyles = "bg-background border-border text-foreground-dim opacity-55";
+                  }
+                  
+                  return (
+                    <div key={phase.id} className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all ${badgeStyles}`}>
+                        {isCompleted ? <CheckCircle className="w-3.5 h-3.5" /> : <span>{idx + 1}</span>}
+                        {phase.label}
+                      </span>
+                      {idx < phasesList.length - 1 && (
+                        <span className="text-foreground-dim/40 text-xs hidden sm:inline">➔</span>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Identificação Section */}
@@ -449,19 +571,20 @@ export default function ClienteCadastroPage() {
                     onChange={handleCnpjChange}
                     required
                     placeholder="00.000.000/0000-00"
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 {tipoCadastro !== "atualizacao" && (
                   <button
                     type="button"
                     onClick={buscarCnpj}
-                    disabled={fetchingCnpj}
+                    disabled={fetchingCnpj || isCommercialDisabled}
                     style={{
                       height: "40px",
                       padding: "0 16px",
-                      background: "rgba(200, 169, 110, 0.1)",
-                      color: "var(--accent-gold)",
+                      background: (fetchingCnpj || isCommercialDisabled) ? "var(--border)" : "rgba(200, 169, 110, 0.1)",
+                      color: (fetchingCnpj || isCommercialDisabled) ? "var(--foreground-dim)" : "var(--accent-gold)",
                       border: "1px solid rgba(200, 169, 110, 0.3)",
                       borderRadius: "6px",
                       display: "flex",
@@ -469,7 +592,7 @@ export default function ClienteCadastroPage() {
                       gap: "6px",
                       fontWeight: 600,
                       fontSize: "0.875rem",
-                      cursor: fetchingCnpj ? "not-allowed" : "pointer",
+                      cursor: (fetchingCnpj || isCommercialDisabled) ? "not-allowed" : "pointer",
                     }}
                     className="transition-all hover:bg-[rgba(200,169,110,0.2)]"
                   >
@@ -491,7 +614,8 @@ export default function ClienteCadastroPage() {
                     value={formData.matriz}
                     onChange={handleInputChange}
                     placeholder="Ex: VERDEMAR"
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -504,7 +628,8 @@ export default function ClienteCadastroPage() {
                     value={formData.codigo_matriz}
                     onChange={handleInputChange}
                     placeholder="Ex: 78273.0"
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -517,7 +642,8 @@ export default function ClienteCadastroPage() {
                     value={formData.responsavel}
                     onChange={handleInputChange}
                     placeholder="Ex: Luciano, Leandro, Luiz..."
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -534,7 +660,8 @@ export default function ClienteCadastroPage() {
                     value={formData.tipo_parceiro}
                     onChange={handleInputChange}
                     placeholder="Ex: KA, Distribuidor..."
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -546,7 +673,8 @@ export default function ClienteCadastroPage() {
                     name="nome_parceiro"
                     value={formData.nome_parceiro}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -558,7 +686,8 @@ export default function ClienteCadastroPage() {
                     name="razao_social"
                     value={formData.razao_social}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -574,7 +703,8 @@ export default function ClienteCadastroPage() {
                     name="inscricao_estadual"
                     value={formData.inscricao_estadual}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -587,7 +717,8 @@ export default function ClienteCadastroPage() {
                     value={formData.cep}
                     onChange={handleInputChange}
                     placeholder="00000-000"
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -603,7 +734,8 @@ export default function ClienteCadastroPage() {
                     name="endereco"
                     value={formData.endereco}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="md:col-span-2 space-y-2">
@@ -615,7 +747,8 @@ export default function ClienteCadastroPage() {
                     name="numero"
                     value={formData.numero}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="md:col-span-4 space-y-2">
@@ -627,7 +760,8 @@ export default function ClienteCadastroPage() {
                     name="complemento"
                     value={formData.complemento}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -645,7 +779,8 @@ export default function ClienteCadastroPage() {
                       name="cidade"
                       value={formData.cidade}
                       onChange={handleInputChange}
-                      className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                      disabled={isCommercialDisabled}
+                      className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                 </div>
@@ -659,7 +794,8 @@ export default function ClienteCadastroPage() {
                     value={formData.uf}
                     onChange={handleInputChange}
                     placeholder="Ex: MG, SP..."
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors uppercase font-bold"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors uppercase font-bold disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -683,7 +819,8 @@ export default function ClienteCadastroPage() {
                     name="condicao_pagamento"
                     value={formData.condicao_pagamento}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -704,7 +841,8 @@ export default function ClienteCadastroPage() {
                     name="classificacao_icms"
                     value={formData.classificacao_icms}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isFinancialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione...</option>
                     <option value="Consumidor Final Contribuinte">Consumidor Final Contribuinte</option>
@@ -723,7 +861,8 @@ export default function ClienteCadastroPage() {
                     name="retirar_st"
                     value={formData.retirar_st}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isFinancialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione...</option>
                     <option value="Sim">Sim</option>
@@ -752,7 +891,8 @@ export default function ClienteCadastroPage() {
                     name="empresa_preferencial"
                     value={formData.empresa_preferencial}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isFinancialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -765,7 +905,8 @@ export default function ClienteCadastroPage() {
                     name="tipo_geracao_boleto"
                     value={formData.tipo_geracao_boleto}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isFinancialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
@@ -776,7 +917,8 @@ export default function ClienteCadastroPage() {
                     name="status"
                     value={formData.status}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-semibold"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="ativo">Ativo</option>
                     <option value="inativo">Inativo</option>
@@ -797,10 +939,10 @@ export default function ClienteCadastroPage() {
                   </label>
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2">
-                      <input type="radio" name="enviar_danfe" value="Sim" checked={formData.enviar_danfe === "Sim"} onChange={handleInputChange} /> Sim
+                      <input type="radio" name="enviar_danfe" value="Sim" checked={formData.enviar_danfe === "Sim"} onChange={handleInputChange} disabled={isCommercialDisabled} /> Sim
                     </label>
                     <label className="flex items-center gap-2">
-                      <input type="radio" name="enviar_danfe" value="Nao" checked={formData.enviar_danfe === "Nao"} onChange={handleInputChange} /> Não
+                      <input type="radio" name="enviar_danfe" value="Nao" checked={formData.enviar_danfe === "Nao"} onChange={handleInputChange} disabled={isCommercialDisabled} /> Não
                     </label>
                   </div>
                 </div>
@@ -813,7 +955,8 @@ export default function ClienteCadastroPage() {
                     name="email_nfe"
                     value={formData.email_nfe}
                     onChange={handleInputChange}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
               </div>
@@ -836,7 +979,8 @@ export default function ClienteCadastroPage() {
                   name="banco"
                   value={formData.banco}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                  disabled={isCommercialDisabled}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="space-y-2">
@@ -848,7 +992,8 @@ export default function ClienteCadastroPage() {
                   name="agencia"
                   value={formData.agencia}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono"
+                  disabled={isCommercialDisabled}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="space-y-2">
@@ -860,7 +1005,8 @@ export default function ClienteCadastroPage() {
                   name="conta"
                   value={formData.conta}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono"
+                  disabled={isCommercialDisabled}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -882,8 +1028,9 @@ export default function ClienteCadastroPage() {
                   name="desconto_contratual"
                   value={formData.desconto_contratual}
                   onChange={handleInputChange}
+                  disabled={isCommercialDisabled}
                   placeholder="Ex: 5%"
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
               <div className="space-y-2">
@@ -895,14 +1042,15 @@ export default function ClienteCadastroPage() {
                   name="data_vigor"
                   value={formData.data_vigor}
                   onChange={handleInputChange}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                  disabled={isCommercialDisabled}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
           </div>
 
           {/* Submit Actions */}
-          <div className="flex justify-end gap-4">
+          <div className="flex justify-between items-center bg-background-elevated p-4 rounded-xl border border-border">
             <button
               type="button"
               onClick={() => router.back()}
@@ -910,28 +1058,74 @@ export default function ClienteCadastroPage() {
             >
               Cancelar
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: "10px 24px",
-                background: "var(--accent-gold)",
-                color: "#fff",
-                borderRadius: "6px",
-                fontWeight: "bold",
-                fontSize: "0.875rem",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                boxShadow: "0 4px 14px rgba(200, 169, 110, 0.4)",
-                opacity: loading ? 0.5 : 1,
-                cursor: loading ? "not-allowed" : "pointer"
-              }}
-              className="transition-colors hover:brightness-110"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-              Salvar Cliente
-            </button>
+            
+            <div className="flex flex-wrap gap-3">
+              {/* Salvar Rascunho button - only if not concluído, and user has permission to edit the current phase */}
+              {formData.fase !== "concluido" && (isAdminOrCeo || (formData.fase === "comercial" && isCommercialUser) || (formData.fase === "financeiro" && isFinancialUser)) && (
+                <button
+                  type="button"
+                  onClick={() => salvarCliente()} // regular save, stays in current phase
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-background border border-border hover:bg-background-card text-foreground rounded-lg flex items-center gap-2 font-semibold text-sm transition-all disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 text-accent-gold" />}
+                  Salvar Rascunho
+                </button>
+              )}
+              
+              {/* Transition Buttons */}
+              {/* Comercial User / Admin -> Concluir Fase Comercial (Advances to 'financeiro') */}
+              {formData.fase === "comercial" && (isAdminOrCeo || isCommercialUser) && (
+                <button
+                  type="button"
+                  onClick={() => salvarCliente("financeiro")}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(200,169,110,0.3)] disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Concluir Fase Comercial
+                </button>
+              )}
+
+              {/* Financial User / Admin -> Concluir Fase Financeira (Advances to 'operacoes') */}
+              {formData.fase === "financeiro" && (isAdminOrCeo || isFinancialUser) && (
+                <button
+                  type="button"
+                  onClick={() => salvarCliente("operacoes")}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(37,99,235,0.3)] disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Concluir Fase Financeira
+                </button>
+              )}
+
+              {/* Operations User / Admin -> Concluir Cadastro (Advances to 'concluido') */}
+              {formData.fase === "operacoes" && (isAdminOrCeo || isOperationsUser) && (
+                <button
+                  type="button"
+                  onClick={() => salvarCliente("concluido")}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(22,163,74,0.3)] disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Concluir Cadastro
+                </button>
+              )}
+
+              {/* If phase is Concluido, or user has no permissions to transition, we can show a notice or let Admin edit. */}
+              {formData.fase === "concluido" && isAdminOrCeo && (
+                <button
+                  type="button"
+                  onClick={() => salvarCliente()}
+                  disabled={loading}
+                  className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Salvar Alterações (Admin)
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

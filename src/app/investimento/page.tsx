@@ -287,7 +287,7 @@ export default function InvestimentoPage() {
               .select('*')
               .eq('id', selectedAction.apuracao_boleto_id)
               .single()
-              .then(({ data: b }) => {
+              .then(({ data: b }: { data: any }) => {
                 if (b) {
                   setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
                 }
@@ -945,7 +945,7 @@ export default function InvestimentoPage() {
       const fatMap: Record<string, Record<string, number>> = {};
       const totalFatMap: Record<string, number> = {};
       if (salesRows) {
-        salesRows.forEach(row => {
+        salesRows.forEach((row: any) => {
           const redeKey = row.rede ? row.rede.toUpperCase().trim() : "";
           const mesKey = row.mes || "";
           if (redeKey) {
