@@ -241,13 +241,16 @@ export async function GET(request: Request) {
       fEntry.months[mesNum].qty += qty;
     }
 
-    // Process Channels Result
     const channelsResult = Array.from(channelMap.values())
       .map(c => {
         const monthPrices: Record<number, number> = {};
+        const monthQty: Record<number, number> = {};
+        const monthFat: Record<number, number> = {};
         for (let i = 1; i <= 12; i++) {
-          if (c.months[i] && c.months[i].qty > 0) {
-            monthPrices[i] = c.months[i].fat / c.months[i].qty;
+          if (c.months[i]) {
+            if (c.months[i].qty > 0) monthPrices[i] = c.months[i].fat / c.months[i].qty;
+            monthQty[i] = c.months[i].qty;
+            monthFat[i] = c.months[i].fat;
           }
         }
         const avgPrice = c.totalQty > 0 ? c.totalFat / c.totalQty : 0;
@@ -257,17 +260,22 @@ export async function GET(request: Request) {
           totalFat: c.totalFat,
           avgPrice,
           monthPrices,
+          monthQty,
+          monthFat,
         };
       })
       .sort((a, b) => b.totalQty - a.totalQty);
 
-    // Process Matrizes Result
     const matrizesResult = Array.from(matrizMap.values())
       .map(m => {
         const monthPrices: Record<number, number> = {};
+        const monthQty: Record<number, number> = {};
+        const monthFat: Record<number, number> = {};
         for (let i = 1; i <= 12; i++) {
-          if (m.months[i] && m.months[i].qty > 0) {
-            monthPrices[i] = m.months[i].fat / m.months[i].qty;
+          if (m.months[i]) {
+            if (m.months[i].qty > 0) monthPrices[i] = m.months[i].fat / m.months[i].qty;
+            monthQty[i] = m.months[i].qty;
+            monthFat[i] = m.months[i].fat;
           }
         }
         const avgPrice = m.totalQty > 0 ? m.totalFat / m.totalQty : 0;
@@ -277,6 +285,8 @@ export async function GET(request: Request) {
           totalFat: m.totalFat,
           avgPrice,
           monthPrices,
+          monthQty,
+          monthFat,
         };
       })
       .sort((a, b) => b.totalQty - a.totalQty);

@@ -60,13 +60,45 @@ export async function GET(request: Request) {
     const allMesKeys = [monthKey, prevYearMonthKey, ...ytdKeys, ...ytdPrevKeys];
     const uniqueMesKeys = [...new Set(allMesKeys)];
 
-    const [resSales, resTargets, resProjections, resComments] = await Promise.all([
-      // 1. Vendas agregadas por mês e gerente
+    // Todos os meses do ano atual necessários para o gráfico + 3 meses anteriores ao mês 1 (do ano anterior, para cálculo de média)
+    const allMonthKeysForChart: string[] = [];
+    for (let m = 1; m <= 12; m++) {
+      allMonthKeysForChart.push(`${year}-${String(m).padStart(2, '0')}`);
+    }
+    // 3 meses anteriores para rolling average (podem ser do ano anterior)
+    for (let lag = 1; lag <= 3; lag++) {
+      let lagM = 1 - lag; // pode ser negativo/zero
+      let lagY = year;
+      if (lagM <= 0) { lagM += 12; lagY = year - 1; }
+      allMonthKeysForChart.push(`${lagY}-${String(lagM).padStart(2, '0')}`);
+    }
+
+    // 13 meses para slide 6 (Volume + Preço Médio): do mês selecionado recuando 12 meses
+    const trailing13: string[] = [];
+    for (let i = 12; i >= 0; i--) {
+      let tM = month - i;
+      let tY = year;
+      while (tM <= 0) { tM += 12; tY--; }
+      trailing13.push(`${tY}-${String(tM).padStart(2, '0')}`);
+    }
+
+    // Meses para slide 7 (Preço YoY): Jan..month do ano atual + mesmo período do ano anterior
+    const priceCompareKeys: string[] = [];
+    for (let m = 1; m <= month; m++) {
+      priceCompareKeys.push(`${year}-${String(m).padStart(2, '0')}`);
+      priceCompareKeys.push(`${prevYear}-${String(m).padStart(2, '0')}`);
+    }
+    const familyQueryKeys = [...new Set([...trailing13, ...priceCompareKeys])];
+
+    const chartMesKeys = [...new Set([...uniqueMesKeys, ...allMonthKeysForChart, ...familyQueryKeys])];
+
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily] = await Promise.all([
+      // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
           SELECT mes, COALESCE(manager,'Outros') as manager, SUM(fat) as fat, SUM(qty) as qty
           FROM mv_vendas_mensal
-          WHERE mes IN (${uniqueMesKeys.map(k => `'${k}'`).join(',')})
+          WHERE mes IN (${chartMesKeys.map(k => `'${k}'`).join(',')})
           GROUP BY mes, COALESCE(manager,'Outros')
         `
       }),
@@ -96,6 +128,18 @@ export async function GET(request: Request) {
         .eq('year', year)
         .eq('month', month)
         .eq('manager', manager),
+
+      // 5. Vendas por família (tipo_produto) — para slide 6 e 7
+      supabase.rpc('execute_readonly_query', {
+        query_text: `
+          SELECT mes, COALESCE(manager,'Outros') as manager,
+                 COALESCE(tipo_produto,'Outros') as tipo_produto,
+                 SUM(fat) as fat, SUM(qty) as qty
+          FROM mv_vendas_mensal
+          WHERE mes IN (${familyQueryKeys.map(k => `'${k}'`).join(',')})
+          GROUP BY mes, COALESCE(manager,'Outros'), COALESCE(tipo_produto,'Outros')
+        `
+      }),
     ]);
 
     if (resSales.error) throw new Error("Erro vendas: " + resSales.error.message);
@@ -104,6 +148,7 @@ export async function GET(request: Request) {
     const targets     = (resTargets.data ?? []) as { manager: string; target_revenue: string; target_tons: string; target_forecast: string | null; target_forecast_qty: string | null }[];
     const projections = (resProjections.data ?? []) as { manager: string; kpi: string; projection_value: string; week_start_date: string }[];
     const comments    = (resComments.data ?? []) as { slide_key: string; comment: string; updated_at: string }[];
+    const salesByFamily = (resSalesByFamily.data ?? []) as { mes: string; manager: string; tipo_produto: string; fat: string; qty: string }[];
 
     // ── Helper: somar vendas de vários gerentes em vários meses ──
     function sumSales(managers: string[], mesKeys: string[]) {
@@ -246,6 +291,106 @@ export async function GET(request: Request) {
       commentsMap[c.slide_key] = c.comment;
     }
 
+    // ── Dados mensais de faturamento para o gráfico (slide 4) ──
+    // Compara: Mês Atual vs. Último Trimestre (média dos 3 meses anteriores no mesmo ano)
+    const MONTH_LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+    // Helper: fat de um mês específico (pode ser de qualquer ano)
+    function getFat(y: number, m: number): number {
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      return sales.filter(s => targetManagers.includes(s.manager) && s.mes === key)
+                  .reduce((a, s) => a + Number(s.fat), 0);
+    }
+
+    function getQty(y: number, m: number): number {
+      const key = `${y}-${String(m).padStart(2, '0')}`;
+      return sales.filter(s => targetManagers.includes(s.manager) && s.mes === key)
+                  .reduce((a, s) => a + Number(s.qty), 0);
+    }
+
+    const monthlyFat = MONTH_LABELS.map((label, i) => {
+      const m = i + 1;
+      const fatCur = getFat(year, m);
+
+      // Média dos 3 meses anteriores (rolling, atravessa virada de ano)
+      let trimTotal = 0;
+      let trimCount = 0;
+      for (let lag = 1; lag <= 3; lag++) {
+        let lagM = m - lag;
+        let lagY = year;
+        if (lagM <= 0) { lagM += 12; lagY = year - 1; }
+        const v = getFat(lagY, lagM);
+        if (v > 0) { trimTotal += v; trimCount++; }
+      }
+      const fatUltTrim = trimCount > 0 ? Math.round(trimTotal / trimCount) : 0;
+
+      return { label, m, fatCur, fatUltTrim };
+    });
+
+    // Acumulado Jan → mês selecionado
+    const acumCur     = monthlyFat.slice(0, month).reduce((a, r) => a + r.fatCur,     0);
+    const acumUltTrim = monthlyFat.slice(0, month).reduce((a, r) => a + r.fatUltTrim, 0);
+
+    // Record histórico: maior fatCur em qualquer mês do ano
+    const recordFat = Math.max(...monthlyFat.map(r => r.fatCur).filter(v => v > 0), 0);
+
+    // ── Dados mensais de VOLUME para o gráfico (slide 5) ──
+    const monthlyVol = MONTH_LABELS.map((label, i) => {
+      const m = i + 1;
+      const volCur = getQty(year, m);
+
+      let trimTotal = 0;
+      let trimCount = 0;
+      for (let lag = 1; lag <= 3; lag++) {
+        let lagM = m - lag;
+        let lagY = year;
+        if (lagM <= 0) { lagM += 12; lagY = year - 1; }
+        const v = getQty(lagY, lagM);
+        if (v > 0) { trimTotal += v; trimCount++; }
+      }
+      const volUltTrim = trimCount > 0 ? Math.round(trimTotal / trimCount) : 0;
+
+      return { label, m, volCur, volUltTrim };
+    });
+
+    const acumVolCur     = monthlyVol.slice(0, month).reduce((a, r) => a + r.volCur,     0);
+    const acumVolUltTrim = monthlyVol.slice(0, month).reduce((a, r) => a + r.volUltTrim, 0);
+    const recordVol = Math.max(...monthlyVol.map(r => r.volCur).filter(v => v > 0), 0);
+
+    // ── Slide 6: Volume + Preço Médio (13 meses trailing) ──
+    // Coletar famílias distintas
+    const familiaSet = new Set<string>();
+    salesByFamily.forEach(s => {
+      if (s.tipo_produto && s.tipo_produto !== 'Outros') familiaSet.add(s.tipo_produto);
+    });
+    const familias = Array.from(familiaSet).sort();
+
+    // Construir array de 13 meses com vol + preço por família
+    const MONTH_SHORT_LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const volPreco = trailing13.map(mesKey => {
+      const [yStr, mStr] = mesKey.split('-');
+      const y = Number(yStr);
+      const m = Number(mStr);
+      const label = `${MONTH_SHORT_LABELS[m - 1]}/${String(y).slice(-2)}`;
+
+      // Totais (todas famílias) filtrando pelos gerentes selecionados
+      const rows = salesByFamily.filter(s => targetManagers.includes(s.manager) && s.mes === mesKey);
+      const totalFat = rows.reduce((a, s) => a + Number(s.fat), 0);
+      const totalQty = rows.reduce((a, s) => a + Number(s.qty), 0);
+      const preco = totalQty > 0 ? totalFat / totalQty : 0;
+
+      // Por família
+      const byFam: Record<string, { fat: number; qty: number; preco: number }> = {};
+      familias.forEach(fam => {
+        const famRows = rows.filter(s => s.tipo_produto === fam);
+        const fFat = famRows.reduce((a, s) => a + Number(s.fat), 0);
+        const fQty = famRows.reduce((a, s) => a + Number(s.qty), 0);
+        byFam[fam] = { fat: fFat, qty: fQty, preco: fQty > 0 ? fFat / fQty : 0 };
+      });
+
+      return { mesKey, label, m, y, vol: totalQty, fat: totalFat, preco, byFam };
+    });
+
     return NextResponse.json({
       success:   true,
       year,
@@ -254,6 +399,89 @@ export async function GET(request: Request) {
       managers:  KA_MANAGERS,
       farol:     farolData,
       comments:  commentsMap,
+      monthlyFat,
+      acum: { fatCur: acumCur, fatUltTrim: acumUltTrim },
+      recordFat,
+      monthlyVol,
+      acumVol: { volCur: acumVolCur, volUltTrim: acumVolUltTrim },
+      recordVol,
+      volPreco,
+      familias,
+
+      // ── Slide 7: Preço YoY (Jan..month, cur vs prev) ──
+      precoCompare: (() => {
+        const MONTH_SHORT_LABELS2 = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+        // Helper: preço de um mês específico (total ou por família)
+        function getPreco(y: number, m: number, fam?: string) {
+          const key = `${y}-${String(m).padStart(2, '0')}`;
+          let rows = salesByFamily.filter(s => targetManagers.includes(s.manager) && s.mes === key);
+          if (fam) rows = rows.filter(s => s.tipo_produto === fam);
+          const fat = rows.reduce((a, s) => a + Number(s.fat), 0);
+          const qty = rows.reduce((a, s) => a + Number(s.qty), 0);
+          return { fat, qty, preco: qty > 0 ? fat / qty : 0 };
+        }
+
+        const months = [];
+        let acumCurFat = 0, acumCurQty = 0, acumPrevFat = 0, acumPrevQty = 0;
+        const acumByFam: Record<string, { curFat: number; curQty: number; prevFat: number; prevQty: number }> = {};
+        familias.forEach(f => { acumByFam[f] = { curFat: 0, curQty: 0, prevFat: 0, prevQty: 0 }; });
+
+        for (let m = 1; m <= month; m++) {
+          const cur = getPreco(year, m);
+          const prev = getPreco(prevYear, m);
+          acumCurFat += cur.fat; acumCurQty += cur.qty;
+          acumPrevFat += prev.fat; acumPrevQty += prev.qty;
+
+          const byFam: Record<string, { precoCur: number; precoPrev: number }> = {};
+          familias.forEach(f => {
+            const fc = getPreco(year, m, f);
+            const fp = getPreco(prevYear, m, f);
+            acumByFam[f].curFat += fc.fat; acumByFam[f].curQty += fc.qty;
+            acumByFam[f].prevFat += fp.fat; acumByFam[f].prevQty += fp.qty;
+            byFam[f] = {
+              precoCur: fc.preco,
+              precoPrev: fp.preco,
+            };
+          });
+
+          months.push({
+            label: MONTH_SHORT_LABELS2[m - 1],
+            m,
+            precoCur: cur.preco,
+            precoPrev: prev.preco,
+            byFam,
+          });
+        }
+
+        // Acumulado
+        const acumByFamFinal: Record<string, { precoCur: number; precoPrev: number }> = {};
+        familias.forEach(f => {
+          const a = acumByFam[f];
+          acumByFamFinal[f] = {
+            precoCur: a.curQty > 0 ? a.curFat / a.curQty : 0,
+            precoPrev: a.prevQty > 0 ? a.prevFat / a.prevQty : 0,
+          };
+        });
+
+        // Record: maior preço mensal do ano atual
+        const allPrecos = months.map(m => m.precoCur).filter(p => p > 0);
+        const record = allPrecos.length > 0 ? Math.max(...allPrecos) : 0;
+
+        return {
+          months,
+          acum: {
+            precoCur: acumCurQty > 0 ? acumCurFat / acumCurQty : 0,
+            precoPrev: acumPrevQty > 0 ? acumPrevFat / acumPrevQty : 0,
+            byFam: acumByFamFinal,
+          },
+          record,
+          prevYear,
+          curYear: year,
+        };
+      })(),
+
+      prevYear,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

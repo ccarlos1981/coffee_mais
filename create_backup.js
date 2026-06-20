@@ -16,28 +16,29 @@ if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
 
 async function downloadTable(tableName) {
   console.log(`Starting backup of table: ${tableName}`);
-  let lastId = 0;
   const allData = [];
-  const pageSize = 5000;
+  const pageSize = 1000;
+  let offset = 0;
   
   while (true) {
     const { data, error } = await supabase
       .from(tableName)
       .select('*')
       .order('id', { ascending: true })
-      .gt('id', lastId)
-      .limit(pageSize);
+      .range(offset, offset + pageSize - 1);
       
     if (error) {
       console.error(`Error fetching ${tableName}:`, error);
       break;
     }
     
-    if (data.length === 0) break;
+    if (!data || data.length === 0) break;
     
     allData.push(...data);
-    lastId = data[data.length - 1].id;
+    offset += data.length;
     console.log(`... fetched ${allData.length} records from ${tableName}`);
+    
+    if (data.length < pageSize) break;
   }
   
   fs.writeFileSync(path.join(backupDir, `${tableName}.json`), JSON.stringify(allData, null, 2));
@@ -48,6 +49,7 @@ async function run() {
   await downloadTable('targets');
   await downloadTable('business_days');
   await downloadTable('network_matrix');
+  await downloadTable('cm_clientes');
   await downloadTable('sales'); // This will take a moment
   console.log('Backup complete!');
 }

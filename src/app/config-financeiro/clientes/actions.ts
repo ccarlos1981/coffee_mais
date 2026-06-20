@@ -213,6 +213,157 @@ export async function notificarFinanceiroNovoCliente(cliente: any, tipo: "novo" 
   }
 }
 
+export async function notificarTransicaoFase(cliente: any, faseAtual: "comercial" | "financeiro" | "operacoes") {
+  try {
+    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+      console.error("Variáveis SMTP_USER ou SMTP_PASS não estão configuradas no .env.local.");
+      return { success: false, error: "SMTP credentials not found" };
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    const codigo = cliente.codigo || 'Novo';
+    const razaoSocial = cliente.razao_social || '—';
+    const nomeFantasia = cliente.nome_parceiro || '—';
+    const cnpj = cliente.cnpj || '—';
+    const responsavel = cliente.responsavel || '—';
+
+    if (faseAtual === "comercial") {
+      // 1. Email para o Financeiro (financeiro@coffeemais.com)
+      const subjectFin = `[Coffee Mais] Novo Cadastro de Cliente - Comercial Concluído - #${codigo}`;
+      const htmlFin = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #1f2937, #111827); padding: 20px; text-align: center; border-bottom: 3px solid #bba16e;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">Coffee Mais</h1>
+            <p style="color: #bba16e; margin: 4px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Aviso ao Financeiro</p>
+          </div>
+          <div style="padding: 24px; background-color: #ffffff; color: #374151;">
+            <p style="font-size: 15px; margin-top: 0;">Olá Equipe Financeira,</p>
+            <p style="font-size: 14px; line-height: 1.6;">
+              O time <strong>Comercial</strong> concluiu a primeira fase do cadastro do cliente <strong>${nomeFantasia}</strong>. 
+              Por favor, acessem o painel para realizar as classificações fiscais e financeiras necessárias (Classificação ICMS, ST, etc.).
+            </p>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr><td style="padding: 4px 0; color: #6b7280; width: 35%;">Código:</td><td style="padding: 4px 0; font-weight: 600;">#${codigo}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">CNPJ:</td><td style="padding: 4px 0; font-weight: 600;">${cnpj}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">Razão Social:</td><td style="padding: 4px 0; font-weight: 600;">${razaoSocial}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">Responsável:</td><td style="padding: 4px 0; font-weight: 600;">${responsavel}</td></tr>
+              </table>
+            </div>
+            <p style="font-size: 13px; color: #6b7280; margin-top: 20px;">
+              Após concluir seus ajustes, lembre-se de clicar em "Concluir Fase Financeira" para avançar o cadastro para o setor de Operações.
+            </p>
+          </div>
+          <div style="background-color: #f3f4f6; padding: 12px; text-align: center; font-size: 11px; color: #9ca3af;">
+            Este e-mail foi enviado automaticamente pelo portal Coffee Mais.
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Coffee Mais Portal" <${process.env.SMTP_USER}>`,
+        to: "financeiro@coffeemais.com",
+        subject: subjectFin,
+        html: htmlFin
+      });
+      console.log(`Email de transição enviado para financeiro@coffeemais.com para o cliente #${codigo}`);
+
+      // 2. Email para Operações (operacoes@coffeemais.com)
+      const subjectOps = `[Coffee Mais] Novo Cadastro de Cliente Pendente - #${codigo}`;
+      const htmlOps = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #1f2937, #111827); padding: 20px; text-align: center; border-bottom: 3px solid #bba16e;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">Coffee Mais</h1>
+            <p style="color: #bba16e; margin: 4px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Aviso às Operações</p>
+          </div>
+          <div style="padding: 24px; background-color: #ffffff; color: #374151;">
+            <p style="font-size: 15px; margin-top: 0;">Olá Equipe de Operações,</p>
+            <p style="font-size: 14px; line-height: 1.6;">
+              Informamos que o Comercial realizou um novo cadastro de cliente: <strong>${nomeFantasia}</strong>. 
+              Este cadastro está atualmente na <strong>Fase 2 (Financeiro)</strong> e, assim que os ajustes financeiros forem concluídos, estará disponível para finalização pelo setor de Operações.
+            </p>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr><td style="padding: 4px 0; color: #6b7280; width: 35%;">Código:</td><td style="padding: 4px 0; font-weight: 600;">#${codigo}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">CNPJ:</td><td style="padding: 4px 0; font-weight: 600;">${cnpj}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">Razão Social:</td><td style="padding: 4px 0; font-weight: 600;">${razaoSocial}</td></tr>
+              </table>
+            </div>
+          </div>
+          <div style="background-color: #f3f4f6; padding: 12px; text-align: center; font-size: 11px; color: #9ca3af;">
+            Este e-mail foi enviado automaticamente pelo portal Coffee Mais.
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Coffee Mais Portal" <${process.env.SMTP_USER}>`,
+        to: "operacoes@coffeemais.com",
+        subject: subjectOps,
+        html: htmlOps
+      });
+      console.log(`Email de notificação enviado para operacoes@coffeemais.com para o cliente #${codigo}`);
+
+    } else if (faseAtual === "financeiro") {
+      // 3. Email para Operações (operacoes@coffeemais.com) quando Financeiro conclui
+      const subjectOpsFin = `[Coffee Mais] Cadastro de Cliente Pronto para Conclusão (Operações) - #${codigo}`;
+      const htmlOpsFin = `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #1f2937, #111827); padding: 20px; text-align: center; border-bottom: 3px solid #bba16e;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 20px;">Coffee Mais</h1>
+            <p style="color: #bba16e; margin: 4px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1px;">Liberação para Operações</p>
+          </div>
+          <div style="padding: 24px; background-color: #ffffff; color: #374151;">
+            <p style="font-size: 15px; margin-top: 0;">Olá Equipe de Operações,</p>
+            <p style="font-size: 14px; line-height: 1.6;">
+              O setor <strong>Financeiro</strong> concluiu os ajustes cadastrais para o cliente <strong>${nomeFantasia}</strong>.
+              O cadastro agora está na <strong>Fase 3 (Operações)</strong> e está pronto para ser concluído por vocês no painel.
+            </p>
+            <div style="margin-top: 20px; padding: 15px; background-color: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                <tr><td style="padding: 4px 0; color: #6b7280; width: 35%;">Código:</td><td style="padding: 4px 0; font-weight: 600;">#${codigo}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">CNPJ:</td><td style="padding: 4px 0; font-weight: 600;">${cnpj}</td></tr>
+                <tr><td style="padding: 4px 0; color: #6b7280;">Razão Social:</td><td style="padding: 4px 0; font-weight: 600;">${razaoSocial}</td></tr>
+              </table>
+            </div>
+            <p style="font-size: 13px; color: #6b7280; margin-top: 20px;">
+              Acessem o portal para concluir a ativação definitiva deste cliente.
+            </p>
+          </div>
+          <div style="background-color: #f3f4f6; padding: 12px; text-align: center; font-size: 11px; color: #9ca3af;">
+            Este e-mail foi enviado automaticamente pelo portal Coffee Mais.
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Coffee Mais Portal" <${process.env.SMTP_USER}>`,
+        to: "operacoes@coffeemais.com",
+        subject: subjectOpsFin,
+        html: htmlOpsFin
+      });
+      console.log(`Email de liberação enviado para operacoes@coffeemais.com para o cliente #${codigo}`);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error("Erro ao enviar e-mail de transição:", err);
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
 export async function sincronizarClientesSankhya() {
   const supabase = await createClient();
 
@@ -286,7 +437,8 @@ export async function sincronizarClientesSankhya() {
       uf: detail?.uf || null,
       regional: detail?.regional || null,
       ka: detail?.ka || null,
-      status: "ativo"
+      status: "ativo",
+      fase: "comercial"
     };
   });
 

@@ -61,7 +61,10 @@ const MODULES = [
   "Cadastro",
   "Clientes",
   "Gente e Gestão",
-  "RPS"
+  "RPS",
+  "RDM",
+  "Agenda",
+  "Follow Up"
 ];
 
 export default async function AdminPermissoesPage() {

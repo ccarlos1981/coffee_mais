@@ -17,11 +17,19 @@ import {
   X,
   Edit2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Plus
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import { sincronizarClientesSankhya, importarClientesEmLote } from "./actions";
+
+const FASE_CONFIG: Record<string, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
+  comercial: { label: "Comercial", color: "text-amber-500", bgColor: "bg-amber-500/10", borderColor: "border-amber-500/20", icon: "📋" },
+  financeiro: { label: "Financeiro", color: "text-blue-500", bgColor: "bg-blue-500/10", borderColor: "border-blue-500/20", icon: "🔍" },
+  operacoes: { label: "Operações", color: "text-purple-500", bgColor: "bg-purple-500/10", borderColor: "border-purple-500/20", icon: "📝" },
+  concluido: { label: "Concluído", color: "text-green-500", bgColor: "bg-green-500/10", borderColor: "border-green-500/20", icon: "✅" },
+};
 
 export default function ClientesListPage() {
   const router = useRouter();
@@ -31,6 +39,14 @@ export default function ClientesListPage() {
   const [loading, setLoading] = useState(true);
   const [searchLocal, setSearchLocal] = useState("");
   const [searchGeneral, setSearchGeneral] = useState("");
+  const [filterFase, setFilterFase] = useState<string | null>(null);
+
+  const phaseCounts = {
+    comercial: clientes.filter(c => (c.fase || 'comercial') === 'comercial').length,
+    financeiro: clientes.filter(c => c.fase === 'financeiro').length,
+    operacoes: clientes.filter(c => c.fase === 'operacoes').length,
+    concluido: clientes.filter(c => c.fase === 'concluido').length,
+  };
   
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -408,8 +424,12 @@ export default function ClientesListPage() {
     toast.success("Modelo completo baixado!");
   };
 
-  // Filter local & general
+  // Filter local & general & phase
   const filteredClientes = clientes.filter(cliente => {
+    if (filterFase !== null && (cliente.fase || 'comercial') !== filterFase) {
+      return false;
+    }
+
     const matchLocal = !searchLocal.trim() || 
       `${cliente.cidade || ""} ${cliente.uf || ""}`.toLowerCase().includes(searchLocal.toLowerCase());
 
@@ -430,7 +450,7 @@ export default function ClientesListPage() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchGeneral, searchLocal]);
+  }, [searchGeneral, searchLocal, filterFase]);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -458,6 +478,15 @@ export default function ClientesListPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+            {/* Cadastrar Cliente Button */}
+            <button
+              onClick={() => router.push("/config-financeiro/cadastro")}
+              className="flex-1 md:flex-none h-10 px-4 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-sm shadow-[0_4px_14px_rgba(200,169,110,0.3)]"
+            >
+              <Plus className="w-4 h-4" />
+              Cadastrar Cliente
+            </button>
+
             {/* Sync Sankhya Button */}
             <button
               onClick={handleSyncSankhya}
@@ -517,6 +546,32 @@ export default function ClientesListPage() {
           </div>
         </header>
 
+        {/* Phase Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <button
+            onClick={() => setFilterFase(null)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+              filterFase === null ? 'bg-accent-gold/15 text-accent-gold border-accent-gold/30 shadow-sm' : 'bg-background-card text-foreground-secondary border-border hover:bg-background-elevated hover:text-foreground'
+            }`}
+          >
+            Todas <span className="text-xs opacity-70">({clientes.length})</span>
+          </button>
+          {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
+            const count = phaseCounts[key as keyof typeof phaseCounts] || 0;
+            return (
+              <button
+                key={key}
+                onClick={() => setFilterFase(key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                  filterFase === key ? `${cfg.bgColor} ${cfg.color} ${cfg.borderColor} shadow-sm` : 'bg-background-card text-foreground-secondary border-border hover:bg-background-elevated hover:text-foreground'
+                }`}
+              >
+                <span>{cfg.icon}</span> {cfg.label} <span className="text-xs opacity-70">({count})</span>
+              </button>
+            );
+          })}
+        </div>
+
         {/* Filters */}
         <div className="bg-background-card border border-border rounded-xl p-4 flex flex-col md:flex-row gap-4 shadow-sm">
           <div className="flex-1 space-y-1.5">
@@ -557,26 +612,27 @@ export default function ClientesListPage() {
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-background-elevated border-b border-border text-foreground-secondary text-xs uppercase tracking-wider font-semibold">
                 <tr>
-                  <th className="px-6 py-4">Código do Cliente/Parceiro</th>
-                  <th className="px-6 py-4">Nome do Cliente/Parceiro</th>
-                  <th className="px-6 py-4">Código da Matriz</th>
-                  <th className="px-6 py-4">Nome da Matriz (Input)</th>
-                  <th className="px-6 py-4 text-center">UF</th>
-                  <th className="px-6 py-4">Responsável</th>
-                  <th className="px-6 py-4 text-center">Status</th>
+                  <th className="px-3.5 py-3">Cód. Cliente/Parceiro</th>
+                  <th className="px-3.5 py-3">Nome / Parceiro</th>
+                  <th className="px-3.5 py-3">Cód. Matriz</th>
+                  <th className="px-3.5 py-3">Matriz (Input)</th>
+                  <th className="px-3.5 py-3 text-center">UF</th>
+                  <th className="px-3.5 py-3">Responsável</th>
+                  <th className="px-3.5 py-3">Fase</th>
+                  <th className="px-3.5 py-3 text-center">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-foreground-secondary">
+                    <td colSpan={8} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-accent-gold" />
                       Carregando carteira de clientes...
                     </td>
                   </tr>
                 ) : paginatedClientes.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-foreground-secondary">
+                    <td colSpan={8} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
                       <p className="text-base font-medium text-foreground">Nenhum cliente encontrado.</p>
                       <p className="text-sm mt-1">Experimente mudar o filtro de busca ou sincronizar com o Sankhya.</p>
@@ -592,25 +648,25 @@ export default function ClientesListPage() {
                         className="hover:bg-background-elevated/50 transition-colors cursor-pointer group"
                       >
                         {/* Código do Cliente */}
-                        <td className="px-6 py-4 font-semibold text-foreground font-mono">
+                        <td className="px-3.5 py-3 font-semibold text-foreground font-mono">
                           #{cliente.codigo || "-"}
                         </td>
                         
                         {/* Nome do Cliente */}
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-foreground max-w-xs truncate" title={cliente.nome_parceiro}>
+                        <td className="px-3.5 py-3">
+                          <div className="font-semibold text-foreground max-w-[180px] xl:max-w-[240px] truncate" title={cliente.nome_parceiro}>
                             {cliente.nome_parceiro || cliente.razao_social || "Sem nome"}
                           </div>
-                          <div className="text-xs text-foreground-secondary max-w-xs truncate">{cliente.cidade || "-"}</div>
+                          <div className="text-xs text-foreground-secondary max-w-[180px] xl:max-w-[240px] truncate">{cliente.cidade || "-"}</div>
                         </td>
                         
                         {/* Código da Matriz */}
-                        <td className="px-6 py-4 font-mono text-foreground font-semibold">
+                        <td className="px-3.5 py-3 font-mono text-foreground font-semibold">
                           {cliente.codigo_matriz || <span className="text-foreground-secondary italic text-xs font-normal">Sem código</span>}
                         </td>
                         
                         {/* Nome da Matriz (Input Inline Edit) */}
-                        <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
+                        <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
                             value={cliente.matriz || ""}
@@ -621,26 +677,40 @@ export default function ClientesListPage() {
                                 (e.target as HTMLInputElement).blur();
                               }
                             }}
-                            className="bg-transparent hover:bg-background/80 focus:bg-background border border-transparent hover:border-border/60 focus:border-accent-gold rounded px-2 py-1 text-sm font-semibold text-foreground w-full max-w-[200px] transition-all focus:outline-none"
-                            placeholder="Definir nome matriz..."
+                            className="bg-transparent hover:bg-background/80 focus:bg-background border border-transparent hover:border-border/60 focus:border-accent-gold rounded px-2 py-1 text-sm font-semibold text-foreground w-full max-w-[130px] xl:max-w-[170px] transition-all focus:outline-none"
+                            placeholder="Nome matriz..."
                           />
                         </td>
                         
                         {/* UF */}
-                        <td className="px-6 py-4 text-center font-bold text-foreground">
+                        <td className="px-3.5 py-3 text-center font-bold text-foreground">
                           {cliente.uf || cliente.cidade?.split("-")?.[1]?.trim() || "-"}
                         </td>
                         
                         {/* Responsável */}
-                        <td className="px-6 py-4 font-medium text-foreground">
+                        <td className="px-3.5 py-3 font-medium text-foreground">
                           {cliente.responsavel || (
                             <span className="text-foreground-secondary italic text-xs font-normal">Não associado</span>
                           )}
                         </td>
                         
+                        {/* Fase */}
+                        <td className="px-3.5 py-3">
+                          {(() => {
+                            const f = cliente.fase || 'comercial';
+                            const cfg = FASE_CONFIG[f] || FASE_CONFIG.comercial;
+                            return (
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${cfg.bgColor} ${cfg.color} ${cfg.borderColor}`}>
+                                <span>{cfg.icon}</span>
+                                {cfg.label}
+                              </span>
+                            );
+                          })()}
+                        </td>
+
                         {/* Status */}
                         <td 
-                          className="px-6 py-4 text-center" 
+                          className="px-3.5 py-3 text-center" 
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleStatus(cliente);
@@ -717,7 +787,19 @@ export default function ClientesListPage() {
                     <Building className="w-5 h-5 text-accent-gold" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg text-foreground">Detalhes do Cliente</h3>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-lg text-foreground">Detalhes do Cliente</h3>
+                      {(() => {
+                        const f = selectedClient.fase || 'comercial';
+                        const cfg = FASE_CONFIG[f] || FASE_CONFIG.comercial;
+                        return (
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${cfg.bgColor} ${cfg.color} ${cfg.borderColor}`}>
+                            <span>{cfg.icon}</span>
+                            {cfg.label}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <p className="text-xs text-foreground-secondary">Código Parceiro: #{selectedClient.codigo}</p>
                   </div>
                 </div>

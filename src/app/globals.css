@@ -1464,12 +1464,13 @@ body {
   .dash-body { grid-template-columns: 1fr; }
   .dash-sidebar {
     position: relative;
+    top: 0;
     height: auto;
     border-right: none;
     border-bottom: 1px solid var(--border);
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     padding: 10px;
   }
   .dash-sidebar-title { grid-column: span 2; margin-top: 6px; }
@@ -2192,6 +2193,93 @@ body {
   font-weight: 400;
 }
 
+/* ══════════════════════════════════════════
+   SLIDE 3 — RESULTADO DRE (placeholder)
+   ══════════════════════════════════════════ */
+
+.rdm-dre-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+}
+
+.rdm-dre-label {
+  font-size: clamp(3rem, 10vw, 6rem);
+  font-weight: 900;
+  color: #e8e8e8;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  user-select: none;
+}
+
+.rdm-dre-sub {
+  font-size: clamp(0.7rem, 1.4vw, 0.9rem);
+  color: #aaa;
+  font-style: italic;
+  margin: 0;
+}
+
+/* ══════════════════════════════════════════
+   SLIDE 4 — RESULTADO FATURAMENTO
+   ══════════════════════════════════════════ */
+
+.rdm-fat-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 2px;
+}
+
+.rdm-fat-subtitle {
+  font-size: clamp(0.54rem, 1vw, 0.7rem);
+  font-weight: 700;
+  text-align: center;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 2px;
+  flex-shrink: 0;
+  font-family: var(--font-geist-sans, system-ui);
+}
+
+.rdm-fat-chart {
+  flex: 1;
+  min-height: 0;
+}
+
+.rdm-fat-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+.rdm-fat-leg-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.rdm-fat-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.rdm-fat-leg-text {
+  font-size: clamp(0.58rem, 1vw, 0.72rem);
+  font-weight: 500;
+  color: #374151;
+  font-family: var(--font-geist-sans, system-ui);
+}
+
 /* ── Comment box ── */
 .rdm-comment-wrap {
   position: relative;
@@ -2199,6 +2287,18 @@ body {
   display: flex;
   align-items: flex-end;
   gap: 6px;
+  padding-top: 18px;
+}
+
+.rdm-comment-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  font-size: clamp(0.52rem, 0.95vw, 0.65rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #444;
 }
 
 .rdm-comment-input {
