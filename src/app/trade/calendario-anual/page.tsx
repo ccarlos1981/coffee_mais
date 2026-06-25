@@ -10,10 +10,10 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
-  AlertTriangle,
   RotateCw,
   Info,
-  CalendarDays
+  CalendarDays,
+  Building2
 } from "lucide-react";
 
 interface CalendarioEvent {
@@ -24,6 +24,7 @@ interface CalendarioEvent {
   observacao: string;
   gerente: string;
   regiao: string;
+  rede: string;
   ano: number;
   created_at: string;
   created_by: string;
@@ -51,6 +52,7 @@ export default function CalendarioAnualPage() {
   const [filterAno, setFilterAno] = useState<number>(new Date().getFullYear());
   const [filterGerente, setFilterGerente] = useState<string>("Todos");
   const [filterRegiao, setFilterRegiao] = useState<string>("Todos");
+  const [filterRede, setFilterRede] = useState<string>("Todos");
   const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth()); // Default to current month
 
   // Form state
@@ -61,13 +63,15 @@ export default function CalendarioAnualPage() {
     assunto: "",
     observacao: "",
     gerente: "",
-    regiao: ""
+    regiao: "",
+    rede: ""
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
   // Dynamic filter lists fetched from API
   const [managersList, setManagersList] = useState<string[]>([]);
   const [ufsList, setUfsList] = useState<string[]>([]);
+  const [redesList, setRedesList] = useState<string[]>([]);
 
   // Feedback states
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
@@ -97,6 +101,18 @@ export default function CalendarioAnualPage() {
       })
       .catch((err) => console.error("Erro ao carregar filtros:", err));
 
+    // Fetch redes list
+    supabase
+      .from("v_redes_matrizes_detalhes")
+      .select("nome")
+      .order("nome", { ascending: true })
+      .then(({ data }) => {
+        if (data) {
+          const nomes = [...new Set(data.map((r: any) => r.nome).filter(Boolean))] as string[];
+          setRedesList(nomes);
+        }
+      });
+
     loadEvents();
   }, []);
 
@@ -121,40 +137,20 @@ export default function CalendarioAnualPage() {
   // Filter events in memory
   const filteredEvents = useMemo(() => {
     return events.filter((ev) => {
-      // 1. Filter by Year (use ev.ano field directly)
-      if (ev.ano !== filterAno) {
-        return false;
-      }
-
-      // 2. Filter by Manager
-      if (filterGerente !== "Todos" && ev.gerente !== filterGerente) {
-        return false;
-      }
-
-      // 3. Filter by Region
-      if (filterRegiao !== "Todos" && ev.regiao !== filterRegiao) {
-        return false;
-      }
-
-      // 4. Filter by Month (if selected)
+      if (ev.ano !== filterAno) return false;
+      if (filterGerente !== "Todos" && ev.gerente !== filterGerente) return false;
+      if (filterRegiao !== "Todos" && ev.regiao !== filterRegiao) return false;
+      if (filterRede !== "Todos" && ev.rede !== filterRede) return false;
       if (selectedMonth !== null) {
-        // Check if month falls in the interval
         const start = parseLocalDate(ev.data_inicio);
         const end = parseLocalDate(ev.data_fim);
-        const targetYear = filterAno;
-        const targetMonth = selectedMonth;
-
-        const checkStart = new Date(targetYear, targetMonth, 1);
-        const checkEnd = new Date(targetYear, targetMonth + 1, 0);
-
-        if (start > checkEnd || end < checkStart) {
-          return false;
-        }
+        const checkStart = new Date(filterAno, selectedMonth, 1);
+        const checkEnd = new Date(filterAno, selectedMonth + 1, 0);
+        if (start > checkEnd || end < checkStart) return false;
       }
-
       return true;
     });
-  }, [events, filterAno, filterGerente, filterRegiao, selectedMonth]);
+  }, [events, filterAno, filterGerente, filterRegiao, filterRede, selectedMonth]);
 
   const handleCreateEvent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -176,6 +172,7 @@ export default function CalendarioAnualPage() {
         observacao: formData.observacao || null,
         gerente: formData.gerente || null,
         regiao: formData.regiao || null,
+        rede: formData.rede || null,
         ano: computedAno,
         created_by: userEmail || "system"
       });
@@ -191,7 +188,8 @@ export default function CalendarioAnualPage() {
         assunto: "",
         observacao: "",
         gerente: "",
-        regiao: ""
+        regiao: "",
+        rede: ""
       });
 
       loadEvents();
@@ -292,13 +290,13 @@ export default function CalendarioAnualPage() {
             </select>
           </div>
 
-          {/* Region Filter */}
+          {/* Estado / UF Filter */}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Região (UF)</span>
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Estado (UF)</span>
             <select
               value={filterRegiao}
               onChange={(e) => setFilterRegiao(e.target.value)}
-              className="text-xs bg-neutral-900 border border-neutral-850 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer appearance-none w-full"
+              className="text-xs bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer appearance-none w-full"
             >
               <option value="Todos">Todos</option>
               {ufsList.map((uf) => (
@@ -306,6 +304,30 @@ export default function CalendarioAnualPage() {
               ))}
             </select>
           </div>
+
+          {/* Rede Filter */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Rede</span>
+            <select
+              value={filterRede}
+              onChange={(e) => setFilterRede(e.target.value)}
+              className="text-xs bg-neutral-900 border border-neutral-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer appearance-none w-full"
+            >
+              <option value="Todos">Todas</option>
+              {redesList.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          {(filterGerente !== "Todos" || filterRegiao !== "Todos" || filterRede !== "Todos") && (
+            <button
+              onClick={() => { setFilterGerente("Todos"); setFilterRegiao("Todos"); setFilterRede("Todos"); }}
+              className="text-[10px] text-amber-400 hover:text-amber-300 font-bold underline underline-offset-2 text-left transition-colors cursor-pointer"
+            >
+              Limpar filtros
+            </button>
+          )}
 
         </div>
 
@@ -423,15 +445,21 @@ export default function CalendarioAnualPage() {
                   </p>
 
                   {/* Event Badges Footer */}
-                  <div className="mt-auto pt-3 border-t border-neutral-900/80 flex flex-wrap gap-2 text-[10px] text-neutral-400 font-semibold">
+                  <div className="mt-auto pt-3 border-t border-neutral-900/80 flex flex-wrap gap-2 text-[10px] font-semibold">
+                    {ev.rede && (
+                      <span className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2 py-1 rounded-lg">
+                        <Building2 className="w-3 h-3" />
+                        {ev.rede}
+                      </span>
+                    )}
                     {ev.gerente && (
-                      <span className="flex items-center gap-1 bg-neutral-900/60 border border-neutral-850 px-2 py-1 rounded-lg">
+                      <span className="flex items-center gap-1 bg-neutral-900/60 border border-neutral-800 text-neutral-400 px-2 py-1 rounded-lg">
                         <User className="w-3 h-3 text-amber-500/60" />
                         {ev.gerente}
                       </span>
                     )}
                     {ev.regiao && (
-                      <span className="flex items-center gap-1 bg-neutral-900/60 border border-neutral-850 px-2 py-1 rounded-lg">
+                      <span className="flex items-center gap-1 bg-neutral-900/60 border border-neutral-800 text-neutral-400 px-2 py-1 rounded-lg">
                         <MapPin className="w-3 h-3 text-amber-500/60" />
                         {ev.regiao}
                       </span>
@@ -500,13 +528,28 @@ export default function CalendarioAnualPage() {
                 />
               </div>
 
+              {/* Rede select */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-bold text-neutral-300 uppercase">Rede</label>
+                <select
+                  value={formData.rede}
+                  onChange={(e) => setFormData({ ...formData, rede: e.target.value })}
+                  className="text-xs bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer w-full"
+                >
+                  <option value="">Nenhuma (Geral)</option>
+                  {redesList.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* Manager select */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[10px] font-bold text-neutral-300 uppercase">Gerente Vinculado</label>
                 <select
                   value={formData.gerente}
                   onChange={(e) => setFormData({ ...formData, gerente: e.target.value })}
-                  className="text-xs bg-neutral-950 border border-neutral-850 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className="text-xs bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer w-full"
                 >
                   <option value="">Nenhum (Todos)</option>
                   {managersList.map((m) => (
@@ -517,11 +560,11 @@ export default function CalendarioAnualPage() {
 
               {/* Region select */}
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-neutral-300 uppercase">Região / UF</label>
+                <label className="text-[10px] font-bold text-neutral-300 uppercase">Estado / UF</label>
                 <select
                   value={formData.regiao}
                   onChange={(e) => setFormData({ ...formData, regiao: e.target.value })}
-                  className="text-xs bg-neutral-950 border border-neutral-850 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer"
+                  className="text-xs bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-white focus:outline-none focus:border-amber-500 cursor-pointer w-full"
                 >
                   <option value="">Nenhuma (Geral)</option>
                   {ufsList.map((uf) => (
