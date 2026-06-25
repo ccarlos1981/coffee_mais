@@ -1266,7 +1266,7 @@ export default function InvestimentoPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-            {(userRole === 'Admin' || userRole === 'Financeiro') && (
+            {(userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'Trade' || userRole === 'CEO') && (
               <Link 
                 href="/financeiro/boletos"
                 className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
@@ -2757,9 +2757,9 @@ export default function InvestimentoPage() {
                       <div className="flex gap-2">
                         <button
                           onClick={() => handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, true))}
-                          disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO')}
+                          disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade')}
                           className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                          title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' ? "Apenas perfil Financeiro pode aprovar" : ""}
+                          title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade' ? "Apenas perfil Financeiro ou Trade pode aprovar" : ""}
                         >
                           {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                           Aprovar
@@ -2802,9 +2802,9 @@ export default function InvestimentoPage() {
                       
                       <button
                         type="submit"
-                        disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO')}
+                        disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade')}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                        title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' ? "Apenas perfil Financeiro pode finalizar" : ""}
+                        title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade' ? "Apenas perfil Financeiro ou Trade pode finalizar" : ""}
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />}
                         Confirmar Pagamento
