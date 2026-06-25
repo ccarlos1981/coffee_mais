@@ -33,7 +33,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const mes_referencia = formData.get("mes_referencia") as string;
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Boleto";
+  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {
@@ -110,7 +110,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const mes_referencia = formData.get("mes_referencia") as string;
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Boleto";
+  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {

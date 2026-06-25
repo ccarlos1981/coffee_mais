@@ -76,7 +76,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   const [famVolume, setFamVolume] = useState(initialData?.expectativa_volume ? initialData.expectativa_volume.toString().replace(".", ",") : "");
 
   // Toggles and SKU states
-  const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Boleto");
+  const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
   const [abrangencia, setAbrangencia] = useState<"Família" | "SKU">(initialData?.abrangencia || "Família");
   
@@ -334,7 +334,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Pagamento</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {["Boleto", "Transf. Bancária", "Bonificação"].map((opcao) => (
+              {["Transf. Bancária", "Boleto", "Bonificação"].map((opcao) => (
                 <label key={opcao} className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
                   <input 
                     type="radio" 
