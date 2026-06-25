@@ -115,6 +115,7 @@ interface AcaoInvestimento {
   financeiro_pago_em?: string | null;
   financeiro_pago_por?: string | null;
   financeiro_comprovante_url?: string | null;
+  financeiro_boleto_url?: string | null;
   financeiro_observacoes?: string | null;
   gerente_responsavel?: string | null;
 }
@@ -187,6 +188,7 @@ export default function InvestimentoPage() {
   const [selectedBoletoLabel, setSelectedBoletoLabel] = useState("");
   const [vinculosBoletos, setVinculosBoletos] = useState<any[]>([]);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
+  const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
 
   // Calendar State
   const [viewMode, setViewMode] = useState<"table" | "calendar" | "matrix">("table");
@@ -932,6 +934,33 @@ export default function InvestimentoPage() {
       setFeedback({ type: "error", msg: "Erro ao anexar comprovante: " + err.message });
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  const handleBoletoFinanceiroUpload = async (id: string, file: File | null) => {
+    if (!file) return;
+    setUploadingBoletoFinanceiro(true);
+    setFeedback(null);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `boleto_financeiro_${id}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('comprovantes_investimento')
+        .upload(fileName, file);
+      if (uploadError) throw uploadError;
+      const { error: dbError } = await supabase
+        .from('cm_acoes_investimento')
+        .update({ financeiro_boleto_url: fileName })
+        .eq('id', id);
+      if (dbError) throw dbError;
+      setData(prev => prev.map(item => item.id === id ? { ...item, financeiro_boleto_url: fileName } : item));
+      setSelectedAction(prev => prev && prev.id === id ? { ...prev, financeiro_boleto_url: fileName } : prev);
+      setFeedback({ type: 'success', msg: 'Boleto do cliente anexado com sucesso!' });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      setFeedback({ type: 'error', msg: 'Erro ao anexar boleto: ' + err.message });
+    } finally {
+      setUploadingBoletoFinanceiro(false);
     }
   };
 
@@ -2400,7 +2429,7 @@ export default function InvestimentoPage() {
                         </div>
                         <div className="md:col-span-2" ref={boletoDropdownRef}>
                           <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">
-                            Boletos Vinculados ao Financeiro
+                            Nota Fiscal
                           </label>
                           
                           {/* List of currently associated boletos */}
@@ -2669,7 +2698,7 @@ export default function InvestimentoPage() {
                   {(selectedAction.fase_atual || 1) === 4 && (
                     <div className="flex flex-col gap-3">
                       <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-2">
-                        <span className="text-sm font-bold text-foreground">Boletos Vinculados pelo Comercial</span>
+                        <span className="text-sm font-bold text-foreground">Nota Fiscal</span>
                         {vinculosBoletos.length > 0 ? (
                           <div className="space-y-2">
                             {vinculosBoletos.map((vinculo, index) => (
@@ -2688,6 +2717,41 @@ export default function InvestimentoPage() {
                           </div>
                         ) : (
                           <span className="text-xs text-muted italic">Nenhum boleto em aberto ou vinculado.</span>
+                        )}
+                      </div>
+                      {/* Upload boleto do cliente */}
+                      <div>
+                        <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">Boleto do Cliente</label>
+                        {(selectedAction as any).financeiro_boleto_url ? (
+                          <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded-lg">
+                            <FileText className="w-4 h-4 flex-shrink-0" />
+                            <span className="text-sm font-medium truncate flex-1">Boleto Anexado</span>
+                            <button
+                              type="button"
+                              onClick={() => handleViewDocument((selectedAction as any).financeiro_boleto_url)}
+                              className="text-xs underline hover:text-blue-400 flex-shrink-0"
+                            >
+                              Visualizar
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-border border border-dashed border-border rounded-lg cursor-pointer transition-colors group">
+                            {uploadingBoletoFinanceiro ? (
+                              <RefreshCw className="w-4 h-4 animate-spin text-muted" />
+                            ) : (
+                              <>
+                                <FileUp className="w-4 h-4 text-muted group-hover:text-blue-400 transition-colors" />
+                                <span className="text-sm text-muted group-hover:text-foreground font-medium transition-colors">Selecionar arquivo (PDF ou Imagem)...</span>
+                              </>
+                            )}
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,image/*"
+                              onChange={(e) => handleBoletoFinanceiroUpload(selectedAction.id, e.target.files?.[0] || null)}
+                              disabled={uploadingBoletoFinanceiro}
+                            />
+                          </label>
                         )}
                       </div>
                       <div className="flex gap-2">
