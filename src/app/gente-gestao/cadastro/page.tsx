@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { EmployeeDashboard } from "./EmployeeDashboard";
-import { AlertTriangle, Coffee } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 
 export const metadata = {

@@ -207,7 +207,7 @@ export default function PlanejamentoInvestimentoPage() {
   // Filter lists derived from user matching roles
   const managerFilteredAcoes = useMemo(() => {
     if (!userRole) return data;
-    if (userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'CEO') return data;
+    if (userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'CEO' || userRole === 'Trade') return data;
     
     // For regular managers, only show their own actions
     return data.filter(d => d.gerente_responsavel === userEmail);
@@ -250,7 +250,7 @@ export default function PlanejamentoInvestimentoPage() {
     return filteredData.reduce((acc, curr) => acc + getValorTotal(curr), 0);
   }, [filteredData]);
 
-  const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO';
+  const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO' && userRole !== 'Trade';
 
   const myMatrizes = useMemo(() => {
     if (isRegionalManager && userEmail) {
@@ -577,8 +577,8 @@ export default function PlanejamentoInvestimentoPage() {
             errors.push("Pagamento é obrigatório.");
           } else {
             const pLower = pagamentoVal.toLowerCase();
-            if (pLower.includes("abat")) pagamentoVal = "Abatimento";
-            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transferência";
+            if (pLower.includes("abat") || pLower.includes("bole")) pagamentoVal = "Boleto";
+            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transf. Bancária";
             else if (pLower.includes("boni")) pagamentoVal = "Bonificação";
             else errors.push("Pagamento inválido.");
           }
@@ -665,7 +665,7 @@ export default function PlanejamentoInvestimentoPage() {
             if (!familiaVal) {
               errors.push("Família é obrigatória para abrangência Família.");
             } else {
-              const validFams = ["Grão", "Moído", "Drip", "Capsula", "KG"];
+              const validFams = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
               const match = validFams.find(vf => vf.toLowerCase() === familiaVal!.toLowerCase());
               if (match) familiaVal = match;
               else errors.push("Família inválida.");

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/send-report",
       "schedule": "0 13 * * 2-6"
+    },
+    {
+      "path": "/api/cron/acoes-atrasadas",
+      "schedule": "0 11 * * *"
     }
   ]
 }

@@ -288,9 +288,14 @@ function parseFaturamento(sheet: XLSX.WorkSheet): FaturamentoRow[] {
     if (val === null || val === undefined || val === '') return 0;
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
-      const cleaned = val.replace(/\./g, '').replace(',', '.');
-      const parsed = parseFloat(cleaned);
-      return isNaN(parsed) ? 0 : parsed;
+      if (val.includes(',')) {
+        const cleaned = val.replace(/\./g, '').replace(',', '.');
+        const parsed = parseFloat(cleaned);
+        return isNaN(parsed) ? 0 : parsed;
+      } else {
+        const parsed = parseFloat(val);
+        return isNaN(parsed) ? 0 : parsed;
+      }
     }
     return 0;
   };

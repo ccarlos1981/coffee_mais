@@ -18,16 +18,20 @@ WITH sales_enriched AS (
     EXTRACT(MONTH FROM f.dt_faturamento)::int as mes_num,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
     ) as manager,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -54,23 +58,37 @@ WITH sales_enriched AS (
     ) as uf,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
       ELSE COALESCE(CAST(f.quantidade AS numeric), 0)
     END as quantity,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0))
-      ELSE (COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0))
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(
+        COALESCE(CAST(f.custo_icms AS numeric), 0) + 
+        CASE 
+          WHEN COALESCE(CAST(f.vlr_total_st AS numeric), 0) >= ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0)) THEN 0 
+          ELSE COALESCE(CAST(f.vlr_total_st AS numeric), 0) 
+        END
+      )
+      ELSE (
+        COALESCE(CAST(f.custo_icms AS numeric), 0) + 
+        CASE 
+          WHEN COALESCE(CAST(f.vlr_total_st AS numeric), 0) >= ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0)) THEN 0 
+          ELSE COALESCE(CAST(f.vlr_total_st AS numeric), 0) 
+        END
+      )
     END as imposto,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.custo_total AS numeric), 0))
@@ -87,11 +105,17 @@ WITH sales_enriched AS (
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
     AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-    AND (f.cod_top IS NULL OR f.cod_top != '1117')
+    AND f.nome_parceiro != 'CAFE UTAM S/A'
+    AND f.nome_parceiro != 'COFFEE MAIS INDUSTRIA DE CAFE LTDA'
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
+      -- Canais Digitais (Ecommerce e Marketplace)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      -- Canais B2B e outros
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )
 SELECT
@@ -135,16 +159,20 @@ WITH sales_enriched AS (
     SUBSTRING(CAST(f.dt_faturamento AS text), 1, 7) as mes,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
     ) as manager,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -172,23 +200,37 @@ WITH sales_enriched AS (
     ) as uf,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
       ELSE COALESCE(CAST(f.quantidade AS numeric), 0)
     END as quantity,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0))
-      ELSE (COALESCE(CAST(f.custo_icms AS numeric), 0) + COALESCE(CAST(f.vlr_total_st AS numeric), 0))
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(
+        COALESCE(CAST(f.custo_icms AS numeric), 0) + 
+        CASE 
+          WHEN COALESCE(CAST(f.vlr_total_st AS numeric), 0) >= ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0)) THEN 0 
+          ELSE COALESCE(CAST(f.vlr_total_st AS numeric), 0) 
+        END
+      )
+      ELSE (
+        COALESCE(CAST(f.custo_icms AS numeric), 0) + 
+        CASE 
+          WHEN COALESCE(CAST(f.vlr_total_st AS numeric), 0) >= ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0)) THEN 0 
+          ELSE COALESCE(CAST(f.vlr_total_st AS numeric), 0) 
+        END
+      )
     END as imposto,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.custo_total AS numeric), 0))
@@ -202,11 +244,17 @@ WITH sales_enriched AS (
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
     AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-    AND (f.cod_top IS NULL OR f.cod_top != '1117')
+    AND f.nome_parceiro != 'CAFE UTAM S/A'
+    AND f.nome_parceiro != 'COFFEE MAIS INDUSTRIA DE CAFE LTDA'
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
+      -- Canais Digitais (Ecommerce e Marketplace)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      -- Canais B2B e outros
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )
 SELECT
@@ -244,16 +292,20 @@ WITH sales_enriched AS (
     SUBSTRING(CAST(f.dt_faturamento AS text), 1, 7) as mes,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.manager
       END,
       'Outros'
     ) as manager,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.rede
       END,
       f.nome_parceiro,
@@ -282,15 +334,17 @@ WITH sales_enriched AS (
     ) as uf,
     COALESCE(
       CASE 
+        WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+        WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
         WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
-        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'Marketplace'
+        WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
         ELSE b.canal
       END,
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
@@ -300,11 +354,17 @@ WITH sales_enriched AS (
   LEFT JOIN base_atendimento b ON b.cod_parceiro = f.cod_parceiro
   WHERE f.dt_faturamento IS NOT NULL
     AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-    AND (f.cod_top IS NULL OR f.cod_top != '1117')
+    AND f.nome_parceiro != 'CAFE UTAM S/A'
+    AND f.nome_parceiro != 'COFFEE MAIS INDUSTRIA DE CAFE LTDA'
     AND (
-      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND f.cod_top::numeric = 1100)
+      -- Canais Digitais (Ecommerce e Marketplace)
+      (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
       OR
-      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') AND b.manager IS NOT NULL AND b.manager NOT IN ('Ecommerce', 'Marketplace'))
+      -- Canais B2B e outros
+      (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )
 SELECT

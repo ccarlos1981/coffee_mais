@@ -37,7 +37,7 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
     "Moído",
     "Drip",
     "Capsula",
-    "KG"
+    "1KG"
   ];
 
   return (

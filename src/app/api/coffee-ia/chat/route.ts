@@ -40,7 +40,7 @@ Colunas disponíveis:
 - channel (text): canal de venda (KA, Inside Sales, ATACADO, etc.)
 - uf (text): UF / Estado do cliente (MG, SP, RS, DF, RJ, SC, PR, GO, MT, etc.). Use-o para buscar dados "por estado"
 - regional (text): região
-- rede (text): rede/matriz do cliente
+- rede (text): rede/matriz do cliente — nome curto/comercial da rede (ex: "DONA", "PÃO DE AÇÚCAR")
 - cfop (text): natureza da operação
 - operation_type (text): tipo de operação (VENDA NF-E, etc.)
 - tipo_produto (text): família do produto (Cápsula, Moído, Grão, Drip, etc.)
@@ -49,6 +49,7 @@ Colunas disponíveis:
 - dia (integer): dia
 - ano_mes (text): formato "YYYY_MM"
 - weight_kg (numeric): peso vendido em kg
+- ⚠️ IMPORTANTE — net_value negativo: registros com net_value < 0 são devoluções/notas de crédito. Eles fazem parte do histórico e NÃO significam ausência de vendas. Para calcular faturamento líquido real, use SUM(net_value) que já inclui devoluções. Para buscar APENAS vendas positivas, filtre WHERE net_value > 0.
 
 ## Tabela: targets (Metas)
 Colunas disponíveis:
@@ -74,6 +75,13 @@ Colunas disponíveis:
 12. "Mais vendido" refere-se à quantidade (quantity). "Maior faturamento" refere-se ao valor (net_value).
 13. Positivação = COUNT(DISTINCT cod_parceiro). Corresponde ao número de pontos de vendas, lojas ou clientes únicos ativos/que compraram.
 14. Atingimento de Metas: Faturamento Realizado (sales.net_value) / Meta (targets.target_revenue). Se necessário, faça JOIN entre sales e targets ON sales.manager = targets.manager AND sales.ano = targets.year AND sales.mes = targets.month.
+15. ⚠️ BUSCA POR REDE/MATRIZ: Quando o usuário mencionar nome de uma rede, matriz ou cliente, SEMPRE busque nos dois campos simultaneamente:
+    (rede ILIKE '%nome%' OR nome_parceiro ILIKE '%nome%')
+    Exemplos:
+    - "rede Dona" → WHERE (rede ILIKE '%dona%' OR nome_parceiro ILIKE '%dona%')
+    - "cliente Pão de Açúcar" → WHERE (rede ILIKE '%pão de açucar%' OR nome_parceiro ILIKE '%pão de açucar%')
+    NUNCA busque apenas pelo nome literal exato; use ILIKE com % em ambos os campos.
+16. ⚠️ DEVOLUÇÕES: net_value negativo = devolução/nota de crédito. Não significa "sem venda". O último pedido de uma rede pode ter net_value negativo — isso é normal. Para encontrar o último PEDIDO (positivo ou não), ordene por invoice_date DESC e pegue o primeiro. Para verificar se houve VENDA, cheque SUM(net_value) > 0 ou COUNT(*) WHERE net_value > 0.
 
 ## Formato de Resposta:
 Se a pergunta for sobre dados de vendas, responda em JSON:
@@ -215,7 +223,9 @@ export async function POST(request: NextRequest) {
       sql: parsed.sql,
       explanation: parsed.explanation,
       rowCount: Array.isArray(queryResult) ? queryResult.length : 0,
+      queryData: queryResult,
     });
+
   } catch (err) {
     console.error("Coffee IA error:", err);
     const message =

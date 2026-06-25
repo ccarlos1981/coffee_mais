@@ -22,7 +22,11 @@ import {
   LogOut,
   Settings,
   CalendarDays,
-  ClipboardList
+  ClipboardList,
+  Clock,
+  ShieldCheck,
+  Map,
+  BookOpen
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
@@ -80,9 +84,23 @@ const allModules: NavigationGroup[] = [
     category: "Trade",
     items: [
       { title: "Dashboard", description: "Visão executiva", href: "/investimento/dashboard", icon: BarChart3, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
-      { title: "Calendário", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
+      { title: "Calendário de invest.", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
       { title: "Planej. de Invest.", permission: "Planej. de Invest.", description: "Planejamento de ações", href: "/investimento/planejamento", icon: Target, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Investimento", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-emerald-600 to-emerald-800", ready: true },
+      { title: "Invest. oficial", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-emerald-600 to-emerald-800", ready: true },
+      { title: "Invest. Cliente", description: "Saldo devedor por rede", href: "/investimento/invest-cliente", icon: Users, color: "from-rose-600 to-rose-800", ready: true },
+      { title: "Calendário Anual", description: "Eventos e datas", href: "/trade/calendario-anual", icon: CalendarDays, color: "from-amber-600 to-amber-800", ready: true },
+    ],
+  },
+  {
+    category: "Módulo Promotor",
+    items: [
+      { title: "Ponto Promotor", description: "Registrar jornada", href: "/promotor/ponto", icon: Clock, color: "from-amber-600 to-amber-800", ready: true },
+      { title: "Agenda Promotor", description: "Roteiro e visitas", href: "/promotor/agenda", icon: ClipboardList, color: "from-orange-600 to-orange-850", ready: true },
+      { title: "Painel Supervisor", description: "Aprovar pontos", href: "/supervisor/ponto", icon: Users, color: "from-blue-600 to-blue-800", ready: true },
+      { title: "Central de Rotas e SLAs", description: "Configurar SLAs e rotas", href: "/supervisor/rotas", icon: Map, color: "from-amber-650 to-amber-850", ready: true },
+      { title: "Command Center", description: "Tracking em tempo real", href: "/supervisor/command-center", icon: ShieldCheck, color: "from-red-650 to-red-850", ready: true },
+      { title: "Compliance e KPIs", description: "Auditoria de campo", href: "/trade/dashboard", icon: ShieldCheck, color: "from-red-600 to-red-800", ready: true },
+      { title: "Missões Trade", description: "Checklists de loja", href: "/trade/missoes", icon: Target, color: "from-purple-600 to-purple-800", ready: true },
     ],
   },
   {
@@ -102,6 +120,7 @@ const allModules: NavigationGroup[] = [
     category: "Gente e Gestão",
     items: [
       { title: "Cadastro", permission: "Gente e Gestão", description: "Cadastro de funcionários", href: "/gente-gestao/cadastro", icon: Users, color: "from-teal-600 to-teal-800", ready: true },
+      { title: "Central de Treinamento", description: "Manuais e Onboarding", href: "/treinamento", icon: BookOpen, color: "from-emerald-600 to-emerald-800", ready: true },
     ],
   },
   {
@@ -131,6 +150,7 @@ export default async function HomePage() {
   
   let role = 'Vendedor'; // default
   let allowedModuleNames: string[] = [];
+  let hasConfigInDb = false;
   
   if (user) {
     // Buscar perfil para descobrir a role
@@ -144,31 +164,45 @@ export default async function HomePage() {
       role = profile.role;
     }
     
-    // Se o usuário for CEO (hardcoded fallback) ele pode ver tudo, 
-    // mas o ideal é que até o CEO tenha os acessos mapeados na tabela.
-    
-    // Buscar permissões para a role
+    // Buscar todas as permissões gravadas para a role (ativas ou inativas)
     const { data: permissions } = await supabase
       .from('cm_role_permissions')
-      .select('module_name')
-      .eq('role', role)
-      .eq('has_access', true);
+      .select('module_name, has_access')
+      .eq('role', role);
       
     if (permissions) {
-      allowedModuleNames = permissions.map((p: any) => p.module_name);
+      allowedModuleNames = permissions.filter((p: any) => p.has_access).map((p: any) => p.module_name);
+      hasConfigInDb = permissions.length > 0;
     }
   }
 
   // Filtrar os módulos de acordo com as permissões
-  // Se for CEO e não tiver configurado nada, podemos liberar tudo temporariamente pra não travar o sistema.
-  // Mas de acordo com a regra, deve ser estrito. Vou assumir estrito.
-  // Exception: if allowedModuleNames is completely empty and user is CEO, let's allow all just in case migration hasn't run.
   const isSuperAdmin = role === 'CEO' && allowedModuleNames.length === 0;
 
   const filteredModules = allModules.map(group => {
     return {
       ...group,
-      items: group.items.filter(item => isSuperAdmin || allowedModuleNames.includes(item.permission || item.title)).map(({ icon: Icon, ...rest }) => ({
+      items: group.items.filter(item => {
+        if (isSuperAdmin) return true;
+        
+        const modulePermission = item.permission || item.title;
+        
+        // Se houver permissão ativa no banco, permite o acesso
+        if (allowedModuleNames.includes(modulePermission)) return true;
+        
+        // Se a role não possuir NENHUMA permissão configurada no banco (tabela vazia para a role),
+        // usamos os atalhos de visibilidade legados como fallback de segurança
+        if (!hasConfigInDb) {
+          if (item.href.startsWith("/promotor") && (role === "Promotor" || role === "Supervisor" || role === "Trade" || role === "Admin" || role === "CEO")) return true;
+          if (item.href.startsWith("/supervisor") && (role === "Supervisor" || role === "Trade" || role === "Admin" || role === "CEO")) return true;
+          if (item.href.startsWith("/trade") && (role === "Trade" || role === "Admin" || role === "Supervisor" || role === "CEO")) return true;
+        }
+        
+        // Treinamento e manuais são públicos por padrão
+        if (item.href.startsWith("/treinamento")) return true;
+        
+        return false;
+      }).map(({ icon: Icon, ...rest }) => ({
         ...rest,
         iconNode: <Icon className="w-3 h-3 text-white" />
       }))

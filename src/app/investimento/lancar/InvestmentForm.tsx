@@ -76,7 +76,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   const [famVolume, setFamVolume] = useState(initialData?.expectativa_volume ? initialData.expectativa_volume.toString().replace(".", ",") : "");
 
   // Toggles and SKU states
-  const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Abatimento");
+  const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Boleto");
+  const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
   const [abrangencia, setAbrangencia] = useState<"Família" | "SKU">(initialData?.abrangencia || "Família");
   
   const [selectedSkus, setSelectedSkus] = useState<string[]>(
@@ -150,6 +151,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
     formData.append("rede", selectedRede.nome);
     formData.append("codigo_matriz", selectedRede.codigo);
     formData.append("tipo_pagamento", tipoPagamento);
+    formData.append("tipo_acao_detalhe", tipoAcaoDetalhe);
     formData.append("abrangencia", abrangencia);
 
     // Appended dynamically by standard HTML form names
@@ -306,11 +308,33 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
             </div>
           </div>
 
+          {/* Ação */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-muted">Ação</label>
+            <div className="grid grid-cols-2 gap-3">
+              {["Ação de Vendas", "Encarte", "Aniversário", "Ponto Extra"].map((opcao) => (
+                <label key={opcao} className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
+                  <input
+                    type="radio"
+                    name="tipo_acao_detalhe_ui"
+                    className="sr-only peer"
+                    checked={tipoAcaoDetalhe === opcao}
+                    onChange={() => setTipoAcaoDetalhe(opcao)}
+                  />
+                  <div className="w-4 h-4 rounded-full border-2 border-foreground-muted peer-checked:border-[#C4A25D] peer-checked:bg-[#C4A25D] flex items-center justify-center transition-colors">
+                    <div className="w-2 h-2 rounded-full bg-black opacity-0 peer-checked:opacity-100" />
+                  </div>
+                  <span className="font-medium text-foreground text-sm">{opcao}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           {/* Pagamento */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Pagamento</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {["Abatimento", "Transferência", "Bonificação"].map((opcao) => (
+              {["Boleto", "Transf. Bancária", "Bonificação"].map((opcao) => (
                 <label key={opcao} className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
                   <input 
                     type="radio" 

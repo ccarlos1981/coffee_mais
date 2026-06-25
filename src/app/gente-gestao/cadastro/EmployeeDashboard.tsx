@@ -17,12 +17,11 @@ import {
   FileSpreadsheet,
   Upload,
   CheckCircle2,
-  XCircle,
-  AlertCircle
+  XCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { upsertEmployee, deleteEmployee, importEmployeesInBulk } from "./actions";
+import { upsertEmployee, deleteEmployee, importEmployeesInBulk, getEmployeeEscala, saveEmployeeEscala } from "./actions";
 
 interface Employee {
   id: string;
@@ -36,10 +35,55 @@ interface Employee {
   ativo: boolean;
   created_at: string;
   updated_at: string;
+  whatsapp?: string | null;
+  endereco_casa?: string | null;
+  lat_casa?: number | null;
+  lng_casa?: number | null;
 }
 
 interface EmployeeDashboardProps {
   employees: Employee[];
+}
+
+interface Escala {
+  dia_semana: number;
+  dia_nome: string;
+  ativo: boolean;
+  hora_entrada: string;
+  hora_saida_intervalo: string;
+  hora_retorno_intervalo: string;
+  hora_saida_lanche: string;
+  hora_retorno_lanche: string;
+  hora_saida: string;
+  tolerancia_minutos: number;
+}
+
+interface EscalaDb {
+  employee_id: string;
+  dia_semana: number;
+  hora_entrada: string;
+  hora_saida_intervalo: string | null;
+  hora_retorno_intervalo: string | null;
+  hora_saida_lanche: string | null;
+  hora_retorno_lanche: string | null;
+  hora_saida: string;
+  tolerancia_minutos: number;
+}
+
+interface ParsedEmployee {
+  originalRow: unknown;
+  data: {
+    nome_completo: string;
+    cpf: string;
+    identidade: string | null;
+    data_nascimento: string | null;
+    funcao: string | null;
+    area_funcao: string | null;
+    data_admissao: string | null;
+    ativo: boolean;
+  };
+  valid: boolean;
+  errors: string[];
 }
 
 // Algoritmo de validação matemática de CPF
@@ -65,7 +109,7 @@ function isCpfValid(cpf: string): boolean {
 }
 
 // Converter string de data (DD/MM/AAAA) para formato do banco (YYYY-MM-DD)
-function parseDateString(dateStr: any): string | null {
+function parseDateString(dateStr: unknown): string | null {
   if (!dateStr) return null;
   
   if (dateStr instanceof Date) {
@@ -104,7 +148,7 @@ function excelSerialToDate(serial: number): string | null {
     const m = String(date_info.getUTCMonth() + 1).padStart(2, '0');
     const d = String(date_info.getUTCDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -129,26 +173,31 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
   const [areaFuncao, setAreaFuncao] = useState("");
   const [dataAdmissao, setDataAdmissao] = useState("");
   const [ativo, setAtivo] = useState(true);
+  const [whatsapp, setWhatsapp] = useState("");
+  const [enderecoCasa, setEnderecoCasa] = useState("");
   
   const [isPending, startTransition] = useTransition();
 
+  // Modal active tab: 'dados' or 'escala'
+  const [activeModalTab, setActiveModalTab] = useState<"dados" | "escala">("dados");
+  
+  // Escalas form state
+  const defaultEscalas = [
+    { dia_semana: 1, dia_nome: "Segunda-feira", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "12:00", hora_retorno_intervalo: "13:00", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "17:00", tolerancia_minutos: 10 },
+    { dia_semana: 2, dia_nome: "Terça-feira", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "12:00", hora_retorno_intervalo: "13:00", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "17:00", tolerancia_minutos: 10 },
+    { dia_semana: 3, dia_nome: "Quarta-feira", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "12:00", hora_retorno_intervalo: "13:00", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "17:00", tolerancia_minutos: 10 },
+    { dia_semana: 4, dia_nome: "Quinta-feira", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "12:00", hora_retorno_intervalo: "13:00", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "17:00", tolerancia_minutos: 10 },
+    { dia_semana: 5, dia_nome: "Sexta-feira", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "12:00", hora_retorno_intervalo: "13:00", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "17:00", tolerancia_minutos: 10 },
+    { dia_semana: 6, dia_nome: "Sábado", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "", hora_retorno_intervalo: "", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "12:00", tolerancia_minutos: 10 },
+    { dia_semana: 7, dia_nome: "Domingo", ativo: false, hora_entrada: "08:00", hora_saida_intervalo: "", hora_retorno_intervalo: "", hora_saida_lanche: "", hora_retorno_lanche: "", hora_saida: "12:00", tolerancia_minutos: 10 },
+  ];
+  const [escalasForm, setEscalasForm] = useState<Escala[]>(defaultEscalas);
+  const [loadingEscala, setLoadingEscala] = useState(false);
+  const [savingEscala, setSavingEscala] = useState(false);
+
   // Import states
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [parsedEmployees, setParsedEmployees] = useState<{
-    originalRow: any;
-    data: {
-      nome_completo: string;
-      cpf: string;
-      identidade: string | null;
-      data_nascimento: string | null;
-      funcao: string | null;
-      area_funcao: string | null;
-      data_admissao: string | null;
-      ativo: boolean;
-    };
-    valid: boolean;
-    errors: string[];
-  }[]>([]);
+  const [parsedEmployees, setParsedEmployees] = useState<ParsedEmployee[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportPending, startImportTransition] = useTransition();
@@ -201,7 +250,7 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
         const wsname = wb.SheetNames[0];
         const ws = wb.Sheets[wsname];
         
-        const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const rawRows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
         if (rawRows.length === 0) {
           toast.error("A planilha está vazia.");
           return;
@@ -225,7 +274,7 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
           return;
         }
 
-        const employeesToValidate: any[] = [];
+        const employeesToValidate: ParsedEmployee[] = [];
         const seenCpfsInSheet = new Set<string>();
 
         for (let i = 1; i < rawRows.length; i++) {
@@ -389,11 +438,15 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
     setAreaFuncao("");
     setDataAdmissao("");
     setAtivo(true);
+    setWhatsapp("");
+    setEnderecoCasa("");
+    setActiveModalTab("dados");
+    setEscalasForm(defaultEscalas);
     setIsModalOpen(true);
   };
 
   // Open modal for editing employee
-  const handleEditEmployee = (emp: Employee) => {
+  const handleEditEmployee = async (emp: Employee) => {
     setSelectedEmployee(emp);
     setId(emp.id);
     setNomeCompleto(emp.nome_completo);
@@ -411,7 +464,45 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
     setAreaFuncao(emp.area_funcao || "");
     setDataAdmissao(emp.data_admissao || "");
     setAtivo(emp.ativo);
+    setWhatsapp(emp.whatsapp || "");
+    setEnderecoCasa(emp.endereco_casa || "");
+    
+    setActiveModalTab("dados");
+    setLoadingEscala(true);
+    setEscalasForm(defaultEscalas);
     setIsModalOpen(true);
+
+    try {
+      const res = await getEmployeeEscala(emp.id);
+      if (res.success && res.data) {
+        const mapped = defaultEscalas.map(def => {
+          const dbRow = res.data.find((d: EscalaDb) => d.dia_semana === def.dia_semana);
+          if (dbRow) {
+            const cleanTime = (t: string | null) => t ? t.substring(0, 5) : "";
+            return {
+              ...def,
+              ativo: true,
+              hora_entrada: cleanTime(dbRow.hora_entrada),
+              hora_saida_intervalo: cleanTime(dbRow.hora_saida_intervalo),
+              hora_retorno_intervalo: cleanTime(dbRow.hora_retorno_intervalo),
+              hora_saida_lanche: cleanTime(dbRow.hora_saida_lanche),
+              hora_retorno_lanche: cleanTime(dbRow.hora_retorno_lanche),
+              hora_saida: cleanTime(dbRow.hora_saida),
+              tolerancia_minutos: dbRow.tolerancia_minutos
+            };
+          }
+          return def;
+        });
+        setEscalasForm(mapped);
+      } else if (res.error) {
+        console.error("Erro ao carregar escala:", res.error);
+        toast.error("Erro ao carregar escala de trabalho.");
+      }
+    } catch (err) {
+      console.error("Falha ao carregar escalas:", err);
+    } finally {
+      setLoadingEscala(false);
+    }
   };
 
   // Open delete confirmation
@@ -436,6 +527,11 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
       return;
     }
 
+    if (!whatsapp.trim()) {
+      toast.error("Por favor, insira o número de WhatsApp.");
+      return;
+    }
+
     startTransition(async () => {
       const formData = new FormData();
       if (id) formData.append("id", id);
@@ -447,6 +543,8 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
       formData.append("area_funcao", areaFuncao);
       formData.append("data_admissao", dataAdmissao);
       formData.append("ativo", ativo ? "true" : "false");
+      formData.append("whatsapp", whatsapp);
+      formData.append("endereco_casa", enderecoCasa);
 
       const res = await upsertEmployee(formData);
       if (res.error) {
@@ -457,6 +555,47 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
         router.refresh();
       }
     });
+  };
+
+  const handleScaleFieldChange = (diaSemana: number, field: keyof Escala, value: string | number | boolean) => {
+    setEscalasForm(prev => prev.map(esc => {
+      if (esc.dia_semana === diaSemana) {
+        return { ...esc, [field]: value } as Escala;
+      }
+      return esc;
+    }));
+  };
+
+  const handleSaveEscala = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) {
+      toast.error("Por favor, salve os dados cadastrais antes de configurar a escala.");
+      return;
+    }
+
+    setSavingEscala(true);
+    try {
+      const ativas = escalasForm.filter(esc => esc.ativo);
+      for (const esc of ativas) {
+        if (!esc.hora_entrada || !esc.hora_saida) {
+          toast.error(`Entrada e saída são obrigatórias para os dias ativos (${esc.dia_nome}).`);
+          setSavingEscala(false);
+          return;
+        }
+      }
+
+      const res = await saveEmployeeEscala(id, ativas);
+      if (res.success) {
+        toast.success(res.message || "Escala de trabalho salva com sucesso!");
+      } else {
+        toast.error(res.error || "Erro ao salvar escala.");
+      }
+    } catch (err) {
+      console.error("Falha ao salvar escala:", err);
+      toast.error("Erro interno ao salvar escala.");
+    } finally {
+      setSavingEscala(false);
+    }
   };
 
   // Delete Action
@@ -746,7 +885,7 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
           <div 
-            className="w-full max-w-lg bg-background-card border border-border rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+            className={`w-full ${activeModalTab === "escala" ? "max-w-2xl" : "max-w-lg"} bg-background-card border border-border rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh] transition-all duration-300`}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -765,159 +904,403 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
               </button>
             </header>
 
-            {/* Form */}
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
-              
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                  Nome Completo <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: João da Silva"
-                  value={nomeCompleto}
-                  onChange={(e) => setNomeCompleto(e.target.value)}
-                  disabled={isPending}
-                  className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                />
+            {selectedEmployee && (
+              <div className="flex border-b border-border bg-foreground/3">
+                <button
+                  type="button"
+                  onClick={() => setActiveModalTab("dados")}
+                  className={`flex-1 py-3 text-xs font-bold text-center border-b-2 transition ${
+                    activeModalTab === "dados" 
+                      ? "border-accent-gold text-accent-gold" 
+                      : "border-transparent text-foreground-secondary hover:text-foreground hover:bg-foreground/3"
+                  }`}
+                >
+                  Dados Cadastrais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveModalTab("escala")}
+                  className={`flex-1 py-3 text-xs font-bold text-center border-b-2 transition ${
+                    activeModalTab === "escala" 
+                      ? "border-accent-gold text-accent-gold" 
+                      : "border-transparent text-foreground-secondary hover:text-foreground hover:bg-foreground/3"
+                  }`}
+                >
+                  Escala de Trabalho
+                </button>
               </div>
+            )}
 
-              <div className="grid grid-cols-2 gap-4">
+            {activeModalTab === "dados" ? (
+              <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+                
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    CPF <span className="text-red-500">*</span>
+                    Nome Completo <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     required
-                    placeholder="000.000.000-00"
-                    value={cpf}
-                    onChange={handleCpfChange}
+                    placeholder="Ex: João da Silva"
+                    value={nomeCompleto}
+                    onChange={(e) => setNomeCompleto(e.target.value)}
+                    disabled={isPending}
+                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      CPF <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="000.000.000-00"
+                      value={cpf}
+                      onChange={handleCpfChange}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all font-mono"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      Identidade (RG)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: MG-12.345.678"
+                      value={identidade}
+                      onChange={(e) => setIdentidade(e.target.value)}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                    WhatsApp (Celular) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="DDD + Celular (Apenas números, ex: 31987654321)"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
                     disabled={isPending}
                     className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all font-mono"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    Identidade (RG)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: MG-12.345.678"
-                    value={identidade}
-                    onChange={(e) => setIdentidade(e.target.value)}
-                    disabled={isPending}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    Data de Nascimento
-                  </label>
-                  <input
-                    type="date"
-                    value={dataNascimento}
-                    onChange={(e) => setDataNascimento(e.target.value)}
-                    disabled={isPending}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      Data de Nascimento
+                    </label>
+                    <input
+                      type="date"
+                      value={dataNascimento}
+                      onChange={(e) => setDataNascimento(e.target.value)}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      Data de Admissão
+                    </label>
+                    <input
+                      type="date"
+                      value={dataAdmissao}
+                      onChange={(e) => setDataAdmissao(e.target.value)}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    Data de Admissão
-                  </label>
-                  <input
-                    type="date"
-                    value={dataAdmissao}
-                    onChange={(e) => setDataAdmissao(e.target.value)}
-                    disabled={isPending}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                  />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      Função (Cargo)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Supervisor"
+                      value={funcao}
+                      onChange={(e) => setFuncao(e.target.value)}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                      Área da Função
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Comercial"
+                      value={areaFuncao}
+                      onChange={(e) => setAreaFuncao(e.target.value)}
+                      disabled={isPending}
+                      className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    Função (Cargo)
+                {funcao.toLowerCase().includes("promotor") && (
+                  <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl space-y-4">
+                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block">Campos do Promotor (Otimização de Rota)</span>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
+                        Endereço de Casa (Ponto Inicial da Rota)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Rua, Número, Bairro, Cidade, Estado (Completo)"
+                        value={enderecoCasa}
+                        onChange={(e) => setEnderecoCasa(e.target.value)}
+                        disabled={isPending}
+                        className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                      />
+                    </div>
+
+                    {selectedEmployee?.lat_casa && selectedEmployee?.lng_casa ? (
+                      <div className="text-xs text-neutral-400 font-mono">
+                        <span className="text-[9px] text-neutral-500 font-bold uppercase block leading-none mb-1">Coordenadas Obtidas</span>
+                        {Number(selectedEmployee.lat_casa).toFixed(6)}, {Number(selectedEmployee.lng_casa).toFixed(6)}
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-neutral-500 italic">
+                        As coordenadas serão geradas a partir do endereço residencial acima ao salvar.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-border">
+                  <label className="flex items-center gap-3 p-3 bg-background border border-border rounded-xl hover:border-accent-gold/30 transition-colors cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={ativo}
+                      onChange={(e) => setAtivo(e.target.checked)}
+                      disabled={isPending}
+                      className="w-4 h-4 text-accent-gold border-border rounded focus:ring-accent-gold/20 cursor-pointer"
+                    />
+                    <span className="text-sm font-semibold text-foreground">
+                      Funcionário ativo no quadro?
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Supervisor"
-                    value={funcao}
-                    onChange={(e) => setFuncao(e.target.value)}
-                    disabled={isPending}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                  />
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider">
-                    Área da Função
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Comercial"
-                    value={areaFuncao}
-                    onChange={(e) => setAreaFuncao(e.target.value)}
+
+                {/* Footer */}
+                <div className="pt-4 flex justify-end gap-3 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
                     disabled={isPending}
-                    className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
-                  />
+                    className="px-4 py-2 text-sm font-semibold text-foreground-secondary hover:bg-foreground/5 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    style={{
+                      padding: "8px 18px",
+                      background: "var(--accent-gold)",
+                      color: "#000",
+                      borderRadius: "10px",
+                      fontWeight: 700,
+                      fontSize: "0.875rem",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      opacity: isPending ? 0.6 : 1,
+                      cursor: isPending ? "not-allowed" : "pointer"
+                    }}
+                    className="transition-opacity hover:opacity-95"
+                  >
+                    {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Salvar
+                  </button>
                 </div>
-              </div>
 
-              <div className="pt-2 border-t border-border">
-                <label className="flex items-center gap-3 p-3 bg-background border border-border rounded-xl hover:border-accent-gold/30 transition-colors cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={ativo}
-                    onChange={(e) => setAtivo(e.target.checked)}
-                    disabled={isPending}
-                    className="w-4 h-4 text-accent-gold border-border rounded focus:ring-accent-gold/20 cursor-pointer"
-                  />
-                  <span className="text-sm font-semibold text-foreground">
-                    Funcionário ativo no quadro?
-                  </span>
-                </label>
-              </div>
+              </form>
+            ) : (
+              <form onSubmit={handleSaveEscala} className="flex-1 overflow-y-auto p-5 space-y-4">
+                {loadingEscala ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-2">
+                    <Loader2 className="w-8 h-8 animate-spin text-accent-gold" />
+                    <p className="text-xs text-foreground-secondary">Carregando escala de trabalho...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <p className="text-xs text-foreground-secondary leading-relaxed">
+                      Configure os horários previstos de trabalho do colaborador para cada dia da semana. Dias inativos serão desconsiderados no cálculo do ponto e das rotas.
+                    </p>
 
-              {/* Footer */}
-              <div className="pt-4 flex justify-end gap-3 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  disabled={isPending}
-                  className="px-4 py-2 text-sm font-semibold text-foreground-secondary hover:bg-foreground/5 rounded-xl transition-colors cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  style={{
-                    padding: "8px 18px",
-                    background: "var(--accent-gold)",
-                    color: "#000",
-                    borderRadius: "10px",
-                    fontWeight: 700,
-                    fontSize: "0.875rem",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    opacity: isPending ? 0.6 : 1,
-                    cursor: isPending ? "not-allowed" : "pointer"
-                  }}
-                  className="transition-opacity hover:opacity-95"
-                >
-                  {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Salvar
-                </button>
-              </div>
+                    <div className="divide-y divide-border border border-border rounded-xl bg-background-card overflow-hidden">
+                      {escalasForm.map((esc) => (
+                        <div key={esc.dia_semana} className="p-4 space-y-3.5 hover:bg-foreground/[0.01] transition-colors">
+                          {/* Day Row Header */}
+                          <div className="flex items-center justify-between">
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={esc.ativo}
+                                onChange={(e) => handleScaleFieldChange(esc.dia_semana, "ativo", e.target.checked)}
+                                className="w-4 h-4 text-accent-gold border-border rounded focus:ring-accent-gold/20 cursor-pointer"
+                              />
+                              <span className={`text-sm font-bold ${esc.ativo ? "text-foreground" : "text-foreground-secondary"}`}>
+                                {esc.dia_nome}
+                              </span>
+                            </label>
+                            {esc.ativo ? (
+                              <div className="flex items-center gap-1.5 text-xs text-foreground-secondary bg-foreground/3 px-2.5 py-1 rounded-lg border border-border">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-foreground-secondary">Tolerância:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="60"
+                                  value={esc.tolerancia_minutos}
+                                  onChange={(e) => handleScaleFieldChange(esc.dia_semana, "tolerancia_minutos", parseInt(e.target.value) || 0)}
+                                  className="w-12 bg-background border border-border rounded px-1.5 py-0.5 text-xs focus:outline-none focus:border-accent-gold/50 text-center font-mono"
+                                />
+                                <span>min</span>
+                              </div>
+                            ) : (
+                              <span className="text-[10px] text-foreground-muted bg-foreground/5 px-2.5 py-1 rounded-full border border-border">
+                                Inativo
+                              </span>
+                            )}
+                          </div>
 
-            </form>
+                          {/* Time Inputs (grouped into columns) */}
+                          {esc.ativo && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1.5 animate-fade-in">
+                              
+                              {/* Turno Principal */}
+                              <div className="p-2.5 bg-background border border-border rounded-xl space-y-1.5 shadow-xs">
+                                <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Expediente (Entrada / Saída)</span>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Entrada</span>
+                                    <input
+                                      type="time"
+                                      required={esc.ativo}
+                                      value={esc.hora_entrada}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_entrada", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Saída</span>
+                                    <input
+                                      type="time"
+                                      required={esc.ativo}
+                                      value={esc.hora_saida}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_saida", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Almoço */}
+                              <div className="p-2.5 bg-background border border-border rounded-xl space-y-1.5 shadow-xs">
+                                <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Almoço (Intervalo)</span>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Saída</span>
+                                    <input
+                                      type="time"
+                                      value={esc.hora_saida_intervalo}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_saida_intervalo", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Retorno</span>
+                                    <input
+                                      type="time"
+                                      value={esc.hora_retorno_intervalo}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_retorno_intervalo", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Lanche */}
+                              <div className="p-2.5 bg-background border border-border rounded-xl space-y-1.5 shadow-xs">
+                                <span className="text-[10px] font-bold text-foreground-secondary uppercase tracking-wider block">Lanche (Café)</span>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Saída</span>
+                                    <input
+                                      type="time"
+                                      value={esc.hora_saida_lanche || ""}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_saida_lanche", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <span className="text-[8px] font-semibold text-foreground-muted block">Retorno</span>
+                                    <input
+                                      type="time"
+                                      value={esc.hora_retorno_lanche || ""}
+                                      onChange={(e) => handleScaleFieldChange(esc.dia_semana, "hora_retorno_lanche", e.target.value)}
+                                      className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-accent-gold/50 transition-all font-mono"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-4 flex justify-end gap-3 border-t border-border">
+                      <button
+                        type="button"
+                        onClick={() => setIsModalOpen(false)}
+                        disabled={savingEscala}
+                        className="px-4 py-2 text-sm font-semibold text-foreground-secondary hover:bg-foreground/5 rounded-xl transition-colors cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingEscala}
+                        style={{
+                          padding: "8px 18px",
+                          background: "var(--accent-gold)",
+                          color: "#000",
+                          borderRadius: "10px",
+                          fontWeight: 700,
+                          fontSize: "0.875rem",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          opacity: savingEscala ? 0.6 : 1,
+                          cursor: savingEscala ? "not-allowed" : "pointer"
+                        }}
+                        className="transition-opacity hover:opacity-95"
+                      >
+                        {savingEscala ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        Salvar Escala
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </form>
+            )}
           </div>
         </div>
       )}

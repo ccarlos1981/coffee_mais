@@ -3,6 +3,8 @@ import { Shield, AlertCircle } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { PermissionToggle } from "./PermissionToggle";
 import Link from "next/link";
+import { Fragment } from "react";
+
 
 interface RolePermission {
   id?: string;
@@ -30,42 +32,105 @@ const ROLES = [
   "RH"
 ];
 
-const MODULES = [
-  "Vendas",
-  "DRE",
-  "Histórico",
-  "Hist. Matriz",
-  "MaCo",
-  "Dia",
-  "Matriz",
-  "Positivação",
-  "Posit. Matriz",
-  "Carteira",
-  "Preço",
-  "Mix",
-  "Meta Cia",
-  "Metas",
-  "Coffee_IA",
-  "Atendimento",
-  "Upload",
-  "Tributos",
-  "Bonif.",
-  "Devol.",
-  "Alertas",
-  "Investimento",
-  "Planej. de Invest.",
-  "Calendário",
-  "Dashboard",
-  "Usuários",
-  "Logs",
-  "Cadastro",
-  "Clientes",
-  "Gente e Gestão",
-  "RPS",
-  "RDM",
-  "Agenda",
-  "Follow Up"
+const CATEGORIZED_MODULES = [
+  {
+    category: "Faturamento e Volume",
+    modules: [
+      "Vendas",
+      "Histórico",
+      "Hist. Matriz",
+      "Hist. p/ Matriz",
+      "Preço",
+      "Dia",
+      "MaCo",
+      "DRE"
+    ]
+  },
+  {
+    category: "Análise",
+    modules: [
+      "Matriz",
+      "Positivação",
+      "Posit. Matriz",
+      "Carteira",
+      "Mix"
+    ]
+  },
+  {
+    category: "Processo Comercial",
+    modules: [
+      "RPS",
+      "RDM",
+      "Agenda",
+      "Follow Up"
+    ]
+  },
+  {
+    category: "Trade",
+    modules: [
+      "Dashboard",
+      "Calendário de invest.",
+      "Planej. de Invest.",
+      "Invest. oficial",
+      "Calendário Anual"
+    ]
+  },
+  {
+    category: "Módulo Promotor",
+    modules: [
+      "Ponto Promotor",
+      "Agenda Promotor",
+      "Painel Supervisor",
+      "Central de Rotas e SLAs",
+      "Command Center",
+      "Compliance e KPIs",
+      "Missões Trade"
+    ]
+  },
+  {
+    category: "Gestão",
+    modules: [
+      "Meta Cia",
+      "Metas",
+      "Coffee_IA",
+      "Atendimento",
+      "Upload",
+      "Tributos",
+      "Bonif.",
+      "Devol."
+    ]
+  },
+  {
+    category: "Gente e Gestão",
+    modules: [
+      "Gente e Gestão",
+      "Central de Treinamento"
+    ]
+  },
+  {
+    category: "Smart Hub",
+    modules: [
+      "Alertas"
+    ]
+  },
+  {
+    category: "Config Financeiro",
+    modules: [
+      "Cadastro",
+      "Clientes"
+    ]
+  },
+  {
+    category: "Administração",
+    modules: [
+      "Usuários",
+      "Logs"
+    ]
+  }
 ];
+
+const MODULES = CATEGORIZED_MODULES.flatMap(group => group.modules);
+
 
 export default async function AdminPermissoesPage() {
   let permissions: RolePermission[] = [];
@@ -159,25 +224,44 @@ export default async function AdminPermissoesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {MODULES.map(moduleName => (
-                  <tr key={moduleName} className="hover:bg-foreground/5 transition-colors group">
-                    <td className="p-2 border-r border-border font-medium text-foreground sticky left-0 bg-background-card group-hover:bg-background-elevated z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
-                      {moduleName}
-                    </td>
-                    {ROLES.map(role => (
-                      <td key={`${role}-${moduleName}`} className="p-0 border-r border-border last:border-r-0 text-center relative">
-                        {!fetchError && (
-                          <div className="flex items-center justify-center scale-75 transform origin-center">
-                            <PermissionToggle 
-                              role={role} 
-                              moduleName={moduleName} 
-                              hasAccess={permissionsMap[role][moduleName]} 
-                            />
-                          </div>
-                        )}
+                {CATEGORIZED_MODULES.map(group => (
+                  <Fragment key={group.category}>
+                    {/* Categoria Header Row */}
+                    <tr>
+                      <td 
+                        colSpan={ROLES.length + 1} 
+                        className="p-2.5 sticky left-0 z-10 font-extrabold text-accent-gold uppercase tracking-widest text-[9.5px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] border-y"
+                        style={{ 
+                          background: "color-mix(in srgb, var(--accent-gold) 12%, var(--background-elevated))",
+                          borderColor: "color-mix(in srgb, var(--accent-gold) 25%, var(--border))"
+                        }}
+                      >
+                        {group.category}
                       </td>
+                    </tr>
+                    
+                    {/* Módulos de cada categoria */}
+                    {group.modules.map(moduleName => (
+                      <tr key={moduleName} className="hover:bg-foreground/5 transition-colors group">
+                        <td className="p-2 pl-5 border-r border-border font-medium text-foreground sticky left-0 bg-background-card group-hover:bg-background-elevated z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
+                          {moduleName}
+                        </td>
+                        {ROLES.map(role => (
+                          <td key={`${role}-${moduleName}`} className="p-0 border-r border-border last:border-r-0 text-center relative">
+                            {!fetchError && (
+                              <div className="flex items-center justify-center scale-75 transform origin-center">
+                                <PermissionToggle 
+                                  role={role} 
+                                  moduleName={moduleName} 
+                                  hasAccess={permissionsMap[role][moduleName]} 
+                                />
+                              </div>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
                     ))}
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

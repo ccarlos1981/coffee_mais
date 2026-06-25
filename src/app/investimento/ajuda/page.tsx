@@ -56,7 +56,7 @@ export default function AjudaInvestimentoPage() {
               Formulário de Cadastro Comercial (Lançamento)
             </h3>
             <p className="text-sm text-muted-foreground">
-              Acesse <span className="font-semibold text-foreground">Lançar</span> e preencha a Rede, o tipo de ação (Sell Out/Sell In), o tipo de pagamento (Abatimento, Transferência ou Bonificação), período e datas.
+              Acesse <span className="font-semibold text-foreground">Lançar</span> e preencha a Rede, o tipo de ação (Sell Out/Sell In), o tipo de pagamento (Boleto, Transf. Bancária ou Bonificação), período e datas.
             </p>
             <div className="bg-white p-3 rounded-2xl border border-border shadow-inner">
               <img 
@@ -74,7 +74,7 @@ export default function AjudaInvestimentoPage() {
               Definição de Margens, Família e Cálculo Automático
             </h3>
             <p className="text-sm text-muted-foreground">
-              Escolha a abrangência (Família ou SKU). No caso de Família, defina a categoria do café (ex: <strong>Moído</strong>, <strong>Grão</strong>, <strong>Capsula</strong>, <strong>Drip</strong> ou <strong>KG</strong>). Preencha o preço normal (Flat), o preço da ação, o investimento unitário e o volume planejado. O sistema calculará o total estimado automaticamente.
+              Escolha a abrangência (Família ou SKU). No caso de Família, defina a categoria do café (ex: <strong>Moído</strong>, <strong>Grão</strong>, <strong>Capsula</strong>, <strong>Drip</strong> ou <strong>1KG</strong>). Preencha o preço normal (Flat), o preço da ação, o investimento unitário e o volume planejado. O sistema calculará o total estimado automaticamente.
             </p>
             <div className="bg-white p-3 rounded-2xl border border-border shadow-inner">
               <img 

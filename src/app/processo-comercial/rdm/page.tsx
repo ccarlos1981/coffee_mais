@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2,
@@ -85,11 +85,232 @@ const MANAGER_OPTIONS = [
   { value: "Luiz",      label: "Luiz (SU+CO+NE)" },
 ];
 
+const MANAGER_INFO: Record<string, { name: string; region: string }> = {
+  CRISTIANO: { name: "CRISTIANO SANTOS", region: "Brasil" },
+  Julliano:  { name: "JULLIANO",         region: "SPC – São Paulo Capital" },
+  Leandro:   { name: "LEANDRO",          region: "SUL" },
+  Luiz:      { name: "LUIZ",             region: "SU+CO+NE" },
+};
+
 // ─── Semáforo de cores ────────────────────────────────────────────────────────
 function trafficLight(pct: number): { bg: string; color: string } {
   if (pct >= 100)     return { bg: "#4caf5033", color: "#2e7d32" };
   if (pct >= 90)      return { bg: "#ff980033", color: "#e65100" };
   return               { bg: "#f4433633", color: "#c62828" };
+}
+
+// ─── Slide 0: Capa ───────────────────────────────────────────────────────────
+
+function SlideCapa({ manager, monthName, year }: { manager: string; monthName: string; year: number }) {
+  const info = MANAGER_INFO[manager] ?? { name: manager.toUpperCase(), region: '' };
+  const gold  = '#c9a96e';
+  const goldD = '#a07840';
+
+  // Large coffee bean watermark SVG (right-side, very faint)
+  const beanWatermark = `url("data:image/svg+xml,%3Csvg width='320' height='440' viewBox='0 0 320 440' xmlns='http://www.w3.org/2000/svg'%3E%3Cellipse cx='160' cy='220' rx='130' ry='195' fill='none' stroke='%23c9a96e' stroke-width='1.5' opacity='0.12'/%3E%3Cellipse cx='160' cy='220' rx='100' ry='155' fill='none' stroke='%23c9a96e' stroke-width='1' opacity='0.07'/%3E%3Cpath d='M160 25 C160 25 80 120 80 220 C80 320 160 415 160 415' stroke='%23c9a96e' stroke-width='1.5' fill='none' opacity='0.14' stroke-linecap='round'/%3E%3C/svg%3E")`;
+
+  // Fine grain noise texture
+  const grain = `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E")`;
+
+  return (
+    <div
+      className="rdm-slide"
+      style={{
+        background: '#060606',
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* ── Subtle warm center glow — keeps full black feel ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          radial-gradient(ellipse 55% 55% at 72% 48%, rgba(120,70,20,0.18) 0%, transparent 70%),
+          radial-gradient(ellipse 30% 40% at 15% 85%, rgba(100,55,15,0.10) 0%, transparent 60%)
+        `,
+        zIndex: 0,
+      }} />
+
+      {/* ── Grain texture ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: grain,
+        backgroundRepeat: 'repeat',
+        backgroundSize: '200px 200px',
+        zIndex: 0,
+      }} />
+
+      {/* ── Coffee bean watermark — right side ── */}
+      <div style={{
+        position: 'absolute',
+        right: '-2%', top: '50%',
+        transform: 'translateY(-50%)',
+        width: 320, height: 440,
+        backgroundImage: beanWatermark,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'contain',
+        zIndex: 1,
+      }} />
+
+      {/* ── Steam wisps SVG ── */}
+      <svg
+        style={{ position: 'absolute', bottom: 0, right: '18%', zIndex: 1, opacity: 0.18 }}
+        width="80" height="120" viewBox="0 0 80 120" fill="none"
+      >
+        <path d="M20 120 Q15 100 25 80 Q35 60 20 40 Q10 25 20 10" stroke={gold} strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M45 120 Q38 98 50 78 Q62 58 45 38 Q34 22 45 8" stroke={gold} strokeWidth="1.2" strokeLinecap="round" opacity="0.7"/>
+        <path d="M68 120 Q63 102 72 84 Q80 65 68 46 Q58 30 68 15" stroke={gold} strokeWidth="1" strokeLinecap="round" opacity="0.5"/>
+      </svg>
+
+      {/* ── Thin top accent line ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, transparent 0%, ${goldD} 20%, ${gold} 50%, ${goldD} 80%, transparent 100%)`,
+        zIndex: 2,
+      }} />
+
+      {/* ── Left edge accent bar ── */}
+      <div style={{
+        position: 'absolute', left: 0, top: '10%', bottom: '10%', width: 2,
+        background: `linear-gradient(to bottom, transparent, ${gold} 35%, ${gold} 65%, transparent)`,
+        opacity: 0.35,
+        zIndex: 2,
+      }} />
+
+      {/* ── Main content ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '6.5% 8% 5.5% 7%',
+        zIndex: 3,
+      }}>
+
+        {/* Top row */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          {/* Coffee++ wordmark */}
+          <div style={{ userSelect: 'none', lineHeight: 1 }}>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '1.25rem',
+              fontWeight: 700,
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              letterSpacing: '0.01em',
+            }}>Coffee</div>
+            <div style={{
+              color: gold,
+              fontSize: '0.95rem',
+              fontWeight: 800,
+              fontFamily: 'var(--font-geist-mono, "Courier New", monospace)',
+              letterSpacing: '0.08em',
+              marginTop: 1,
+            }}>++</div>
+          </div>
+
+          {/* Period badge */}
+          <div style={{
+            border: `1px solid ${goldD}`,
+            borderRadius: 2,
+            padding: '3px 10px',
+            color: gold,
+            fontSize: '0.55rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.25em',
+            fontFamily: 'var(--font-geist-sans, system-ui)',
+            background: 'rgba(201,169,110,0.05)',
+          }}>
+            {monthName} · {year}
+          </div>
+        </div>
+
+        {/* Center — name block */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingTop: '2%' }}>
+          {/* Eyebrow */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1.1rem',
+          }}>
+            <div style={{ width: 22, height: 1, background: gold, opacity: 0.6 }} />
+            <span style={{
+              color: 'rgba(201,169,110,0.7)',
+              fontSize: '0.5rem',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.32em',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+            }}>Gerente</span>
+          </div>
+
+          {/* Name — serif, luxury scale */}
+          <div style={{
+            fontSize: 'clamp(1.7rem, 4.2vw, 2.8rem)',
+            fontWeight: 700,
+            color: '#ffffff',
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            letterSpacing: '-0.01em',
+            lineHeight: 1.08,
+            textShadow: `0 0 60px rgba(201,169,110,0.15)`,
+          }}>
+            {info.name.split(' ').map((word, i) => (
+              <span key={i} style={{ display: 'block' }}>{word}</span>
+            ))}
+          </div>
+
+          {/* Region */}
+          {info.region && (
+            <div style={{
+              marginTop: '0.9rem',
+              color: 'rgba(255,255,255,0.38)',
+              fontSize: 'clamp(0.6rem, 1.3vw, 0.78rem)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+              letterSpacing: '0.28em',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+            }}>
+              {info.region}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+        }}>
+          <div>
+            {/* Thin gold rule */}
+            <div style={{ width: 40, height: 1, background: gold, opacity: 0.5, marginBottom: 8 }} />
+            <div style={{
+              color: 'rgba(255,255,255,0.22)',
+              fontSize: '0.48rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.26em',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+              marginBottom: 3,
+            }}>Reunião de Desempenho Mensal</div>
+            <div style={{
+              color: 'rgba(255,255,255,0.55)',
+              fontSize: '0.72rem',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+              letterSpacing: '0.22em',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+            }}>RDM</div>
+          </div>
+
+          {/* Three dots — coffee grounds pattern */}
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center', paddingBottom: 2 }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: gold }} />
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: gold, opacity: 0.55 }} />
+            <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: gold, opacity: 0.28 }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── CoffeeSlide Shell ───────────────────────────────────────────────────────
@@ -844,7 +1065,7 @@ function SlideVolPrecoMedio({
                 isAnimationActive={false}
                 barSize={Math.max(20, Math.round(600 / chartData.length * 0.65))}
               >
-                {/* Label de valor dentro da barra */}
+                {/* Label de valor vertical no centro da barra */}
                 <LabelList
                   dataKey="vol"
                   position="inside"
@@ -855,13 +1076,21 @@ function SlideVolPrecoMedio({
                     const w: number = p.width ?? 0;
                     const h: number = p.height ?? 0;
                     const v: number = p.value ?? 0;
-                    if (!v || h < 24) return null;
+                    if (!v || h < 30 || w < 10) return null;
                     const cx = x + w / 2;
-                    const cy = y + h - 10;
+                    const cy = y + h / 2;
+                    const fontSize = Math.min(13, w * 0.58);
                     return (
-                      <text x={cx} y={cy} textAnchor="middle"
-                        fontSize={Math.min(7.5, w * 0.32)} fontWeight={600} fill="#1a6b8a"
+                      <text
+                        x={cx}
+                        y={cy}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={fontSize}
+                        fontWeight={700}
+                        fill="#1a6b8a"
                         fontFamily="var(--font-geist-sans, system-ui)"
+                        transform={`rotate(-90, ${cx}, ${cy})`}
                       >
                         {Math.round(v).toLocaleString('pt-BR')}
                       </text>
@@ -1135,6 +1364,1348 @@ function SlideResultadoPreco({
             <span className="rdm-fat-leg-text">{precoCompare.curYear}</span>
           </span>
         </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 10: Tabela de Famílias ───────────────────────────────────────────
+
+function SlidePrecoFamilia({
+  monthName,
+  month,
+  volPreco,
+  familias,
+}: {
+  monthName: string;
+  month: number;
+  volPreco: VolPrecoEntry[];
+  familias: string[];
+}) {
+  const [selMetric, setSelMetric] = useState<'preco' | 'fat' | 'qty'>('qty');
+
+  // volPreco possui 13 meses (do mês selecionado recuando 12 meses)
+  // Index 0: Mesmo mês do ano anterior (mês atual - 12 meses)
+  const prevYearMonthEntry = volPreco?.[0];
+  // Index 8 a 12: Últimos 5 meses terminando no mês atual
+  const recentMonths = volPreco?.slice(-5) ?? [];
+  
+  // O mês atual está na última posição (Index 12)
+  const currentMonthEntry = volPreco?.[volPreco.length - 1];
+  const prevMonthEntry = volPreco?.[volPreco.length - 2];
+
+  // Ordenar famílias "pelo que mais vende para o que menos vende" (baseado no faturamento/volume do mês atual)
+  const sortedFamilias = [...familias].sort((a, b) => {
+    const entry = currentMonthEntry;
+    if (!entry) return 0;
+    const metricKey = selMetric === 'qty' ? 'qty' : 'fat';
+    const valA = entry.byFam[a]?.[metricKey] ?? 0;
+    const valB = entry.byFam[b]?.[metricKey] ?? 0;
+    return valB - valA;
+  });
+
+  // Helper para obter valor da família pela métrica escolhida
+  const getValue = (entry: VolPrecoEntry | undefined, fam: string) => {
+    if (!entry) return 0;
+    const famData = entry.byFam[fam];
+    if (!famData) return 0;
+    if (selMetric === 'preco') return famData.preco;
+    if (selMetric === 'fat') return famData.fat;
+    return famData.qty;
+  };
+
+  // Helper para formatar valores dependendo da métrica
+  const formatVal = (v: number) => {
+    if (v === 0) return "-";
+    if (selMetric === 'preco') return `R$ ${v.toFixed(2).replace('.', ',')}`;
+    if (selMetric === 'fat') {
+      return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
+    }
+    return Math.round(v).toLocaleString('pt-BR');
+  };
+
+  // Helper para formatar comparativos percentuais
+  const formatPct = (curVal: number, compVal: number) => {
+    if (!compVal || compVal === 0) return "-";
+    const pct = ((curVal - compVal) / compVal) * 100;
+    const sign = pct >= 0 ? '+' : '';
+    const color = pct >= 0 ? '#2e7d32' : '#c62828';
+    return (
+      <span style={{ color, fontWeight: 700 }}>
+        {sign}{Math.round(pct)}%
+      </span>
+    );
+  };
+
+  const tableStyle: React.CSSProperties = {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: '0.62rem',
+    fontFamily: 'var(--font-geist-sans, system-ui)',
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: '6px 8px',
+    borderBottom: '2px solid #b8860b',
+    fontWeight: 700,
+    textAlign: 'center',
+    fontSize: '0.58rem',
+    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: '0.02em',
+    background: '#fafafa',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '6px 8px',
+    textAlign: 'center',
+    fontWeight: 600,
+    borderBottom: '1px solid #e5e7eb',
+    whiteSpace: 'nowrap',
+  };
+
+  return (
+    <SlideShell title="Tabela de Famílias" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '10px' }}>
+        {/* Metric Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 2 }}>
+          <p className="rdm-fat-subtitle" style={{ margin: 0 }}>
+            Painel Comparativo de Famílias de Produtos
+          </p>
+          <select
+            value={selMetric}
+            onChange={e => setSelMetric(e.target.value as 'preco' | 'fat' | 'qty')}
+            style={{
+              fontSize: '0.62rem', padding: '3px 8px', borderRadius: 4,
+              border: '1px solid #d0d5dd', background: '#fff', color: '#374151',
+              fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            <option value="preco">Preço Médio (R$/un.)</option>
+            <option value="fat">Faturamento (R$)</option>
+            <option value="qty">Volume (un.)</option>
+          </select>
+        </div>
+
+        {/* Table */}
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: '6px', background: '#fff' }}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left', minWidth: 80 }}>Família</th>
+                {/* Histórico Ano Anterior */}
+                <th style={thStyle}>{prevYearMonthEntry?.label ?? "Ano Anterior"}</th>
+                {/* 5 Meses de tendência */}
+                {recentMonths.map((mEntry, idx) => {
+                  const isCurrent = idx === recentMonths.length - 1;
+                  return (
+                    <th
+                      key={mEntry.mesKey}
+                      style={{
+                        ...thStyle,
+                        background: isCurrent ? 'rgba(200, 169, 110, 0.15)' : '#fafafa',
+                        borderBottom: isCurrent ? '2px solid var(--accent-gold)' : '2px solid #b8860b',
+                      }}
+                    >
+                      {mEntry.label}
+                    </th>
+                  );
+                })}
+                {/* Comparativos Lado Direito */}
+                <th style={{ ...thStyle, borderLeft: '1px solid #ddd', background: '#f5f5f5' }}>% vs Mês Ant.</th>
+                <th style={{ ...thStyle, background: '#f5f5f5' }}>% vs Média</th>
+                <th style={{ ...thStyle, background: '#f5f5f5' }}>% vs Ano Ant.</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedFamilias.map((fam, rowIdx) => {
+                const prevYearVal = getValue(prevYearMonthEntry, fam);
+                const recentVals = recentMonths.map(mEntry => getValue(mEntry, fam));
+                
+                // Mês atual é o último da tendência
+                const currentVal = recentVals[recentVals.length - 1];
+                const prevVal = recentVals[recentVals.length - 2];
+                
+                // Calcular média dos 5 meses mostrados
+                const validVals = recentVals.filter(v => v > 0);
+                const avgVal = validVals.length > 0 ? validVals.reduce((a, b) => a + b, 0) / validVals.length : 0;
+
+                return (
+                  <tr key={fam} style={{ background: rowIdx % 2 === 0 ? '#fff' : '#fcfcfc' }}>
+                    {/* Família */}
+                    <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 700, color: '#1a3a5c' }}>
+                      {fam}
+                    </td>
+                    {/* Histórico Ano Anterior */}
+                    <td style={{ ...tdStyle, color: '#64748b' }}>
+                      {formatVal(prevYearVal)}
+                    </td>
+                    {/* 5 Meses de tendência */}
+                    {recentVals.map((v, idx) => {
+                      const isCurrent = idx === recentVals.length - 1;
+                      return (
+                        <td
+                          key={idx}
+                          style={{
+                            ...tdStyle,
+                            background: isCurrent ? 'rgba(200, 169, 110, 0.06)' : 'transparent',
+                            fontWeight: isCurrent ? 700 : 600,
+                          }}
+                        >
+                          {formatVal(v)}
+                        </td>
+                      );
+                    })}
+                    {/* Comparativos Lado Direito */}
+                    <td style={{ ...tdStyle, borderLeft: '1px solid #ddd', background: '#fafafa' }}>
+                      {formatPct(currentVal, prevVal)}
+                    </td>
+                    <td style={{ ...tdStyle, background: '#fafafa' }}>
+                      {formatPct(currentVal, avgVal)}
+                    </td>
+                    <td style={{ ...tdStyle, background: '#fafafa' }}>
+                      {formatPct(currentVal, prevYearVal)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 11: Plano de Ação ─────────────────────────────────────────────────
+
+interface ActionPlanRow {
+  oQue: string;
+  como: string;
+  quem: string;
+  quando: string;
+  status: string;
+}
+
+function SlidePlanoAcao({
+  monthName,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+}: {
+  monthName: string;
+  comment: string;
+  onCommentChange: (v: string) => void;
+  onCommentSave: () => void;
+  saving: boolean;
+}) {
+  const [rows, setRows] = useState<ActionPlanRow[]>([]);
+  const hasLoaded = useRef(false);
+
+  // Sync / Parse comment from database on load
+  useEffect(() => {
+    if (comment) {
+      try {
+        const parsed = JSON.parse(comment);
+        if (Array.isArray(parsed)) {
+          setRows(parsed);
+          hasLoaded.current = true;
+          return;
+        }
+      } catch {
+        // Fallback to initial rows
+      }
+    }
+    // Se o comentário estiver vazio ou inválido, inicializa com a linha padrão
+    setRows([
+      {
+        oQue: "Sem Distribuidor para atender a área (baixo potencial)",
+        como: "Buscar um Distribuidor parceiro, para o atendimento da área",
+        quem: "Cristiano + equipe",
+        quando: "F26",
+        status: "Fazendo triagem das oportunidades"
+      }
+    ]);
+    hasLoaded.current = true;
+  }, [comment]);
+
+  // Sempre que a tabela mudar, atualiza o comment no componente pai
+  const updateRows = (newRows: ActionPlanRow[]) => {
+    setRows(newRows);
+    onCommentChange(JSON.stringify(newRows));
+  };
+
+  const handleChange = (index: number, field: keyof ActionPlanRow, value: string) => {
+    const newRows = [...rows];
+    newRows[index] = { ...newRows[index], [field]: value };
+    updateRows(newRows);
+  };
+
+  const addRow = () => {
+    const newRows = [...rows, { oQue: "", como: "", quem: "", quando: "", status: "" }];
+    updateRows(newRows);
+  };
+
+  const deleteRow = (index: number) => {
+    const newRows = rows.filter((_, i) => i !== index);
+    updateRows(newRows);
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    border: '1px solid #111',
+    fontWeight: 700,
+    textAlign: 'center',
+    fontSize: '0.85rem',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    background: '#1a3a5c', // Azul marinho conforme a imagem
+    letterSpacing: '0.04em',
+    width: '20%',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '0',
+    border: '1px solid #111',
+    background: '#ffffff',
+    verticalAlign: 'top',
+  };
+
+  const textareaStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    minHeight: '75px',
+    border: 'none',
+    resize: 'none',
+    outline: 'none',
+    padding: '10px 12px',
+    fontSize: '0.72rem',
+    fontWeight: 500,
+    color: '#111111',
+    background: 'transparent',
+    lineHeight: '1.4',
+    fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+  };
+
+  return (
+    <SlideShell title="Plano de Ação" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '12px' }}>
+        {/* Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+          <p className="rdm-fat-subtitle" style={{ margin: 0 }}>
+            Plano de Ação para Alinhamento e Metas
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={addRow}
+              style={{
+                fontSize: '0.62rem', padding: '4px 10px', borderRadius: 4,
+                border: '1px solid #1a3a5c', background: '#fff', color: '#1a3a5c',
+                fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(26,58,92,0.06)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = '#fff'; }}
+            >
+              + Adicionar Linha
+            </button>
+            <button
+              onClick={onCommentSave}
+              disabled={saving}
+              style={{
+                fontSize: '0.62rem', padding: '4px 12px', borderRadius: 4,
+                border: 'none', background: saving ? '#94a3b8' : '#2d5016', color: '#fff',
+                fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? 'Salvando...' : 'Salvar Plano'}
+            </button>
+          </div>
+        </div>
+
+        {/* Action Plan Table */}
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #111', borderRadius: '4px', background: '#fff' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>O quê</th>
+                <th style={thStyle}>Como</th>
+                <th style={thStyle}>Quem</th>
+                <th style={thStyle}>Quando</th>
+                <th style={thStyle}>Status</th>
+                <th style={{ ...thStyle, width: '40px', background: '#1a3a5c', border: '1px solid #111' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={index}>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.oQue}
+                      onChange={e => handleChange(index, 'oQue', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Sem Distribuidor para atender a área..."
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.como}
+                      onChange={e => handleChange(index, 'como', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Buscar um Distribuidor parceiro..."
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.quem}
+                      onChange={e => handleChange(index, 'quem', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Cristiano + equipe"
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.quando}
+                      onChange={e => handleChange(index, 'quando', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="F26"
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.status}
+                      onChange={e => handleChange(index, 'status', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Fazendo triagem..."
+                    />
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center', verticalAlign: 'middle', width: '40px' }}>
+                    <button
+                      onClick={() => deleteRow(index)}
+                      style={{
+                        background: 'none', border: 'none', color: '#ef4444',
+                        cursor: 'pointer', fontSize: '1rem', padding: '4px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        margin: 'auto',
+                      }}
+                      title="Excluir linha"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 11b: Projeção de Vendas ─────────────────────────────────────────────
+
+function SlideProjecao({
+  monthName,
+  month,
+  year,
+  manager,
+  farol,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+}: {
+  monthName: string;
+  month: number;
+  year: number;
+  manager: string;
+  farol: FarolData;
+  comment: string;
+  onCommentChange: (v: string) => void;
+  onCommentSave: () => void;
+  saving: boolean;
+}) {
+  const ytdLabel = `YTD - F${String(year).slice(-2)}`;
+
+  const mVol   = farol.month.vol;
+  const mFat   = farol.month.fat;
+  const ytdVol = farol.ytd.vol;
+  const ytdFat = farol.ytd.fat;
+
+  const baseRows = useMemo(() => [
+    {
+      label: 'QUANTIDADE',
+      unit: 'un.',
+      weight: farol.weights.VOL,
+      monthAA:      Math.round(mVol.aa),
+      monthFct:     Math.round(mVol.fct),
+      monthDesafio: Math.round(mVol.desafio),
+      defaultProj:  Math.round(mVol.real),
+      ytdAA:      Math.round(ytdVol.aa),
+      ytdDesafio: Math.round(ytdVol.fct),
+      ytdReal:    Math.round(ytdVol.real),
+      ytdPct:     ytdVol.pct,
+      ytdDelta:   Math.round(ytdVol.delta),
+    },
+    {
+      label: 'FATURAMENTO',
+      unit: 'R$k',
+      weight: farol.weights.FAT,
+      monthAA:      Math.round(mFat.aa / 1000),
+      monthFct:     Math.round(mFat.fct / 1000),
+      monthDesafio: Math.round(mFat.desafio / 1000),
+      defaultProj:  Math.round(mFat.real / 1000),
+      ytdAA:      Math.round(ytdFat.aa / 1000),
+      ytdDesafio: Math.round(ytdFat.fct / 1000),
+      ytdReal:    Math.round(ytdFat.real / 1000),
+      ytdPct:     ytdFat.pct,
+      ytdDelta:   Math.round(ytdFat.delta / 1000),
+    },
+    {
+      label: 'INVESTIMENTO',
+      unit: '%',
+      weight: 0,           // sem dados ainda
+      monthAA:      0,
+      monthFct:     0,
+      monthDesafio: 0,
+      defaultProj:  0,
+      ytdAA:      0,
+      ytdDesafio: 0,
+      ytdReal:    0,
+      ytdPct:     0,
+      ytdDelta:   0,
+    },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [mFat.aa, mFat.fct, mFat.desafio, mFat.real, mVol.aa, mVol.fct, mVol.desafio, mVol.real,
+      ytdFat.aa, ytdFat.fct, ytdFat.real, ytdFat.pct, ytdFat.delta,
+      ytdVol.aa, ytdVol.fct, ytdVol.real, ytdVol.pct, ytdVol.delta,
+      farol.weights.FAT, farol.weights.VOL]);
+
+  // Editable PROJ values
+  const [projValues, setProjValues] = useState<Record<string, string>>({});
+  const [savingProj, setSavingProj] = useState(false);
+  const [projSaved, setProjSaved] = useState(false);
+  const [projLoaded, setProjLoaded] = useState(false);
+
+  useEffect(() => {
+    setProjValues(prev => {
+      const next: Record<string, string> = {};
+      baseRows.forEach(r => { next[r.label] = prev[r.label] ?? String(r.defaultProj); });
+      return next;
+    });
+  }, [baseRows]);
+
+  // Load saved proj from comment prop
+  useEffect(() => {
+    if (projLoaded || !comment) return;
+    try {
+      const parsed = JSON.parse(comment);
+      if (parsed && typeof parsed === 'object') {
+        setProjValues(prev => ({ ...prev, ...parsed }));
+        setProjLoaded(true);
+      }
+    } catch { /* not json, ignore */ }
+  }, [comment, projLoaded]);
+
+  const handleProjChange = (label: string, val: string) => {
+    setProjValues(prev => ({ ...prev, [label]: val.replace(/[^\d]/g, '') }));
+  };
+
+  const handleSaveProj = async () => {
+    setSavingProj(true);
+    try {
+      await fetch('/api/processo-comercial/rdm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, month, manager, slide_key: 'projecao_proj', comment: JSON.stringify(projValues) }),
+      });
+      setProjSaved(true);
+      setTimeout(() => setProjSaved(false), 2500);
+    } finally {
+      setSavingProj(false);
+    }
+  };
+
+  function getProjNum(label: string, def: number): number {
+    const v = projValues[label];
+    if (v === undefined || v === '') return def;
+    return parseInt(v, 10) || 0;
+  }
+
+  function cPct(proj: number, desafio: number): number {
+    return desafio > 0 ? (proj / desafio) * 100 : 0;
+  }
+
+  const totalMonthPct = useMemo(() => {
+    // Only rows with a desafio > 0 contribute to total
+    const rows = [
+      { proj: getProjNum('QUANTIDADE',   baseRows[0].defaultProj), desafio: baseRows[0].monthDesafio, weight: baseRows[0].weight },
+      { proj: getProjNum('FATURAMENTO',  baseRows[1].defaultProj), desafio: baseRows[1].monthDesafio, weight: baseRows[1].weight },
+    ].filter(r => r.desafio > 0 && r.weight > 0);
+    if (!rows.length) return 0;
+    const totalW = rows.reduce((a, r) => a + r.weight, 0);
+    return rows.reduce((a, r) => a + cPct(r.proj, r.desafio) * r.weight, 0) / totalW;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projValues, baseRows]);
+
+  const totalYtdPct = (() => {
+    const rows = [
+      { pct: ytdVol.pct, weight: farol.weights.VOL },
+      { pct: ytdFat.pct, weight: farol.weights.FAT },
+    ].filter(r => r.weight > 0);
+    if (!rows.length) return 0;
+    const totalW = rows.reduce((a, r) => a + r.weight, 0);
+    return rows.reduce((a, r) => a + r.pct * r.weight, 0) / totalW;
+  })();
+
+  function pctStyle(pct: number): React.CSSProperties {
+    if (pct >= 100) return { background: '#4caf50', color: '#fff', fontWeight: 700 };
+    if (pct >= 90)  return { background: '#ff9800', color: '#fff', fontWeight: 700 };
+    if (pct >= 80)  return { background: '#ffeb3b', color: '#1a202c', fontWeight: 700 };
+    return                  { background: '#f44336', color: '#fff', fontWeight: 700 };
+  }
+
+  function fmtN(n: number): string {
+    if (n === 0) return '—';
+    return n.toLocaleString('pt-BR');
+  }
+
+  const navy = '#1a3a5c';
+  const navyMid = '#2d5a8e';
+
+  const thSt: React.CSSProperties = {
+    background: navy, color: '#fff', fontWeight: 700, whiteSpace: 'nowrap',
+    padding: '6px 5px', textAlign: 'center', fontSize: '0.62rem',
+    border: '1px solid #2d5a8e',
+  };
+  const tdSt: React.CSSProperties = {
+    padding: '8px 5px', textAlign: 'center', fontSize: '0.68rem',
+    border: '1px solid #d1d9e0', background: '#fff', whiteSpace: 'nowrap',
+  };
+  const tdGr: React.CSSProperties = { ...tdSt, background: '#f4f6f9' };
+
+  return (
+    <SlideShell title="Projeção de Vendas" monthName={monthName}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 10 }}>
+
+        {/* Header bar */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ fontSize: '0.88rem', fontWeight: 900, color: '#e53e3e', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            PROJEÇÃO
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+            {projSaved && <span style={{ fontSize: '0.58rem', color: '#16a34a', fontWeight: 700 }}>✓ Projeção salva!</span>}
+            <button
+              onClick={handleSaveProj}
+              disabled={savingProj}
+              style={{
+                fontSize: '0.58rem', padding: '3px 12px', borderRadius: 4,
+                border: 'none', background: savingProj ? '#94a3b8' : navy, color: '#fff',
+                fontWeight: 700, cursor: savingProj ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {savingProj ? 'Salvando...' : 'Salvar Projeção'}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div style={{ flex: '0 0 auto', overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 700 }}>
+            <colgroup>
+              <col style={{ width: '3.5%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '4.5%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '7%' }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th colSpan={3} style={{ ...thSt, textAlign: 'left', paddingLeft: 6 }}>INDICADOR</th>
+                <th colSpan={6} style={{ ...thSt, background: navyMid }}>{monthName.toUpperCase()}</th>
+                <th colSpan={5} style={{ ...thSt }}>{ytdLabel}</th>
+              </tr>
+              <tr>
+                <th colSpan={2} style={thSt}></th>
+                <th style={thSt}>Peso</th>
+                <th style={thSt}>A A</th>
+                <th style={thSt}>FCT</th>
+                <th style={thSt}>Desafio</th>
+                <th style={{ ...thSt, background: navyMid }}>PROJ</th>
+                <th style={thSt}>%</th>
+                <th style={thSt}>Δ</th>
+                <th style={thSt}>A A</th>
+                <th style={thSt}>Desafio</th>
+                <th style={{ ...thSt, background: navyMid }}>REAL</th>
+                <th style={thSt}>%</th>
+                <th style={thSt}>Δ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {baseRows.map((row, i) => {
+                const isInvest = row.label === 'INVESTIMENTO';
+                const projNum = getProjNum(row.label, row.defaultProj);
+                const mPct   = row.monthDesafio > 0 ? cPct(projNum, row.monthDesafio) : 0;
+                const mDelta = row.monthDesafio > 0 ? projNum - row.monthDesafio : 0;
+                return (
+                  <tr key={row.label}>
+                    {i === 0 && (
+                      <td
+                        rowSpan={baseRows.length}
+                        style={{
+                          ...tdSt, background: '#dce4ef', fontWeight: 800,
+                          fontSize: '0.6rem', textAlign: 'center',
+                          writingMode: 'vertical-rl', textOrientation: 'mixed',
+                          transform: 'rotate(180deg)',
+                          padding: '8px 3px', letterSpacing: '0.1em', color: navy,
+                        }}
+                      >
+                        {farol.managerLabel}
+                      </td>
+                    )}
+                    {/* Label + unit */}
+                    <td style={{ ...tdGr, fontWeight: 700, textAlign: 'left', paddingLeft: 6 }}>
+                      {row.label}
+                      <span style={{ marginLeft: 4, fontSize: '0.52rem', color: '#94a3b8', fontWeight: 400 }}>{row.unit}</span>
+                    </td>
+                    <td style={{ ...tdSt, color: '#64748b', fontSize: '0.58rem', fontStyle: 'italic' }}>
+                      {row.weight > 0 ? `${row.weight}%` : '—'}
+                    </td>
+                    {/* Month DB columns — N/D for Investimento */}
+                    <td style={tdSt}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.monthAA)}</td>
+                    <td style={tdSt}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.monthFct)}</td>
+                    <td style={{ ...tdSt, fontWeight: 600, color: navy }}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.monthDesafio)}</td>
+                    {/* PROJ — always editable */}
+                    <td style={{ ...tdSt, background: '#eef5ff', padding: '4px 3px' }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={projValues[row.label] ?? String(row.defaultProj)}
+                        onChange={e => handleProjChange(row.label, e.target.value)}
+                        placeholder={isInvest ? 'R$' : undefined}
+                        style={{
+                          width: '100%', border: 'none', background: 'transparent',
+                          textAlign: 'center', fontSize: '0.68rem', fontWeight: 700,
+                          color: navy, outline: 'none',
+                          fontFamily: 'var(--font-geist-sans, system-ui)',
+                        }}
+                      />
+                    </td>
+                    {/* % and Δ */}
+                    <td style={{ ...tdSt, ...(isInvest ? {} : pctStyle(mPct)) }}>
+                      {isInvest ? <span style={{ color: '#94a3b8' }}>—</span> : `${mPct.toFixed(1)}%`}
+                    </td>
+                    <td style={{ ...tdSt, fontWeight: 700, color: (!isInvest && mDelta >= 0) ? '#2e7d32' : '#c62828' }}>
+                      {isInvest ? <span style={{ color: '#94a3b8' }}>—</span> : `${mDelta >= 0 ? '+' : ''}${fmtN(mDelta)}`}
+                    </td>
+                    {/* YTD columns */}
+                    <td style={tdSt}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.ytdAA)}</td>
+                    <td style={{ ...tdSt, fontWeight: 600, color: navy }}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.ytdDesafio)}</td>
+                    <td style={{ ...tdSt, background: '#eef5ff', fontWeight: 700 }}>{isInvest ? <span style={{ color: '#94a3b8' }}>N/D</span> : fmtN(row.ytdReal)}</td>
+                    <td style={{ ...tdSt, ...(isInvest ? {} : pctStyle(row.ytdPct)) }}>
+                      {isInvest ? <span style={{ color: '#94a3b8' }}>—</span> : `${row.ytdPct.toFixed(1)}%`}
+                    </td>
+                    <td style={{ ...tdSt, fontWeight: 700, color: (!isInvest && row.ytdDelta >= 0) ? '#2e7d32' : '#c62828' }}>
+                      {isInvest ? <span style={{ color: '#94a3b8' }}>—</span> : `${row.ytdDelta >= 0 ? '+' : ''}${fmtN(row.ytdDelta)}`}
+                    </td>
+                  </tr>
+                );
+              })}
+              <tr style={{ borderTop: '2px solid #1a3a5c' }}>
+                <td style={{ ...tdGr, background: '#dce4ef' }}></td>
+                <td colSpan={2} style={{ ...tdGr, fontWeight: 800, color: navy, textAlign: 'right', paddingRight: 8 }}>TOTAL</td>
+                <td style={tdGr}></td>
+                <td style={tdGr}></td>
+                <td style={tdGr}></td>
+                <td style={{ ...tdGr, background: '#eef5ff' }}></td>
+                <td style={{ ...tdGr, fontWeight: 800, fontSize: '0.7rem', ...pctStyle(totalMonthPct) }}>
+                  {totalMonthPct.toFixed(1)}%
+                </td>
+                <td style={tdGr}></td>
+                <td style={tdGr}></td>
+                <td style={tdGr}></td>
+                <td style={{ ...tdGr, background: '#eef5ff' }}></td>
+                <td style={{ ...tdGr, fontWeight: 800, fontSize: '0.7rem', ...pctStyle(totalYtdPct) }}>
+                  {totalYtdPct.toFixed(1)}%
+                </td>
+                <td style={tdGr}></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Observations */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: '0.62rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              📝 Observações
+            </span>
+            <button
+              onClick={onCommentSave}
+              disabled={saving}
+              style={{
+                fontSize: '0.55rem', padding: '3px 10px', borderRadius: 4,
+                border: 'none', background: saving ? '#94a3b8' : navy, color: '#fff',
+                fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
+          </div>
+          <textarea
+            value={comment}
+            onChange={e => onCommentChange(e.target.value)}
+            placeholder="Escreva aqui as observações sobre a projeção de vendas..."
+            style={{
+              flex: 1, resize: 'none',
+              border: '1.5px solid #e2e8f0', borderRadius: 6,
+              padding: '8px 10px', fontSize: '0.64rem',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+              color: '#1e293b', background: '#f8fafc',
+              outline: 'none', lineHeight: 1.6, minHeight: 55,
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = navy; }}
+            onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
+          />
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 13: Encerramento — Obrigado! ───────────────────────────────────────────
+
+function SlideObrigado() {
+  return (
+    <div
+      className="rdm-slide"
+      style={{
+        background: '#111111',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Main text */}
+      <span
+        style={{
+          color: '#ffffff',
+          fontSize: '2.8rem',
+          fontWeight: 800,
+          letterSpacing: '0.04em',
+          fontFamily: 'var(--font-geist-sans, system-ui)',
+          userSelect: 'none',
+        }}
+      >
+        OBRIGADO!
+      </span>
+
+      {/* Coffee++ logo — bottom right */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: '7%',
+          right: '5%',
+          textAlign: 'right',
+          lineHeight: 1.1,
+          userSelect: 'none',
+        }}
+      >
+        <span
+          style={{
+            color: '#ffffff',
+            fontSize: '1.6rem',
+            fontWeight: 700,
+            fontFamily: 'Georgia, serif',
+            display: 'block',
+          }}
+        >
+          Coffee
+        </span>
+        <span
+          style={{
+            color: '#ffffff',
+            fontSize: '1.35rem',
+            fontWeight: 700,
+            fontFamily: 'var(--font-geist-sans, system-ui)',
+            display: 'block',
+            textAlign: 'center',
+          }}
+        >
+          ++
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Slide 12: Agenda de Rotas ───────────────────────────────────────────────
+
+const AGENDA_MGR_COLORS: Record<string, { bg: string; border: string; text: string; dot: string; badge: string; badgeText: string }> = {
+  Julliano: { 
+    bg: "rgba(59, 130, 246, 0.08)", 
+    border: "rgba(59, 130, 246, 0.25)", 
+    text: "#2b6cb0", 
+    dot: "#3182ce",
+    badge: "rgba(37, 99, 235, 0.85)",
+    badgeText: "#ffffff"
+  },
+  Leandro:  { 
+    bg: "rgba(16, 185, 129, 0.08)", 
+    border: "rgba(16, 185, 129, 0.25)", 
+    text: "#2c7a7b", 
+    dot: "#319795",
+    badge: "rgba(5, 150, 105, 0.85)",
+    badgeText: "#ffffff"
+  },
+  Luiz:     { 
+    bg: "rgba(245, 158, 11, 0.08)",  
+    border: "rgba(245, 158, 11, 0.25)",  
+    text: "#d69e2e", 
+    dot: "#dd6b20",
+    badge: "rgba(217, 119, 6, 0.85)",
+    badgeText: "#ffffff"
+  },
+  Cristiano: {
+    bg: "rgba(139, 92, 246, 0.08)", 
+    border: "rgba(139, 92, 246, 0.25)", 
+    text: "#6b46c1", 
+    dot: "#805ad5",
+    badge: "rgba(124, 58, 237, 0.85)",
+    badgeText: "#ffffff"
+  },
+};
+
+interface AgendaCalendarDay {
+  date: Date;
+  dateStr: string;
+  dayOfMonth: number;
+  isCurrentMonth: boolean;
+  isWeekday: boolean;
+  dayOfWeek: number;
+  isToday: boolean;
+  monthLabel?: string;
+}
+
+const getAgendaCalendarGrid = (year: number, month: number, todayStr: string): AgendaCalendarDay[] => {
+  const days: AgendaCalendarDay[] = [];
+  const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
+  const startDayOfWeek = firstDayOfMonth.getUTCDay();
+  const gridStart = new Date(firstDayOfMonth);
+  gridStart.setUTCDate(gridStart.getUTCDate() - startDayOfWeek);
+  
+  const tempDate = new Date(gridStart);
+  for (let i = 0; i < 42; i++) {
+    const dateStr = tempDate.toISOString().split('T')[0];
+    const dayOfWeek = tempDate.getUTCDay();
+    const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5;
+    const isCurrentMonth = tempDate.getUTCMonth() === month - 1;
+    
+    let monthLabel = undefined;
+    if (tempDate.getUTCDate() === 1 || i === 0) {
+      const monthsAbr = ["jan.", "fev.", "mar.", "abr.", "mai.", "jun.", "jul.", "ago.", "set.", "out.", "nov.", "dez."];
+      monthLabel = monthsAbr[tempDate.getUTCMonth()];
+    }
+    
+    days.push({
+      date: new Date(tempDate),
+      dateStr,
+      dayOfMonth: tempDate.getUTCDate(),
+      isCurrentMonth,
+      isWeekday,
+      dayOfWeek,
+      isToday: dateStr === todayStr,
+      monthLabel
+    });
+    tempDate.setUTCDate(tempDate.getUTCDate() + 1);
+  }
+  return days;
+};
+
+function SlideAgendaRotas({
+  monthName,
+  year,
+  month,
+  manager: rawManager,
+}: {
+  monthName: string;
+  year: number;
+  month: number;
+  manager: string;
+}) {
+  const manager = rawManager === 'CRISTIANO' ? 'Cristiano' : rawManager;
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const [weekdays, setWeekdays] = useState<string[]>([]);
+  const [managers, setManagers] = useState<string[]>([]);
+  const [routesByManager, setRoutesByManager] = useState<Record<string, Record<string, string>>>({});
+  const [isFullAccess, setIsFullAccess] = useState(false);
+  const [currentUserManagerName, setCurrentUserManagerName] = useState<string | null>(null);
+  
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const parts = formatter.formatToParts(d);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const dVal = parts.find(p => p.type === 'day')?.value;
+    return `${y}-${m}-${dVal}`;
+  }, []);
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        year: String(year),
+        month: String(month),
+        manager: manager,
+      });
+      const res = await fetch(`/api/processo-comercial/agenda?${params}`, { cache: 'no-store' });
+      const json = await res.json();
+
+      if (json.success) {
+        setWeekdays(json.weekdays || []);
+        setManagers(json.managers || []);
+        setRoutesByManager(json.routesByManager || {});
+        setIsFullAccess(json.isFullAccess ?? false);
+        setCurrentUserManagerName(json.currentUserManagerName || null);
+      } else {
+        throw new Error(json.error || "Erro ao carregar.");
+      }
+    } catch (err: any) {
+      setError(err?.message || "Erro de conexão.");
+    } finally {
+      setLoading(false);
+    }
+  }, [year, month, manager]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const handleSaveCell = (mgrName: string, date: string, value: string) => {
+    setRoutesByManager(prev => ({
+      ...prev,
+      [mgrName]: {
+        ...(prev[mgrName] || {}),
+        [date]: value,
+      },
+    }));
+    setEditingCell(null);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const routes: { manager: string; route_date: string; description: string }[] = [];
+
+      managers.forEach(mgr => {
+        if (!isFullAccess && mgr !== currentUserManagerName) return;
+
+        const mgrRoutes = routesByManager[mgr] || {};
+        weekdays.forEach(date => {
+          routes.push({
+            manager: mgr,
+            route_date: date,
+            description: mgrRoutes[date] || '',
+          });
+        });
+      });
+
+      const res = await fetch('/api/processo-comercial/agenda', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ routes }),
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        setSuccess("Salvo com sucesso!");
+        setTimeout(() => setSuccess(null), 2500);
+      } else {
+        throw new Error(json.error || "Erro ao salvar.");
+      }
+    } catch (err: any) {
+      setError(`Erro ao salvar: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const gridDays = getAgendaCalendarGrid(year, month, todayStr);
+
+  const containerStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    width: '100%',
+    fontFamily: 'var(--font-geist-sans, system-ui)',
+    fontSize: '0.62rem',
+  };
+
+  const calendarGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, 1fr)',
+    border: '1px solid #d0d5dd',
+    borderRadius: '6px',
+    overflow: 'hidden',
+    flex: 1,
+    background: '#fff',
+  };
+
+  const headerDayStyle: React.CSSProperties = {
+    padding: '4px 2px',
+    textAlign: 'center',
+    fontWeight: 700,
+    fontSize: '0.52rem',
+    color: '#475569',
+    background: '#f8fafc',
+    borderBottom: '1px solid #e2e8f0',
+    borderRight: '1px solid #e2e8f0',
+  };
+
+  const cellStyle = (day: AgendaCalendarDay, index: number): React.CSSProperties => {
+    const isWeekend = day.dayOfWeek === 0 || day.dayOfWeek === 6;
+    return {
+      padding: '3px 4px',
+      minHeight: '42px',
+      display: 'flex',
+      flexDirection: 'column',
+      borderRight: (index + 1) % 7 === 0 ? 'none' : '1px solid #e2e8f0',
+      borderBottom: index >= 35 ? 'none' : '1px solid #e2e8f0',
+      background: day.isToday
+        ? '#f0f7ff'
+        : !day.isCurrentMonth
+        ? '#f8fafc'
+        : isWeekend
+        ? '#faf5ff'
+        : '#ffffff',
+      opacity: !day.isCurrentMonth ? 0.45 : 1,
+    };
+  };
+
+  const isConsolidated = false;
+
+  return (
+    <SlideShell title={`Agenda de Rotas | ${isConsolidated ? 'Consolidada' : manager}`} monthName={monthName}>
+      <div style={containerStyle}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <p className="rdm-fat-subtitle" style={{ margin: 0 }}>
+            {isConsolidated ? 'Rotas planejadas por Gerente' : `Rotas planejadas para ${manager}`}
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {success && <span style={{ color: '#16a34a', fontWeight: 700, fontSize: '0.6rem' }}>✓ {success}</span>}
+            {error && <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '0.6rem' }}>⚠ {error}</span>}
+            <button
+              onClick={handleSave}
+              disabled={saving || loading}
+              style={{
+                fontSize: '0.58rem', padding: '3px 10px', borderRadius: 4,
+                border: 'none', background: saving ? '#94a3b8' : '#1a3a5c', color: '#fff',
+                fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {saving ? 'Salvando...' : 'Salvar Agenda'}
+            </button>
+          </div>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
+            <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+            <span style={{ marginLeft: 8 }}>Carregando rotas...</span>
+          </div>
+        ) : (
+          <div style={calendarGridStyle}>
+            {["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"].map((dayName, idx) => (
+              <div key={dayName} style={{ ...headerDayStyle, borderRight: idx === 6 ? 'none' : '1px solid #e2e8f0' }}>
+                {dayName}
+              </div>
+            ))}
+
+            {gridDays.map((day, idx) => {
+              const isEditable = day.isCurrentMonth && day.isWeekday && day.dateStr >= todayStr;
+
+              return (
+                <div key={day.dateStr} style={cellStyle(day, idx)}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                    <span style={{
+                      fontSize: '0.52rem',
+                      fontWeight: day.isToday ? 900 : 700,
+                      color: day.isToday ? '#2563eb' : '#475569',
+                    }}>
+                      {day.dayOfMonth}
+                    </span>
+                    {day.monthLabel && (
+                      <span style={{ fontSize: '0.45rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>
+                        {day.monthLabel}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1.5, overflowY: 'auto' }}>
+                    {isConsolidated ? (
+                      managers.map(mgr => {
+                        const val = routesByManager[mgr]?.[day.dateStr] || '';
+                        if (!val) return null;
+                        const colors = AGENDA_MGR_COLORS[mgr] || { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155', dot: '#475569', badge: '#64748b', badgeText: '#fff' };
+                        const isEditing = editingCell === `${mgr}_${day.dateStr}`;
+                        const isEditableForManager = isEditable && (isFullAccess || mgr === currentUserManagerName);
+
+                        return (
+                          <div
+                            key={mgr}
+                            onClick={() => {
+                              if (isEditableForManager && !isEditing) {
+                                setEditingCell(`${mgr}_${day.dateStr}`);
+                              }
+                            }}
+                            style={{
+                              fontSize: '0.48rem',
+                              padding: '1px 3px',
+                              borderRadius: '2px',
+                              border: `1px solid ${colors.border}`,
+                              background: colors.bg,
+                              color: colors.text,
+                              cursor: isEditableForManager ? 'pointer' : 'default',
+                              fontWeight: 600,
+                              lineHeight: '1.2',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                            title={`${mgr}: ${val}`}
+                          >
+                            {isEditing ? (
+                              <input
+                                autoFocus
+                                defaultValue={val}
+                                onBlur={(e) => handleSaveCell(mgr, day.dateStr, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveCell(mgr, day.dateStr, e.currentTarget.value);
+                                  if (e.key === 'Escape') setEditingCell(null);
+                                }}
+                                style={{
+                                  width: '100%', fontSize: '0.45rem', border: 'none', background: '#fff', outline: 'none',
+                                  padding: 0, height: '11px', color: '#111',
+                                }}
+                                onClick={e => e.stopPropagation()}
+                              />
+                            ) : (
+                              <span><strong>{mgr[0]}:</strong> {val}</span>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      (() => {
+                        const val = routesByManager[manager]?.[day.dateStr] || '';
+                        const isEditing = editingCell === `${manager}_${day.dateStr}`;
+                        const isEditableForManager = isEditable && (isFullAccess || manager === currentUserManagerName);
+                        const colors = AGENDA_MGR_COLORS[manager] || { bg: '#f1f5f9', border: '#cbd5e1', text: '#334155', dot: '#475569', badge: '#64748b', badgeText: '#fff' };
+
+                        if (isEditing) {
+                          return (
+                            <textarea
+                              autoFocus
+                              defaultValue={val}
+                              onBlur={(e) => handleSaveCell(manager, day.dateStr, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleSaveCell(manager, day.dateStr, e.currentTarget.value);
+                                }
+                                if (e.key === 'Escape') setEditingCell(null);
+                              }}
+                              style={{
+                                width: '100%', height: '100%', minHeight: '26px', fontSize: '0.48rem',
+                                border: '1px solid var(--accent-gold)', borderRadius: '2px', padding: '1px',
+                                outline: 'none', background: '#fff', color: '#111', resize: 'none',
+                              }}
+                              onClick={e => e.stopPropagation()}
+                            />
+                          );
+                        }
+
+                        if (val) {
+                          return (
+                            <div
+                              onClick={() => {
+                                if (isEditableForManager) setEditingCell(`${manager}_${day.dateStr}`);
+                              }}
+                              style={{
+                                flex: 1,
+                                fontSize: '0.48rem',
+                                padding: '2px 4px',
+                                borderRadius: '2px',
+                                background: colors.bg,
+                                border: `1px solid ${colors.border}`,
+                                color: colors.text,
+                                cursor: isEditableForManager ? 'pointer' : 'default',
+                                fontWeight: 600,
+                                wordBreak: 'break-all',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                              }}
+                            >
+                              {val}
+                            </div>
+                          );
+                        }
+
+                        return isEditableForManager ? (
+                          <div
+                            onClick={() => setEditingCell(`${manager}_${day.dateStr}`)}
+                            style={{
+                              flex: 1,
+                              border: '1px dashed #cbd5e1',
+                              borderRadius: '2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: '#94a3b8',
+                              fontSize: '0.45rem',
+                              cursor: 'pointer',
+                              minHeight: '14px',
+                            }}
+                          >
+                            + Rota
+                          </div>
+                        ) : null;
+                      })()
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </SlideShell>
   );
@@ -1785,6 +3356,9 @@ export default function RdmPage() {
   const [direction,   setDirection]   = useState<'next' | 'prev'>('next');
   const [animating,   setAnimating]   = useState(false);
   const [isFullscreen,setIsFullscreen]= useState(false);
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [barVisible,   setBarVisible]   = useState(false);
+  const barTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Comments
   const [comments,    setComments]    = useState<Record<string, string>>({});
@@ -1832,6 +3406,7 @@ export default function RdmPage() {
   const monthName = MONTHS[month - 1];
 
   const slides = [
+    { key: 'capa',            label: 'Capa' },
     { key: 'agenda',           label: 'Pauta' },
     { key: 'farol_metas',      label: 'Farol de Metas' },
     { key: 'dre',              label: 'Resultado DRE' },
@@ -1841,6 +3416,11 @@ export default function RdmPage() {
     { key: 'preco_yoy',        label: 'Resultado Preço KA' },
     { key: 'preco_tabela',     label: 'Preço por Canal/Matriz' },
     { key: 'vol_matriz',       label: 'Volume por Matriz' },
+    { key: 'preco_familia',    label: 'Preço por Família' },
+    { key: 'plano_acao',        label: 'Plano de Ação' },
+    { key: 'projecao_vendas',   label: 'Projeção de Vendas' },
+    { key: 'agenda_rotas',      label: 'Agenda de Rotas' },
+    { key: 'obrigado',           label: 'Encerramento' },
   ];
   const totalSlides = slides.length;
 
@@ -1891,6 +3471,37 @@ export default function RdmPage() {
     return () => document.removeEventListener('fullscreenchange', handler);
   }, []);
 
+  // Presentation mode — show bar on mouse move, hide after 2.5s
+  const handlePresentMouseMove = useCallback(() => {
+    setBarVisible(true);
+    if (barTimerRef.current) clearTimeout(barTimerRef.current);
+    barTimerRef.current = setTimeout(() => setBarVisible(false), 2500);
+  }, []);
+
+  const startPresenting = useCallback(() => {
+    setIsPresenting(true);
+    setBarVisible(true);
+    if (barTimerRef.current) clearTimeout(barTimerRef.current);
+    barTimerRef.current = setTimeout(() => setBarVisible(false), 3000);
+    containerRef.current?.requestFullscreen().catch(() => {});
+  }, []);
+
+  const stopPresenting = useCallback(() => {
+    setIsPresenting(false);
+    setBarVisible(false);
+    if (barTimerRef.current) clearTimeout(barTimerRef.current);
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }, []);
+
+  // ESC exits presenting
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPresenting) stopPresenting();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isPresenting, stopPresenting]);
+
   // ── Render current slide ──
   function renderSlide() {
     if (loading || !data) return (
@@ -1901,6 +3512,16 @@ export default function RdmPage() {
     );
 
     const slideKey = slides[slideIdx].key;
+
+    if (slideKey === 'capa') {
+      return (
+        <SlideCapa
+          manager={manager}
+          monthName={monthName}
+          year={year}
+        />
+      );
+    }
 
     if (slideKey === 'agenda') {
       return <SlideAgenda monthName={monthName} />;
@@ -2015,9 +3636,143 @@ export default function RdmPage() {
       );
     }
 
+    if (slideKey === 'preco_familia') {
+      if (!data.volPreco) return (
+        <SlideShell title="Tabela de Famílias" monthName={monthName}>
+          <div className="rdm-dre-placeholder">
+            <span className="rdm-dre-label">Carregando...</span>
+            <p className="rdm-dre-sub">Recarregue a página para atualizar os dados.</p>
+          </div>
+        </SlideShell>
+      );
+      return (
+        <SlidePrecoFamilia
+          monthName={monthName}
+          month={data.month}
+          volPreco={data.volPreco}
+          familias={data.familias ?? []}
+        />
+      );
+    }
+
+    if (slideKey === 'plano_acao') {
+      return (
+        <SlidePlanoAcao
+          monthName={monthName}
+          comment={comments['plano_acao'] ?? ''}
+          onCommentChange={v => setComments(prev => ({ ...prev, plano_acao: v }))}
+          onCommentSave={() => saveComment('plano_acao')}
+          saving={savingKey === 'plano_acao'}
+        />
+      );
+    }
+
+    if (slideKey === 'projecao_vendas') {
+      return (
+        <SlideProjecao
+          monthName={monthName}
+          month={data.month}
+          year={data.year}
+          manager={manager}
+          farol={data.farol}
+          comment={comments['projecao_proj'] ?? ''}
+          onCommentChange={v => setComments(prev => ({ ...prev, projecao_vendas: v }))}
+          onCommentSave={() => saveComment('projecao_vendas')}
+          saving={savingKey === 'projecao_vendas'}
+        />
+      );
+    }
+
+    if (slideKey === 'agenda_rotas') {
+      return (
+        <SlideAgendaRotas
+          monthName={monthName}
+          year={year}
+          month={month}
+          manager={manager}
+        />
+      );
+    }
+
+    if (slideKey === 'obrigado') {
+      return <SlideObrigado />;
+    }
+
     return null;
   }
 
+  // ── Shared slide block ──
+  const slideBlock = (
+    <div
+      className={`rdm-slide-inner rdm-anim-${direction} ${animating ? 'rdm-animating' : ''}`}
+    >
+      {renderSlide()}
+    </div>
+  );
+
+  // ── Presentation mode ──
+  if (isPresenting) {
+    return (
+      <div
+        ref={containerRef}
+        className="rdm-presentation-overlay"
+        onMouseMove={handlePresentMouseMove}
+      >
+        {/* Floating control bar */}
+        <div className={`rdm-present-bar${barVisible ? " rdm-bar-visible" : ""}`}>
+          <label className="rdm-filter-label">GERENTE</label>
+          <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
+            {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <div className="rdm-present-sep" />
+          <label className="rdm-filter-label">MÊS</label>
+          <select className="rdm-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
+            {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <div className="rdm-present-sep" />
+          <label className="rdm-filter-label">ANO</label>
+          <select className="rdm-select" value={year} onChange={e => setYear(Number(e.target.value))}>
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <div className="rdm-present-sep" />
+          <span className="rdm-present-counter">{slideIdx + 1} / {totalSlides}</span>
+          <span className="rdm-present-slide-label">{slides[slideIdx].label}</span>
+          <button onClick={stopPresenting} className="rdm-present-exit-btn">
+            ✕ Sair
+          </button>
+        </div>
+
+        {/* Slide fullscreen */}
+        <div className="rdm-present-canvas">
+          <button className="rdm-nav-btn rdm-nav-btn-prev" onClick={prev} disabled={slideIdx === 0} title="← Anterior">
+            <ChevronLeft className="w-7 h-7" />
+          </button>
+          <div className="rdm-slide-container">
+            {slideBlock}
+          </div>
+          <button className="rdm-nav-btn rdm-nav-btn-next" onClick={next} disabled={slideIdx === totalSlides - 1} title="Próximo →">
+            <ChevronRight className="w-7 h-7" />
+          </button>
+        </div>
+
+        {/* Footer dots */}
+        <div className={`rdm-present-footer${barVisible ? " rdm-present-footer-visible" : ""}`}>
+          <div className="rdm-dots">
+            {slides.map((s, i) => (
+              <button
+                key={s.key}
+                className={`rdm-dot${i === slideIdx ? " rdm-dot-active" : ""}`}
+                onClick={() => goTo(i, i > slideIdx ? "next" : "prev")}
+                title={s.label}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Normal page ──
   return (
     <div ref={containerRef} className="rdm-page">
       {/* ── Top Nav ── */}
@@ -2032,6 +3787,9 @@ export default function RdmPage() {
 
         <div className="rdm-nav-right">
           <ThemeToggle />
+          <button onClick={startPresenting} className="rdm-present-btn" title="Modo Apresentação">
+            ▶ Apresentar
+          </button>
           <button onClick={toggleFullscreen} className="rdm-fullscreen-btn" title={isFullscreen ? "Sair do fullscreen" : "Fullscreen"}>
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
           </button>
@@ -2041,31 +3799,17 @@ export default function RdmPage() {
       {/* ── Filters ── */}
       <div className="rdm-filters">
         <label className="rdm-filter-label">Gerente</label>
-        <select
-          className="rdm-select"
-          value={manager}
-          onChange={e => { setManager(e.target.value); setSlideIdx(0); }}
-        >
-          {MANAGER_OPTIONS.map(o => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
+        <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
+          {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
 
         <label className="rdm-filter-label">Mês</label>
-        <select
-          className="rdm-select"
-          value={month}
-          onChange={e => setMonth(Number(e.target.value))}
-        >
+        <select className="rdm-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
           {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
 
         <label className="rdm-filter-label">Ano</label>
-        <select
-          className="rdm-select"
-          value={year}
-          onChange={e => setYear(Number(e.target.value))}
-        >
+        <select className="rdm-select" value={year} onChange={e => setYear(Number(e.target.value))}>
           {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
         </select>
 
@@ -2074,32 +3818,15 @@ export default function RdmPage() {
 
       {/* ── Slide Player ── */}
       <div className="rdm-player-wrap">
-        {/* Prev button */}
-        <button
-          className="rdm-nav-btn rdm-nav-btn-prev"
-          onClick={prev}
-          disabled={slideIdx === 0}
-          title="Slide anterior (←)"
-        >
+        <button className="rdm-nav-btn rdm-nav-btn-prev" onClick={prev} disabled={slideIdx === 0} title="Slide anterior (←)">
           <ChevronLeft className="w-6 h-6" />
         </button>
 
-        {/* Slide container with 16:9 ratio */}
         <div className="rdm-slide-container">
-          <div
-            className={`rdm-slide-inner rdm-anim-${direction} ${animating ? 'rdm-animating' : ''}`}
-          >
-            {renderSlide()}
-          </div>
+          {slideBlock}
         </div>
 
-        {/* Next button */}
-        <button
-          className="rdm-nav-btn rdm-nav-btn-next"
-          onClick={next}
-          disabled={slideIdx === totalSlides - 1}
-          title="Próximo slide (→)"
-        >
+        <button className="rdm-nav-btn rdm-nav-btn-next" onClick={next} disabled={slideIdx === totalSlides - 1} title="Próximo slide (→)">
           <ChevronRight className="w-6 h-6" />
         </button>
       </div>
