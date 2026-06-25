@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import nodemailer from "nodemailer";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
@@ -32,7 +33,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const mes_referencia = formData.get("mes_referencia") as string;
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Abatimento";
+  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Boleto";
   
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {
@@ -109,7 +110,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const mes_referencia = formData.get("mes_referencia") as string;
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Abatimento";
+  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Boleto";
   
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {
@@ -277,18 +278,11 @@ async function enviarEmailNotificacaoApuracao(
       return;
     }
 
-    // 2. Buscar detalhes do boleto se houver
-    let boleto = null;
-    if (apuracaoBoletoId) {
-      const { data: boletoData, error: boletoError } = await supabase
-        .from("cm_boletos")
-        .select("*")
-        .eq("id", apuracaoBoletoId)
-        .single();
-      if (!boletoError && boletoData) {
-        boleto = boletoData;
-      }
-    }
+    // 2. Buscar todos os boletos vinculados
+    const { data: vinculosData } = await supabase
+      .from("cm_acoes_boletos_vinculo")
+      .select("valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, valor_total, vencimento, status)")
+      .eq("acao_id", acaoId);
 
     // 3. Obter URL do documento se houver
     let documentoSignedUrl = "";
@@ -441,55 +435,107 @@ async function enviarEmailNotificacaoApuracao(
       `;
     }
 
-    // 8. Alerta ou detalhes do boleto
+    // 8. Alerta ou detalhes dos boletos
     let boletoHtml = "";
-    if (boleto) {
-      const bVencimento = new Date(boleto.vencimento);
-      bVencimento.setMinutes(bVencimento.getMinutes() + bVencimento.getTimezoneOffset());
-      const boletoVencimentoStr = bVencimento.toLocaleDateString('pt-BR');
-
+    if (vinculosData && vinculosData.length > 0) {
       boletoHtml = `
         <div style="background-color: #f3e8ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
           <h3 style="color: #6b21a8; margin: 0 0 8px 0; font-size: 15px;">
-            💜 Boleto Vinculado
+            💜 Boletos Vinculados (${vinculosData.length})
           </h3>
           <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
-            <tr>
-              <td style="padding: 3px 0; color: #581c87; font-weight: 500; width: 30%;">Número do Boleto:</td>
-              <td style="padding: 3px 0; color: #111827; font-weight: bold;">${boleto.numero_boleto}</td>
+            <thead>
+              <tr style="border-bottom: 1px solid #e9d5ff; font-size: 11px; text-transform: uppercase; color: #581c87;">
+                <th style="padding: 6px 0;">Número</th>
+                <th style="padding: 6px 0;">Rede</th>
+                <th style="padding: 6px 0; text-align: right;">Total do Boleto</th>
+                <th style="padding: 6px 0; text-align: right;">Valor Associado</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+      
+      vinculosData.forEach((v: any) => {
+        const b = v.cm_boletos;
+        if (b) {
+          boletoHtml += `
+            <tr style="border-bottom: 1px solid #f3e8ff;">
+              <td style="padding: 6px 0; color: #111827; font-weight: bold;">Nº ${b.numero_boleto}</td>
+              <td style="padding: 6px 0; color: #4b5563;">${b.rede}</td>
+              <td style="padding: 6px 0; color: #4b5563; text-align: right;">${formatCurrency(Number(b.valor_total))}</td>
+              <td style="padding: 6px 0; color: #6b21a8; font-weight: bold; text-align: right;">${formatCurrency(Number(v.valor_associado))}</td>
             </tr>
-            <tr>
-              <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Rede do Boleto:</td>
-              <td style="padding: 3px 0; color: #111827;">${boleto.rede}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Valor do Boleto:</td>
-              <td style="padding: 3px 0; color: #111827; font-weight: bold;">${formatCurrency(Number(boleto.valor_total))}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Vencimento:</td>
-              <td style="padding: 3px 0; color: #111827;">${boletoVencimentoStr}</td>
-            </tr>
-            <tr>
-              <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Status do Boleto:</td>
-              <td style="padding: 3px 0; color: #111827; font-weight: bold;">
-                ${boleto.status}
-              </td>
-            </tr>
+          `;
+        }
+      });
+      
+      boletoHtml += `
+            </tbody>
           </table>
         </div>
       `;
     } else {
-      boletoHtml = `
-        <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
-          <h3 style="color: #b45309; margin: 0 0 6px 0; font-size: 15px;">
-            ⚠️ Atenção: Nenhum boleto associado
-          </h3>
-          <p style="margin: 0; font-size: 13px; color: #78350f; line-height: 1.4;">
-            Esta ação de investimento foi concluída pelo gerente comercial, mas <strong>não foi associada a nenhum boleto do Financeiro</strong> no momento da apuração.
-          </p>
-        </div>
-      `;
+      // Fallback a boleto individual (se houver mas não na tabela de vínculos, por compatibilidade)
+      let fallbackBoleto = null;
+      if (apuracaoBoletoId) {
+        const { data: boletoData } = await supabase
+          .from("cm_boletos")
+          .select("*")
+          .eq("id", apuracaoBoletoId)
+          .single();
+        if (boletoData) {
+          fallbackBoleto = boletoData;
+        }
+      }
+
+      if (fallbackBoleto) {
+        const bVencimento = new Date(fallbackBoleto.vencimento);
+        bVencimento.setMinutes(bVencimento.getMinutes() + bVencimento.getTimezoneOffset());
+        const boletoVencimentoStr = bVencimento.toLocaleDateString('pt-BR');
+
+        boletoHtml = `
+          <div style="background-color: #f3e8ff; border: 1px solid #e9d5ff; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="color: #6b21a8; margin: 0 0 8px 0; font-size: 15px;">
+              💜 Boleto Vinculado
+            </h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+              <tr>
+                <td style="padding: 3px 0; color: #581c87; font-weight: 500; width: 30%;">Número do Boleto:</td>
+                <td style="padding: 3px 0; color: #111827; font-weight: bold;">${fallbackBoleto.numero_boleto}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Rede do Boleto:</td>
+                <td style="padding: 3px 0; color: #111827;">${fallbackBoleto.rede}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Valor do Boleto:</td>
+                <td style="padding: 3px 0; color: #111827; font-weight: bold;">${formatCurrency(Number(fallbackBoleto.valor_total))}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Vencimento:</td>
+                <td style="padding: 3px 0; color: #111827;">${boletoVencimentoStr}</td>
+              </tr>
+              <tr>
+                <td style="padding: 3px 0; color: #581c87; font-weight: 500;">Status do Boleto:</td>
+                <td style="padding: 3px 0; color: #111827; font-weight: bold;">
+                  ${fallbackBoleto.status}
+                </td>
+              </tr>
+            </table>
+          </div>
+        `;
+      } else {
+        boletoHtml = `
+          <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin-bottom: 20px;">
+            <h3 style="color: #b45309; margin: 0 0 6px 0; font-size: 15px;">
+              ⚠️ Atenção: Nenhum boleto associado
+            </h3>
+            <p style="margin: 0; font-size: 13px; color: #78350f; line-height: 1.4;">
+              Esta ação de investimento foi concluída pelo gerente comercial, mas <strong>não foi associada a nenhum boleto do Financeiro</strong> no momento da apuração.
+            </p>
+          </div>
+        `;
+      }
     }
 
     // 9. Comprovante/Evidência link
@@ -642,7 +688,9 @@ export async function preencherApuracao(id: string, formData: FormData) {
   const apuracao_numero_acordo = formData.get("apuracao_numero_acordo") as string;
   const apuracao_qtd_vendida = parseInt(formData.get("apuracao_qtd_vendida") as string) || null;
   const apuracao_valor_realizado = parseFloat((formData.get("apuracao_valor_realizado") as string)?.replace(',', '.') || '0') || null;
-  const apuracao_boleto_id = formData.get("apuracao_boleto_id") as string || null;
+  const vinculosStr = formData.get("vinculos_boletos") as string || "[]";
+  const vinculos = JSON.parse(vinculosStr) as Array<{ boleto_id: string, valor_associado: number }>;
+  const apuracao_boleto_id = vinculos[0]?.boleto_id || null;
   
   // Evidências
   const apuracao_evidencias_url = formData.get("apuracao_evidencias_url") as string || null;
@@ -669,6 +717,28 @@ export async function preencherApuracao(id: string, formData: FormData) {
   if (error) {
     console.error("Erro ao preencher apuração:", error);
     throw new Error("Falha ao salvar apuração.");
+  }
+
+  // Deletar vínculos de boletos existentes para esta ação
+  await supabase
+    .from("cm_acoes_boletos_vinculo")
+    .delete()
+    .eq("acao_id", id);
+
+  // Inserir os novos vínculos de boletos
+  if (vinculos.length > 0) {
+    const insertRows = vinculos.map(v => ({
+      acao_id: id,
+      boleto_id: v.boleto_id,
+      valor_associado: v.valor_associado
+    }));
+    const { error: linkError } = await supabase
+      .from("cm_acoes_boletos_vinculo")
+      .insert(insertRows);
+    if (linkError) {
+      console.error("Erro ao salvar vínculos de boletos:", linkError);
+      throw new Error("Falha ao salvar os vínculos dos boletos.");
+    }
   }
 
   // Disparar e-mail de notificação (aguardado para garantir execução estável na Vercel)
@@ -716,6 +786,277 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
     throw new Error("Falha ao processar conferência.");
   }
 
+  // Se devolvido pelo financeiro, enviar notificação por e-mail
+  if (!aprovado) {
+    try {
+      const adminClient = createAdminClient();
+      
+      // 1. Obter detalhes da ação usando a view que traz o gerente responsável
+      const { data: actionView } = await supabase
+        .from("v_acoes_investimento_com_gerente")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (actionView) {
+        // 2. Tentar obter o e-mail do gerente regional responsável
+        let managerEmail = "";
+        if (actionView.gerente_responsavel) {
+          const { data: profile } = await adminClient
+            .from("cm_user_profiles")
+            .select("id")
+            .eq("manager_name", actionView.gerente_responsavel)
+            .maybeSingle();
+
+          if (profile?.id) {
+            const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
+            if (!userError && managerUser) {
+              managerEmail = managerUser.email || "";
+            }
+          }
+        }
+
+        // 3. Enviar e-mail de alerta
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+          const transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true,
+            auth: {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS,
+            },
+            tls: {
+              rejectUnauthorized: false
+            }
+          });
+
+          // Configurar destinatários
+          const recipientsSet = new Set<string>();
+          recipientsSet.add("trade@coffeemais.com");
+          if (managerEmail && managerEmail.includes("@")) {
+            recipientsSet.add(managerEmail);
+          }
+          const recipients = Array.from(recipientsSet).join(", ");
+
+          const formatCurrency = (val: number | null | undefined) => {
+            if (val === null || val === undefined) return "R$ 0,00";
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+          };
+
+          const getValorTotal = (r: any) => {
+            if (r.abrangencia === "SKU" && r.skus_detalhes) {
+              return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+            }
+            return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+          };
+
+          const subject = `⚠️ AÇÃO DEVOLVIDA PELO FINANCEIRO — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+          const htmlBody = `
+            <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #ef4444; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              
+              <!-- Header -->
+              <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 15px; margin-bottom: 20px;">
+                <h2 style="color: #ef4444; margin: 0; font-size: 22px; font-weight: 800;">⚠️ APURAÇÃO DEVOLVIDA</h2>
+                <p style="color: #ef4444; margin: 5px 0 0 0; font-size: 14px; font-weight: 700;">Ação Comercial retornada para Apuração (Fase 3)</p>
+              </div>
+
+              <p style="font-size: 15px; line-height: 1.5; color: #1f2937;">
+                Olá,
+              </p>
+              <p style="font-size: 15px; line-height: 1.5; color: #1f2937; margin-bottom: 20px;">
+                A conferência financeira da ação de investimento para a rede <strong>${actionView.rede}</strong> foi <strong>devolvida pelo Financeiro</strong>.
+              </p>
+
+              <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #991b1b; font-size: 13.5px; line-height: 1.5;">
+                <strong>Motivo da Devolução:</strong><br/>
+                ${observacao || "Nenhum motivo específico informado."}
+              </div>
+
+              <!-- Detalhes do Investimento -->
+              <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #fafafa;">
+                <h3 style="color: #374151; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
+                  📝 Detalhes da Ação Comercial
+                </h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563; width: 40%;">Código da Ação:</td>
+                    <td style="padding: 4px 0; color: #111827; font-weight: bold; font-family: monospace;">#${actionView.codigo || actionView.id}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Rede:</td>
+                    <td style="padding: 4px 0; color: #111827; font-weight: bold;">${actionView.rede}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Gerente Responsável:</td>
+                    <td style="padding: 4px 0; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Tipo de Ação:</td>
+                    <td style="padding: 4px 0; color: #111827;">${actionView.tipo_acao}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
+                    <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Rodapé do Email -->
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+              <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+                Este é um e-mail automático enviado pelo sistema de gestão de investimentos <strong>Coffee++ Mais</strong>.<br/>
+                O gerente responsável deve acessar a plataforma para corrigir a apuração da ação.
+              </p>
+            </div>
+          `;
+
+          await transporter.sendMail({
+            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+            to: recipients,
+            subject: subject,
+            html: htmlBody,
+          });
+        }
+      }
+    } catch (mailErr) {
+      console.error("Erro ao enviar e-mail de devolução pelo financeiro:", mailErr);
+    }
+  }
+
+  // Se aprovado pelo financeiro, enviar notificação por e-mail informando o comercial e o trade
+  if (aprovado) {
+    try {
+      const adminClient = createAdminClient();
+      
+      // 1. Obter detalhes da ação usando a view que traz o gerente responsável
+      const { data: actionView } = await supabase
+        .from("v_acoes_investimento_com_gerente")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (actionView) {
+        // 2. Tentar obter o e-mail do gerente regional responsável
+        let managerEmail = "";
+        if (actionView.gerente_responsavel) {
+          const { data: profile } = await adminClient
+            .from("cm_user_profiles")
+            .select("id")
+            .eq("manager_name", actionView.gerente_responsavel)
+            .maybeSingle();
+
+          if (profile?.id) {
+            const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
+            if (!userError && managerUser) {
+              managerEmail = managerUser.email || "";
+            }
+          }
+        }
+
+        // 3. Enviar e-mail de alerta
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+          const transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 465,
+            secure: true,
+            auth: {
+              user: process.env.SMTP_USER,
+              pass: process.env.SMTP_PASS,
+            },
+            tls: {
+              rejectUnauthorized: false
+            }
+          });
+
+          // Configurar destinatários
+          const recipientsSet = new Set<string>();
+          recipientsSet.add("trade@coffeemais.com");
+          if (managerEmail && managerEmail.includes("@")) {
+            recipientsSet.add(managerEmail);
+          }
+          const recipients = Array.from(recipientsSet).join(", ");
+
+          const formatCurrency = (val: number | null | undefined) => {
+            if (val === null || val === undefined) return "R$ 0,00";
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+          };
+
+          const getValorTotal = (r: any) => {
+            if (r.abrangencia === "SKU" && r.skus_detalhes) {
+              return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+            }
+            return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+          };
+
+          const subject = `✅ AÇÃO APROVADA NA CONFERÊNCIA — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+          const htmlBody = `
+            <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #10b981; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+              
+              <!-- Header -->
+              <div style="text-align: center; border-bottom: 2px solid #10b981; padding-bottom: 15px; margin-bottom: 20px;">
+                <h2 style="color: #10b981; margin: 0; font-size: 22px; font-weight: 800;">✅ CONFERÊNCIA APROVADA</h2>
+                <p style="color: #10b981; margin: 5px 0 0 0; font-size: 14px; font-weight: 700;">Ação Comercial Aprovada e Enviada para Pagamento (Fase 5)</p>
+              </div>
+
+              <p style="font-size: 15px; line-height: 1.5; color: #1f2937;">
+                Olá,
+              </p>
+              <p style="font-size: 15px; line-height: 1.5; color: #1f2937; margin-bottom: 20px;">
+                A conferência financeira da ação de investimento para a rede <strong>${actionView.rede}</strong> foi <strong>aprovada com sucesso</strong> na etapa de auditoria e enviada para a fase de **Pagamento Financeiro (Fase 5)**.
+              </p>
+
+              <!-- Detalhes do Investimento -->
+              <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #fafafa;">
+                <h3 style="color: #374151; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
+                  📝 Detalhes da Ação Comercial Aprovada
+                </h3>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563; width: 40%;">Código da Ação:</td>
+                    <td style="padding: 4px 0; color: #111827; font-weight: bold; font-family: monospace;">#${actionView.codigo || actionView.id}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Rede:</td>
+                    <td style="padding: 4px 0; color: #111827; font-weight: bold;">${actionView.rede}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Gerente Responsável:</td>
+                    <td style="padding: 4px 0; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Tipo de Ação:</td>
+                    <td style="padding: 4px 0; color: #111827;">${actionView.tipo_acao}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
+                    <td style="padding: 4px 0; color: #10b981; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Rodapé do Email -->
+              <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+              <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+                Este é um e-mail automático enviado pelo sistema de gestão de investimentos <strong>Coffee++ Mais</strong>.<br/>
+                Nenhuma ação é requerida do comercial neste momento. A ação aguarda processamento de pagamento pelo Financeiro.
+              </p>
+            </div>
+          `;
+
+          await transporter.sendMail({
+            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+            to: recipients,
+            subject: subject,
+            html: htmlBody,
+          });
+        }
+      }
+    } catch (mailErr) {
+      console.error("Erro ao enviar e-mail de aprovação pelo financeiro:", mailErr);
+    }
+  }
+
   revalidatePath("/investimento");
 }
 
@@ -745,6 +1086,177 @@ export async function confirmarPagamento(id: string, formData: FormData) {
   if (error) {
     console.error("Erro ao confirmar pagamento:", error);
     throw new Error("Falha ao confirmar pagamento.");
+  }
+
+  // Enviar e-mail de confirmação de pagamento para o gerente e para o trade
+  try {
+    const adminClient = createAdminClient();
+    
+    // 1. Obter detalhes da ação usando a view que traz o gerente responsável
+    const { data: actionView } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (actionView) {
+      // 2. Tentar obter o e-mail do gerente regional responsável
+      let managerEmail = "";
+      if (actionView.gerente_responsavel) {
+        const { data: profile } = await adminClient
+          .from("cm_user_profiles")
+          .select("id")
+          .eq("manager_name", actionView.gerente_responsavel)
+          .maybeSingle();
+
+        if (profile?.id) {
+          const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
+          if (!userError && managerUser) {
+            managerEmail = managerUser.email || "";
+          }
+        }
+      }
+
+      // 3. Obter URL temporária do comprovante se houver
+      let comprovanteSignedUrl = "";
+      if (financeiro_comprovante_url) {
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from("comprovantes_investimento")
+          .createSignedUrl(financeiro_comprovante_url, 60 * 60 * 24 * 30); // 30 dias
+
+        if (!signedError && signedData?.signedUrl) {
+          comprovanteSignedUrl = signedData.signedUrl;
+        }
+      }
+
+      // 4. Enviar e-mail se SMTP configurado
+      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 465,
+          secure: true,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+
+        // Configurar destinatários
+        const recipientsSet = new Set<string>();
+        recipientsSet.add("trade@coffeemais.com");
+        if (managerEmail && managerEmail.includes("@")) {
+          recipientsSet.add(managerEmail);
+        }
+        const recipients = Array.from(recipientsSet).join(", ");
+
+        const formatCurrency = (val: number | null | undefined) => {
+          if (val === null || val === undefined) return "R$ 0,00";
+          return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+        };
+
+        const getValorTotal = (r: any) => {
+          if (r.abrangencia === "SKU" && r.skus_detalhes) {
+            return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+          }
+          return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+        };
+
+        const subject = `💰 PAGAMENTO REALIZADO — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+        
+        let comprovanteHtml = "";
+        if (comprovanteSignedUrl) {
+          comprovanteHtml = `
+            <div style="margin-top: 15px;">
+              <span style="font-size: 13px; color: #475569; font-weight: 500;">Comprovante de Pagamento Anexado:</span>
+              <a href="${comprovanteSignedUrl}" target="_blank" style="color: #059669; font-weight: bold; text-decoration: underline; font-size: 13px; margin-left: 5px;">
+                Visualizar Comprovante
+              </a>
+              <p style="margin: 5px 0 0 0; font-size: 11px; color: #6b7280; font-style: italic;">
+                (Link seguro e válido por 30 dias)
+              </p>
+            </div>
+          `;
+        } else {
+          comprovanteHtml = `
+            <div style="margin-top: 15px; color: #ef4444; font-size: 13px; font-weight: 500;">
+              Nenhum comprovante de pagamento foi anexado pelo financeiro.
+            </div>
+          `;
+        }
+
+        const htmlBody = `
+          <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #10b981; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            
+            <!-- Header -->
+            <div style="text-align: center; border-bottom: 2px solid #10b981; padding-bottom: 15px; margin-bottom: 20px;">
+              <h2 style="color: #10b981; margin: 0; font-size: 22px; font-weight: 800;">💰 PAGAMENTO CONFIRMADO</h2>
+              <p style="color: #10b981; margin: 5px 0 0 0; font-size: 14px; font-weight: 700;">Ação Comercial Paga e Concluída (Fase 6)</p>
+            </div>
+
+            <p style="font-size: 15px; line-height: 1.5; color: #1f2937;">
+              Olá,
+            </p>
+            <p style="font-size: 15px; line-height: 1.5; color: #1f2937; margin-bottom: 20px;">
+              Informamos que o pagamento da ação de investimento para a rede <strong>${actionView.rede}</strong> foi <strong>confirmado e realizado</strong> pelo departamento Financeiro. A ação de investimento foi dada como **Concluída**.
+            </p>
+
+            <div style="background-color: #ecfdf5; border: 1px solid #d1fae5; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #065f46; font-size: 13.5px; line-height: 1.5;">
+              <strong>Observações do Financeiro:</strong><br/>
+              ${financeiro_observacoes || "Nenhuma observação informada."}
+            </div>
+
+            <!-- Detalhes do Investimento -->
+            <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #fafafa;">
+              <h3 style="color: #374151; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
+                📝 Detalhes da Ação Comercial Paga
+              </h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563; width: 40%;">Código da Ação:</td>
+                  <td style="padding: 4px 0; color: #111827; font-weight: bold; font-family: monospace;">#${actionView.codigo || actionView.id}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Rede:</td>
+                  <td style="padding: 4px 0; color: #111827; font-weight: bold;">${actionView.rede}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Gerente Responsável:</td>
+                  <td style="padding: 4px 0; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Tipo de Ação:</td>
+                  <td style="padding: 4px 0; color: #111827;">${actionView.tipo_acao}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Valor Realizado (Apuração):</td>
+                  <td style="padding: 4px 0; color: #059669; font-weight: bold; font-size: 14px;">${formatCurrency(actionView.apuracao_valor_realizado || getValorTotal(actionView))}</td>
+                </tr>
+              </table>
+              ${comprovanteHtml}
+            </div>
+
+            <!-- Rodapé do Email -->
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+            <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+              Este é um e-mail automático enviado pelo sistema de gestão de investimentos <strong>Coffee++ Mais</strong>.<br/>
+              A ação foi concluída com sucesso no sistema.
+            </p>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+          to: recipients,
+          subject: subject,
+          html: htmlBody,
+        });
+      }
+    }
+  } catch (mailErr) {
+    console.error("Erro ao enviar e-mail de confirmação de pagamento:", mailErr);
   }
 
   revalidatePath("/investimento");
@@ -801,4 +1313,179 @@ export async function promoverPlanejamento(id: string) {
   revalidatePath("/investimento");
   revalidatePath("/investimento/planejamento");
   return { success: true };
+}
+
+export async function marcarAcaoNaoAconteceu(id: string) {
+  try {
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+
+    // 1. Obter detalhes da ação usando a view que traz o gerente responsável
+    const { data: actionView, error: fetchError } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (fetchError || !actionView) {
+      throw new Error(`Ação não encontrada: ${fetchError?.message}`);
+    }
+
+    // 2. Tentar obter o e-mail do gerente regional responsável
+    let managerEmail = "";
+    if (actionView.gerente_responsavel) {
+      const { data: profile } = await adminClient
+        .from("cm_user_profiles")
+        .select("id")
+        .eq("manager_name", actionView.gerente_responsavel)
+        .maybeSingle();
+
+      if (profile?.id) {
+        const { data: { user }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
+        if (!userError && user) {
+          managerEmail = user.email || "";
+        }
+      }
+    }
+
+    // 3. Atualizar a ação no banco para retornar à Fase 1 (Planejamento) e Rascunho
+    const { error: updateError } = await supabase
+      .from("cm_acoes_investimento")
+      .update({
+        fase_atual: 1,
+        is_planejamento: true,
+        checklist_comunicacao: false,
+        checklist_logistica: false,
+        checklist_auditoria: false,
+        checklist_garantia: false,
+        checklist_conferencia: false,
+        trade_validado_em: null,
+        trade_validado_por: null,
+      })
+      .eq("id", id);
+
+    if (updateError) {
+      console.error("Erro ao reverter ação para fase 1:", updateError);
+      throw new Error("Erro ao reverter status da ação.");
+    }
+
+    // 4. Enviar e-mail de alerta
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: "smtp.gmail.com",
+          port: 465,
+          secure: true,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+
+        // Configurar destinatários
+        const recipientsSet = new Set<string>();
+        recipientsSet.add("trade@coffeemais.com");
+        recipientsSet.add("cristiano.santos@coffeemais.com");
+        if (managerEmail && managerEmail.includes("@")) {
+          recipientsSet.add(managerEmail);
+        }
+        const recipients = Array.from(recipientsSet).join(", ");
+
+        const formatCurrency = (val: number | null | undefined) => {
+          if (val === null || val === undefined) return "R$ 0,00";
+          return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+        };
+
+        const getValorTotal = (r: any) => {
+          if (r.abrangencia === "SKU" && r.skus_detalhes) {
+            return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+          }
+          return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+        };
+
+        const subject = `⚠️ AÇÃO NÃO ACONTECEU — Rota de Revisão — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+        const htmlBody = `
+          <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #ef4444; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+            
+            <!-- Header -->
+            <div style="text-align: center; border-bottom: 2px solid #ef4444; padding-bottom: 15px; margin-bottom: 20px;">
+              <h2 style="color: #ef4444; margin: 0; font-size: 22px; font-weight: 800;">⚠️ ALERTA DE EVIDÊNCIA</h2>
+              <p style="color: #ef4444; margin: 5px 0 0 0; font-size: 14px; font-weight: 700;">Ação Comercial não foi ao Ar</p>
+            </div>
+
+            <p style="font-size: 15px; line-height: 1.5; color: #1f2937;">
+              Olá <strong>${actionView.gerente_responsavel || "Gerente Regional"}</strong>,
+            </p>
+            <p style="font-size: 15px; line-height: 1.5; color: #1f2937; margin-bottom: 20px;">
+              Informamos que a verba comercial registrada para a rede <strong>${actionView.rede}</strong> foi sinalizada pelo Trade Marketing como <strong>NÃO EXECUTADA/NÃO FOI AO AR</strong> no PDV.
+            </p>
+
+            <div style="background-color: #fef2f2; border: 1px solid #fee2e2; border-radius: 8px; padding: 15px; margin-bottom: 20px; color: #991b1b; font-size: 13.5px; line-height: 1.5;">
+              <strong>O que acontece agora?</strong><br/>
+              Esta ação foi devolvida para a sua esteira de <strong>Planejamento (Fase 1) como Rascunho</strong>. Você deve acessar o painel de investimentos, revisar as datas/valores ou reprogramar a ação junto ao cliente.
+            </div>
+
+            <!-- Detalhes do Investimento -->
+            <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 20px; background-color: #fafafa;">
+              <h3 style="color: #374151; margin: 0 0 10px 0; font-size: 15px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px;">
+                📝 Detalhes da Ação Comercial Revertida
+              </h3>
+              <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563; width: 40%;">Código da Ação:</td>
+                  <td style="padding: 4px 0; color: #111827; font-weight: bold; font-family: monospace;">#${actionView.codigo || actionView.id}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Rede:</td>
+                  <td style="padding: 4px 0; color: #111827; font-weight: bold;">${actionView.rede}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Tipo de Ação:</td>
+                  <td style="padding: 4px 0; color: #111827;">${actionView.tipo_acao}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Abrangência:</td>
+                  <td style="padding: 4px 0; color: #111827;">${actionView.abrangencia}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
+                  <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 4px 0; color: #4b5563;">Mês Referência:</td>
+                  <td style="padding: 4px 0; color: #111827;">${actionView.mes_referencia || "-"}</td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Rodapé do Email -->
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+            <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+              Este é um e-mail automático enviado pelo sistema de gestão de investimentos <strong>Coffee++ Mais</strong>.<br/>
+              Por favor, acesse a plataforma para revisar as pendências de rascunhos.
+            </p>
+          </div>
+        `;
+
+        await transporter.sendMail({
+          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+          to: recipients,
+          subject: subject,
+          html: htmlBody,
+        });
+      } catch (mailErr) {
+        console.error("Erro ao enviar e-mail de ação não realizada:", mailErr);
+      }
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+    return { success: true };
+  } catch (error) {
+    console.error("Erro na action marcarAcaoNaoAconteceu:", error);
+    throw error;
+  }
 }

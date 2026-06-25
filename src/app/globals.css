@@ -1895,6 +1895,210 @@ body {
   border-radius: 4px;
 }
 
+
+
+/* ── Presentation overlay (full replace of normal page) ── */
+.rdm-presentation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: none;
+}
+.rdm-presentation-overlay:hover { cursor: default; }
+
+/* Canvas area: arrows + slide */
+.rdm-present-canvas {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+.rdm-present-canvas .rdm-slide-container {
+  max-width: none !important;
+  max-height: none !important;
+  width: min(100vw, calc(100vh * 16 / 9));
+  height: min(100vh, calc(100vw * 9 / 16));
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.rdm-present-canvas .rdm-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10000;
+  width: 54px;
+  height: 54px;
+  background: rgba(0,0,0,0.50);
+  border: 1px solid rgba(255,255,255,0.20);
+  color: rgba(255,255,255,0.9);
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s, transform 0.15s;
+  border-radius: 50%;
+}
+.rdm-present-canvas .rdm-nav-btn-prev { left: 16px; }
+.rdm-present-canvas .rdm-nav-btn-next { right: 16px; }
+.rdm-presentation-overlay:hover .rdm-present-canvas .rdm-nav-btn:not(:disabled) { opacity: 1; }
+.rdm-present-canvas .rdm-nav-btn:hover:not(:disabled) {
+  background: rgba(0,0,0,0.80);
+  transform: translateY(-50%) scale(1.1);
+}
+.rdm-present-canvas .rdm-nav-btn:disabled { opacity: 0 !important; }
+
+/* Footer dots visible state */
+.rdm-present-footer {
+  pointer-events: none;
+}
+.rdm-present-footer.rdm-present-footer-visible {
+  opacity: 1 !important;
+  pointer-events: all;
+}
+
+/* ═══════════════════════════════════════════
+   PRESENTATION MODE — Fullscreen PowerPoint
+   ═══════════════════════════════════════════ */
+
+.rdm-page.rdm-presenting {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.rdm-present-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10001;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: rgba(10, 20, 35, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+  transform: translateY(-100%);
+  opacity: 0;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+  pointer-events: none;
+}
+.rdm-present-bar.rdm-bar-visible {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
+.rdm-present-bar .rdm-filter-label { color: rgba(255,255,255,0.5); }
+.rdm-present-bar .rdm-select {
+  background-color: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.18);
+  color: #fff;
+  min-width: 105px;
+}
+.rdm-present-bar .rdm-select:hover { border-color: rgba(255,255,255,0.38); }
+.rdm-present-sep {
+  width: 1px; height: 22px;
+  background: rgba(255,255,255,0.15);
+  flex-shrink: 0;
+}
+.rdm-present-counter {
+  font-size: 0.68rem; font-weight: 700;
+  color: rgba(255,255,255,0.6); white-space: nowrap;
+}
+.rdm-present-slide-label {
+  font-size: 0.65rem; font-weight: 600;
+  color: rgba(255,255,255,0.4); white-space: nowrap;
+}
+.rdm-present-exit-btn {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.68rem; font-weight: 700;
+  color: rgba(255,255,255,0.85);
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.18);
+  padding: 5px 14px; border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.rdm-present-exit-btn:hover { background: rgba(255,255,255,0.16); border-color: rgba(255,255,255,0.3); }
+
+.rdm-presenting .rdm-player-wrap {
+  position: relative; flex: none;
+  width: 100vw;
+  height: min(56.25vw, 100vh);
+  max-width: calc(100vh * 16 / 9);
+  padding: 0; gap: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.rdm-presenting .rdm-slide-container {
+  max-width: none; max-height: none;
+  width: 100%; height: 100%;
+  border-radius: 0; box-shadow: none;
+}
+
+.rdm-presenting .rdm-nav-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  z-index: 10000; width: 52px; height: 52px;
+  background: rgba(0,0,0,0.45);
+  border: 1px solid rgba(255,255,255,0.18);
+  color: rgba(255,255,255,0.85);
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s, transform 0.15s;
+  border-radius: 50%;
+}
+.rdm-presenting .rdm-nav-btn-prev { left: 16px; }
+.rdm-presenting .rdm-nav-btn-next { right: 16px; }
+.rdm-presenting:hover .rdm-nav-btn:not(:disabled) { opacity: 1; }
+.rdm-presenting .rdm-nav-btn:hover:not(:disabled) {
+  background: rgba(0,0,0,0.75);
+  transform: translateY(-50%) scale(1.1);
+}
+.rdm-presenting .rdm-nav-btn:disabled { opacity: 0 !important; }
+
+.rdm-present-footer {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+  z-index: 10001;
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(10, 20, 35, 0.7); backdrop-filter: blur(8px);
+  border-radius: 20px; padding: 5px 16px;
+  opacity: 0; transition: opacity 0.22s ease; pointer-events: none;
+}
+.rdm-presenting:hover .rdm-present-footer { opacity: 1; pointer-events: all; }
+.rdm-present-footer .rdm-dots { gap: 5px; }
+.rdm-present-footer .rdm-dot { border-color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.15); }
+.rdm-present-footer .rdm-dot-active { background: var(--accent-gold); border-color: var(--accent-gold); }
+
+.rdm-present-btn {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.68rem; font-weight: 700;
+  color: var(--foreground-secondary);
+  background: var(--background-elevated);
+  border: 1px solid var(--border);
+  padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.rdm-present-btn:hover { color: var(--foreground); border-color: var(--foreground-muted); }
+
+.rdm-presenting .rdm-topnav,
+.rdm-presenting .rdm-filters,
+.rdm-presenting .rdm-slide-footer-nav { display: none; }
+
+
 /* ══════════════════════════════════════════
    SLIDE SHELL — Design PowerPoint
    ══════════════════════════════════════════ */
@@ -2346,4 +2550,77 @@ body {
 :fullscreen .rdm-filters {
   padding: 8px 20px;
 }
+
+/* ═══════════════════════════════════════════
+   LIGHT THEME OVERRIDES FOR PROMOTOR PAGES
+   ═══════════════════════════════════════════ */
+[data-theme="light"] {
+  /* Override main promotor screens background & text */
+  .min-h-screen.bg-neutral-950,
+  .min-h-screen.bg-neutral-900 {
+    background-color: var(--background) !important;
+    color: var(--foreground) !important;
+  }
+
+  /* Override inner containers, cards, headers, navbars and borders */
+  .min-h-screen.bg-neutral-950,
+  .min-h-screen.bg-neutral-900 {
+    & .text-white,
+    & .text-neutral-100,
+    & .text-neutral-200,
+    & .text-neutral-300 {
+      color: var(--foreground) !important;
+    }
+    & .text-neutral-400,
+    & .text-neutral-500 {
+      color: var(--foreground-secondary) !important;
+    }
+    & .bg-neutral-900,
+    & .bg-neutral-950,
+    & .bg-neutral-900\/60,
+    & .bg-neutral-900\/50,
+    & .bg-neutral-900\/40,
+    & .bg-neutral-900\/20,
+    & .bg-neutral-950\/60 {
+      background-color: var(--background-card) !important;
+    }
+    & .bg-neutral-850,
+    & .bg-neutral-800 {
+      background-color: var(--background-elevated) !important;
+    }
+    & .border-neutral-900,
+    & .border-neutral-850,
+    & .border-neutral-800,
+    & .border-x.border-neutral-900,
+    & .border-x.border-neutral-800,
+    & .border-b.border-neutral-900,
+    & .border-t.border-neutral-850 {
+      border-color: var(--border) !important;
+    }
+    & select.bg-neutral-900,
+    & input.bg-neutral-900,
+    & textarea.bg-neutral-900,
+    & select.bg-neutral-950,
+    & input.bg-neutral-950,
+    & textarea.bg-neutral-950 {
+      background-color: var(--background-elevated) !important;
+      color: var(--foreground) !important;
+      border-color: var(--border) !important;
+    }
+    & .bg-amber-950\/20 {
+      background-color: color-mix(in srgb, var(--accent-gold) 15%, transparent) !important;
+    }
+    & .bg-emerald-950\/40 {
+      background-color: color-mix(in srgb, var(--success) 15%, transparent) !important;
+    }
+    & .bg-red-950\/40 {
+      background-color: color-mix(in srgb, var(--danger) 15%, transparent) !important;
+    }
+    & .text-amber-500,
+    & .text-amber-400 {
+      color: var(--accent-gold) !important;
+    }
+  }
+}
+
 

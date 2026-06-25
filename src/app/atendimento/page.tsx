@@ -101,6 +101,7 @@ export default function AtendimentoPage() {
   const [pdvSearch, setPdvSearch] = useState("");
   const [ufFilter, setUfFilter] = useState("Todos");
   const [managerFilter, setManagerFilter] = useState("Todos");
+  const [channelFilter, setChannelFilter] = useState("Todos");
   const [pdvPage, setPdvPage] = useState(0);
   const itemsPerPage = 50;
 
@@ -134,7 +135,7 @@ export default function AtendimentoPage() {
   // PDVs filtrados e paginados
   const filteredPdvs = useMemo(() => {
     const base = pdvData.filter(p => !deletedPdvs.has(p.cod_parceiro));
-    if (!pdvSearch && ufFilter === "Todos" && managerFilter === "Todos") return base;
+    if (!pdvSearch && ufFilter === "Todos" && managerFilter === "Todos" && channelFilter === "Todos") return base;
     const lower = pdvSearch.toLowerCase();
     return base.filter(
       p => {
@@ -142,12 +143,14 @@ export default function AtendimentoPage() {
         const pNome = modifiedPdvs[p.cod_parceiro]?.nome_parceiro || p.nome_parceiro;
         const pRede = modifiedPdvs[p.cod_parceiro]?.rede || p.rede;
         const pManager = modifiedPdvs[p.cod_parceiro]?.manager || p.manager;
+        const pCanal = modifiedPdvs[p.cod_parceiro]?.canal || p.canal;
         return (ufFilter === "Todos" || (pUf && pUf === ufFilter)) && 
                (managerFilter === "Todos" || (pManager && pManager === managerFilter)) &&
+               (channelFilter === "Todos" || (pCanal && pCanal === channelFilter)) &&
                (pNome?.toLowerCase().includes(lower) || p.cod_parceiro?.toLowerCase().includes(lower) || pRede?.toLowerCase().includes(lower))
       }
     );
-  }, [pdvData, pdvSearch, ufFilter, managerFilter, deletedPdvs, modifiedPdvs]);
+  }, [pdvData, pdvSearch, ufFilter, managerFilter, channelFilter, deletedPdvs, modifiedPdvs]);
 
   const paginatedPdvs = useMemo(() => {
     const start = pdvPage * itemsPerPage;
@@ -322,6 +325,30 @@ export default function AtendimentoPage() {
     XLSX.writeFile(wb, "template_clientes_time.xlsx");
   };
 
+  const handleExportBase = async () => {
+    try {
+      const XLSX = await import("xlsx");
+      const exportData = pdvData.map(p => ({
+        "Cód. Parceiro": p.cod_parceiro,
+        "Nome / Razão": p.nome_parceiro,
+        "UF": p.uf || "",
+        "Canal": p.canal || "",
+        "Gerente": p.manager || "",
+        "Matriz (Rede)": p.rede || ""
+      }));
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      ws["!cols"] = [
+        { wch: 15 }, { wch: 40 }, { wch: 6 }, { wch: 18 }, { wch: 18 }, { wch: 25 }
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Base Atendimento");
+      XLSX.writeFile(wb, "base_atendimento_clientes.xlsx");
+    } catch (err: unknown) {
+      console.error(err);
+      setFeedback({ type: "error", msg: "Erro ao exportar base: " + (err instanceof Error ? err.message : String(err)) });
+    }
+  };
+
   const hasChanges = Object.keys(modifiedPdvs).length > 0 || deletedPdvs.size > 0;
 
   // PASSWORD GATE
@@ -442,6 +469,13 @@ export default function AtendimentoPage() {
             >
               <Download style={{ width: 14, height: 14 }} /> Planilha Padrão
             </button>
+            <button 
+              onClick={handleExportBase}
+              className="cm-btn-clear" 
+              style={{ background: "rgba(107,143,173,0.1)", color: "#6b8fad", border: "1px solid rgba(107,143,173,0.2)", cursor: "pointer" }}
+            >
+              <Download style={{ width: 14, height: 14 }} /> Exportar Base
+            </button>
             <input
               ref={importInputRef}
               type="file"
@@ -490,61 +524,96 @@ export default function AtendimentoPage() {
           </div>
         ) : (
           <div className="glass-card" style={{ padding: 20 }}>
-            
-            {/* APENAS ABA PDVS */}
             <div>
-               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <button onClick={handleAddRow} className="cm-btn-clear" style={{ background: "var(--background)", color: "var(--foreground)", border: "1px dashed var(--border)" }}>
-                    <Plus style={{ width: 14, height: 14 }} /> Adicionar 
-                  </button>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--background)", padding: "6px 12px", borderRadius: 8, border: "1px solid var(--border)", width: "300px" }}>
-                      <Search style={{ width: 14, height: 14, color: "var(--foreground-muted)" }} />
-                      <input 
-                        placeholder="Buscar por parceiro ou ID..." 
-                        value={pdvSearch}
-                        onChange={(e) => { setPdvSearch(e.target.value); setPdvPage(0); }}
-                        style={{ background: "transparent", border: "none", outline: "none", fontSize: "0.85rem", width: "100%", color: "var(--foreground)" }}
-                      />
-                    </div>
-                    <select 
-                      value={ufFilter}
-                      onChange={(e) => { setUfFilter(e.target.value); setPdvPage(0); }}
-                      className="dash-filter-select"
-                      style={{ background: "var(--background)", minWidth: 120 }}
-                    >
-                      <option value="Todos">Todas as UFs</option>
-                      {Array.from(new Set(pdvData.map(p => p.uf).filter(Boolean))).sort().map(u => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
-                    </select>
-                    <select 
-                      value={managerFilter}
-                      onChange={(e) => { setManagerFilter(e.target.value); setPdvPage(0); }}
-                      className="dash-filter-select"
-                      style={{ background: "var(--background)", minWidth: 140 }}
-                    >
-                      <option value="Todos">Todos Gerentes</option>
-                      {MANAGERS_LIST.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", display: "flex", alignItems: "center", gap: 12 }}>
-                    <span>{filteredPdvs.length} PDVs encontrados</span>
-                    {totalPages > 1 && (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                         <button onClick={() => setPdvPage(p => Math.max(0, p - 1))} disabled={pdvPage === 0} style={{ padding: 4, background: "var(--background)", borderRadius: 4, cursor: pdvPage === 0 ? "not-allowed" : "pointer" }}>
-                            <ChevronLeft style={{ width: 14, height: 14 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 20 }}>
+                 {/* LINHA 1: FILTROS */}
+                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                   {/* BARRA DE BUSCA */}
+                   <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--background)", padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", width: "300px", height: "38px", boxSizing: "border-box" }}>
+                     <Search style={{ width: 15, height: 15, color: "var(--foreground-muted)" }} />
+                     <input 
+                       placeholder="Buscar por parceiro ou ID..." 
+                       value={pdvSearch}
+                       onChange={(e) => { setPdvSearch(e.target.value); setPdvPage(0); }}
+                       style={{ background: "transparent", border: "none", outline: "none", fontSize: "0.85rem", width: "100%", color: "var(--foreground)" }}
+                     />
+                   </div>
+
+                   {/* SELECT UF */}
+                   <select 
+                     value={ufFilter}
+                     onChange={(e) => { setUfFilter(e.target.value); setPdvPage(0); }}
+                     className="dash-filter-select"
+                     style={{ background: "var(--background)", width: "120px", height: "38px" }}
+                   >
+                     <option value="Todos">UFs (Todas)</option>
+                     {Array.from(new Set(pdvData.map(p => p.uf).filter(Boolean))).sort().map(u => (
+                       <option key={u} value={u}>{u}</option>
+                     ))}
+                   </select>
+
+                   {/* SELECT CANAL */}
+                   <select 
+                     value={channelFilter}
+                     onChange={(e) => { setChannelFilter(e.target.value); setPdvPage(0); }}
+                     className="dash-filter-select"
+                     style={{ background: "var(--background)", width: "170px", height: "38px" }}
+                   >
+                     <option value="Todos">Canais (Todos)</option>
+                     {Array.from(new Set(pdvData.map(p => p.canal).filter(Boolean))).sort().map(c => (
+                       <option key={c} value={c}>{c}</option>
+                     ))}
+                   </select>
+
+                   {/* SELECT GERENTE */}
+                   <select 
+                     value={managerFilter}
+                     onChange={(e) => { setManagerFilter(e.target.value); setPdvPage(0); }}
+                     className="dash-filter-select"
+                     style={{ background: "var(--background)", width: "170px", height: "38px" }}
+                   >
+                     <option value="Todos">Gerentes (Todos)</option>
+                     {MANAGERS_LIST.map(m => (
+                       <option key={m} value={m}>{m}</option>
+                     ))}
+                   </select>
+
+                   {/* BOTÃO ADICIONAR */}
+                   <button 
+                     onClick={handleAddRow} 
+                     className="cm-btn-clear" 
+                     style={{ background: "var(--accent-gold)", color: "#fff", border: "none", width: "auto", margin: 0, padding: "0 16px", borderRadius: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", height: "38px", boxSizing: "border-box" }}
+                   >
+                     <Plus style={{ width: 16, height: 16 }} /> Adicionar Parceiro
+                   </button>
+                 </div>
+
+                 {/* LINHA 2: PAGINAÇÃO */}
+                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: 14 }}>
+                   <div style={{ fontSize: "0.85rem", color: "var(--foreground-muted)", display: "flex", alignItems: "center", gap: 16 }}>
+                     <span style={{ fontWeight: 500 }}>{filteredPdvs.length} PDVs encontrados</span>
+                     {totalPages > 1 && (
+                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                         <button 
+                           onClick={() => setPdvPage(p => Math.max(0, p - 1))} 
+                           disabled={pdvPage === 0} 
+                           style={{ padding: "6px 8px", background: "var(--background)", border: "1px solid var(--border)", borderRadius: 6, cursor: pdvPage === 0 ? "not-allowed" : "pointer", opacity: pdvPage === 0 ? 0.5 : 1, display: "flex", alignItems: "center" }}
+                         >
+                           <ChevronLeft style={{ width: 15, height: 15, color: "var(--foreground)" }} />
                          </button>
-                         <span>Pág {pdvPage + 1} de {totalPages}</span>
-                         <button onClick={() => setPdvPage(p => Math.min(totalPages - 1, p + 1))} disabled={pdvPage === totalPages - 1} style={{ padding: 4, background: "var(--background)", borderRadius: 4, cursor: pdvPage === totalPages - 1 ? "not-allowed" : "pointer" }}>
-                            <ChevronRight style={{ width: 14, height: 14 }} />
+                         <span style={{ minWidth: "90px", textAlign: "center", fontWeight: 600 }}>Pág {pdvPage + 1} de {totalPages}</span>
+                         <button 
+                           onClick={() => setPdvPage(p => Math.min(totalPages - 1, p + 1))} 
+                           disabled={pdvPage === totalPages - 1} 
+                           style={{ padding: "6px 8px", background: "var(--background)", border: "1px solid var(--border)", borderRadius: 6, cursor: pdvPage === totalPages - 1 ? "not-allowed" : "pointer", opacity: pdvPage === totalPages - 1 ? 0.5 : 1, display: "flex", alignItems: "center" }}
+                         >
+                           <ChevronRight style={{ width: 15, height: 15, color: "var(--foreground)" }} />
                          </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+                       </div>
+                     )}
+                   </div>
+                 </div>
+               </div>
 
                 <div style={{ overflowX: "auto" }}>
                   <table className="data-table">
@@ -607,10 +676,11 @@ export default function AtendimentoPage() {
                               <select 
                                 className="dash-filter-select"
                                 style={{ width: "100%", background: "var(--background)", color: "var(--foreground)" }}
-                                value={currentCanal}
+                                value={currentCanal || ""}
                                 onChange={(e) => handlePdvChange(item.cod_parceiro, "canal", e.target.value)}
                               >
-                                {Array.from(new Set([...CHANNELS_LIST, item.canal])).map(c => (
+                                <option value="">-- Sem canal --</option>
+                                {Array.from(new Set([...CHANNELS_LIST, item.canal].filter(Boolean))).map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
                               </select>
@@ -619,10 +689,11 @@ export default function AtendimentoPage() {
                               <select 
                                 className="dash-filter-select"
                                 style={{ width: "100%", background: "var(--background)", color: "var(--foreground)" }}
-                                value={currentManager}
+                                value={currentManager || ""}
                                 onChange={(e) => handlePdvChange(item.cod_parceiro, "manager", e.target.value)}
                               >
-                                {Array.from(new Set([...MANAGERS_LIST, item.manager])).map(m => (
+                                <option value="">-- Sem gerente --</option>
+                                {Array.from(new Set([...MANAGERS_LIST, item.manager].filter(Boolean))).map(m => (
                                   <option key={m} value={m}>{m}</option>
                                 ))}
                               </select>

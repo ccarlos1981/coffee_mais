@@ -1,0 +1,22 @@
+# Vercel upload ignore file
+promotor_app/
+backups/
+backup_*/
+Dados da Coffee mais/
+Power Bi da Forno de Minas/
+sql/
+scripts/
+scratch/
+*.zip
+*.rar
+*.tar.gz
+*.mp4
+*.mov
+*.pdf
+*.xlsx
+*.xls
+*.csv
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

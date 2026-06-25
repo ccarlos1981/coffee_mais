@@ -20,7 +20,7 @@ export default async function LancarInvestimentoPage() {
     "Moído",
     "Drip",
     "Capsula",
-    "KG"
+    "1KG"
   ];
 
   // Fetch SKUs

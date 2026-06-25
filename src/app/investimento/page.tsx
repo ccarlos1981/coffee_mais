@@ -24,6 +24,7 @@ import {
   ChevronUp,
   Download,
   AlertCircle,
+  AlertTriangle,
   List,
   X,
   Pencil,
@@ -36,7 +37,7 @@ import {
   Sparkles,
   HelpCircle
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, parseISO, startOfDay } from "date-fns";
@@ -118,13 +119,13 @@ interface AcaoInvestimento {
   gerente_responsavel?: string | null;
 }
 
-const FASE_CONFIG: Record<number, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
-  1: { label: "Planejamento", color: "text-amber-400", bgColor: "bg-amber-400/10", borderColor: "border-amber-400/30", icon: "📋" },
-  2: { label: "Trade", color: "text-blue-400", bgColor: "bg-blue-400/10", borderColor: "border-blue-400/30", icon: "🔍" },
-  3: { label: "Apuração", color: "text-purple-400", bgColor: "bg-purple-400/10", borderColor: "border-purple-400/30", icon: "📝" },
-  4: { label: "Conferência", color: "text-indigo-400", bgColor: "bg-indigo-400/10", borderColor: "border-indigo-400/30", icon: "📊" },
-  5: { label: "Financeiro", color: "text-emerald-400", bgColor: "bg-emerald-400/10", borderColor: "border-emerald-400/30", icon: "💰" },
-  6: { label: "Concluído", color: "text-green-400", bgColor: "bg-green-400/10", borderColor: "border-green-400/30", icon: "✅" },
+const FASE_CONFIG: Record<number, { label: string; sublabel: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
+  1: { label: "Planej. GRV", sublabel: "fase 1", color: "text-amber-400", bgColor: "bg-amber-400/10", borderColor: "border-amber-400/30", icon: "📋" },
+  2: { label: "Trade", sublabel: "fase 2", color: "text-blue-400", bgColor: "bg-blue-400/10", borderColor: "border-blue-400/30", icon: "🔍" },
+  3: { label: "Apur. GRV", sublabel: "fase 3", color: "text-purple-400", bgColor: "bg-purple-400/10", borderColor: "border-purple-400/30", icon: "📝" },
+  4: { label: "Confer. Financ.", sublabel: "fase 4", color: "text-indigo-400", bgColor: "bg-indigo-400/10", borderColor: "border-indigo-400/30", icon: "📊" },
+  5: { label: "Pgto Financ.", sublabel: "fase 5", color: "text-emerald-400", bgColor: "bg-emerald-400/10", borderColor: "border-emerald-400/30", icon: "💰" },
+  6: { label: "Concluído", sublabel: "fase 6", color: "text-green-400", bgColor: "bg-green-400/10", borderColor: "border-green-400/30", icon: "✅" },
 };
 
 const getTradeProgress = (row: AcaoInvestimento) => {
@@ -184,6 +185,7 @@ export default function InvestimentoPage() {
   const [boletoSearchLoading, setBoletoSearchLoading] = useState(false);
   const [showBoletoDropdown, setShowBoletoDropdown] = useState(false);
   const [selectedBoletoLabel, setSelectedBoletoLabel] = useState("");
+  const [vinculosBoletos, setVinculosBoletos] = useState<any[]>([]);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
 
   // Calendar State
@@ -279,21 +281,54 @@ export default function InvestimentoPage() {
       });
       
       if ((selectedAction.fase_atual || 1) >= 3) {
-        fetchBoletosDaRede(selectedAction.rede).then(() => {
-          // If action already has a boleto linked, restore the label
-          if (selectedAction.apuracao_boleto_id) {
-            supabase
-              .from('cm_boletos')
-              .select('*')
-              .eq('id', selectedAction.apuracao_boleto_id)
-              .single()
-              .then(({ data: b }: { data: any }) => {
-                if (b) {
-                  setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
-                }
+        fetchBoletosDaRede(selectedAction.rede);
+        
+        // Buscar boletos vinculados na tabela de relações
+        supabase
+          .from('cm_acoes_boletos_vinculo')
+          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, valor_total, vencimento, status)')
+          .eq('acao_id', selectedAction.id)
+          .then(({ data: vinculosData, error }: any) => {
+            if (!error && vinculosData && vinculosData.length > 0) {
+              const parsed = vinculosData.map((v: any) => {
+                const b = v.cm_boletos;
+                return {
+                  boleto_id: b.id,
+                  valor_associado: v.valor_associado.toString(),
+                  label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                  numero_boleto: b.numero_boleto,
+                  valor_total: b.valor_total
+                };
               });
-          }
-        });
+              setVinculosBoletos(parsed);
+            } else {
+              // Fallback para boletos legados (vinculo individual na coluna apuracao_boleto_id)
+              if (selectedAction.apuracao_boleto_id) {
+                supabase
+                  .from('cm_boletos')
+                  .select('*')
+                  .eq('id', selectedAction.apuracao_boleto_id)
+                  .single()
+                  .then(({ data: b }: { data: any }) => {
+                    if (b) {
+                      setVinculosBoletos([{
+                        boleto_id: b.id,
+                        valor_associado: (selectedAction.apuracao_valor_realizado || getValorTotal(selectedAction)).toString(),
+                        label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                        numero_boleto: b.numero_boleto,
+                        valor_total: b.valor_total
+                      }]);
+                    } else {
+                      setVinculosBoletos([]);
+                    }
+                  });
+              } else {
+                setVinculosBoletos([]);
+              }
+            }
+          });
+      } else {
+        setVinculosBoletos([]);
       }
       setDetailsExpanded(false);
     }
@@ -330,7 +365,7 @@ export default function InvestimentoPage() {
   const redesDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.rede))).sort(), [managerFilteredAcoes]);
   const familiasDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.familia_produto).filter(Boolean) as string[])).sort(), [managerFilteredAcoes]);
 
-  const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO';
+  const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO' && userRole !== 'Trade';
 
   const myMatrizes = useMemo(() => {
     if (isRegionalManager && userEmail) {
@@ -444,9 +479,9 @@ export default function InvestimentoPage() {
 
       if (rows.length === 0) {
         rows = [
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "Família", "Grão", "", "129,90", "129,90", "10,00", "300"],
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Tradicional 250g", "24,99", "24,99", "2,50", "1000"],
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Abatimento", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Extra Forte 250g", "24,99", "24,99", "2,50", "1000"]
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "Família", "Grão", "", "129,90", "129,90", "10,00", "300"],
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Tradicional 250g", "24,99", "24,99", "2,50", "1000"],
+          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Extra Forte 250g", "24,99", "24,99", "2,50", "1000"]
         ];
       }
 
@@ -597,8 +632,8 @@ export default function InvestimentoPage() {
             errors.push("Pagamento é obrigatório.");
           } else {
             const pLower = pagamentoVal.toLowerCase();
-            if (pLower.includes("abat")) pagamentoVal = "Abatimento";
-            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transferência";
+            if (pLower.includes("abat") || pLower.includes("bole")) pagamentoVal = "Boleto";
+            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transf. Bancária";
             else if (pLower.includes("boni")) pagamentoVal = "Bonificação";
             else errors.push("Pagamento inválido.");
           }
@@ -685,7 +720,7 @@ export default function InvestimentoPage() {
             if (!familiaVal) {
               errors.push("Família é obrigatória para abrangência Família.");
             } else {
-              const validFams = ["Grão", "Moído", "Drip", "Capsula", "KG"];
+              const validFams = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
               const match = validFams.find(vf => vf.toLowerCase() === familiaVal!.toLowerCase());
               if (match) familiaVal = match;
               else errors.push("Família inválida.");
@@ -887,6 +922,8 @@ export default function InvestimentoPage() {
       if (dbError) throw dbError;
       
       setData(prev => prev.map(item => item.id === id ? { ...item, documento_url: filePath } : item));
+      // Atualiza também o selectedAction para refletir o documento_url sem perder o form
+      setSelectedAction(prev => prev && prev.id === id ? { ...prev, documento_url: filePath } : prev);
       setFeedback({ type: "success", msg: "Comprovante anexado com sucesso!" });
       setTimeout(() => setFeedback(null), 3000);
       
@@ -1018,7 +1055,7 @@ export default function InvestimentoPage() {
     return counts;
   }, [managerFilteredAcoes]);
 
-  const handlePhaseAction = async (id: string, action: () => Promise<void>) => {
+  const handlePhaseAction = async (id: string, action: () => Promise<any>) => {
     setActionLoading(id);
     try {
       await action();
@@ -1042,7 +1079,15 @@ export default function InvestimentoPage() {
       fd.append('apuracao_numero_acordo', apuracaoForm.numero_acordo);
       fd.append('apuracao_qtd_vendida', apuracaoForm.qtd_vendida);
       fd.append('apuracao_valor_realizado', apuracaoForm.valor_realizado);
-      fd.append('apuracao_boleto_id', apuracaoForm.boleto_id);
+      
+      // Enviar a lista completa de boletos vinculados e seus valores associados
+      fd.append('vinculos_boletos', JSON.stringify(vinculosBoletos.map(v => ({
+        boleto_id: v.boleto_id,
+        valor_associado: parseFloat(v.valor_associado.replace(',', '.')) || 0
+      }))));
+      
+      // Enviar o primeiro ID de boleto para compatibilidade com a coluna legada
+      fd.append('apuracao_boleto_id', vinculosBoletos[0]?.boleto_id || "");
       
       // se tivesse arquivo no form, seria adicionado aqui. Como o usuário pede apenas evidência como URL,
       // usaremos string se tiver, mas para arquivos teríamos que usar supabase storage.
@@ -1324,11 +1369,14 @@ export default function InvestimentoPage() {
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
               <button
                 onClick={() => setFilterFase(null)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
                   filterFase === null ? 'bg-gold/15 text-gold border-gold/30 shadow-sm' : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
                 }`}
               >
-                Todas <span className="text-xs opacity-70">({managerFilteredAcoes.length})</span>
+                <div className="flex items-center gap-1.5 font-semibold">
+                  Todas <span className="text-xs opacity-70 font-normal">({managerFilteredAcoes.length})</span>
+                </div>
+                <span className="text-[10px] opacity-60 font-normal mt-0.5">geral</span>
               </button>
               {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
                 const faseNum = Number(key);
@@ -1337,11 +1385,14 @@ export default function InvestimentoPage() {
                   <button
                     key={key}
                     onClick={() => setFilterFase(faseNum)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                    className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
                       filterFase === faseNum ? `${cfg.bgColor} ${cfg.color} ${cfg.borderColor} shadow-sm` : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
                     }`}
                   >
-                    <span>{cfg.icon}</span> {cfg.label} <span className="text-xs opacity-70">({count})</span>
+                    <div className="flex items-center gap-1.5 font-semibold">
+                      <span>{cfg.icon}</span> {cfg.label} <span className="text-xs opacity-70 font-normal">({count})</span>
+                    </div>
+                    <span className="text-[10px] opacity-60 font-normal mt-0.5">{cfg.sublabel}</span>
                   </button>
                 );
               })}
@@ -2241,7 +2292,7 @@ export default function InvestimentoPage() {
                             </div>
                             <span className={`text-[9px] mt-1 font-medium text-center leading-tight ${isActive ? cfg.color : isDone ? 'text-green-400' : 'text-muted/50'}`}>
                               {cfg.label}
-                              {cfg.label === 'Conferência' && <span className="block text-[7px] opacity-70 mt-0.5">(Financeiro)</span>}
+                              {step === 4 && <span className="block text-[7px] opacity-70 mt-0.5">(Financeiro)</span>}
                             </span>
                           </div>
                           {step < 6 && <div className={`w-full h-0.5 -mt-3 ${isDone ? 'bg-green-500/40' : 'bg-border'}`} />}
@@ -2302,14 +2353,24 @@ export default function InvestimentoPage() {
                   )}
 
                   {(selectedAction.fase_atual || 1) === 2 && (
-                    <button
-                      onClick={() => handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, { ...tradeChecklist, conferencia: true }))}
-                      disabled={actionLoading === selectedAction.id}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                    >
-                      {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                      Validado pelo Trade
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handlePhaseAction(selectedAction.id, () => marcarAcaoNaoAconteceu(selectedAction.id))}
+                        disabled={actionLoading === selectedAction.id}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                      >
+                        {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
+                        Ação Não Aconteceu
+                      </button>
+                      <button
+                        onClick={() => handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, { ...tradeChecklist, conferencia: true }))}
+                        disabled={actionLoading === selectedAction.id || !allTradeChecked}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
+                        Validado pelo Trade
+                      </button>
+                    </div>
                   )}
 
                   {(selectedAction.fase_atual || 1) === 3 && (
@@ -2338,128 +2399,224 @@ export default function InvestimentoPage() {
                           <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado)) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
                         </div>
                         <div className="md:col-span-2" ref={boletoDropdownRef}>
-                          <label className="block text-xs font-medium text-muted mb-1">Vincular a um Boleto do Financeiro</label>
+                          <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">
+                            Boletos Vinculados ao Financeiro
+                          </label>
                           
-                          {/* Selected boleto display */}
-                          {apuracaoForm.boleto_id && selectedBoletoLabel ? (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-                              <CheckCircle className="w-4 h-4 text-purple-400 flex-shrink-0" />
-                              <span className="text-sm text-purple-300 font-medium truncate flex-1">{selectedBoletoLabel}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setApuracaoForm({...apuracaoForm, boleto_id: ""});
-                                  setSelectedBoletoLabel("");
-                                }}
-                                className="p-0.5 hover:bg-purple-500/20 rounded transition-colors"
-                              >
-                                <X className="w-3.5 h-3.5 text-purple-400" />
-                              </button>
+                          {/* List of currently associated boletos */}
+                          {vinculosBoletos.length > 0 ? (
+                            <div className="space-y-2 mb-3">
+                              {vinculosBoletos.map((vinculo, index) => (
+                                <div key={vinculo.boleto_id || index} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl relative">
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-xs font-semibold text-purple-300 block truncate" title={vinculo.label}>
+                                      {vinculo.label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className="text-[10px] text-muted font-bold uppercase">Valor Associado (R$):</span>
+                                    <input
+                                      type="text"
+                                      value={vinculo.valor_associado}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setVinculosBoletos(prev => prev.map((v, idx) => idx === index ? { ...v, valor_associado: val } : v));
+                                      }}
+                                      className="w-24 bg-background border border-purple-500/30 rounded-lg px-2.5 py-1 text-xs font-extrabold text-gold text-right focus:outline-none focus:ring-1 focus:ring-purple-500/50"
+                                      placeholder="0.00"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setVinculosBoletos(prev => prev.filter((_, idx) => idx !== index));
+                                      }}
+                                      className="p-1.5 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors flex items-center justify-center"
+                                      title="Remover este boleto"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           ) : (
-                            <div className="relative">
-                              <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
-                                <input
-                                  type="text"
-                                  value={boletoSearchTerm}
-                                  onChange={e => {
-                                    setBoletoSearchTerm(e.target.value);
-                                    setShowBoletoDropdown(true);
-                                  }}
-                                  onFocus={() => setShowBoletoDropdown(true)}
-                                  placeholder={`Buscar boleto... (mostrando ${boletosAbertos.length} da rede ${selectedAction.rede})`}
-                                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder:text-muted/60"
-                                />
-                                {boletoSearchLoading && (
-                                  <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-purple-400 animate-spin" />
-                                )}
-                              </div>
-
-                              {showBoletoDropdown && (
-                                <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-2xl max-h-[240px] overflow-y-auto">
-                                  {/* Boletos da rede (default) */}
-                                  {boletoSearchTerm.length === 0 && boletosAbertos.length > 0 && (
-                                    <>
-                                      <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
-                                        Boletos da rede {selectedAction.rede}
-                                      </div>
-                                      {boletosAbertos.map(b => (
-                                        <button
-                                          key={b.id}
-                                          type="button"
-                                          onClick={() => {
-                                            setApuracaoForm({...apuracaoForm, boleto_id: b.id});
-                                            setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
-                                            setShowBoletoDropdown(false);
-                                            setBoletoSearchTerm("");
-                                          }}
-                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
-                                              <span className="text-xs text-muted">{b.rede}</span>
-                                            </div>
-                                            <div className="flex items-center gap-3 mt-0.5">
-                                              <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
-                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
-                                            </div>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </>
-                                  )}
-
-                                  {/* Empty rede default */}
-                                  {boletoSearchTerm.length === 0 && boletosAbertos.length === 0 && (
-                                    <div className="px-3 py-3 text-center">
-                                      <p className="text-xs text-amber-500">Nenhum boleto em aberto para a rede {selectedAction.rede}.</p>
-                                      <p className="text-[10px] text-muted mt-1">Digite acima para buscar em todas as redes.</p>
-                                    </div>
-                                  )}
-
-                                  {/* Search results */}
-                                  {boletoSearchTerm.length >= 1 && (
-                                    <>
-                                      <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
-                                        {boletoSearchLoading ? 'Buscando...' : `${boletoSearchResults.length} resultado(s) para "${boletoSearchTerm}"`}
-                                      </div>
-                                      {boletoSearchResults.length === 0 && !boletoSearchLoading && (
-                                        <div className="px-3 py-3 text-center text-xs text-muted">
-                                          Nenhum boleto encontrado.
-                                        </div>
-                                      )}
-                                      {boletoSearchResults.map(b => (
-                                        <button
-                                          key={b.id}
-                                          type="button"
-                                          onClick={() => {
-                                            setApuracaoForm({...apuracaoForm, boleto_id: b.id});
-                                            setSelectedBoletoLabel(`${b.rede} — Nº ${b.numero_boleto} — ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`);
-                                            setShowBoletoDropdown(false);
-                                            setBoletoSearchTerm("");
-                                          }}
-                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
-                                        >
-                                          <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2">
-                                              <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
-                                              <span className="text-xs text-muted truncate">{b.rede}</span>
-                                            </div>
-                                            <div className="flex items-center gap-3 mt-0.5">
-                                              <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
-                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
-                                            </div>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </>
-                                  )}
-                                </div>
-                              )}
+                            <div className="text-xs text-muted italic mb-2 px-1">
+                              Nenhum boleto vinculado até o momento.
                             </div>
                           )}
+
+                          {/* Search & Add block */}
+                          <div className="relative">
+                            <div className="relative">
+                              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                              <input
+                                type="text"
+                                value={boletoSearchTerm}
+                                onChange={e => {
+                                  setBoletoSearchTerm(e.target.value);
+                                  setShowBoletoDropdown(true);
+                                }}
+                                onFocus={() => setShowBoletoDropdown(true)}
+                                placeholder={`Adicionar boleto... (mostrando ${boletosAbertos.length} da rede ${selectedAction.rede})`}
+                                className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder:text-muted/60"
+                              />
+                              {boletoSearchLoading && (
+                                <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-purple-400 animate-spin" />
+                              )}
+                            </div>
+
+                            {showBoletoDropdown && (
+                              <div className="absolute z-50 w-full mt-1 bg-card border border-border rounded-xl shadow-2xl max-h-[240px] overflow-y-auto">
+                                {/* Boletos da rede (default) */}
+                                {boletoSearchTerm.length === 0 && boletosAbertos.length > 0 && (
+                                  <>
+                                    <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
+                                      Boletos da rede {selectedAction.rede}
+                                    </div>
+                                    {boletosAbertos.map(b => (
+                                      <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => {
+                                          if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
+                                            alert("Este boleto já foi adicionado.");
+                                            return;
+                                          }
+                                          const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
+                                          const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
+                                          const remaining = Math.max(0, totalRealizado - alreadyAssociated);
+                                          const defaultVal = Math.min(b.valor_total, remaining);
+
+                                          setVinculosBoletos([
+                                            ...vinculosBoletos,
+                                            {
+                                              boleto_id: b.id,
+                                              valor_associado: defaultVal.toFixed(2),
+                                              label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                              numero_boleto: b.numero_boleto,
+                                              valor_total: b.valor_total
+                                            }
+                                          ]);
+                                          setShowBoletoDropdown(false);
+                                          setBoletoSearchTerm("");
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
+                                            <span className="text-xs text-muted">{b.rede}</span>
+                                          </div>
+                                          <div className="flex items-center gap-3 mt-0.5">
+                                            <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                            <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </>
+                                )}
+
+                                {/* Empty rede default */}
+                                {boletoSearchTerm.length === 0 && boletosAbertos.length === 0 && (
+                                  <div className="px-3 py-3 text-center">
+                                    <p className="text-xs text-amber-500">Nenhum boleto em aberto para a rede {selectedAction.rede}.</p>
+                                    <p className="text-[10px] text-muted mt-1">Digite acima para buscar em todas as redes.</p>
+                                  </div>
+                                )}
+
+                                {/* Search results */}
+                                {boletoSearchTerm.length >= 1 && (
+                                  <>
+                                    <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
+                                      {boletoSearchLoading ? 'Buscando...' : `${boletoSearchResults.length} resultado(s) para "${boletoSearchTerm}"`}
+                                    </div>
+                                    {boletoSearchResults.length === 0 && !boletoSearchLoading && (
+                                      <div className="px-3 py-3 text-center text-xs text-muted">
+                                        Nenhum boleto encontrado.
+                                      </div>
+                                    )}
+                                    {boletoSearchResults.map(b => (
+                                      <button
+                                        key={b.id}
+                                        type="button"
+                                        onClick={() => {
+                                          if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
+                                            alert("Este boleto já foi adicionado.");
+                                            return;
+                                          }
+                                          const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
+                                          const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
+                                          const remaining = Math.max(0, totalRealizado - alreadyAssociated);
+                                          const defaultVal = Math.min(b.valor_total, remaining);
+
+                                          setVinculosBoletos([
+                                            ...vinculosBoletos,
+                                            {
+                                              boleto_id: b.id,
+                                              valor_associado: defaultVal.toFixed(2),
+                                              label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                              numero_boleto: b.numero_boleto,
+                                              valor_total: b.valor_total
+                                            }
+                                          ]);
+                                          setShowBoletoDropdown(false);
+                                          setBoletoSearchTerm("");
+                                        }}
+                                        className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                      >
+                                        <div className="flex-1 min-w-0">
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
+                                            <span className="text-xs text-muted truncate">{b.rede}</span>
+                                          </div>
+                                          <div className="flex items-center gap-3 mt-0.5">
+                                            <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                            <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                          </div>
+                                        </div>
+                                      </button>
+                                    ))}
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Association status tracking message */}
+                          {(() => {
+                            const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
+                            const totalVinculado = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
+                            if (totalRealizado > 0) {
+                              if (totalVinculado === 0) {
+                                return (
+                                  <div className="mt-2 text-[11px] text-amber-500 font-medium">
+                                    ⚠️ Nenhum boleto vinculado. Por favor, adicione pelo menos um boleto.
+                                  </div>
+                                );
+                              }
+                              if (totalVinculado < totalRealizado) {
+                                return (
+                                  <div className="mt-2 text-[11px] text-amber-400 font-medium">
+                                    ⏳ Faltam {formatCurrency(totalRealizado - totalVinculado)} para associar (Total Realizado: {formatCurrency(totalRealizado)}).
+                                  </div>
+                                );
+                              }
+                              if (totalVinculado === totalRealizado) {
+                                return (
+                                  <div className="mt-2 text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                                    ✓ Valor apurado totalmente associado aos boletos vinculados!
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div className="mt-2 text-[11px] text-red-400 font-medium">
+                                  ⚠️ A soma dos boletos vinculados ({formatCurrency(totalVinculado)}) excede o valor realizado ({formatCurrency(totalRealizado)}).
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                         </div>
                         <div className="md:col-span-2">
                           <label className="block text-xs font-medium text-muted mb-1">Anexar Acordo / Evidência (Obrigatório)</label>
@@ -2500,7 +2657,7 @@ export default function InvestimentoPage() {
                       </div>
                       <button
                         onClick={handleApuracaoSubmit}
-                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || !selectedAction.documento_url}
+                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo}
                         className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
@@ -2510,27 +2667,51 @@ export default function InvestimentoPage() {
                   )}
 
                   {(selectedAction.fase_atual || 1) === 4 && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, true))}
-                        disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO')}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                        title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' ? "Apenas perfil Financeiro pode aprovar" : ""}
-                      >
-                        {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                        Aprovar
-                      </button>
-                      <button
-                        onClick={() => {
-                          const obs = prompt("Motivo da devolução:");
-                          if (obs !== null) handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, false, obs));
-                        }}
-                        disabled={actionLoading === selectedAction.id}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                        Devolver
-                      </button>
+                    <div className="flex flex-col gap-3">
+                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-2">
+                        <span className="text-sm font-bold text-foreground">Boletos Vinculados pelo Comercial</span>
+                        {vinculosBoletos.length > 0 ? (
+                          <div className="space-y-2">
+                            {vinculosBoletos.map((vinculo, index) => (
+                              <div key={vinculo.boleto_id || index} className="flex flex-col p-2.5 bg-background border border-border rounded-xl">
+                                <span className="text-xs font-semibold text-foreground-secondary break-all">
+                                  {vinculo.label}
+                                </span>
+                                <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-border/50">
+                                  <span className="text-[10px] text-muted font-bold uppercase">Valor Associado:</span>
+                                  <span className="text-sm font-extrabold text-gold">
+                                    {formatCurrency(Number(vinculo.valor_associado))}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted italic">Nenhum boleto em aberto ou vinculado.</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, true))}
+                          disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO')}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                          title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' ? "Apenas perfil Financeiro pode aprovar" : ""}
+                        >
+                          {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                          Aprovar
+                        </button>
+                        <button
+                          onClick={() => {
+                            const obs = prompt("Motivo da devolução:");
+                            if (obs !== null) handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, false, obs));
+                          }}
+                          disabled={actionLoading === selectedAction.id}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Devolver
+                        </button>
+                      </div>
                     </div>
                   )}
 

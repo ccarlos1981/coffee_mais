@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Coffee, Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { login } from "./actions";
+import { ThemeToggle } from "@/components/ThemeProvider";
 
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
@@ -33,8 +34,13 @@ export default function LoginPage() {
         background:
           "radial-gradient(ellipse at 30% 20%, rgba(200,169,110,0.08) 0%, transparent 50%), radial-gradient(ellipse at 70% 80%, rgba(61,107,61,0.06) 0%, transparent 50%), var(--background)",
         padding: "20px",
+        position: "relative",
       }}
     >
+      {/* Theme Toggle in top-right corner */}
+      <div style={{ position: "absolute", top: "20px", right: "20px", zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
       {/* Decorative grain overlay */}
       <div
         style={{
