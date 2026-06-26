@@ -110,7 +110,7 @@ export async function generateOrderRecommendation(
     .from("cm_ai_product_reference")
     .select("sku, product_name, case_pack, minimum_order, sell_price_reference");
 
-  const skuRefMap = new Map<string, any>();
+  const skuRefMap = new Map<string, { sku: string; product_name: string; case_pack: number; minimum_order: number; sell_price_reference: number }>();
   skuRefs?.forEach(ref => {
     skuRefMap.set(ref.sku, ref);
   });
@@ -121,7 +121,7 @@ export async function generateOrderRecommendation(
     .select("sku, estimated_stock_boxes, sellout_velocity, days_of_inventory, stock_risk")
     .eq("pdv_id", pdvId);
 
-  const selloutMap = new Map<string, any>();
+  const selloutMap = new Map<string, { sku: string; estimated_stock_boxes: number; sellout_velocity: number; days_of_inventory: number; stock_risk: string }>();
   selloutData?.forEach(item => {
     selloutMap.set(item.sku, item);
   });
@@ -282,7 +282,7 @@ export async function generateOrderRecommendation(
       .select("detected_products")
       .eq("id", shelfAnalysisId)
       .maybeSingle();
-    const productsList = (detectedItems?.detected_products as any[]) || [];
+  const productsList = (detectedItems?.detected_products as Array<{ brand: string; facings: number; rupture_status: string }>) || [];
     competitorRuptureDetected = productsList.some(p => p.brand !== "Coffee Mais" && (p.facings === 0 || p.rupture_status === "TOTAL"));
   }
 
@@ -298,11 +298,6 @@ export async function generateOrderRecommendation(
   if (!competitorRuptureDetected) prob += 15;
   if (pricingRisk === "COMPETITIVE") prob += 10;
   
-  // If ALL skus have never been purchased or maximum days since last purchase > 45
-  const neverBoughtOrInactive = skus.every(sku => {
-    // If we can't find a sales history, or it is > 45 days
-    return true; // Simple check or check max inactivity
-  });
   // Let's check from our items logic: if max inactivity is > 45 days:
   let maxDaysSinceLast = 0;
   for (const sku of skus) {

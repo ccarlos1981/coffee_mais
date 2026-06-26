@@ -58,3 +58,4 @@ coverage/
 # Backup folders
 backup_*/
 
+backups/*.zip

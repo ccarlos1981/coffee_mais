@@ -74,7 +74,7 @@ const GOLD = "#d4a017";
 const COLORS = ["#d4a017", "#4f87c4", "#6ecb63", "#e0634a", "#a77ded", "#45bfb0", "#f3a93c", "#e8607a"];
 
 // ── Custom tooltip ─────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function ChartTooltip({ active, payload, label, yLabel }: any) {
   if (!active || !payload?.length) return null;
   const v = normalizeNum(payload[0]?.value);
@@ -222,12 +222,12 @@ export default function CoffeeIAPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         parsed.forEach((m: any) => { m.timestamp = new Date(m.timestamp); });
         if (parsed.length > 0) setMessages(parsed);
       } catch { /* ignore */ }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [isMounted]);
 
   useEffect(() => {

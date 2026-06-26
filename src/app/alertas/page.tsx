@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -51,11 +51,7 @@ export default function SmartActionHub() {
   const [actionInput, setActionInput] = useState<{ [key: string]: string }>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchAlerts();
-  }, [selectedManager]);
-
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     setLoading(true);
     try {
       const url = selectedManager !== 'all' 
@@ -77,7 +73,11 @@ export default function SmartActionHub() {
       console.error(e);
     }
     setLoading(false);
-  };
+  }, [selectedManager]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
 
   const handleRegisterAction = async (alert: Alert) => {
     const note = actionInput[alert.id];
@@ -258,7 +258,7 @@ export default function SmartActionHub() {
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                          {alert.cm_action_notes.map((note, idx) => (
                             <div key={idx} style={{ background: "var(--background)", padding: "10px", borderRadius: 6, border: "1px solid var(--border-light)" }}>
-                               <p style={{ fontSize: "0.75rem", color: "var(--foreground)" }}>"{note.note}"</p>
+                               <p style={{ fontSize: "0.75rem", color: "var(--foreground)" }}>&quot;{note.note}&quot;</p>
                                <span style={{ fontSize: "0.6rem", color: "var(--foreground-dim)", display: "block", marginTop: 4 }}>
                                   {new Date(note.created_at).toLocaleDateString()} — {note.created_by}
                                </span>

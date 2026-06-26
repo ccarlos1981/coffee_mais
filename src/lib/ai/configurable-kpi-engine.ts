@@ -106,7 +106,7 @@ export async function calculateCompanyScore(
   let totalWeight = 0;
 
   // 2. Loop through and calculate each KPI score
-  configs?.forEach((item: any) => {
+  configs?.forEach((item) => {
     if (!item.kpi) return;
     const kpiKey = item.kpi.kpi_key;
     const weight = Number(item.weight || 0.00);

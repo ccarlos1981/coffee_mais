@@ -1060,7 +1060,7 @@ export default function PlanejamentoInvestimentoPage() {
                   ) : paginatedData.length === 0 ? (
                     <tr>
                       <td colSpan={11} className="px-6 py-12 text-center text-muted">
-                        Nenhum planejamento encontrado. Clique em "Lançar" para começar.
+                        Nenhum planejamento encontrado. Clique em &quot;Lançar&quot; para começar.
                       </td>
                     </tr>
                   ) : (

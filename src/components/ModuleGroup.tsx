@@ -3,8 +3,23 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
+import { ReactNode } from "react";
 
-export function ModuleGroup({ group }: { group: any }) {
+interface ModuleItem {
+  title: string;
+  href: string;
+  description: string;
+  color: string;
+  ready: boolean;
+  iconNode: ReactNode;
+}
+
+interface ModuleGroupProps {
+  category: string;
+  items: ModuleItem[];
+}
+
+export function ModuleGroup({ group }: { group: ModuleGroupProps }) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -33,7 +48,7 @@ export function ModuleGroup({ group }: { group: any }) {
         <div className="absolute inset-0 bg-gradient-to-r from-gold/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 md:hidden pointer-events-none !rounded-full" />
       </button>
       <div className={`grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2 ${isOpen ? 'grid' : 'hidden md:grid'}`}>
-        {group.items.map((mod: any) => {
+        {group.items.map((mod: ModuleItem) => {
           return (
             <Link
               key={mod.title}

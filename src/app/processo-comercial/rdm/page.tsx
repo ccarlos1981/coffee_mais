@@ -415,7 +415,7 @@ function getTrimLabel(m: number): string {
   return parts.join('\n');
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function FatXTick(props: any) {
   const { x, y, payload, index, shiftPx = 0, chartData = [] } = props;
   const raw: string = payload?.value ?? '';
@@ -455,7 +455,7 @@ function FatXTick(props: any) {
 }
 
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function VertBarLabel(props: any) {
   const x: number = props.x ?? 0;
   const y: number = props.y ?? 0;
@@ -476,7 +476,7 @@ function VertBarLabel(props: any) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function FatDeltaLabel(props: any) {
   const x: number = props.x ?? 0;
   const y: number = props.y ?? 0;
@@ -577,7 +577,7 @@ function SlideResultadoFaturamento({
               {/* X-Axis: labels deslocados para o centro da barra real */}
               <XAxis
                 dataKey="label"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 tick={(p: any) => (
                   <FatXTick {...p} shiftPx={(barSz + 2) / 2} chartData={chartData} />
                 )}
@@ -622,7 +622,7 @@ function SlideResultadoFaturamento({
                 }}
                 formatter={(value: unknown, _name: unknown, props: unknown) => {
                   const n = value as number;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   
                   const idx = (props as any)?.index ?? 0;
                   const entry: BarEntry | undefined = chartData[idx];
                   const lbl = entry?.isCurrentMonth ? 'Mês Atual' : 'Último Trimestre';
@@ -667,10 +667,10 @@ function SlideResultadoFaturamento({
                   />
                 ))}
                 {/* Label vertical com valor real */}
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="monthValue" content={(p: any) => <VertBarLabel {...p} />} />
                 {/* Percentual delta acima da barra atual */}
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="monthValue" content={(p: any) => <FatDeltaLabel {...p} data={chartData} />} />
               </Bar>
 
@@ -688,7 +688,7 @@ function SlideResultadoFaturamento({
                     fill={e.isCurrentMonth ? COLOR_CUR : COLOR_TRIM}
                   />
                 ))}
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="accumValue" content={(p: any) => <VertBarLabel {...p} />} />
               </Bar>
             </ComposedChart>
@@ -788,7 +788,7 @@ function SlideResultadoVolume({
 
               <XAxis
                 dataKey="label"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 tick={(p: any) => (
                   <FatXTick {...p} shiftPx={(barSz + 2) / 2} chartData={chartData} />
                 )}
@@ -831,7 +831,7 @@ function SlideResultadoVolume({
                 }}
                 formatter={(value: unknown, _name: unknown, props: unknown) => {
                   const n = value as number;
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   
                   const idx = (props as any)?.index ?? 0;
                   const entry: BarEntry | undefined = chartData[idx];
                   const lbl = entry?.isCurrentMonth ? 'Mês Atual' : 'Último Trimestre';
@@ -873,9 +873,9 @@ function SlideResultadoVolume({
                     fill={e.isCurrentMonth ? COLOR_CUR : COLOR_TRIM}
                   />
                 ))}
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="monthValue" content={(p: any) => <VertBarLabel {...p} />} />
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="monthValue" content={(p: any) => <FatDeltaLabel {...p} data={chartData} />} />
               </Bar>
 
@@ -892,7 +892,7 @@ function SlideResultadoVolume({
                     fill={e.isCurrentMonth ? COLOR_CUR : COLOR_TRIM}
                   />
                 ))}
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="accumValue" content={(p: any) => <VertBarLabel {...p} />} />
               </Bar>
             </ComposedChart>
@@ -915,7 +915,7 @@ function SlideResultadoVolume({
 }
 
 // ─── Slide 6: Volume (Unid) e Preço Médio (R$/Unid) ─────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function VolPrecoXTick(props: any) {
   const { x, y, payload } = props;
   const label: string = payload?.value ?? '';
@@ -1008,7 +1008,7 @@ function SlideVolPrecoMedio({
 
               <XAxis
                 dataKey="label"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 tick={(p: any) => <VolPrecoXTick {...p} />}
                 axisLine={{ stroke: '#d0d5dd', strokeWidth: 1 }}
                 tickLine={false}
@@ -1049,7 +1049,7 @@ function SlideVolPrecoMedio({
                   boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
                   fontFamily: 'var(--font-geist-sans, system-ui)',
                 }}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 formatter={(value: any, name: any) => {
                   if (name === 'vol') return [`${Math.round(value).toLocaleString('pt-BR')} un.`, 'Volume (Unid)'];
                   return [`R$ ${Number(value).toFixed(2)}`, 'Preço/Unid'];
@@ -1069,7 +1069,7 @@ function SlideVolPrecoMedio({
                 <LabelList
                   dataKey="vol"
                   position="inside"
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   
                   content={(p: any) => {
                     const x: number = p.x ?? 0;
                     const y: number = p.y ?? 0;
@@ -1113,7 +1113,7 @@ function SlideVolPrecoMedio({
                 <LabelList
                   dataKey="preco"
                   position="top"
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   
                   content={(p: any) => {
                     const x: number = p.x ?? 0;
                     const y: number = p.y ?? 0;
@@ -1158,7 +1158,7 @@ type PrecoBarEntry = {
   precoCur: number | null;
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function PrecoVertLabel(props: any) {
   const { x, y, width, height, value } = props;
   if (!value || height < 18) return null;
@@ -1175,7 +1175,7 @@ function PrecoVertLabel(props: any) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function PrecoDeltaLabel(props: any) {
   const { x, y, width, value, index, data } = props;
   if (!value) return null;
@@ -1241,7 +1241,7 @@ function SlideResultadoPreco({
 
   const yFmt = (v: number) => `R$ ${Math.round(v)}`;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   function PrecoXTick(props: any) {
     const { x, y, payload } = props;
     const label: string = payload?.value ?? '';
@@ -1287,7 +1287,7 @@ function SlideResultadoPreco({
 
               <XAxis
                 dataKey="label"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 tick={(p: any) => <PrecoXTick {...p} />}
                 axisLine={{ stroke: '#d0d5dd', strokeWidth: 1 }}
                 tickLine={false}
@@ -1313,7 +1313,7 @@ function SlideResultadoPreco({
                   boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
                   fontFamily: 'var(--font-geist-sans, system-ui)',
                 }}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                 
                 formatter={(value: any, name: any) => {
                   const yr = name === 'precoPrev' ? precoCompare.prevYear : precoCompare.curYear;
                   return [`R$ ${Number(value).toFixed(2)}`, `${yr}`];
@@ -1337,7 +1337,7 @@ function SlideResultadoPreco({
               <Bar yAxisId="left" dataKey="precoPrev" barSize={barSz}
                 radius={[3, 3, 0, 0]} isAnimationActive={false} fill={COLOR_PREV}
               >
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="precoPrev" content={(p: any) => <PrecoVertLabel {...p} />} />
               </Bar>
 
@@ -1345,9 +1345,9 @@ function SlideResultadoPreco({
               <Bar yAxisId="left" dataKey="precoCur" barSize={barSz}
                 radius={[3, 3, 0, 0]} isAnimationActive={false} fill={COLOR_CUR_P}
               >
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="precoCur" content={(p: any) => <PrecoVertLabel {...p} />} />
-                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                { }
                 <LabelList dataKey="precoCur" content={(p: any) => <PrecoDeltaLabel {...p} data={chartData} />} />
               </Bar>
             </ComposedChart>
@@ -1877,7 +1877,7 @@ function SlideProjecao({
       ytdPct:     0,
       ytdDelta:   0,
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   ], [mFat.aa, mFat.fct, mFat.desafio, mFat.real, mVol.aa, mVol.fct, mVol.desafio, mVol.real,
       ytdFat.aa, ytdFat.fct, ytdFat.real, ytdFat.pct, ytdFat.delta,
       ytdVol.aa, ytdVol.fct, ytdVol.real, ytdVol.pct, ytdVol.delta,
@@ -2785,14 +2785,14 @@ function SlidePrecoTabela({
         const json = await res.json();
         if (!json.success) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const chRows: PrecoTabelaRow[] = (json.channels || []).map((c: any) => ({
           name: c.channel,
           fatAcum: c.totalFat,
           monthPrices: c.monthPrices,
         }));
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const mRows: PrecoTabelaRow[] = (json.matrizes || []).map((m: any) => ({
           name: m.matriz,
           fatAcum: m.totalFat,
@@ -3028,7 +3028,7 @@ function SlideVolumeMatriz({
 
         if (!resCur.success || !resPrev.success) return;
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         const curMap = new Map<string, number>();
         for (const m of (resCur.matrizes || []) as { matriz: string; monthQty?: Record<string, number> }[]) {
           let qty = 0;
@@ -3081,7 +3081,7 @@ function SlideVolumeMatriz({
 
   const barSz = Math.max(18, Math.round(700 / (chartData.length * 2 + 2) * 0.9));
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   function VolBarLabel(props: any) {
     const { x, y, width, height, value } = props;
     if (!value || height < 20) return null;
@@ -3098,7 +3098,7 @@ function SlideVolumeMatriz({
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   function VolDeltaLabel(props: any) {
     const { x, y, width, value, index } = props;
     if (!value) return null;
@@ -3167,20 +3167,20 @@ function SlideVolumeMatriz({
                 <Tooltip
                   cursor={{ fill: 'rgba(30,136,229,0.06)' }}
                   contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', fontFamily: 'var(--font-geist-sans, system-ui)' }}
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                   
                   formatter={(value: any, name: any) => {
                     const yr = name === 'volPrev' ? prevYear : year;
                     return [Number(value).toLocaleString('pt-BR'), `${yr}`];
                   }}
                 />
                 <Bar yAxisId="left" dataKey="volPrev" barSize={barSz} radius={[3, 3, 0, 0]} isAnimationActive={false} fill={COLOR_PREV}>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  { }
                   <LabelList dataKey="volPrev" content={(p: any) => <VolBarLabel {...p} />} />
                 </Bar>
                 <Bar yAxisId="left" dataKey="volCur" barSize={barSz} radius={[3, 3, 0, 0]} isAnimationActive={false} fill={COLOR_CUR}>
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  { }
                   <LabelList dataKey="volCur" content={(p: any) => <VolBarLabel {...p} />} />
-                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                  { }
                   <LabelList dataKey="volCur" content={(p: any) => <VolDeltaLabel {...p} />} />
                 </Bar>
               </ComposedChart>
@@ -3203,6 +3203,99 @@ function SlideVolumeMatriz({
   );
 }
 
+// ─── Sub-components de SlideFarol (fora do componente para evitar recriação) ──
+function MetricRow({
+  label, weight, block
+}: { label: string; weight: number; block: MetricBlock; isYtd?: boolean }) {
+  const light = trafficLight(block.pct);
+  const isVol = label === "VOLUME";
+  return (
+    <tr className="rdm-farol-row">
+      <td className="rdm-farol-label">{label}</td>
+      <td className="rdm-farol-weight">{weight}%</td>
+      <td className="rdm-farol-cell">
+        {isVol ? formatNumber(block.aa, 0) : formatCurrency(block.aa / 1000, 0)}
+      </td>
+      <td className="rdm-farol-cell">
+        {isVol ? formatNumber(block.fct, 0) : formatCurrency(block.fct / 1000, 0)}
+      </td>
+      <td className="rdm-farol-cell rdm-farol-desafio">
+        {isVol ? formatNumber(block.desafio, 0) : formatCurrency(block.desafio / 1000, 0)}
+      </td>
+      <td className="rdm-farol-cell rdm-farol-real" style={{ background: "#FF6B001A" }}>
+        {isVol ? formatNumber(block.real, 0) : formatCurrency(block.real / 1000, 0)}
+      </td>
+      <td className="rdm-farol-pct" style={{ background: light.bg, color: light.color }}>
+        {formatNumber(block.pct, 1)}%
+      </td>
+      <td className="rdm-farol-delta" style={{ color: block.delta >= 0 ? "#2e7d32" : "#c62828" }}>
+        {formatNumber(block.delta, 0)}
+      </td>
+    </tr>
+  );
+}
+
+function ScoreRow({ score }: { score: number }) {
+  const light = trafficLight(score);
+  return (
+    <tr className="rdm-farol-score-row">
+      <td colSpan={5} />
+      <td />
+      <td className="rdm-farol-pct rdm-farol-score" style={{ background: light.bg, color: light.color }}>
+        {formatNumber(score, 1)}%
+      </td>
+      <td />
+    </tr>
+  );
+}
+
+function FarolTable({ title, block, managerLabel }: {
+  title: string;
+  block: { vol: MetricBlock; fat: MetricBlock; score: number };
+  managerLabel: string;
+}) {
+  return (
+    <div className="rdm-farol-table-wrap">
+      {/* Manager label rotated */}
+      <div className="rdm-farol-manager-col">
+        <span>{managerLabel}</span>
+      </div>
+
+      <table className="rdm-farol-table">
+        <thead>
+          <tr>
+            <th className="rdm-th-indicador">INDICADOR</th>
+            <th />
+            <th colSpan={6} className="rdm-th-group">{title}</th>
+          </tr>
+          <tr>
+            <th />
+            <th />
+            <th className="rdm-th-col">A A</th>
+            <th className="rdm-th-col">FCT</th>
+            <th className="rdm-th-col">DESAFIO</th>
+            <th className="rdm-th-col">REAL</th>
+            <th className="rdm-th-col">%</th>
+            <th className="rdm-th-col">Δ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <MetricRow label="VOLUME"      weight={34} block={block.vol} />
+          <MetricRow label="FATURAMENTO" weight={33} block={block.fat} isYtd />
+          <tr className="rdm-farol-invest-placeholder">
+            <td className="rdm-farol-label rdm-invest-dim">INVESTIMENTO</td>
+            <td className="rdm-farol-weight rdm-invest-dim">33%</td>
+            <td colSpan={6} className="rdm-invest-dim" style={{ textAlign: "center", fontStyle: "italic", fontSize: "0.65rem" }}>
+              Em breve
+            </td>
+          </tr>
+          <ScoreRow score={block.score} />
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Slide 2: Farol de Metas ──────────────────────────────────────────────────
 function SlideFarol({
   monthName, farol, comment, onCommentChange, onCommentSave, saving
@@ -3217,100 +3310,12 @@ function SlideFarol({
   const m = farol.month;
   const y = farol.ytd;
 
-  function MetricRow({
-    label, weight, block, isYtd
-  }: { label: string; weight: number; block: MetricBlock; isYtd?: boolean }) {
-    const light = trafficLight(block.pct);
-    const isVol = label === "VOLUME";
-    return (
-      <tr className="rdm-farol-row">
-        <td className="rdm-farol-label">{label}</td>
-        <td className="rdm-farol-weight">{weight}%</td>
-        <td className="rdm-farol-cell">
-          {isVol ? formatNumber(block.aa, 0) : formatCurrency(block.aa / 1000, 0)}
-        </td>
-        <td className="rdm-farol-cell">
-          {isVol ? formatNumber(block.fct, 0) : formatCurrency(block.fct / 1000, 0)}
-        </td>
-        <td className="rdm-farol-cell rdm-farol-desafio">
-          {isVol ? formatNumber(block.desafio, 0) : formatCurrency(block.desafio / 1000, 0)}
-        </td>
-        <td className="rdm-farol-cell rdm-farol-real" style={{ background: "#FF6B001A" }}>
-          {isVol ? formatNumber(block.real, 0) : formatCurrency(block.real / 1000, 0)}
-        </td>
-        <td className="rdm-farol-pct" style={{ background: light.bg, color: light.color }}>
-          {formatNumber(block.pct, 1)}%
-        </td>
-        <td className="rdm-farol-delta" style={{ color: block.delta >= 0 ? "#2e7d32" : "#c62828" }}>
-          {formatNumber(block.delta, 0)}
-        </td>
-      </tr>
-    );
-  }
-
-  function ScoreRow({ score }: { score: number }) {
-    const light = trafficLight(score);
-    return (
-      <tr className="rdm-farol-score-row">
-        <td colSpan={5} />
-        <td />
-        <td className="rdm-farol-pct rdm-farol-score" style={{ background: light.bg, color: light.color }}>
-          {formatNumber(score, 1)}%
-        </td>
-        <td />
-      </tr>
-    );
-  }
-
-  function FarolTable({ title, block }: { title: string; block: { vol: MetricBlock; fat: MetricBlock; score: number } }) {
-    return (
-      <div className="rdm-farol-table-wrap">
-        {/* Manager label rotated */}
-        <div className="rdm-farol-manager-col">
-          <span>{farol.managerLabel}</span>
-        </div>
-
-        <table className="rdm-farol-table">
-          <thead>
-            <tr>
-              <th className="rdm-th-indicador">INDICADOR</th>
-              <th />
-              <th colSpan={6} className="rdm-th-group">{title}</th>
-            </tr>
-            <tr>
-              <th />
-              <th />
-              <th className="rdm-th-col">A A</th>
-              <th className="rdm-th-col">FCT</th>
-              <th className="rdm-th-col">DESAFIO</th>
-              <th className="rdm-th-col">REAL</th>
-              <th className="rdm-th-col">%</th>
-              <th className="rdm-th-col">Δ</th>
-            </tr>
-          </thead>
-          <tbody>
-            <MetricRow label="VOLUME"      weight={34} block={block.vol} />
-            <MetricRow label="FATURAMENTO" weight={33} block={block.fat} isYtd />
-            <tr className="rdm-farol-invest-placeholder">
-              <td className="rdm-farol-label rdm-invest-dim">INVESTIMENTO</td>
-              <td className="rdm-farol-weight rdm-invest-dim">33%</td>
-              <td colSpan={6} className="rdm-invest-dim" style={{ textAlign: "center", fontStyle: "italic", fontSize: "0.65rem" }}>
-                Em breve
-              </td>
-            </tr>
-            <ScoreRow score={block.score} />
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
   return (
     <SlideShell title="Farol de Metas" monthName={monthName}>
       <div className="rdm-farol-content">
         <div className="rdm-farol-tables-row">
-          <FarolTable title={monthName.toUpperCase()} block={m} />
-          <FarolTable title={y.label}                 block={y} />
+          <FarolTable title={monthName.toUpperCase()} block={m} managerLabel={farol.managerLabel} />
+          <FarolTable title={y.label} block={y} managerLabel={farol.managerLabel} />
         </div>
 
         {/* Comment area */}

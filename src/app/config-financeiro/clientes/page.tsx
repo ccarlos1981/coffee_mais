@@ -264,7 +264,7 @@ export default function ClientesListPage() {
           columns.forEach(col => {
             const dbField = mappedCols[col];
             if (dbField) {
-              let val = row[col];
+              const val = row[col];
               if (val !== undefined && val !== null) {
                 if (dbField === "codigo") {
                   record.codigo = parseInt(String(val).replace(/\.0$/, "").replace(/\D/g, ""));

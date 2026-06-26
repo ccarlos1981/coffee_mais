@@ -1,6 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 
-let supabaseInstance: any = null;
+type SupabaseClient = ReturnType<typeof createBrowserClient>;
+
+let supabaseInstance: SupabaseClient | null = null;
 
 function getSupabaseInstance() {
   if (!supabaseInstance) {
@@ -19,7 +21,7 @@ function getSupabaseInstance() {
   return supabaseInstance;
 }
 
-export const supabase = new Proxy({} as any, {
+export const supabase = new Proxy({} as SupabaseClient, {
   get(target, prop) {
     const instance = getSupabaseInstance();
     const value = instance[prop];

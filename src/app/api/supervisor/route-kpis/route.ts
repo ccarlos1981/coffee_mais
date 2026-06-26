@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       .gte("created_at", todayStart.toISOString());
 
     let totalExecutionMin = 0;
-    let activePromotersToday = new Set<string>();
+    const activePromotersToday = new Set<string>();
 
     todayVisits?.forEach(v => {
       totalExecutionMin += v.duracao_real_min || v.duracao_estimada_min || 60;

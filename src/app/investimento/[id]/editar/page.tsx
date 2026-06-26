@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { InvestmentForm } from "@/app/investimento/lancar/InvestmentForm";
 import { notFound } from "next/navigation";
+import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
 
 export const metadata = {
   title: "Editar Investimento - Coffee Mais",
@@ -28,7 +29,6 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
   }
 
   // Fetch matrices with their codes from database
-  const { obterRedesMatrizes } = require("../../lancar/actions");
   const redesList = await obterRedesMatrizes();
 
   // Hardcoded product families as requested

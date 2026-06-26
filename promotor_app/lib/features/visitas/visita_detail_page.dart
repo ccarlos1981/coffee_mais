@@ -1971,7 +1971,7 @@ class _VisitaDetailPageState extends ConsumerState<VisitaDetailPage> {
                     ],
                   ),
                 );
-              }).toList(),
+              }),
           ],
         ),
       ),

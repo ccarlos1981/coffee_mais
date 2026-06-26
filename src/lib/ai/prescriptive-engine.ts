@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getRecalibratedWeights } from "./learning-engine";
+// getRecalibratedWeights reserved for future use
 import { getCompanyKPIConfig, validateAIDecision } from "./governance-engine";
 
 export interface PrescriptiveRecommendation {
@@ -25,12 +25,12 @@ export interface PrescriptiveRecommendation {
   estimated_roi: number;
   recommendation_confidence: number;
   reasoning: string[];
-  recommended_action: Record<string, any>;
+  recommended_action: Record<string, unknown>;
   status: "OPEN" | "IN_PROGRESS" | "EXECUTED" | "DISMISSED";
   assigned_user_id?: string;
   company_id: string;
   recommendation_fingerprint?: string;
-  alternative_actions?: any[];
+  alternative_actions?: unknown[];
   requires_approval?: boolean;
   approval_status?: "PENDING" | "APPROVED" | "REJECTED";
   governance_badge?: string;
@@ -76,10 +76,10 @@ export function simulateTradeAction(
   const totalCost = Math.max(100.00, discountCost + displayCost + degustationCost + promotorCost); // default min R$ 100 to avoid div by zero
 
   // 2. Calculate Uplifts
-  let discountUplift = discount * 2.4; // 5% discount -> 12% uplift, 10% discount -> 24% uplift
-  let displayUplift = displayInvest > 0 ? 22.0 + Math.min(10.0, (displayInvest / 500.0) * 2.0) : 0.0;
-  let degustationUplift = degustationDays > 0 ? 18.0 + Math.min(12.0, degustationDays * 2.0) : 0.0;
-  let promotorUplift = promotorHours > 0 ? Math.min(15.0, promotorHours * 0.4) : 0.0;
+  const discountUplift = discount * 2.4; // 5% discount -> 12% uplift, 10% discount -> 24% uplift
+  const displayUplift = displayInvest > 0 ? 22.0 + Math.min(10.0, (displayInvest / 500.0) * 2.0) : 0.0;
+  const degustationUplift = degustationDays > 0 ? 18.0 + Math.min(12.0, degustationDays * 2.0) : 0.0;
+  const promotorUplift = promotorHours > 0 ? Math.min(15.0, promotorHours * 0.4) : 0.0;
 
   // Combine uplifts with a saturation dampening (capped at 80% total)
   const rawCombinedUplift = discountUplift + displayUplift + degustationUplift + promotorUplift;
@@ -143,7 +143,7 @@ export async function generateNextBestActions(
   };
 
   // 1. 7-Day Deduplication check helper
-  const isDuplicate = async (type: string): Promise<any | null> => {
+  const isDuplicate = async (type: string): Promise<{ id: string; created_at: string; status: string } | null> => {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -525,7 +525,7 @@ export async function generateNextBestActions(
       }
     });
 
-    const inserts: any[] = [];
+    const inserts: Record<string, unknown>[] = [];
     for (const rec of recommendations) {
       const existingId = rec.recommendation_fingerprint ? existingMap.get(rec.recommendation_fingerprint) : null;
       if (existingId) {

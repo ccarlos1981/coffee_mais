@@ -84,7 +84,7 @@ export async function getAIGovernancePolicies(companyId: string): Promise<Govern
   data?.forEach(row => {
     const val = row.policy_value;
     if (row.policy_key === "ai_autonomy_level") {
-      policies.ai_autonomy_level = val as any;
+      policies.ai_autonomy_level = val as "FULL" | "SUPERVISED" | "MANUAL";
     } else if (row.policy_key === "min_confidence_to_act") {
       policies.min_confidence_to_act = Number(val);
     } else if (row.policy_key === "require_human_approval") {
@@ -109,7 +109,7 @@ export async function validateAIDecision(
   recommendation: {
     recommendation_type: string;
     recommendation_confidence: number;
-    recommended_action?: Record<string, any>;
+    recommended_action?: Record<string, unknown>;
     entity_id: string;
     entity_type: string;
   },
@@ -177,7 +177,7 @@ export async function validateAIDecision(
 
     let cumulativeDiscount = discount;
     pastRecs?.forEach(pr => {
-      const act = pr.recommended_action as Record<string, any>;
+      const act = pr.recommended_action as Record<string, unknown>;
       cumulativeDiscount += Number(act?.discount_percent || 0);
     });
 

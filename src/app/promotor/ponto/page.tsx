@@ -784,13 +784,13 @@ export default function PromotorPontoPage() {
                     </div>
                     <div className="mt-2.5 pt-2 border-t border-neutral-900/60">
                       <p className="text-[10px] text-neutral-400 leading-normal italic">
-                        "{item.justificativa}"
+                        &quot;{item.justificativa}&quot;
                       </p>
                     </div>
                     {item.observacao_supervisor && (
                       <div className="mt-2 p-2 bg-neutral-950/60 border border-neutral-900 rounded-lg">
                         <p className="text-[9px] font-bold text-neutral-400">Resposta do Supervisor:</p>
-                        <p className="text-[9px] text-neutral-500 mt-0.5 italic">"{item.observacao_supervisor}"</p>
+                        <p className="text-[9px] text-neutral-500 mt-0.5 italic">&quot;{item.observacao_supervisor}&quot;</p>
                       </div>
                     )}
                   </div>

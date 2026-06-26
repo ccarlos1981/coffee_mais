@@ -1,19 +1,20 @@
 import { useState, useEffect } from "react";
 
 export function usePersistedState<T>(key: string, initialValue: T): [T, (val: T) => void] {
-  const [state, setState] = useState<T>(initialValue);
-
-  // Load from localStorage on mount (client-side only)
-  useEffect(() => {
+  const [state, setState] = useState<T>(() => {
+    // Lazy initializer: runs once on mount, reads localStorage synchronously (client-side only)
+    if (typeof window === "undefined") return initialValue;
     const saved = localStorage.getItem(key);
     if (saved !== null) {
       try {
-        setState(JSON.parse(saved));
+        return JSON.parse(saved) as T;
       } catch (e) {
         console.error(`[usePersistedState] Error parsing key "${key}":`, e);
       }
     }
-  }, [key]);
+    return initialValue;
+  });
+
 
   // Sync state changes back to localStorage
   const setPersistedState = (value: T) => {

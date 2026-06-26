@@ -17,7 +17,7 @@ export async function calculateVisitDuration(pdvId: string): Promise<number> {
   const supabase = createAdminClient();
 
   // 1. Fetch faturamento from base_atendimento
-  const { data: pdvData, error: pdvError } = await supabase
+  const { data: pdvData } = await supabase
     .from("base_atendimento")
     .select("faturamento_mensal")
     .eq("cod_parceiro", pdvId)

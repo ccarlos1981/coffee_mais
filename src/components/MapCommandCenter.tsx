@@ -85,6 +85,120 @@ export default function MapCommandCenter({
     return live.status;
   };
 
+  // Private function to plot a single PDV pin
+  const plotSinglePDV = (v: any) => {
+    const geo = geolocs[v.cod_parceiro];
+    const coords: L.LatLngTuple = [geo.latitude, geo.longitude];
+
+    let pdvColor = "#ffffff";
+    let pdvText = "Não Visitado";
+
+    if (v.status === "EM_ROTA" || v.status === "CHECKIN_REALIZADO" || v.status === "EM_EXECUCAO") {
+      pdvColor = "#eab308";
+      pdvText = "Em Execução";
+    } else if (v.status === "CONCLUIDA") {
+      pdvColor = "#10b981";
+      pdvText = "Concluído";
+    } else if (v.status === "LOJA_FECHADA" || v.status === "NAO_REALIZADA" || v.status === "CANCELADA") {
+      pdvColor = "#ef4444";
+      pdvText = "Ocorrência / Não Realizada";
+    }
+
+    const pdvIcon = L.divIcon({
+      className: `custom-pdv-marker-${v.cod_parceiro}`,
+      html: `
+        <div class="relative flex items-center justify-center w-7 h-7">
+          <div class="w-5 h-5 rounded-full border-2 border-neutral-950 shadow-md flex items-center justify-center" style="background-color: ${pdvColor}">
+            <div class="w-1.5 h-1.5 rounded-full bg-neutral-950"></div>
+          </div>
+        </div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+    });
+
+    const popupContent = `
+      <div class="p-1.5 text-xs bg-neutral-950 text-white rounded-lg">
+        <h4 class="font-extrabold text-neutral-100">${v.pdv?.nome_fantasia || "PDV"}</h4>
+        <p class="text-[9px] text-neutral-500 font-mono">Código: ${v.cod_parceiro}</p>
+        <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase mt-1.5 inline-block border" style="border-color: ${pdvColor}; color: ${pdvColor}">
+          ${pdvText}
+        </span>
+      </div>
+    `;
+
+    L.marker(coords, { icon: pdvIcon })
+      .addTo(pdvsLayer.current!)
+      .bindPopup(popupContent);
+  };
+
+  // Private function to plot PDV pins with client-side clustering
+  const plotPDVs = (pdvVisitas: any[], zoom: number) => {
+    if (!pdvsLayer.current) return;
+
+    const geolocatedVisits = pdvVisitas.filter((v) => {
+      const geo = geolocs[v.cod_parceiro];
+      return geo?.latitude && geo?.longitude;
+    });
+
+    const useClustering = zoom < 13;
+    const clusterTolerance = 0.005;
+
+    if (useClustering && geolocatedVisits.length > 1) {
+      const clusters: { center: L.LatLngTuple; items: any[] }[] = [];
+
+      geolocatedVisits.forEach((v) => {
+        const geo = geolocs[v.cod_parceiro];
+        const vCoords: L.LatLngTuple = [geo.latitude, geo.longitude];
+
+        const existingCluster = clusters.find((c) => {
+          const distLat = Math.abs(c.center[0] - vCoords[0]);
+          const distLng = Math.abs(c.center[1] - vCoords[1]);
+          return distLat < clusterTolerance && distLng < clusterTolerance;
+        });
+
+        if (existingCluster) {
+          existingCluster.items.push(v);
+        } else {
+          clusters.push({ center: vCoords, items: [v] });
+        }
+      });
+
+      clusters.forEach((cluster, idx) => {
+        if (cluster.items.length === 1) {
+          plotSinglePDV(cluster.items[0]);
+        } else {
+          const clusterIcon = L.divIcon({
+            className: `custom-pdv-cluster-${idx}`,
+            html: `
+              <div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-neutral-900 border-2 border-amber-500 text-amber-400 font-extrabold text-[10px] shadow-lg">
+                +${cluster.items.length}
+              </div>
+            `,
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+
+          const popupContent = `
+            <div class="p-1.5 text-[10px] bg-neutral-950 text-white rounded-lg flex flex-col gap-1">
+              <span class="font-extrabold text-amber-400 uppercase tracking-wider text-[8px] border-b border-neutral-900 pb-1">Agrupamento (${cluster.items.length} PDVs)</span>
+              ${cluster.items.map((item) => `<span>• ${item.pdv?.nome_fantasia || "PDV"}</span>`).join("")}
+              <span class="text-neutral-500 text-[8px] italic mt-1 text-center">Aumente o zoom para ver detalhes</span>
+            </div>
+          `;
+
+          L.marker(cluster.center, { icon: clusterIcon })
+            .addTo(pdvsLayer.current!)
+            .bindPopup(popupContent);
+        }
+      });
+    } else {
+      geolocatedVisits.forEach((v) => {
+        plotSinglePDV(v);
+      });
+    }
+  };
+
   // Redraw map elements when props or zoom changes
   useEffect(() => {
     const map = leafletMap.current;
@@ -309,133 +423,6 @@ export default function MapCommandCenter({
     isReplayActive,
     mapZoom,
   ]);
-
-  // Private function to plot PDV pins, incorporating client-side clustering for zoom scale
-  const plotPDVs = (pdvVisitas: any[], zoom: number) => {
-    if (!pdvsLayer.current) return;
-
-    // Filter valid geolocated visits
-    const geolocatedVisits = pdvVisitas.filter((v) => {
-      const geo = geolocs[v.cod_parceiro];
-      return geo?.latitude && geo?.longitude;
-    });
-
-    // --- Marker Clustering Logic for scalability ---
-    // If zoomed out, cluster close items together
-    const useClustering = zoom < 13;
-    const clusterTolerance = 0.005; // ~500m scale
-
-    if (useClustering && geolocatedVisits.length > 1) {
-      const clusters: { center: L.LatLngTuple; items: any[] }[] = [];
-
-      geolocatedVisits.forEach((v) => {
-        const geo = geolocs[v.cod_parceiro];
-        const vCoords: L.LatLngTuple = [geo.latitude, geo.longitude];
-
-        // Try to find a cluster nearby
-        const existingCluster = clusters.find((c) => {
-          const distLat = Math.abs(c.center[0] - vCoords[0]);
-          const distLng = Math.abs(c.center[1] - vCoords[1]);
-          return distLat < clusterTolerance && distLng < clusterTolerance;
-        });
-
-        if (existingCluster) {
-          existingCluster.items.push(v);
-        } else {
-          clusters.push({ center: vCoords, items: [v] });
-        }
-      });
-
-      // Plot cluster markers
-      clusters.forEach((cluster, idx) => {
-        if (cluster.items.length === 1) {
-          plotSinglePDV(cluster.items[0]);
-        } else {
-          // Render a custom cluster marker
-          const clusterIcon = L.divIcon({
-            className: `custom-pdv-cluster-${idx}`,
-            html: `
-              <div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-neutral-900 border-2 border-amber-500 text-amber-400 font-extrabold text-[10px] shadow-lg">
-                +${cluster.items.length}
-              </div>
-            `,
-            iconSize: [32, 32],
-            iconAnchor: [16, 16],
-          });
-
-          const popupContent = `
-            <div class="p-1.5 text-[10px] bg-neutral-950 text-white rounded-lg flex flex-col gap-1">
-              <span class="font-extrabold text-amber-400 uppercase tracking-wider text-[8px] border-b border-neutral-900 pb-1">Agrupamento (${cluster.items.length} PDVs)</span>
-              ${cluster.items
-                .map((item) => `<span>• ${item.pdv?.nome_fantasia || "PDV"}</span>`)
-                .join("")}
-              <span class="text-neutral-500 text-[8px] italic mt-1 text-center">Aumente o zoom para ver detalhes</span>
-            </div>
-          `;
-
-          L.marker(cluster.center, { icon: clusterIcon })
-            .addTo(pdvsLayer.current!)
-            .bindPopup(popupContent);
-        }
-      });
-    } else {
-      // Zoom is detailed, plot individual markers
-      geolocatedVisits.forEach((v) => {
-        plotSinglePDV(v);
-      });
-    }
-  };
-
-  const plotSinglePDV = (v: any) => {
-    const geo = geolocs[v.cod_parceiro];
-    const coords: L.LatLngTuple = [geo.latitude, geo.longitude];
-
-    // Status visual color matching
-    let pdvColor = "#ffffff"; // Branco = Não visitado (default PLANEJADA)
-    let pdvText = "Não Visitado";
-
-    if (v.status === "EM_ROTA" || v.status === "CHECKIN_REALIZADO" || v.status === "EM_EXECUCAO") {
-      pdvColor = "#eab308"; // Amarelo = Em rota
-      pdvText = "Em Execução";
-    } else if (v.status === "CONCLUIDA") {
-      pdvColor = "#10b981"; // Verde = Concluído
-      pdvText = "Concluído";
-    } else if (
-      v.status === "LOJA_FECHADA" ||
-      v.status === "NAO_REALIZADA" ||
-      v.status === "CANCELADA"
-    ) {
-      pdvColor = "#ef4444"; // Vermelho = Ocorrência
-      pdvText = "Ocorrência / Não Realizada";
-    }
-
-    const pdvIcon = L.divIcon({
-      className: `custom-pdv-marker-${v.cod_parceiro}`,
-      html: `
-        <div class="relative flex items-center justify-center w-7 h-7">
-          <div class="w-5 h-5 rounded-full border-2 border-neutral-950 shadow-md flex items-center justify-center" style="background-color: ${pdvColor}">
-            <div class="w-1.5 h-1.5 rounded-full bg-neutral-950"></div>
-          </div>
-        </div>
-      `,
-      iconSize: [28, 28],
-      iconAnchor: [14, 14],
-    });
-
-    const popupContent = `
-      <div class="p-1.5 text-xs bg-neutral-950 text-white rounded-lg">
-        <h4 class="font-extrabold text-neutral-100">${v.pdv?.nome_fantasia || "PDV"}</h4>
-        <p class="text-[9px] text-neutral-500 font-mono">Código: ${v.cod_parceiro}</p>
-        <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase mt-1.5 inline-block border" style="border-color: ${pdvColor}; color: ${pdvColor}">
-          ${pdvText}
-        </span>
-      </div>
-    `;
-
-    L.marker(coords, { icon: pdvIcon })
-      .addTo(pdvsLayer.current!)
-      .bindPopup(popupContent);
-  };
 
   return <div ref={mapRef} className="w-full h-full" />;
 }

@@ -8,7 +8,7 @@ export async function createClient() {
   try {
     const reqHeaders = await headers();
     authHeader = reqHeaders.get("authorization") || undefined;
-  } catch (e) {
+  } catch {
     // Safe fallback for static rendering or other environments where headers() is not available
   }
 
