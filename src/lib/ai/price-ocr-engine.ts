@@ -165,7 +165,7 @@ export async function simulatePriceOCR(
     .from("cm_price_reference")
     .select("*");
 
-  const priceRefMap = new Map<string, any>();
+  const priceRefMap = new Map<string, { sku: string; target_price: number; strategic_floor: number; strategic_ceiling: number }>();
   priceRefs?.forEach(ref => {
     priceRefMap.set(ref.sku, ref);
   });
@@ -343,9 +343,10 @@ export async function simulatePriceOCR(
     .eq("id", visitaId)
     .single();
 
-  const pdvId = (visitaDetails?.base_atendimento as any)?.cod_parceiro || "unknown";
-  const region = (visitaDetails?.base_atendimento as any)?.uf || "MG";
-  const rede = (visitaDetails?.base_atendimento as any)?.rede || "Independente";
+  type BaseAtendimento = { cod_parceiro: string; cidade: string; uf: string; rede: string };
+  const pdvId = (visitaDetails?.base_atendimento as BaseAtendimento | null)?.cod_parceiro || "unknown";
+  const region = (visitaDetails?.base_atendimento as BaseAtendimento | null)?.uf || "MG";
+  const rede = (visitaDetails?.base_atendimento as BaseAtendimento | null)?.rede || "Independente";
 
   // Historical Reference Window setup
   const anomalyReferenceWindowDays = 30;
@@ -516,7 +517,7 @@ export async function simulatePriceOCR(
         .order("created_at", { ascending: false });
 
       if (rawHistory && rawHistory.length > 0) {
-        const historyMapped = rawHistory.map((h: any) => ({
+        const historyMapped = rawHistory.map((h) => ({
           price: parseFloat(h.price),
           cod_parceiro: h.price_analysis?.visita?.cod_parceiro || "",
           rede: h.price_analysis?.visita?.base_atendimento?.rede || "Independente",
@@ -654,7 +655,7 @@ export async function simulatePriceOCR(
     .select("shelf_share_percent")
     .eq("id", analysisId)
     .single();
-  const shelfShare = shelfAnalysis?.shelf_share_percent ? parseFloat(shelfAnalysis.shelf_share_percent as any) : 40.0;
+  const shelfShare = shelfAnalysis?.shelf_share_percent ? parseFloat(String(shelfAnalysis.shelf_share_percent)) : 40.0;
 
   const isOverpriced = pricingRisk === "OVERPRICED";
   const isRuptured = detectedProducts.some(p => !p.competitor_intrusion && p.facings < p.expected_facings);

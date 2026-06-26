@@ -29,11 +29,11 @@ export async function GET(request: Request) {
 
     // 3. Gather active raw metrics from Database (with fallback defaults)
     let rawRuptureRate = 0.08; // 8%
-    let rawPriceGap = 0.04;    // 4%
-    let rawSelloutVelocity = 6.5; // 6.5 boxes/day
+    const rawPriceGap = 0.04;    // 4%
+    const rawSelloutVelocity = 6.5; // 6.5 boxes/day
     let rawCoverageRate = 0.78; // 78%
     let rawShareOfShelf = 0.38; // 38%
-    let rawConversionRate = 0.65; // 65%
+    const rawConversionRate = 0.65; // 65%
 
     // Query rupture rate
     try {

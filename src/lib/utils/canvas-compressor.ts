@@ -49,7 +49,7 @@ export async function compressImage(
         ctx.drawImage(img, 0, 0, width, height);
 
         // 3. Compressão recursiva até atingir a meta de tamanho (< 250 KB)
-        let quality = 0.8;
+        const quality = 0.8;
         const targetBytes = targetSizeKB * 1024;
 
         const attemptCompression = (currentQuality: number) => {

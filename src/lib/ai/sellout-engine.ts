@@ -44,7 +44,7 @@ export async function processPDVSellout(pdvId: string): Promise<SkuSelloutResult
     .limit(1)
     .maybeSingle();
 
-  const detectedProducts = (latestAnalysis?.detected_products as any[]) || [];
+  const detectedProducts = (latestAnalysis?.detected_products as Array<{ sku: string; brand: string; facings: number; rupture_status: string }>) || [];
 
   // 3. Recalculate each SKU
   const results: SkuSelloutResult[] = [];

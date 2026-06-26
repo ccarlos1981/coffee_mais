@@ -347,7 +347,7 @@ export default function TradeDashboardPage() {
                     </p>
                     
                     <p className="text-[10px] text-neutral-400 italic leading-relaxed line-clamp-2">
-                      "{o.descricao || "Sem observações detalhadas."}"
+                      &quot;{o.descricao || "Sem observações detalhadas."}&quot;
                     </p>
                     
                     <p className="text-[9px] text-neutral-500 mt-1 flex items-center gap-1.5">

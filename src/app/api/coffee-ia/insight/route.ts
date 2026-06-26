@@ -106,7 +106,7 @@ POSITIVAÇÃO (clientes ativos com faturamento):
       generationConfig: {
         maxOutputTokens: 1500,
         temperature: 0.7,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+         
         thinkingConfig: { thinkingBudget: 0 },
       } as any,
     });

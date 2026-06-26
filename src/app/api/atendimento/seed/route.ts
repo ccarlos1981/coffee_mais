@@ -23,7 +23,7 @@ export async function POST() {
       rede: string | null;
       channel: string | null;
     }
-    let allSales: SalesRow[] = [];
+    const allSales: SalesRow[] = [];
     let from = 0;
     const batchSize = 1000;
     

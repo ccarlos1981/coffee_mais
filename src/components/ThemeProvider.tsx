@@ -19,14 +19,14 @@ export function useTheme() {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>(() => {
+    // Lazy initializer: runs once on mount, only on client
+    if (typeof window === "undefined") return "light";
+    return (localStorage.getItem("coffee-theme") as Theme | null) ?? "light";
+  });
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("coffee-theme") as Theme | null;
-    if (saved) {
-      setTheme(saved);
-    }
     setMounted(true);
   }, []);
 

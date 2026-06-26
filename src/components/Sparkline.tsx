@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 interface SparklineProps {
   data: number[];
@@ -23,8 +23,12 @@ export function Sparkline({
   fillOpacity = 0.15,
   strokeWidth = 1.5,
 }: SparklineProps) {
-  const { linePath, areaPath, id } = useMemo(() => {
-    if (!data || data.length < 2) return { linePath: "", areaPath: "", id: "" };
+  // useId() generates a stable, unique ID per component instance (React 18+)
+  const uid = useId();
+  const gradId = `spark-${uid.replace(/:/g, "")}`;
+
+  const { linePath, areaPath } = useMemo(() => {
+    if (!data || data.length < 2) return { linePath: "", areaPath: "" };
 
     const min = Math.min(...data);
     const max = Math.max(...data);
@@ -50,10 +54,7 @@ export function Sparkline({
     const line = lineSegments.join(" ");
     const area = `${line} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
 
-    // Unique gradient ID
-    const gradId = `spark-${Math.random().toString(36).slice(2, 8)}`;
-
-    return { linePath: line, areaPath: area, id: gradId };
+    return { linePath: line, areaPath: area };
   }, [data, width, height]);
 
   if (!data || data.length < 2) return null;
@@ -69,13 +70,13 @@ export function Sparkline({
       style={{ display: "block", overflow: "visible" }}
     >
       <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
           <stop offset="100%" stopColor={color} stopOpacity={0} />
         </linearGradient>
       </defs>
       {/* Area fill */}
-      <path d={areaPath} fill={`url(#${id})`} />
+      <path d={areaPath} fill={`url(#${gradId})`} />
       {/* Line */}
       <path
         d={linePath}

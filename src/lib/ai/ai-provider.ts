@@ -18,7 +18,7 @@ export interface AIProvider {
 }
 
 export class SimulatedProvider implements AIProvider {
-  async analyzeShelf(image: string) {
+  async analyzeShelf(_image: string) {
     return {
       provider: "SimulatedProvider (Legacy Engine)",
       shelf_share_percent: 32.5,
@@ -30,7 +30,7 @@ export class SimulatedProvider implements AIProvider {
     };
   }
 
-  async detectPrices(image: string) {
+  async detectPrices(_image: string) {
     return {
       provider: "SimulatedProvider (Legacy Engine)",
       pricing_issues: [
@@ -51,7 +51,7 @@ export class SimulatedProvider implements AIProvider {
 }
 
 export class OpenCVProvider implements AIProvider {
-  async analyzeShelf(image: string) {
+  async analyzeShelf(_image: string) {
     return {
       provider: "OpenCVProvider (Local Edge CV)",
       shelf_share_percent: 35.0,
@@ -63,7 +63,7 @@ export class OpenCVProvider implements AIProvider {
     };
   }
 
-  async detectPrices(image: string) {
+  async detectPrices(_image: string) {
     return {
       provider: "OpenCVProvider (Local Edge CV)",
       pricing_issues: [
@@ -84,7 +84,7 @@ export class OpenCVProvider implements AIProvider {
 }
 
 export class VisionAPIProvider implements AIProvider {
-  async analyzeShelf(image: string) {
+  async analyzeShelf(_image: string) {
     return {
       provider: "VisionAPIProvider (Cloud Vision AI)",
       shelf_share_percent: 41.2,
@@ -96,7 +96,7 @@ export class VisionAPIProvider implements AIProvider {
     };
   }
 
-  async detectPrices(image: string) {
+  async detectPrices(_image: string) {
     return {
       provider: "VisionAPIProvider (Cloud Vision AI)",
       pricing_issues: [
@@ -117,7 +117,7 @@ export class VisionAPIProvider implements AIProvider {
 }
 
 export class CustomMLProvider implements AIProvider {
-  async analyzeShelf(image: string) {
+  async analyzeShelf(_image: string) {
     return {
       provider: "CustomMLProvider (YOLOv8 Custom Model)",
       shelf_share_percent: 43.5,
@@ -129,7 +129,7 @@ export class CustomMLProvider implements AIProvider {
     };
   }
 
-  async detectPrices(image: string) {
+  async detectPrices(_image: string) {
     return {
       provider: "CustomMLProvider (YOLOv8 Custom Model)",
       pricing_issues: [

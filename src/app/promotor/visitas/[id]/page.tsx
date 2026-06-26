@@ -775,7 +775,7 @@ export default function PromotorVisitaExecucaoPage() {
               {fotos.length === 0 ? (
                 <div className="p-5 rounded-xl bg-neutral-900/30 border border-neutral-900/80 text-center py-6 text-neutral-500 text-xs">
                   <ImageIcon className="w-8 h-8 mx-auto mb-2 text-neutral-600" />
-                  Nenhuma foto cadastrada nesta visita. Clique em "Nova Foto" para registrar.
+                  Nenhuma foto cadastrada nesta visita. Clique em &quot;Nova Foto&quot; para registrar.
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">

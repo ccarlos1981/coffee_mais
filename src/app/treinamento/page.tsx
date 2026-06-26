@@ -168,7 +168,7 @@ function parseMarkdownToHtml(md: string): string {
       .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 font-mono text-[10px] text-amber-400">$1</code>');
   };
 
-  for (let line of lines) {
+  for (const line of lines) {
     const trimmed = line.trim();
 
     // Image frame boundaries

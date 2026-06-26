@@ -1548,7 +1548,7 @@ export default function InvestimentoPage() {
                   ) : paginatedData.length === 0 ? (
                     <tr>
                       <td colSpan={11} className="px-6 py-12 text-center text-muted">
-                        Nenhum lançamento encontrado. Clique em "Lançar Investimento" para começar.
+                        Nenhum lançamento encontrado. Clique em &quot;Lançar Investimento&quot; para começar.
                       </td>
                     </tr>
                   ) : (

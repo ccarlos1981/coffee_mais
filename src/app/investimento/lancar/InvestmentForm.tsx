@@ -108,7 +108,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         finalValue = parts[0] + "," + parts.slice(1).join("");
       }
     } else {
-      let v = value.replace(/\D/g, "");
+      const v = value.replace(/\D/g, "");
       if (!v) {
         finalValue = "";
       } else {

@@ -1386,12 +1386,12 @@ export default function SupervisorCommandCenterPage() {
           
           <ThemeToggle />
           
-          <a
+          <Link
             href="/"
             className="px-3.5 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-300 hover:text-white text-xs font-bold rounded-lg border border-neutral-800 transition"
           >
             Voltar
-          </a>
+          </Link>
         </div>
       </header>
 

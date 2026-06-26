@@ -363,7 +363,7 @@ export default function SupervisorPontoPage() {
                       {a.tipo_alerta}
                     </span>
                     <span className="font-semibold text-neutral-200">{a.employee?.nome_completo}:</span>
-                    <span className="text-neutral-400 ml-1">"{a.descricao}"</span>
+                    <span className="text-neutral-400 ml-1">&quot;{a.descricao}&quot;</span>
                   </div>
                   <button 
                     onClick={() => handleResolverAlerta(a.id)}
@@ -563,7 +563,7 @@ export default function SupervisorPontoPage() {
                         </div>
 
                         <div className="mt-3 p-3 bg-neutral-950/60 rounded-lg text-xs leading-relaxed italic text-neutral-400 border border-neutral-900">
-                          "{item.justificativa}"
+                          &quot;{item.justificativa}&quot;
                         </div>
                       </div>
 

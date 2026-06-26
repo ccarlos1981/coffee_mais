@@ -1487,6 +1487,7 @@ function DonutChart({ data }: { data: FamiliaData[] }) {
     let sliceAngle = totalFat > 0 ? (d.fat / totalFat) * 360 : 0;
     if (sliceAngle === 360) sliceAngle = 359.99;
     const startAngle = cumulativeAngle;
+    // eslint-disable-next-line react-hooks/immutability
     cumulativeAngle += sliceAngle;
 
     const startRad = ((startAngle - 90) * Math.PI) / 180;
@@ -1506,6 +1507,7 @@ function DonutChart({ data }: { data: FamiliaData[] }) {
 
     return { path, color: PIE_COLORS[i % PIE_COLORS.length], familia: d.familia, pct: d.pct };
   });
+
 
   return (
     <div>
