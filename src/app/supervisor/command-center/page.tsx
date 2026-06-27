@@ -2808,13 +2808,13 @@ export default function SupervisorCommandCenterPage() {
                             forensicMetrics.deviation_percent > 30 ? "text-red-400 animate-pulse" : "text-emerald-400"
                           }`}>+{forensicMetrics.deviation_percent}%</span>
                         </div>
-                        <div className="flex flex-col col-span-2 border-t border-neutral-900 pt-2 flex flex-row justify-between items-center">
+                        <div className="flex flex-row col-span-2 border-t border-neutral-900 pt-2 justify-between items-center">
                           <span className="text-neutral-500 uppercase font-black text-[8px]">Score Diário (Operação)</span>
                           <span className={`text-xs font-black font-mono ${
                             forensicMetrics.daily_score >= 80 ? "text-emerald-400" : forensicMetrics.daily_score >= 50 ? "text-amber-400" : "text-red-400"
                           }`}>{forensicMetrics.daily_score}/100</span>
                         </div>
-                        <div className="flex flex-col col-span-2 border-t border-neutral-900 pt-2 flex flex-row justify-between items-center">
+                        <div className="flex flex-row col-span-2 border-t border-neutral-900 pt-2 justify-between items-center">
                           <span className="text-neutral-500 uppercase font-black text-[8px]">Score de Fraude (Antifraude)</span>
                           <span className={`text-xs font-black font-mono ${
                             (forensicMetrics.fraud_score !== undefined ? forensicMetrics.fraud_score : 100) >= 80 ? "text-emerald-400" : (forensicMetrics.fraud_score !== undefined ? forensicMetrics.fraud_score : 100) >= 50 ? "text-amber-400" : "text-red-400"
@@ -4263,14 +4263,14 @@ export default function SupervisorCommandCenterPage() {
                                   <button
                                     disabled={isReviewing}
                                     onClick={() => handleReviewAction("APPROVE")}
-                                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-neutral-950 text-[10px] font-black uppercase rounded-lg transition-colors font-bold"
+                                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-neutral-950 text-[10px] font-black uppercase rounded-lg transition-colors"
                                   >
                                     {isReviewing ? "Aprovando..." : "Aprovar Manual"}
                                   </button>
                                   <button
                                     disabled={isReviewing}
                                     onClick={() => handleReviewAction("REPROCESS")}
-                                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 disabled:opacity-50 text-amber-400 text-[10px] font-black uppercase rounded-lg transition-colors font-bold"
+                                    className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 disabled:opacity-50 text-amber-400 text-[10px] font-black uppercase rounded-lg transition-colors"
                                   >
                                     {isReviewing ? "Reprocessando..." : "Reprocessar"}
                                   </button>
