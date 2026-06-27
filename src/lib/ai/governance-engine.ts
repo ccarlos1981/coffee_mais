@@ -84,7 +84,7 @@ export async function getAIGovernancePolicies(companyId: string): Promise<Govern
   data?.forEach(row => {
     const val = row.policy_value;
     if (row.policy_key === "ai_autonomy_level") {
-      policies.ai_autonomy_level = val as "FULL" | "SUPERVISED" | "MANUAL";
+      policies.ai_autonomy_level = val as any;
     } else if (row.policy_key === "min_confidence_to_act") {
       policies.min_confidence_to_act = Number(val);
     } else if (row.policy_key === "require_human_approval") {

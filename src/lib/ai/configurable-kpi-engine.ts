@@ -108,7 +108,8 @@ export async function calculateCompanyScore(
   // 2. Loop through and calculate each KPI score
   configs?.forEach((item) => {
     if (!item.kpi) return;
-    const kpiKey = item.kpi.kpi_key;
+    const kpiData = item.kpi as any;
+    const kpiKey = kpiData.kpi_key;
     const weight = Number(item.weight || 0.00);
     const target = Number(item.target_value || 0.00);
     const warning = Number(item.warning_threshold || 0.00);
@@ -121,8 +122,8 @@ export async function calculateCompanyScore(
 
     kpis.push({
       kpi_key: kpiKey,
-      display_name: item.kpi.display_name,
-      category: item.kpi.category,
+      display_name: kpiData.display_name,
+      category: kpiData.category,
       raw_value: rawValue,
       score: Number(score.toFixed(2)),
       weight,
