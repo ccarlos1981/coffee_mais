@@ -218,7 +218,7 @@ export default function MatrizPage() {
         <Link href="/" className="cm-logo">Coffee<span>++</span></Link>
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
           <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
-            MATRIZ
+            REDE
           </h1>
           <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
             {MONTHS[filterStartMonth - 1]}/{filterStartYear} a {MONTHS[filterEndMonth - 1]}/{filterEndYear}
@@ -265,7 +265,7 @@ export default function MatrizPage() {
           <p className="dash-sidebar-title">Canal</p>
           <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
 
-          <p className="dash-sidebar-title">Matriz</p>
+          <p className="dash-sidebar-title">Rede</p>
           <MultiSelect 
             value={filterMatriz} 
             onChange={setFilterMatriz} 
@@ -313,7 +313,7 @@ export default function MatrizPage() {
             <div style={{ padding: "20px 0" }}>
               <EmptyState 
                 title="Sua busca não encontrou resultados" 
-                message="Não há dados de Matriz registrados com a combinação de filtros selecionada para este período." 
+                message="Não há dados de Rede registrados com a combinação de filtros selecionada para este período." 
                 minHeight={500} 
                 onClearFilters={handleClearFilters} 
               />
@@ -374,14 +374,14 @@ export default function MatrizPage() {
             {/* Table */}
             <div className="glass-card" style={{ padding: 0, display: "flex", flexDirection: "column", minWidth: 0 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid var(--border)" }}>
-                <h3 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--foreground-secondary)" }}>Visão por Matriz</h3>
-                <ExportButton data={matrizData} filename="Matriz_Export" />
+                <h3 style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--foreground-secondary)" }}>Visão por Rede</h3>
+                <ExportButton data={matrizData} filename="Rede_Export" />
               </div>
               <div style={{ overflowX: "auto", overflowY: "auto" }}>
                 <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", width: "100%", tableLayout: "auto", whiteSpace: "nowrap" }}>
                   <thead style={{ position: "sticky", top: 0, background: "var(--card-bg, #fff)", zIndex: 1, boxShadow: "0 1px 0 var(--border)" }}>
                     <tr>
-                      <th style={{ textAlign: "left", padding: "8px 10px" }}>Matriz</th>
+                      <th style={{ textAlign: "left", padding: "8px 10px" }}>Rede</th>
                       <th style={{ textAlign: "center", padding: "8px 6px", width: 40 }}>Rank</th>
                       <th style={{ textAlign: "right", padding: "8px 6px", width: 70 }}>Fat (R$)</th>
                       <th style={{ textAlign: "right", padding: "8px 6px", width: 80 }}>Tons (Real)</th>
@@ -420,7 +420,7 @@ export default function MatrizPage() {
               {/* Pagination */}
               {totalPages > 1 && (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", borderTop: "1px solid var(--border)", fontSize: "0.7rem", color: "var(--foreground-muted)" }}>
-                  <span>{matrizData.length} matrizes • Pág. {currentPage} de {totalPages}</span>
+                  <span>{matrizData.length} redes • Pág. {currentPage} de {totalPages}</span>
                   <div style={{ display: "flex", gap: 4 }}>
                     <button
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
@@ -544,9 +544,9 @@ export default function MatrizPage() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/matriz" className="bottom-tab active"><Users className="bottom-tab-icon" /> Matriz</Link>
-        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
-        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Matriz</Link>
+        <Link href="/matriz" className="bottom-tab active"><Users className="bottom-tab-icon" /> Rede</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Rede</Link>
+        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Rede</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>

@@ -139,6 +139,14 @@ const CATEGORIZED_MODULES = [
 
 const MODULES = CATEGORIZED_MODULES.flatMap(group => group.modules);
 
+const MODULE_DISPLAY_NAMES: Record<string, string> = {
+  "Matriz": "Rede",
+  "Hist. Matriz": "Hist. Rede",
+  "Hist. p/ Matriz": "Hist. p/ Rede",
+  "Posit. Matriz": "Posit. Rede"
+};
+
+
 
 export default async function AdminPermissoesPage() {
   let permissions: RolePermission[] = [];
@@ -252,7 +260,7 @@ export default async function AdminPermissoesPage() {
                     {group.modules.map(moduleName => (
                       <tr key={moduleName} className="hover:bg-foreground/5 transition-colors group">
                         <td className="p-2 pl-5 border-r border-border font-medium text-foreground sticky left-0 bg-background-card group-hover:bg-background-elevated z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
-                          {moduleName}
+                          {MODULE_DISPLAY_NAMES[moduleName] || moduleName}
                         </td>
                         {ROLES.map(role => (
                           <td key={`${role}-${moduleName}`} className="p-0 border-r border-border last:border-r-0 text-center relative">
