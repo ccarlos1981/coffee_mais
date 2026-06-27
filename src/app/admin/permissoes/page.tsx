@@ -66,12 +66,20 @@ const CATEGORIZED_MODULES = [
     ]
   },
   {
-    category: "Trade",
+    category: "Investimentos",
     modules: [
-      "Dashboard",
+      "Dash Gerencial",
+      "Dash resumido",
+      "Dash por rede",
+      "Invest. por mês",
       "Calendário de invest.",
       "Planej. de Invest.",
-      "Invest. oficial",
+      "Invest. oficial"
+    ]
+  },
+  {
+    category: "Trade",
+    modules: [
       "Calendário Anual"
     ]
   },
@@ -209,15 +217,15 @@ export default async function AdminPermissoesPage() {
             </div>
           )}
 
-          <div className="bg-background-card border border-border rounded-2xl overflow-x-auto shadow-2xl pb-4">
+          <div className="bg-background-card border border-border rounded-2xl overflow-auto max-h-[calc(100vh-220px)] shadow-2xl relative">
             <table className="w-full text-left border-collapse min-w-max text-[10px]">
               <thead>
                 <tr>
-                  <th className="p-2 border-b border-border border-r font-semibold text-foreground bg-background-elevated sticky left-0 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                  <th className="p-2 border-b border-border border-r font-semibold text-foreground bg-background-elevated sticky top-0 left-0 z-30 shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.2)]">
                     Módulos / Cargos
                   </th>
                   {ROLES.map(role => (
-                    <th key={role} className="p-1 border-b border-border font-semibold text-foreground text-center bg-background-elevated min-w-[80px]">
+                    <th key={role} className="p-1 border-b border-border font-semibold text-foreground text-center bg-background-elevated min-w-[80px] sticky top-0 z-20 shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)]">
                       {role}
                     </th>
                   ))}

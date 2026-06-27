@@ -1332,7 +1332,7 @@ export default function InvestimentoPage() {
                   className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold tracking-wide transition-all ${viewMode === 'matrix' ? 'bg-gold text-black shadow-sm font-bold' : 'text-muted hover:text-foreground'}`}
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
-                  <span>Matrizes</span>
+                  <span>Redes</span>
                 </button>
               </div>
 
@@ -1890,8 +1890,8 @@ export default function InvestimentoPage() {
                 {/* Matrix view header */}
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 border-b border-border bg-elevated/30 gap-4">
                   <div>
-                    <h3 className="text-base font-bold text-foreground">Histórico de Investimentos por Matriz</h3>
-                    <p className="text-xs text-muted mt-0.5">Status de investimentos mensal por Matriz (Jun/2026+)</p>
+                    <h3 className="text-base font-bold text-foreground">Histórico de Investimentos por Rede</h3>
+                    <p className="text-xs text-muted mt-0.5">Status de investimentos mensal por Rede (Jun/2026+)</p>
                   </div>
                   <div className="flex items-center gap-3 w-full md:w-auto">
                     <input
@@ -1909,7 +1909,7 @@ export default function InvestimentoPage() {
                   <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                     <thead className="sticky top-0 bg-elevated border-b border-border z-10 shadow-sm">
                       <tr>
-                        <th className="p-3 font-semibold text-muted w-64 min-w-[240px]">Matriz</th>
+                        <th className="p-3 font-semibold text-muted w-64 min-w-[240px]">Rede</th>
                         {MATRIX_MONTHS.map(m => (
                           <th key={m.value} className="p-3 font-semibold text-muted text-center w-28 min-w-[100px]">{m.label}</th>
                         ))}

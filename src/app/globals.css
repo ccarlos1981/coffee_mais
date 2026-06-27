@@ -231,7 +231,9 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--background-card);
+  --color-background-card: var(--background-card);
   --color-elevated: var(--background-elevated);
+  --color-background-elevated: var(--background-elevated);
   --color-muted: var(--foreground-muted);
   --color-dim: var(--foreground-dim);
   --color-gold: var(--accent-gold);
