@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, Save, FileText, Banknote, MapPin, Building, ArrowLeft, CheckCircle } from "lucide-react";
+import { Search, Loader2, Save, FileText, Banknote, MapPin, Building, ArrowLeft, CheckCircle, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { notificarFinanceiroNovoCliente, notificarTransicaoFase } from "../clientes/actions";
@@ -45,9 +45,22 @@ export default function ClienteCadastroPage() {
     agencia: "",
     conta: "",
     desconto_contratual: "",
+    desconto_logistico: "",
+    desconto_cd: "",
+    desconto_marketing: "",
+    desconto_aniversario: "",
+    desconto_inauguracao: "",
     data_vigor: "",
+    data_vigor_logistico: "",
+    data_vigor_cd: "",
+    data_vigor_marketing: "",
+    data_vigor_aniversario: "",
+    data_vigor_inauguracao: "",
     status: "ativo",
     fase: "comercial",
+    emails_comercial: "",
+    emails_trade: "",
+    emails_abatimento: "",
   });
   const [tipoCadastro, setTipoCadastro] = useState("novo");
 
@@ -86,9 +99,22 @@ export default function ClienteCadastroPage() {
       agencia: "",
       conta: "",
       desconto_contratual: "",
+      desconto_logistico: "",
+      desconto_cd: "",
+      desconto_marketing: "",
+      desconto_aniversario: "",
+      desconto_inauguracao: "",
       data_vigor: "",
+      data_vigor_logistico: "",
+      data_vigor_cd: "",
+      data_vigor_marketing: "",
+      data_vigor_aniversario: "",
+      data_vigor_inauguracao: "",
       status: "ativo",
       fase: "comercial",
+      emails_comercial: "",
+      emails_trade: "",
+      emails_abatimento: "",
     });
   };
 
@@ -140,9 +166,22 @@ export default function ClienteCadastroPage() {
         agencia: data.agencia || "",
         conta: data.conta || "",
         desconto_contratual: data.desconto_contratual || "",
+        desconto_logistico: data.desconto_logistico || "",
+        desconto_cd: data.desconto_cd || "",
+        desconto_marketing: data.desconto_marketing || "",
+        desconto_aniversario: data.desconto_aniversario || "",
+        desconto_inauguracao: data.desconto_inauguracao || "",
         data_vigor: data.data_vigor || "",
+        data_vigor_logistico: data.data_vigor_logistico || "",
+        data_vigor_cd: data.data_vigor_cd || "",
+        data_vigor_marketing: data.data_vigor_marketing || "",
+        data_vigor_aniversario: data.data_vigor_aniversario || "",
+        data_vigor_inauguracao: data.data_vigor_inauguracao || "",
         status: data.status || "ativo",
         fase: data.fase || "comercial",
+        emails_comercial: data.emails_comercial || "",
+        emails_trade: data.emails_trade || "",
+        emails_abatimento: data.emails_abatimento || "",
       });
 
       setSelectedClientId(data.id);
@@ -307,9 +346,22 @@ export default function ClienteCadastroPage() {
         agencia: formData.agencia,
         conta: formData.conta,
         desconto_contratual: formData.desconto_contratual,
+        desconto_logistico: formData.desconto_logistico,
+        desconto_cd: formData.desconto_cd,
+        desconto_marketing: formData.desconto_marketing,
+        desconto_aniversario: formData.desconto_aniversario,
+        desconto_inauguracao: formData.desconto_inauguracao,
         data_vigor: formData.data_vigor || null,
+        data_vigor_logistico: formData.data_vigor_logistico || null,
+        data_vigor_cd: formData.data_vigor_cd || null,
+        data_vigor_marketing: formData.data_vigor_marketing || null,
+        data_vigor_aniversario: formData.data_vigor_aniversario || null,
+        data_vigor_inauguracao: formData.data_vigor_inauguracao || null,
         status: formData.status,
         fase: targetPhase,
+        emails_comercial: formData.emails_comercial,
+        emails_trade: formData.emails_trade,
+        emails_abatimento: formData.emails_abatimento,
       };
 
       let resultData: any = null;
@@ -1018,36 +1070,251 @@ export default function ClienteCadastroPage() {
               <FileText className="w-5 h-5 text-accent-gold" />
               <h2 className="font-semibold text-lg">Descontos e Histórico</h2>
             </div>
-            <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                  Desconto Contratual (%)
-                </label>
-                <input
-                  type="text"
-                  name="desconto_contratual"
-                  value={formData.desconto_contratual}
-                  onChange={handleInputChange}
-                  disabled={isCommercialDisabled}
-                  placeholder="Ex: 5%"
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
+            <div className="p-6 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border pb-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto Contratual (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_contratual"
+                    value={formData.desconto_contratual}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 5%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor Contratual
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor"
+                    value={formData.data_vigor}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                  Data Vigor
-                </label>
-                <input
-                  type="date"
-                  name="data_vigor"
-                  value={formData.data_vigor}
-                  onChange={handleInputChange}
-                  disabled={isCommercialDisabled}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border pb-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto Logístico (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_logistico"
+                    value={formData.desconto_logistico}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 2%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor Logístico
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor_logistico"
+                    value={formData.data_vigor_logistico}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border pb-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto CD (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_cd"
+                    value={formData.desconto_cd}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 3%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor CD
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor_cd"
+                    value={formData.data_vigor_cd}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border pb-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto de Marketing (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_marketing"
+                    value={formData.desconto_marketing}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 4%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor Marketing
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor_marketing"
+                    value={formData.data_vigor_marketing}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-b border-border pb-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto de Aniversário (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_aniversario"
+                    value={formData.desconto_aniversario}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 1.5%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor Aniversário
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor_aniversario"
+                    value={formData.data_vigor_aniversario}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Desconto de Inauguração (%)
+                  </label>
+                  <input
+                    type="text"
+                    name="desconto_inauguracao"
+                    value={formData.desconto_inauguracao}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: 2.5%"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    Data Vigor Inauguração
+                  </label>
+                  <input
+                    type="date"
+                    name="data_vigor_inauguracao"
+                    value={formData.data_vigor_inauguracao}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                </div>
               </div>
             </div>
           </div>
+
+          {/* E-mails de Contato da Rede */}
+          {tipoCadastro === "atualizacao" && (
+            <div className="bg-background-card border border-border rounded-xl overflow-hidden shadow-sm">
+              <div className="bg-background-elevated px-6 py-4 border-b border-border flex items-center gap-2">
+                <Mail className="w-5 h-5 text-accent-gold" />
+                <h2 className="font-semibold text-lg">Contatos de E-mail da Rede</h2>
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    E-mails do Comercial/Comprador
+                  </label>
+                  <input
+                    type="text"
+                    name="emails_comercial"
+                    value={formData.emails_comercial}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: comprador1@rede.com, comprador2@rede.com"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-[10px] text-foreground-muted block mt-1">
+                    Permite múltiplos e-mails separados por vírgula.
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    E-mails do Trade
+                  </label>
+                  <input
+                    type="text"
+                    name="emails_trade"
+                    value={formData.emails_trade}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: trade1@rede.com, trade2@rede.com"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-[10px] text-foreground-muted block mt-1">
+                    Permite múltiplos e-mails separados por vírgula.
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                    E-mails de Abatimento de Investimento
+                  </label>
+                  <input
+                    type="text"
+                    name="emails_abatimento"
+                    value={formData.emails_abatimento}
+                    onChange={handleInputChange}
+                    disabled={isCommercialDisabled}
+                    placeholder="Ex: financeiro1@rede.com, financeiro2@rede.com"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  />
+                  <span className="text-[10px] text-foreground-muted block mt-1">
+                    Permite múltiplos e-mails separados por vírgula.
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Submit Actions */}
           <div className="flex justify-between items-center bg-background-elevated p-4 rounded-xl border border-border">

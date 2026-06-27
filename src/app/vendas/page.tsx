@@ -1228,10 +1228,10 @@ export default function VendasDashboard() {
           <History className="bottom-tab-icon" /> Hist.
         </Link>
         <Link href="/matriz" className="bottom-tab">
-          <Users className="bottom-tab-icon" /> Matriz
+          <Users className="bottom-tab-icon" /> Rede
         </Link>
         <Link href="/historico-matriz" className="bottom-tab">
-          <History className="bottom-tab-icon" /> Hist. Matriz
+          <History className="bottom-tab-icon" /> Hist. Rede
         </Link>
         <Link href="/alertas" className="bottom-tab">
           <Bell className="bottom-tab-icon" /> Alertas

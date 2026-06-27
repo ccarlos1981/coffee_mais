@@ -254,7 +254,7 @@ export default function SmartActionHub() {
                 {/* Histórico de Ações */}
                 {alert.cm_action_notes && alert.cm_action_notes.length > 0 && (
                    <div style={{ marginBottom: 16 }}>
-                      <p style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)", marginBottom: 8 }}>DIÁRIO DA MATRIZ:</p>
+                      <p style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--foreground-muted)", marginBottom: 8 }}>DIÁRIO DA REDE:</p>
                       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                          {alert.cm_action_notes.map((note, idx) => (
                             <div key={idx} style={{ background: "var(--background)", padding: "10px", borderRadius: 6, border: "1px solid var(--border-light)" }}>
@@ -299,7 +299,7 @@ export default function SmartActionHub() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
+        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Rede</Link>
         {/* NEW SMART ACTION HUB LINK */}
         <Link href="/alertas" className="bottom-tab active"><Bell className="bottom-tab-icon" /> Alertas</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>

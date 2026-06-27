@@ -305,18 +305,18 @@ export default function HistoricoPorMatrizPage() {
         {/* Centered Title */}
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
           <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
-            Hist. por Matriz
+            Hist. por Rede
           </h1>
           <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", marginTop: 2 }}>
             {isMatrizSelected
               ? `Comparativo Mensal 2025 vs 2026 — ${filterMatriz.join(", ")}`
-              : `Top 10 Matrizes — Acumulado ${periodLabel} (2025 vs 2026)`
+              : `Top 10 Redes — Acumulado ${periodLabel} (2025 vs 2026)`
             }
           </p>
         </div>
 
         <div className="cm-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ExportButton data={exportData} filename="Hist_Por_Matriz_Export" />
+          <ExportButton data={exportData} filename="Hist_Por_Rede_Export" />
           <div style={{ fontSize: "0.58rem", color: "var(--foreground-dim)", textAlign: "right", lineHeight: 1.4 }}>
             <div style={{ color: "var(--foreground-muted)" }}>{new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</div>
           </div>
@@ -350,7 +350,7 @@ export default function HistoricoPorMatrizPage() {
           <p className="dash-sidebar-title">Canal</p>
           <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
 
-          <p className="dash-sidebar-title">Matriz</p>
+          <p className="dash-sidebar-title">Rede</p>
           <MultiSelect 
             value={filterMatriz} 
             onChange={setFilterMatriz} 
@@ -384,7 +384,7 @@ export default function HistoricoPorMatrizPage() {
               {filterFamilia.length > 0 && <div>Família: <strong style={{color:"var(--foreground)"}}>{filterFamilia.join(", ")}</strong></div>}
               {filterUf.length > 0 && <div>UF: <strong style={{color:"var(--foreground)"}}>{filterUf.join(", ")}</strong></div>}
               {filterChannel.length > 0 && <div>Canal: <strong style={{color:"var(--foreground)"}}>{filterChannel.join(", ")}</strong></div>}
-              {filterMatriz.length > 0 && <div>Matriz: <strong style={{color:"var(--foreground)"}}>{filterMatriz.join(", ")}</strong></div>}
+              {filterMatriz.length > 0 && <div>Rede: <strong style={{color:"var(--foreground)"}}>{filterMatriz.join(", ")}</strong></div>}
               {filterProduct.length > 0 && <div>SKU: <strong style={{color:"var(--foreground)"}}>{filterProduct.join(", ")}</strong></div>}
             </div>
           )}
@@ -416,7 +416,7 @@ export default function HistoricoPorMatrizPage() {
               {/* 1. VOLUME CHART */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 340 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  VOLUME ACUMULADO (UNIDADES) — TOP 10 MATRIZES — {periodLabel.toUpperCase()} 2025 x 2026
+                  VOLUME ACUMULADO (UNIDADES) — TOP 10 REDES — {periodLabel.toUpperCase()} 2025 x 2026
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={volumeChartData} margin={{ top: 25, right: 10, left: 10, bottom: 40 }}>
@@ -457,7 +457,7 @@ export default function HistoricoPorMatrizPage() {
               {/* 2. FATURAMENTO CHART */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 340 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  FATURAMENTO ACUMULADO (R$ 000) — TOP 10 MATRIZES — {periodLabel.toUpperCase()} 2025 x 2026
+                  FATURAMENTO ACUMULADO (R$ 000) — TOP 10 REDES — {periodLabel.toUpperCase()} 2025 x 2026
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={fatChartData} margin={{ top: 25, right: 10, left: 10, bottom: 40 }}>
@@ -514,7 +514,7 @@ export default function HistoricoPorMatrizPage() {
               {/* 3. PREÇO MÉDIO CHART */}
               <div className="glass-card animate-fade-in" style={{ padding: 16, height: 340 }}>
                 <h3 style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--foreground-secondary)", marginBottom: 12, textAlign: "center" }}>
-                  PREÇO MÉDIO ACUMULADO (R$/UNIDADE) — TOP 10 MATRIZES — {periodLabel.toUpperCase()} 2025 x 2026
+                  PREÇO MÉDIO ACUMULADO (R$/UNIDADE) — TOP 10 REDES — {periodLabel.toUpperCase()} 2025 x 2026
                 </h3>
                 <ResponsiveContainer width="100%" height="90%">
                   <BarChart data={priceChartData} margin={{ top: 25, right: 10, left: 10, bottom: 40 }}>
@@ -749,9 +749,9 @@ export default function HistoricoPorMatrizPage() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
-        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
-        <Link href="/historico-por-matriz" className="bottom-tab active"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Matriz</Link>
+        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Rede</Link>
+        <Link href="/historico-matriz" className="bottom-tab"><History className="bottom-tab-icon" /> Hist. Rede</Link>
+        <Link href="/historico-por-matriz" className="bottom-tab active"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Rede</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>

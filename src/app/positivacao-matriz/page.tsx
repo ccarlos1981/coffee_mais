@@ -195,7 +195,7 @@ export default function PositivacaoMatrizPage() {
             <tr>
               <th style={{ textAlign: "center", padding: "6px 4px", width: 36, fontSize: "0.6rem" }}>#</th>
               <th style={{ textAlign: "left", padding: "8px 10px", position: "sticky", left: 0, background: "var(--card-bg, #fff)", zIndex: 2, minWidth: 180, borderRight: "2px solid var(--border)" }}>
-                {title.includes("Matriz") ? "Matriz" : "Cliente"}
+                {title.includes("Rede") ? "Rede" : "Cliente"}
               </th>
               {orderedMonths.map(m => {
                 const [_y, _mm] = m.split("-");
@@ -261,7 +261,7 @@ export default function PositivacaoMatrizPage() {
         <Link href="/" className="cm-logo">Coffee<span>++</span></Link>
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
           <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
-            POSITIVAÇÃO POR MATRIZ
+            POSITIVAÇÃO POR REDE
           </h1>
           <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>
             {MONTHS[filterStartMonth - 1]}/{filterStartYear} a {MONTHS[filterEndMonth - 1]}/{filterEndYear}
@@ -305,7 +305,7 @@ export default function PositivacaoMatrizPage() {
           <p className="dash-sidebar-title">Canal</p>
           <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
 
-          <p className="dash-sidebar-title">Matriz</p>
+          <p className="dash-sidebar-title">Rede</p>
           <MultiSelect value={filterMatriz} onChange={setFilterMatriz} options={filterOptions.matrizes} className="dash-filter-select" placeholder="Todas" />
 
           <p className="dash-sidebar-title">Linha SKU</p>
@@ -325,7 +325,7 @@ export default function PositivacaoMatrizPage() {
           {/* KPI CARDS */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 14 }}>
             <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
-              <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Matrizes</p>
+              <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Redes</p>
               <p style={{ fontSize: "1.6rem", fontWeight: 800, color: "#3f51b5" }}>{formatNumber(totals.matrizes, 0)}</p>
             </div>
             <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
@@ -340,8 +340,8 @@ export default function PositivacaoMatrizPage() {
 
           {/* BATALHA NAVAL POR MATRIZ */}
           {renderBatalhaNaval(
-            "Positivação por Matriz",
-            "Quantos SKUs distintos foram vendidos em cada matriz por mês",
+            "Positivação por Rede",
+            "Quantos SKUs distintos foram vendidos em cada rede por mês",
             matrizPageData,
             maxMatrizHeat,
             matrizPage,
@@ -370,13 +370,13 @@ export default function PositivacaoMatrizPage() {
       <nav className="bottom-tabs">
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
-        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
-        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Matriz</Link>
+        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Rede</Link>
+        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Rede</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
         <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
-        <Link href="/positivacao-matriz" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Pos.Matriz</Link>
+        <Link href="/positivacao-matriz" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Pos.Rede</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>

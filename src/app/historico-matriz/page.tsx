@@ -342,7 +342,7 @@ export default function HistoricoMatrizDashboard() {
         {/* Centered Title */}
         <div style={{ position: "absolute", left: "50%", transform: "translateX(-50%)", textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", height: "100%" }}>
           <h1 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", letterSpacing: "0.02em", textTransform: "uppercase" }}>
-            Histórico por Matriz
+            Histórico por Rede
           </h1>
           <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", marginTop: 2 }}>
             Comparativo de Vendas vs Último Trimestre — <span style={{ opacity: 0.7 }}>*Valores /1k p/ Faturamento e Volumes</span>
@@ -350,7 +350,7 @@ export default function HistoricoMatrizDashboard() {
         </div>
 
         <div className="cm-nav-right" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <ExportButton data={monthlyHistory} filename="Historico_Matriz_Export" />
+          <ExportButton data={monthlyHistory} filename="Historico_Rede_Export" />
           <div style={{ fontSize: "0.58rem", color: "var(--foreground-dim)", textAlign: "right", lineHeight: 1.4 }}>
             <div style={{ color: "var(--foreground-muted)" }}>{new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}</div>
           </div>
@@ -402,7 +402,7 @@ export default function HistoricoMatrizDashboard() {
           <p className="dash-sidebar-title">Canal</p>
           <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todas" />
 
-          <p className="dash-sidebar-title">Matriz</p>
+          <p className="dash-sidebar-title">Rede</p>
           <MultiSelect 
             value={filterMatriz} 
             onChange={setFilterMatriz} 
@@ -436,7 +436,7 @@ export default function HistoricoMatrizDashboard() {
               {filterFamilia.length > 0 && <div>Família: <strong style={{color:"var(--foreground)"}}>{filterFamilia.join(", ")}</strong></div>}
               {filterUf.length > 0 && <div>UF: <strong style={{color:"var(--foreground)"}}>{filterUf.join(", ")}</strong></div>}
               {filterChannel.length > 0 && <div>Canal: <strong style={{color:"var(--foreground)"}}>{filterChannel.join(", ")}</strong></div>}
-              {filterMatriz.length > 0 && <div>Matriz: <strong style={{color:"var(--foreground)"}}>{filterMatriz.join(", ")}</strong></div>}
+              {filterMatriz.length > 0 && <div>Rede: <strong style={{color:"var(--foreground)"}}>{filterMatriz.join(", ")}</strong></div>}
               {filterProduct.length > 0 && <div>SKU: <strong style={{color:"var(--foreground)"}}>{filterProduct.join(", ")}</strong></div>}
             </div>
           )}
@@ -842,9 +842,9 @@ export default function HistoricoMatrizDashboard() {
         <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
         <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
         <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Matriz</Link>
-        <Link href="/historico-matriz" className="bottom-tab active"><History className="bottom-tab-icon" /> Hist. Matriz</Link>
-        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Matriz</Link>
+        <Link href="/matriz" className="bottom-tab"><Users className="bottom-tab-icon" /> Rede</Link>
+        <Link href="/historico-matriz" className="bottom-tab active"><History className="bottom-tab-icon" /> Hist. Rede</Link>
+        <Link href="/historico-por-matriz" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Hist. p/ Rede</Link>
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab"><Users className="bottom-tab-icon" /> Posit.</Link>

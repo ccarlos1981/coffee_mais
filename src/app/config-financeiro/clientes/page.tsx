@@ -907,10 +907,6 @@ export default function ClientesListPage() {
                       <span className="text-xs text-foreground-secondary block">Geração de Boleto</span>
                       <span className="text-foreground">{selectedClient.tipo_geracao_boleto || "—"}</span>
                     </div>
-                    <div>
-                      <span className="text-xs text-foreground-secondary block">Desconto Contratual</span>
-                      <span className="text-foreground">{selectedClient.desconto_contratual || "0%"}</span>
-                    </div>
                   </div>
                 </div>
 
@@ -925,6 +921,76 @@ export default function ClientesListPage() {
                     <div>
                       <span className="text-xs text-foreground-secondary block">E-mail de NF-e</span>
                       <span className="text-foreground font-semibold">{selectedClient.email_nfe || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contatos da Rede */}
+                {(selectedClient.emails_comercial || selectedClient.emails_trade || selectedClient.emails_abatimento) && (
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-accent-gold text-xs uppercase tracking-wider border-b border-border pb-1">Contatos de E-mail da Rede</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <span className="text-xs text-foreground-secondary block">E-mails do Comercial/Comprador</span>
+                        <span className="text-foreground text-xs break-all">{selectedClient.emails_comercial || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-foreground-secondary block">E-mails do Trade</span>
+                        <span className="text-foreground text-xs break-all">{selectedClient.emails_trade || "—"}</span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-foreground-secondary block">E-mails de Abatimento</span>
+                        <span className="text-foreground text-xs break-all">{selectedClient.emails_abatimento || "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Descontos e Histórico */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-accent-gold text-xs uppercase tracking-wider border-b border-border pb-1">Descontos e Histórico</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto Contratual</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_contratual || "—"}</span>
+                      {selectedClient.data_vigor && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto Logístico</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_logistico || "—"}</span>
+                      {selectedClient.data_vigor_logistico && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor_logistico).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto CD</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_cd || "—"}</span>
+                      {selectedClient.data_vigor_cd && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor_cd).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto de Marketing</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_marketing || "—"}</span>
+                      {selectedClient.data_vigor_marketing && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor_marketing).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto de Aniversário</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_aniversario || "—"}</span>
+                      {selectedClient.data_vigor_aniversario && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor_aniversario).toLocaleDateString("pt-BR")}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-foreground-secondary block">Desconto de Inauguração</span>
+                      <span className="text-foreground font-semibold">{selectedClient.desconto_inauguracao || "—"}</span>
+                      {selectedClient.data_vigor_inauguracao && (
+                        <span className="text-[10px] text-foreground-secondary block font-mono">Vigor: {new Date(selectedClient.data_vigor_inauguracao).toLocaleDateString("pt-BR")}</span>
+                      )}
                     </div>
                   </div>
                 </div>
