@@ -334,7 +334,7 @@ export default function AtendimentoPage() {
         "UF": p.uf || "",
         "Canal": p.canal || "",
         "Gerente": p.manager || "",
-        "Matriz (Rede)": p.rede || ""
+        "Rede": p.rede || ""
       }));
       const ws = XLSX.utils.json_to_sheet(exportData);
       ws["!cols"] = [
@@ -621,7 +621,7 @@ export default function AtendimentoPage() {
                       <tr>
                         <th>Cód. Parceiro</th>
                         <th>Nome / Razão</th>
-                        <th>Matriz (Rede)</th>
+                        <th>Rede</th>
                         <th>UF</th>
                         <th>Canal</th>
                         <th>Gerente</th>
@@ -658,7 +658,7 @@ export default function AtendimentoPage() {
                                 className="dash-filter-select"
                                 style={{ width: "100%", background: "transparent", border: isDirty ? "1px dashed var(--accent-gold)" : "1px solid var(--border)", color: "var(--foreground-secondary)", fontSize: "0.8rem", borderRadius: 4, padding: "4px 6px" }}
                                 value={currentRede || ""}
-                                placeholder="Matriz/Rede"
+                                placeholder="Rede"
                                 onChange={(e) => handlePdvChange(item.cod_parceiro, "rede", e.target.value)}
                               />
                             </td>

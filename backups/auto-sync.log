@@ -1,2 +1,15 @@
 [26/06/2026 13:06] Nenhuma alteração encontrada. Nada a enviar.
 [26/06/2026 13:06] Nenhuma alteração encontrada. Nada a enviar.
+[main 2315b0a] auto-save: 26/06/2026 21:43
+ 13 files changed, 375 insertions(+), 348 deletions(-)
+ create mode 100644 backups/auto-sync-error.log
+ create mode 100644 backups/auto-sync.log
+ create mode 100644 public/images/login/classico_drip_transparent.png
+ create mode 100644 public/images/login/intenso_grao_transparent.png
+ create mode 100644 public/images/login/logo_card.png
+ create mode 100644 public/images/login/logo_white.png
+ create mode 100644 public/images/login/solos_vulcanicos_transparent.png
+ create mode 100755 scripts/auto-sync.sh
+To https://github.com/ccarlos1981/coffee_mais.git
+   d87ab3c..2315b0a  main -> main
+[26/06/2026 21:43] ✅ Alterações enviadas com sucesso para o GitHub.
