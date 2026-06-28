@@ -58,7 +58,7 @@ export function ModuleGroup({ group }: { group: ModuleGroupProps }) {
               href={mod.href}
               className={`group relative overflow-hidden p-3.5 transition-all duration-300 hover:scale-[1.03] hover:-translate-y-0.5 !rounded-xl border ${
                 mod.highlight 
-                  ? "bg-gradient-to-br from-red-600 to-red-850 dark:from-red-750 dark:to-red-900 border-red-500/50 hover:border-red-400 shadow-md shadow-red-500/10 hover:shadow-lg hover:shadow-red-500/20 text-white" 
+                  ? "bg-gradient-to-br from-amber-500 via-gold to-amber-700 dark:from-amber-600 dark:via-gold/90 dark:to-amber-800 border-amber-400/40 hover:border-gold shadow-md shadow-gold/15 hover:shadow-lg hover:shadow-gold/30 text-white" 
                   : "glass-card border-border dark:border-white/20 hover:border-gold/40 dark:hover:border-gold/55 hover:shadow-lg hover:shadow-gold/3"
               } ${
                 !mod.ready ? "opacity-45 pointer-events-none" : ""
@@ -66,24 +66,24 @@ export function ModuleGroup({ group }: { group: ModuleGroupProps }) {
             >
               {/* Gradient orb background */}
               <div
-                className={`absolute -top-5 -right-5 w-12 h-12 rounded-full bg-gradient-to-br ${mod.highlight ? 'from-white to-red-300' : mod.color} ${mod.highlight ? 'opacity-20 group-hover:opacity-35' : 'opacity-10 group-hover:opacity-20'} transition-opacity blur-xl`}
+                className={`absolute -top-5 -right-5 w-12 h-12 rounded-full bg-gradient-to-br ${mod.highlight ? 'from-white to-amber-300' : mod.color} ${mod.highlight ? 'opacity-25 group-hover:opacity-40' : 'opacity-10 group-hover:opacity-20'} transition-opacity blur-xl`}
               />
 
               <div className="relative z-10 flex flex-col justify-between h-full">
                 <div>
                   <div className="relative mb-3.5 flex items-center justify-between">
                     {/* Squircle Icon Container */}
-                    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-all duration-300 group-hover:scale-105 ${mod.highlight ? 'bg-red-950/80 border-red-500/30 text-white group-hover:border-red-400' : 'bg-neutral-900 border-border dark:border-white/20 group-hover:border-gold/30 dark:group-hover:border-gold/40'}`}>
+                    <div className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition-all duration-300 group-hover:scale-105 ${mod.highlight ? 'bg-amber-950/80 border-amber-500/30 text-white group-hover:border-amber-400' : 'bg-neutral-900 border-border dark:border-white/20 group-hover:border-gold/30 dark:group-hover:border-gold/40'}`}>
                       {mod.iconNode}
                     </div>
                     {/* Glowing category dot */}
                     <span className={`w-2 h-2 rounded-full ${mod.highlight ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.7)] animate-pulse' : `bg-gradient-to-br ${mod.color} shadow-[0_0_6px_rgba(255,255,255,0.1)]`}`} />
                   </div>
 
-                  <h4 className={`text-[12px] font-bold leading-tight transition-colors duration-200 ${mod.highlight ? 'text-white group-hover:text-red-100' : 'text-foreground group-hover:text-gold'}`}>
+                  <h4 className={`text-[12px] font-bold leading-tight transition-colors duration-200 ${mod.highlight ? 'text-white group-hover:text-amber-100' : 'text-foreground group-hover:text-gold'}`}>
                     {mod.title}
                   </h4>
-                  <p className={`text-[10px] leading-relaxed mt-1 transition-colors duration-200 ${mod.highlight ? 'text-red-200 group-hover:text-white' : 'text-muted group-hover:text-foreground-secondary'}`}>
+                  <p className={`text-[10px] leading-relaxed mt-1 transition-colors duration-200 ${mod.highlight ? 'text-amber-100/90 group-hover:text-white' : 'text-muted group-hover:text-foreground-secondary'}`}>
                     {mod.description}
                   </p>
                 </div>

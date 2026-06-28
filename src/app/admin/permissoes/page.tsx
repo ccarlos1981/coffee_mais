@@ -88,6 +88,7 @@ const CATEGORIZED_MODULES = [
     modules: [
       "Ponto Promotor",
       "Agenda Promotor",
+      "Desafio Promotor",
       "Painel Supervisor",
       "Central de Rotas e SLAs",
       "Command Center",
@@ -100,6 +101,7 @@ const CATEGORIZED_MODULES = [
     modules: [
       "Meta Cia",
       "Metas",
+      "Metas promotor",
       "Coffee_IA",
       "Atendimento",
       "Upload",
@@ -143,7 +145,8 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   "Matriz": "Rede",
   "Hist. Matriz": "Hist. Rede",
   "Hist. p/ Matriz": "Hist. p/ Rede",
-  "Posit. Matriz": "Posit. Rede"
+  "Posit. Matriz": "Posit. Rede",
+  "Metas": "Metas por área"
 };
 
 
