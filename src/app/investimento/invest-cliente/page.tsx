@@ -90,7 +90,7 @@ interface ClienteData {
   expectativaInvest: number; // ações com mes_referencia == selectedMes
   naoProvisionado: number;   // ações fechadas (fase>=5) sem boleto, mes_referencia == selectedMes
   provisionado: number;      // boletos com vencimento no selectedMes
-  acoesAtrasadas: number;   // fase 3 + data_fim <= hoje-2
+  acoesAtrasadas: number;   // fase 3 + data_fim <= hoje-7
   meses: Record<string, number>; // provisionado por mês (para colunas toggle)
 }
 
@@ -241,11 +241,11 @@ export default function InvestClientePage() {
   const grupos = useMemo<GrupoGerente[]>(() => {
     if (!rawAcoes.length && !Object.keys(rawVinculoMap).length) return [];
 
-    // Cutoff: data_fim <= today - 2 days
+    // Cutoff: data_fim <= today - 7 days
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     const cutoff = new Date(hoje);
-    cutoff.setDate(cutoff.getDate() - 2);
+    cutoff.setDate(cutoff.getDate() - 7);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
 
     // Aggregate per rede
@@ -319,7 +319,7 @@ export default function InvestClientePage() {
         redeAgg[redeKey].naoProvisionado += valorReal;
       }
 
-      // Ações atrasadas: fase 3 + data_fim <= hoje-2
+      // Ações atrasadas: fase 3 + data_fim <= hoje-7
       if (
         a.fase_atual === 3 &&
         a.data_fim &&
@@ -1299,7 +1299,7 @@ export default function InvestClientePage() {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="inline-block w-3 h-3 rounded bg-orange-500/30 border border-orange-500/40" />
-            <span>Ações Atrasadas = fase 3 (Apur. GRV) com data_fim ≤ hoje - 2 dias</span>
+            <span>Ações Atrasadas = fase 3 (Apur. GRV) com data_fim ≤ hoje - 7 dias</span>
           </div>
           <span className="ml-auto">Fonte: cm_acoes_investimento · Ações não pagas</span>
         </div>
