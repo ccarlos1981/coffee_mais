@@ -1170,8 +1170,13 @@ export default function InvestimentoPage() {
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  const formatCurrency = (value: number, showCents = true) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: showCents ? 2 : 0,
+      maximumFractionDigits: showCents ? 2 : 0,
+    }).format(value);
   };
 
   const formatDate = (dateStr: string) => {
@@ -1508,7 +1513,7 @@ export default function InvestimentoPage() {
             </div>
             <div className="flex items-center justify-between text-sm text-muted px-1">
               <span>{filteredData.length} lançamento{filteredData.length !== 1 ? 's' : ''} encontrado{filteredData.length !== 1 ? 's' : ''}</span>
-              {filteredData.length > 0 && <span className="font-medium text-gold lg:hidden">Total: {formatCurrency(subtotal)}</span>}
+              {filteredData.length > 0 && <span className="font-medium text-gold lg:hidden">Total: {formatCurrency(subtotal, false)}</span>}
             </div>
           </div>
 
@@ -1521,18 +1526,18 @@ export default function InvestimentoPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-elevated sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Cód.</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Data Registro</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Rede</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Mês</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Período Ação</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Tipo</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Fase</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Família</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Vlr invest.</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">PPC</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Exp. Vol.</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-center">Ações</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Cód.</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Data Registro</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Rede</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Mês</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Período Ação</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Tipo</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Fase</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Família</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Vlr invest.</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">PPC</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Exp. Vol.</th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -1554,13 +1559,13 @@ export default function InvestimentoPage() {
                   ) : (
                     paginatedData.map((row) => (
                       <tr key={row.id} onClick={() => setSelectedAction(row)} className="hover:bg-elevated/50 transition-colors group cursor-pointer">
-                        <td className="px-6 py-4 text-foreground/80 font-mono text-xs">
+                        <td className="px-3 xl:px-4 py-3 text-foreground/80 font-mono text-xs">
                           {row.codigo ? `#${row.codigo}` : '-'}
                         </td>
-                        <td className="px-6 py-4 text-foreground/80">
+                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
                           {new Date(row.created_at).toLocaleDateString('pt-BR')}
                         </td>
-                        <td className="px-6 py-4 font-medium text-foreground">
+                        <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
                           <div>
                             <span>{row.rede}</span>
                             {row.codigo_matriz && (
@@ -1568,21 +1573,34 @@ export default function InvestimentoPage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-foreground/80 font-semibold">
-                          {formatMesReferencia(row.mes_referencia)}
+                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                          {(() => {
+                            const formatted = formatMesReferencia(row.mes_referencia);
+                            if (formatted === "-") return "-";
+                            const parts = formatted.split("/");
+                            if (parts.length === 2) {
+                              return (
+                                <div className="flex flex-col gap-0.5 text-xs font-semibold">
+                                  <span className="text-foreground">{parts[0]}</span>
+                                  <span className="text-muted text-[10px] font-normal">{parts[1]}</span>
+                                </div>
+                              );
+                            }
+                            return <span className="font-semibold">{formatted}</span>;
+                          })()}
                         </td>
-                        <td className="px-6 py-4 text-foreground/80">
+                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
                           <div className="flex flex-col gap-0.5 text-xs font-medium">
                             <span>{formatDate(row.data_inicio)}</span>
                             <span className="text-muted">{formatDate(row.data_fim)}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-4 py-3">
                           <span className={`px-2 py-1 rounded-md text-xs font-medium border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                             {row.tipo_acao}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 xl:px-4 py-3">
                           {(() => {
                             const fase = row.fase_atual || 1;
                             const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
@@ -1601,19 +1619,19 @@ export default function InvestimentoPage() {
                             );
                           })()}
                         </td>
-                        <td className="px-6 py-4 text-foreground/80">
+                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
                           {row.abrangencia === "SKU" ? "Múltiplos SKUs" : row.familia_produto}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-foreground">
-                          {formatCurrency(getValorTotal(row))}
+                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
+                          {formatCurrency(getValorTotal(row), false)}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-foreground">
+                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
                           {row.abrangencia === "SKU" ? "-" : (row.preco_acao ? formatCurrency(row.preco_acao) : '-')}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-foreground">
+                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
                           {row.abrangencia === "SKU" ? "-" : (row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-')}
                         </td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-3 xl:px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
                             {row.documento_url ? (
                               <button
@@ -1665,11 +1683,11 @@ export default function InvestimentoPage() {
                 {filteredData.length > 0 && (
                   <tfoot className="bg-elevated sticky bottom-0 z-10 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t border-border font-medium">
                     <tr>
-                      <td colSpan={7} className="px-6 py-4 text-right text-foreground uppercase tracking-wider text-xs">
+                      <td colSpan={8} className="px-3 xl:px-4 py-3 text-right text-foreground uppercase tracking-wider text-xs">
                         Subtotal (Itens filtrados)
                       </td>
-                      <td className="px-6 py-4 text-right text-gold font-bold">
-                        {formatCurrency(subtotal)}
+                      <td className="px-3 xl:px-4 py-3 text-right text-gold font-bold">
+                        {formatCurrency(subtotal, false)}
                       </td>
                       <td colSpan={3}></td>
                     </tr>
@@ -1735,7 +1753,7 @@ export default function InvestimentoPage() {
                     <div className="flex items-center justify-between mt-1 pt-3 border-t border-border">
                       <div className="flex flex-col">
                         <div className="font-black text-gold text-xl tracking-tight leading-none mb-1">
-                          {formatCurrency(getValorTotal(row))}
+                          {formatCurrency(getValorTotal(row), false)}
                         </div>
                         <div className="flex items-center gap-3">
                           {row.abrangencia !== "SKU" && row.preco_acao && (
@@ -2211,7 +2229,7 @@ export default function InvestimentoPage() {
                       <p className="text-sm text-foreground/80 mt-0.5">{selectedAction.abrangencia === "SKU" ? "Múltiplos SKUs" : selectedAction.familia_produto}</p>
                     </div>
                     <div className="text-right flex flex-col items-end">
-                      <span className="font-black text-foreground text-lg tracking-tight">{formatCurrency(getValorTotal(selectedAction))}</span>
+                      <span className="font-black text-foreground text-lg tracking-tight">{formatCurrency(getValorTotal(selectedAction), false)}</span>
                     </div>
                   </div>
                   <div className="flex items-center justify-center w-full mt-1 pt-1 border-t border-border/50 text-muted group-hover:text-gold transition-colors">
@@ -2245,7 +2263,7 @@ export default function InvestimentoPage() {
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border col-span-2">
                       <span className="text-xs text-muted block mb-1">Valor do Investimento Total Estimado</span>
-                      <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction))}</span>
+                      <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction), false)}</span>
                     </div>
                     {selectedAction.abrangencia !== "SKU" && (
                       <>
@@ -2285,7 +2303,7 @@ export default function InvestimentoPage() {
                                 </div>
                                 <div className="flex flex-col">
                                   <span className="text-muted">Inv.</span>
-                                  <span className="font-medium text-gold">{s.investimento ? formatCurrency(s.investimento) : '-'}</span>
+                                  <span className="font-medium text-gold">{s.investimento ? formatCurrency(s.investimento, false) : '-'}</span>
                                 </div>
                                 <div className="flex flex-col">
                                   <span className="text-muted">Vol.</span>
@@ -2421,11 +2439,11 @@ export default function InvestimentoPage() {
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-muted mb-1">Valor Projetado (Comercial)</label>
-                          <input type="text" readOnly value={formatCurrency(getValorTotal(selectedAction))} className="w-full bg-elevated text-muted border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed font-medium" />
+                          <input type="text" readOnly value={formatCurrency(getValorTotal(selectedAction), false)} className="w-full bg-elevated text-muted border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed font-medium" />
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-muted mb-1">Valor Realizado (R$) - Automático</label>
-                          <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado)) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
+                          <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado), false) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
                         </div>
                         <div className="md:col-span-2" ref={boletoDropdownRef}>
                           <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">

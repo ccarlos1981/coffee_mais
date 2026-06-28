@@ -49,14 +49,14 @@ export async function GET(request: Request) {
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     // ── 1. Calcular janela de datas ───────────────────────────────────────────
-    // Atraso a partir de 2 dias após data_fim, até 9 dias (janela de 7 dias de reenvio)
+    // Atraso a partir de 7 dias após data_fim, até 14 dias (janela de 7 dias de reenvio)
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    const cutoffMax = new Date(hoje); // hoje - 2 dias
-    cutoffMax.setDate(cutoffMax.getDate() - 2);
-    const cutoffMin = new Date(hoje); // hoje - 9 dias
-    cutoffMin.setDate(cutoffMin.getDate() - 9);
+    const cutoffMax = new Date(hoje); // hoje - 7 dias
+    cutoffMax.setDate(cutoffMax.getDate() - 7);
+    const cutoffMin = new Date(hoje); // hoje - 14 dias
+    cutoffMin.setDate(cutoffMin.getDate() - 14);
 
     const cutoffMaxStr = cutoffMax.toISOString().slice(0, 10);
     const cutoffMinStr = cutoffMin.toISOString().slice(0, 10);
@@ -219,7 +219,7 @@ export async function GET(request: Request) {
             <!-- Footer -->
             <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px;">
               <p style="margin: 0; font-size: 11px; color: #9ca3af;">
-                Este e-mail é gerado automaticamente todos os dias enquanto houver ações em atraso (por até 7 dias após o vencimento).<br>
+                Este e-mail é gerado automaticamente todos os dias enquanto houver ações em atraso (por até 7 dias após o início do atraso).<br>
                 Não é necessário responder.
               </p>
             </div>

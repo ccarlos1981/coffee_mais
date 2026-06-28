@@ -35,6 +35,8 @@ export default function ClienteCadastroPage() {
     cidade: "",
     uf: "",
     condicao_pagamento: "",
+    condicao_base: "",
+    condicao_dias: "",
     classificacao_icms: "",
     retirar_st: "",
     empresa_preferencial: "",
@@ -89,6 +91,8 @@ export default function ClienteCadastroPage() {
       cidade: "",
       uf: "",
       condicao_pagamento: "",
+      condicao_base: "",
+      condicao_dias: "",
       classificacao_icms: "",
       retirar_st: "",
       empresa_preferencial: "",
@@ -140,6 +144,17 @@ export default function ClienteCadastroPage() {
         throw new Error("Cliente não encontrado com este código.");
       }
 
+      let base = "";
+      let dias = "";
+      const dbVal = data.condicao_pagamento || "";
+      if (dbVal.startsWith("Boleto")) {
+        base = "Boleto";
+        const match = dbVal.match(/\d+/);
+        dias = match ? match[0] : "";
+      } else {
+        base = dbVal;
+      }
+
       setFormData({
         cnpj: data.cnpj || "",
         matriz: data.matriz || "",
@@ -156,6 +171,8 @@ export default function ClienteCadastroPage() {
         cidade: data.cidade || "",
         uf: data.uf || "",
         condicao_pagamento: data.condicao_pagamento || "",
+        condicao_base: base,
+        condicao_dias: dias,
         classificacao_icms: data.classificacao_icms || "",
         retirar_st: data.retirar_st || "",
         empresa_preferencial: data.empresa_preferencial || "",
@@ -320,6 +337,11 @@ export default function ClienteCadastroPage() {
         }
       }
       
+      let finalCondicao = formData.condicao_base;
+      if (formData.condicao_base === "Boleto" && formData.condicao_dias) {
+        finalCondicao = `Boleto - ${formData.condicao_dias} dias`;
+      }
+
       const payload: any = {
         cnpj: formData.cnpj,
         matriz: formData.matriz,
@@ -335,7 +357,7 @@ export default function ClienteCadastroPage() {
         complemento: formData.complemento,
         cidade: formData.cidade,
         uf: formData.uf || null,
-        condicao_pagamento: formData.condicao_pagamento,
+        condicao_pagamento: finalCondicao || null,
         classificacao_icms: formData.classificacao_icms,
         retirar_st: formData.retirar_st,
         empresa_preferencial: formData.empresa_preferencial,
@@ -688,15 +710,21 @@ export default function ClienteCadastroPage() {
                   <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
                     Responsável (Gerente)
                   </label>
-                  <input
-                    type="text"
+                  <select
                     name="responsavel"
                     value={formData.responsavel}
                     onChange={handleInputChange}
-                    placeholder="Ex: Luciano, Leandro, Luiz..."
                     disabled={isCommercialDisabled}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
+                  >
+                    <option value="">Selecione o Gerente</option>
+                    <option value="Luiz">Luiz</option>
+                    <option value="Leandro">Leandro</option>
+                    <option value="Julliano">Julliano</option>
+                    <option value="Inside Sales">Inside Sales</option>
+                    <option value="Ecommerce">Ecommerce</option>
+                    <option value="Marketplace">Marketplace</option>
+                  </select>
                 </div>
               </div>
 
@@ -706,15 +734,22 @@ export default function ClienteCadastroPage() {
                   <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
                     Canal / Tipo do Parceiro
                   </label>
-                  <input
-                    type="text"
+                  <select
                     name="tipo_parceiro"
                     value={formData.tipo_parceiro}
                     onChange={handleInputChange}
-                    placeholder="Ex: KA, Distribuidor..."
                     disabled={isCommercialDisabled}
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
+                  >
+                    <option value="">Selecione o Canal</option>
+                    <option value="KA">KA</option>
+                    <option value="Distribuidor">Distribuidor</option>
+                    <option value="Inside Sales">Inside Sales</option>
+                    <option value="Inside inter">Inside inter</option>
+                    <option value="Exportação">Exportação</option>
+                    <option value="Marca Própria">Marca Própria</option>
+                    <option value="Outros">Outros</option>
+                  </select>
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
@@ -862,18 +897,42 @@ export default function ClienteCadastroPage() {
                 <h2 className="font-semibold text-base">Tipo Negociação</h2>
               </div>
               <div className="p-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                    Sugestão de Venda (Condição Pgto)
-                  </label>
-                  <input
-                    type="text"
-                    name="condicao_pagamento"
-                    value={formData.condicao_pagamento}
-                    onChange={handleInputChange}
-                    disabled={isCommercialDisabled}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  />
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                      Sugestão de Venda (Condição Pgto)
+                    </label>
+                    <select
+                      name="condicao_base"
+                      value={formData.condicao_base}
+                      onChange={handleInputChange}
+                      disabled={isCommercialDisabled}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <option value="">Selecione a Condição</option>
+                      <option value="Transferência">Transferência</option>
+                      <option value="Boleto">Boleto</option>
+                      <option value="Avista">Avista</option>
+                      <option value="Cartão de Crédito">Cartão de Crédito</option>
+                    </select>
+                  </div>
+
+                  {formData.condicao_base === "Boleto" && (
+                    <div className="space-y-2 transition-all">
+                      <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider block">
+                        Número de Dias
+                      </label>
+                      <input
+                        type="text"
+                        name="condicao_dias"
+                        value={formData.condicao_dias}
+                        onChange={handleInputChange}
+                        placeholder="Ex: 30 ou 30/60/90"
+                        disabled={isCommercialDisabled}
+                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1327,70 +1386,84 @@ export default function ClienteCadastroPage() {
             </button>
             
             <div className="flex flex-wrap gap-3">
-              {/* Salvar Rascunho button - only if not concluído, and user has permission to edit the current phase */}
-              {formData.fase !== "concluido" && (isAdminOrCeo || (formData.fase === "comercial" && isCommercialUser) || (formData.fase === "financeiro" && isFinancialUser)) && (
-                <button
-                  type="button"
-                  onClick={() => salvarCliente()} // regular save, stays in current phase
-                  disabled={loading}
-                  className="px-5 py-2.5 bg-background border border-border hover:bg-background-card text-foreground rounded-lg flex items-center gap-2 font-semibold text-sm transition-all disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 text-accent-gold" />}
-                  Salvar Rascunho
-                </button>
-              )}
-              
-              {/* Transition Buttons */}
-              {/* Comercial User / Admin -> Concluir Fase Comercial (Advances to 'financeiro') */}
-              {formData.fase === "comercial" && (isAdminOrCeo || isCommercialUser) && (
-                <button
-                  type="button"
-                  onClick={() => salvarCliente("financeiro")}
-                  disabled={loading}
-                  className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(200,169,110,0.3)] disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  Concluir Fase Comercial
-                </button>
-              )}
-
-              {/* Financial User / Admin -> Concluir Fase Financeira (Advances to 'operacoes') */}
-              {formData.fase === "financeiro" && (isAdminOrCeo || isFinancialUser) && (
-                <button
-                  type="button"
-                  onClick={() => salvarCliente("operacoes")}
-                  disabled={loading}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(37,99,235,0.3)] disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  Concluir Fase Financeira
-                </button>
-              )}
-
-              {/* Operations User / Admin -> Concluir Cadastro (Advances to 'concluido') */}
-              {formData.fase === "operacoes" && (isAdminOrCeo || isOperationsUser) && (
-                <button
-                  type="button"
-                  onClick={() => salvarCliente("concluido")}
-                  disabled={loading}
-                  className="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(22,163,74,0.3)] disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                  Concluir Cadastro
-                </button>
-              )}
-
-              {/* If phase is Concluido, or user has no permissions to transition, we can show a notice or let Admin edit. */}
-              {formData.fase === "concluido" && isAdminOrCeo && (
+              {tipoCadastro === "atualizacao" ? (
                 <button
                   type="button"
                   onClick={() => salvarCliente()}
                   disabled={loading}
-                  className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all disabled:opacity-50"
+                  className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(200,169,110,0.3)] disabled:opacity-50"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Salvar Alterações (Admin)
+                  Salvar Alterações
                 </button>
+              ) : (
+                <>
+                  {/* Salvar Rascunho button - only if not concluído, and user has permission to edit the current phase */}
+                  {formData.fase !== "concluido" && (isAdminOrCeo || (formData.fase === "comercial" && isCommercialUser) || (formData.fase === "financeiro" && isFinancialUser)) && (
+                    <button
+                      type="button"
+                      onClick={() => salvarCliente()} // regular save, stays in current phase
+                      disabled={loading}
+                      className="px-5 py-2.5 bg-background border border-border hover:bg-background-card text-foreground rounded-lg flex items-center gap-2 font-semibold text-sm transition-all disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4 text-accent-gold" />}
+                      Salvar Rascunho
+                    </button>
+                  )}
+                  
+                  {/* Transition Buttons */}
+                  {/* Comercial User / Admin -> Concluir Fase Comercial (Advances to 'financeiro') */}
+                  {formData.fase === "comercial" && (isAdminOrCeo || isCommercialUser) && (
+                    <button
+                      type="button"
+                      onClick={() => salvarCliente("financeiro")}
+                      disabled={loading}
+                      className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(200,169,110,0.3)] disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Concluir Fase Comercial
+                    </button>
+                  )}
+
+                  {/* Financial User / Admin -> Concluir Fase Financeira (Advances to 'operacoes') */}
+                  {formData.fase === "financeiro" && (isAdminOrCeo || isFinancialUser) && (
+                    <button
+                      type="button"
+                      onClick={() => salvarCliente("operacoes")}
+                      disabled={loading}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(37,99,235,0.3)] disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Concluir Fase Financeira
+                    </button>
+                  )}
+
+                  {/* Operations User / Admin -> Concluir Cadastro (Advances to 'concluido') */}
+                  {formData.fase === "operacoes" && (isAdminOrCeo || isOperationsUser) && (
+                    <button
+                      type="button"
+                      onClick={() => salvarCliente("concluido")}
+                      disabled={loading}
+                      className="px-5 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all shadow-[0_4px_12px_rgba(22,163,74,0.3)] disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                      Concluir Cadastro
+                    </button>
+                  )}
+
+                  {/* If phase is Concluido, or user has no permissions to transition, we can show a notice or let Admin edit. */}
+                  {formData.fase === "concluido" && isAdminOrCeo && (
+                    <button
+                      type="button"
+                      onClick={() => salvarCliente()}
+                      disabled={loading}
+                      className="px-5 py-2.5 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center gap-2 font-bold text-sm transition-all disabled:opacity-50"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      Salvar Alterações (Admin)
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
