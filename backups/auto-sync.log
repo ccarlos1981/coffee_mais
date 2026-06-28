@@ -24,3 +24,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    7b86973..65d6e51  main -> main
 [28/06/2026 08:35] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 15d5cc8] auto-save: 28/06/2026 11:52
+ 10 files changed, 2554 insertions(+), 9 deletions(-)
+ create mode 100644 src/app/api/metas-promotor/route.ts
+ create mode 100644 src/app/metas-promotor/page.tsx
+ create mode 100644 src/app/promotor/desafio/page.tsx
+ create mode 100644 src/lib/metasPromotorTheme.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   65d6e51..15d5cc8  main -> main
+[28/06/2026 11:52] ✅ Alterações enviadas com sucesso para o GitHub.
