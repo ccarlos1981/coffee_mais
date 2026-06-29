@@ -38,3 +38,18 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    15d5cc8..696ec40  main -> main
 [28/06/2026 14:52] ✅ Alterações enviadas com sucesso para o GitHub.
+[main e0eb049] auto-save: 29/06/2026 06:18
+ 17 files changed, 1563 insertions(+), 498 deletions(-)
+ create mode 100644 public/images/treinamento/fluxograma_aprovacao.png
+ create mode 100644 public/images/treinamento/infografico_recuperacao.png
+ create mode 100644 public/images/treinamento/infografico_regra_bonus.png
+ create mode 100644 src/app/api/promotor/desafio/route.ts
+ create mode 100644 src/app/api/remuneracao-promotor/route.ts
+ create mode 100644 src/app/gente-gestao/remuneracao-promotor/page.tsx
+ create mode 100644 src/app/treinamento/manuais/manual_remuneracao_promotor.md
+ create mode 100644 src/app/treinamento/manuais/manual_remuneracao_rh.md
+ create mode 100644 src/app/treinamento/manuais/manual_remuneracao_supervisor.md
+ create mode 100644 src/lib/engines/challenge-engine.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   696ec40..e0eb049  main -> main
+[29/06/2026 06:18] ✅ Alterações enviadas com sucesso para o GitHub.

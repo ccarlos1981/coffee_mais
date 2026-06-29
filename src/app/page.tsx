@@ -26,7 +26,8 @@ import {
   ShieldCheck,
   Map,
   BookOpen,
-  Trophy
+  Trophy,
+  Bell
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
@@ -132,7 +133,7 @@ const allModules: NavigationGroup[] = [
       { title: "Cadastro", permission: "Gente e Gestão", description: "Cadastro de funcionários", href: "/gente-gestao/cadastro", icon: Users, color: "from-teal-600 to-teal-800", ready: true },
       { title: "Remuneração Promotores", permission: "Gente e Gestão", description: "Cálculo e auditoria", href: "/gente-gestao/remuneracao-promotor", icon: DollarSign, color: "from-amber-500 to-amber-700", ready: true },
       { title: "Central de Treinamento", description: "Manuais e Onboarding", href: "/treinamento", icon: BookOpen, color: "from-emerald-600 to-emerald-800", ready: true },
-      { title: "Processos Coffee ++", permission: "Gente e Gestão", description: "Fluxos e Procedimentos", href: "#", icon: Layers, color: "from-purple-600 to-purple-800", ready: false },
+      { title: "Processos Coffee ++", permission: "Gente e Gestão", description: "Fluxos e Procedimentos", href: "/processos", icon: Layers, color: "from-purple-600 to-purple-800", ready: true },
     ],
   },
   {
@@ -159,6 +160,29 @@ export default async function HomePage() {
   if (!user) {
     redirect("/login");
   }
+
+  // Buscar processos obrigatórios pendentes de leitura
+  const { data: mandatoryProcesses } = await supabase
+    .from("cm_processos")
+    .select("id, titulo, versao, departamento_responsavel")
+    .eq("ativo", true)
+    .eq("status", "PUBLICADO")
+    .eq("mandatory_read", true);
+
+  const { data: readings } = await supabase
+    .from("cm_processos_leitura")
+    .select("processo_id, versao_lida")
+    .eq("user_id", user?.id || "00000000-0000-0000-0000-000000000000");
+
+  const readSet = new Set(
+    (readings || []).map(r => `${r.processo_id}_${r.versao_lida}`)
+  );
+
+  const pendingProcesses = (mandatoryProcesses || []).filter(p => {
+    return !readSet.has(`${p.id}_${p.versao}`);
+  });
+
+  const pendingCount = pendingProcesses.length;
   
   let role = 'Vendedor'; // default
   let allowedModuleNames: string[] = [];
@@ -286,11 +310,52 @@ export default async function HomePage() {
               Apuração de Resultados Comerciais
             </p>
           </div>
-          {/* User Config / Admin */}
           <div className="ml-auto flex items-center gap-3">
             <div className="flex items-center justify-center p-1 border border-border/80 dark:border-white/20 rounded-lg bg-card/40 backdrop-blur-sm shadow-sm transition-all hover:border-gold/30">
               <ThemeToggle />
             </div>
+
+            {/* Notification Bell Dropdown */}
+            <details className="relative flex items-center group">
+              <summary className="list-none flex items-center justify-center w-8 h-8 rounded-lg text-neutral-400 hover:text-foreground hover:bg-neutral-500/10 border border-transparent dark:hover:border-white/20 dark:hover:bg-white/5 transition-all cursor-pointer relative select-none">
+                <Bell className="w-4 h-4" />
+                {pendingCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 border border-background animate-pulse" />
+                )}
+              </summary>
+              
+              <div className="absolute right-0 top-full mt-2 w-80 bg-neutral-950/95 border border-neutral-850 rounded-xl shadow-2xl p-4 z-50 group-open:block hidden backdrop-blur-md">
+                <h4 className="text-[10px] font-black uppercase text-neutral-405 tracking-wider pb-2 border-b border-neutral-900 mb-3 flex items-center gap-1.5">
+                  <Bell className="w-3.5 h-3.5 text-amber-500" />
+                  Pendências de Leitura ({pendingCount})
+                </h4>
+                {pendingCount === 0 ? (
+                  <div className="text-center py-6 text-neutral-500 text-xs italic">
+                    Nenhuma pendência de leitura! 🎉
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto pr-1">
+                    {pendingProcesses.map(p => (
+                      <Link
+                        key={p.id}
+                        href={`/processos/${p.id}`}
+                        className="flex flex-col gap-1 p-2 rounded-lg hover:bg-neutral-900 border border-transparent hover:border-neutral-850 transition-colors text-left"
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <span className="text-neutral-200 font-bold text-xs truncate flex-1">{p.titulo}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 text-[8px] font-extrabold uppercase shrink-0">{p.versao}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-[9px] text-neutral-500">
+                          <span>Depto: {p.departamento_responsavel}</span>
+                          <span className="text-[8px] text-red-500 font-bold uppercase tracking-wider">Leitura Obrigatória</span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </details>
+
             <div className="flex items-center gap-2 border-l border-border/80 dark:border-white/20 pl-4 ml-1">
               
               {canManageUsers && (
