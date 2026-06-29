@@ -42,6 +42,7 @@ interface NavigationItem {
   ready: boolean;
   permission?: string;
   highlight?: boolean;
+  hasRedBorder?: boolean;
 }
 
 interface NavigationGroup {
@@ -91,7 +92,7 @@ const allModules: NavigationGroup[] = [
       { title: "Invest. por mês", description: "Consolidado mensal", href: "/investimento/por-mes", icon: CalendarDays, color: "from-cyan-600 to-cyan-800", ready: true },
       { title: "Calendário de invest.", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
       { title: "Planej. de Invest.", permission: "Planej. de Invest.", description: "Planejamento de ações", href: "/investimento/planejamento", icon: Target, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Invest. oficial", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-amber-600 to-amber-800", ready: true, highlight: true },
+      { title: "Invest. oficial", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-amber-600 to-amber-800", ready: true, hasRedBorder: true },
     ],
   },
   {

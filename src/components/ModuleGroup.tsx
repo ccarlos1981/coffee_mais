@@ -13,6 +13,7 @@ interface ModuleItem {
   ready: boolean;
   iconNode: ReactNode;
   highlight?: boolean;
+  hasRedBorder?: boolean;
 }
 
 interface ModuleGroupProps {
@@ -59,7 +60,9 @@ export function ModuleGroup({ group }: { group: ModuleGroupProps }) {
               className={`group relative overflow-hidden p-3.5 transition-all duration-300 hover:scale-[1.03] hover:-translate-y-0.5 !rounded-xl border ${
                 mod.highlight 
                   ? "bg-gradient-to-br from-amber-500 via-gold to-amber-700 dark:from-amber-600 dark:via-gold/90 dark:to-amber-800 border-amber-400/40 hover:border-gold shadow-md shadow-gold/15 hover:shadow-lg hover:shadow-gold/30 text-white" 
-                  : "glass-card border-border dark:border-white/20 hover:border-gold/40 dark:hover:border-gold/55 hover:shadow-lg hover:shadow-gold/3"
+                  : mod.hasRedBorder
+                    ? "glass-card border-red-500/50 hover:border-red-500 shadow-md shadow-red-500/5 hover:shadow-red-500/15"
+                    : "glass-card border-border dark:border-white/20 hover:border-gold/40 dark:hover:border-gold/55 hover:shadow-lg hover:shadow-gold/3"
               } ${
                 !mod.ready ? "opacity-45 pointer-events-none" : ""
               }`}

@@ -14,15 +14,15 @@ interface DashboardData {
   above_target: number;
   ranking: PromotorRankingEntry[];
   lastUpdated: string;
+  currentUserCode?: string;
 }
-
-const CURRENT_USER_CODE = "0100"; 
 
 type ViewRole = "PROMOTOR" | "SUPERVISOR" | "ADMIN";
 
 export default function DesafioPerformancePage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentUserCode, setCurrentUserCode] = useState("0100");
   
   const [filterRegion, setFilterRegion] = useState("Geral");
   const [filterSupervisor, setFilterSupervisor] = useState("Todos");
@@ -44,6 +44,9 @@ export default function DesafioPerformancePage() {
         if (res.ok) {
           const json = await res.json();
           setData(json);
+          if (json.currentUserCode) {
+            setCurrentUserCode(json.currentUserCode);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -236,16 +239,13 @@ export default function DesafioPerformancePage() {
                     <th className="px-4 py-4 w-20 text-white/90">Código</th>
                     <th className="px-3 py-4">Nome do Promotor</th>
                     <th className="px-3 py-4 w-12 text-white/90">UF</th>
+                    
+                    {/* Financial Columns - Desafio e Real */}
+                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Desafio</th>
+                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Real</th>
+
                     <th className="px-3 py-4 text-white/90">Julho (%)</th>
                     <th className="px-4 py-4 whitespace-nowrap min-w-[200px]">Status</th>
-                    
-                    {/* Financial Columns - Only for Supervisor & Admin */}
-                    {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
-                      <>
-                        <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Meta (Jul)</th>
-                        <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Realizado (Jul)</th>
-                      </>
-                    )}
                     
                     {/* Bonus Columns - Only for Admin */}
                     {currentRole === "ADMIN" && (
@@ -254,107 +254,138 @@ export default function DesafioPerformancePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {data.ranking.map((row) => (
-                    <tr 
-                      key={row.promotor_id} 
-                      className={`transition-colors duration-150 hover:bg-neutral-500/10 ${
-                        row.employee_code === CURRENT_USER_CODE ? "bg-gold/5" : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3 font-mono text-muted text-[13px]">
-                        {row.employee_code}
-                      </td>
-                      <td className="px-3 py-3 font-black text-foreground whitespace-nowrap">
-                        {row.name}
-                        {row.employee_code === CURRENT_USER_CODE && <span className="ml-2 bg-gold text-neutral-950 px-1.5 py-0.5 rounded-[3px] text-[10px] font-black uppercase">Você</span>}
-                      </td>
-                      <td className="px-3 py-3 text-muted font-bold text-[13px]">
-                        {row.uf}
-                      </td>
-                      
-                      {/* Only July shown */}
-                      <td className="px-3 py-3 font-black text-[16px] text-foreground">
-                        {renderPercentage(row.jul.achievement)}
-                      </td>
+                  {(() => {
+                    const isCurrentUserInRanking = data.ranking.some(r => r.employee_code === currentUserCode);
+                    return data.ranking.map((row, idx) => {
+                      const isSelf = isCurrentUserInRanking ? row.employee_code === currentUserCode : idx === 0;
+                      return (
+                        <tr 
+                          key={row.promotor_id} 
+                          className={`transition-colors duration-150 hover:bg-neutral-500/10 ${
+                            isSelf ? "bg-gold/5" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-3 font-mono text-muted text-[13px]">
+                            {row.employee_code}
+                          </td>
+                          <td className="px-3 py-3 font-black text-foreground whitespace-nowrap">
+                            {row.name}
+                            {isSelf && <span className="ml-2 bg-gold text-neutral-950 px-1.5 py-0.5 rounded-[3px] text-[10px] font-black uppercase">Você</span>}
+                          </td>
+                          <td className="px-3 py-3 text-muted font-bold text-[13px]">
+                            {row.uf}
+                          </td>
 
-                      {/* Status */}
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="text-[13px] font-black uppercase tracking-wide flex items-center gap-2">
-                           <span className="text-[16px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
-                        </span>
-                      </td>
-
-                      {/* Financial Columns - Supervisor & Admin - Adaptei meta e realizado apenas para Julho por coerência */}
-                      {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
-                        <>
-                          <td className="px-3 py-3 text-right font-mono text-muted text-[13px]">{formatCurrency(row.jul.meta)}</td>
-                          <td className="px-3 py-3 text-right font-mono font-bold text-foreground text-[13px]">{formatCurrency(row.jul.realizado)}</td>
-                        </>
-                      )}
-                      
-                      {/* Bonus Columns - Admin ONLY */}
-                      {currentRole === "ADMIN" && (
-                        <td className="px-3 py-3 text-right bg-gold/5">
-                          <div className="font-black text-gold text-[13px]">{formatCurrency(row.estimated_bonus_value)}</div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
+                          {/* Financial Columns - Desafio & Real */}
+                          <td className="px-3 py-3 text-right font-mono text-muted text-[13px]">
+                            {currentRole === "PROMOTOR" && !isSelf ? (
+                              <span className="text-neutral-550">🔒 R$ --</span>
+                            ) : (
+                              formatCurrency(row.jul.meta)
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right font-mono font-bold text-foreground text-[13px]">
+                            {currentRole === "PROMOTOR" && !isSelf ? (
+                              <span className="text-neutral-550">🔒 R$ --</span>
+                            ) : (
+                              formatCurrency(row.jul.realizado)
+                            )}
+                          </td>
+                          
+                          {/* Only July shown */}
+                          <td className="px-3 py-3 font-black text-[16px] text-foreground">
+                            {renderPercentage(row.jul.achievement)}
+                          </td>
+     
+                          {/* Status */}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span className="text-[13px] font-black uppercase tracking-wide flex items-center gap-2">
+                               <span className="text-[16px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
+                            </span>
+                          </td>
+                          
+                          {/* Bonus Columns - Admin ONLY */}
+                          {currentRole === "ADMIN" && (
+                            <td className="px-3 py-3 text-right bg-gold/5">
+                              <div className="font-black text-gold text-[13px]">{formatCurrency(row.estimated_bonus_value)}</div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    });
+                  })()}
                 </tbody>
               </table>
             </div>
-
+ 
             {/* Mobile Cards View - Ultra Simplificado */}
             <div className="flex flex-col gap-2 mt-4 md:hidden">
-              {data.ranking.map((row) => (
-                <div 
-                  key={row.promotor_id}
-                  className={`px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
-                    row.employee_code === CURRENT_USER_CODE 
-                      ? "border-gold/40 bg-gold/10 shadow-[0_0_10px_rgba(245,158,11,0.08)]" 
-                      : "border-border bg-card/20 shadow-sm"
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[14px]">
-                    <div className="flex gap-2 items-center">
-                      <span className="font-mono text-muted/80">{row.employee_code}</span>
-                      <span className="text-muted/40">|</span>
-                      <span className="font-black text-foreground truncate">{row.name}</span>
-                    </div>
-                    <span className="font-bold text-muted">{row.uf}</span>
-                  </div>
-                  
-                  {/* Linha 2: Mês | Status */}
-                  <div className="flex items-center justify-between mt-1 px-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[14px] font-bold text-muted tracking-wide">Julho:</span>
-                      <span className="text-[16px] font-black text-foreground">
-                        {renderPercentage(row.jul.achievement)}
-                      </span>
-                    </div>
-                    
-                    <span className="text-[13px] font-black uppercase flex items-center gap-1.5">
-                       <span className="text-[15px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
-                    </span>
-                  </div>
-
-                  {/* Financials super compactos (apenas se Supervisor/Admin) */}
-                  {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
-                    <div className="flex gap-3 text-[11px] font-mono font-bold justify-end mt-1 pt-2 border-t border-border/40">
-                        <div className="text-right">
-                          <span className="text-muted text-[9px] uppercase mr-1">Realizado</span>
-                          {formatCurrency(row.jul.realizado)}
+              {(() => {
+                const isCurrentUserInRanking = data.ranking.some(r => r.employee_code === currentUserCode);
+                return data.ranking.map((row, idx) => {
+                  const isSelf = isCurrentUserInRanking ? row.employee_code === currentUserCode : idx === 0;
+                  return (
+                    <div 
+                      key={row.promotor_id}
+                      className={`px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
+                        isSelf 
+                          ? "border-gold/40 bg-gold/10 shadow-[0_0_10px_rgba(245,158,11,0.08)]" 
+                          : "border-border bg-card/20 shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[14px]">
+                        <div className="flex gap-2 items-center">
+                          <span className="font-mono text-muted/80">{row.employee_code}</span>
+                          <span className="text-muted/40">|</span>
+                          <span className="font-black text-foreground truncate">{row.name}</span>
+                          {isSelf && <span className="ml-1 bg-gold text-neutral-950 px-1 py-0.2 rounded-[2px] text-[8px] font-black uppercase shrink-0">Você</span>}
                         </div>
-                        {currentRole === "ADMIN" && (
-                          <div className="text-right text-gold border-l border-gold/20 pl-2">
-                            <span className="text-gold/70 text-[9px] uppercase mr-1">Prêmio (Est)</span>
-                            {formatCurrency(row.estimated_bonus_value)}
+                        <span className="font-bold text-muted">{row.uf}</span>
+                      </div>
+                      
+                      {/* Linha 2: Mês | Status */}
+                      <div className="flex items-center justify-between mt-1 px-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[14px] font-bold text-muted tracking-wide">Julho:</span>
+                          <span className="text-[16px] font-black text-foreground">
+                            {renderPercentage(row.jul.achievement)}
+                          </span>
+                        </div>
+                        
+                        <span className="text-[13px] font-black uppercase flex items-center gap-1.5">
+                           <span className="text-[15px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
+                        </span>
+                      </div>
+     
+                      {/* Financials super compactos */}
+                      <div className="flex gap-3 text-[11px] font-mono font-bold justify-end mt-1 pt-2 border-t border-border/40">
+                          <div className="text-right">
+                            <span className="text-muted text-[9px] uppercase mr-1">Desafio</span>
+                            {currentRole === "PROMOTOR" && !isSelf ? (
+                              <span className="text-neutral-550">🔒 R$ --</span>
+                            ) : (
+                              formatCurrency(row.jul.meta)
+                            )}
                           </div>
-                        )}
+                          <div className="text-right">
+                            <span className="text-muted text-[9px] uppercase mr-1">Real</span>
+                            {currentRole === "PROMOTOR" && !isSelf ? (
+                              <span className="text-neutral-550">🔒 R$ --</span>
+                            ) : (
+                              formatCurrency(row.jul.realizado)
+                            )}
+                          </div>
+                          {currentRole === "ADMIN" && (
+                            <div className="text-right text-gold border-l border-gold/20 pl-2">
+                              <span className="text-gold/70 text-[9px] uppercase mr-1">Prêmio (Est)</span>
+                              {formatCurrency(row.estimated_bonus_value)}
+                            </div>
+                          )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              ))}
+                  );
+                });
+              })()}
             </div>
           </>
         )}
