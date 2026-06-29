@@ -5,68 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Static mapping of promoter profiles
-const STATIC_PROMOTERS: Record<string, { name: string; supervisor: string }> = {
-  "e0000000-0000-0000-0000-000000000001": { name: "Thamires", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000002": { name: "Jaqueline", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000003": { name: "Antonio", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000004": { name: "Bianca", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000005": { name: "Rafael", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000006": { name: "Joseane", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000007": { name: "Maximinia", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000008": { name: "Clemência", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000009": { name: "Eliane", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000010": { name: "Maria Inês", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000011": { name: "Solange", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000012": { name: "Carla", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000013": { name: "Fabiana", supervisor: "Fernanda Costa" },
-  "e0000000-0000-0000-0000-000000000014": { name: "Carllito", supervisor: "Marcos Souza" },
-  "e0000000-0000-0000-0000-000000000015": { name: "Antonio\\Bianca\\Rafael", supervisor: "Marcos Souza" },
-};
 
-// Static default networks mapping for initialization
-const DEFAULT_PROMOTER_NETWORKS: Record<string, { rede: string; uf: string; supervisor: string }[]> = {
-  // Thamires
-  "e0000000-0000-0000-0000-000000000001": [{ rede: "MAMBO", uf: "SP", supervisor: "Marcos Souza" }],
-  // Jaqueline
-  "e0000000-0000-0000-0000-000000000002": [
-    { rede: "DONA", uf: "DF", supervisor: "Fernanda Costa" },
-    { rede: "SUPER ADEGA", uf: "DF", supervisor: "Fernanda Costa" },
-    { rede: "ASSAI", uf: "DF", supervisor: "Fernanda Costa" },
-    { rede: "REDE BOA", uf: "DF", supervisor: "Fernanda Costa" },
-    { rede: "EMPORIO PRIME", uf: "DF", supervisor: "Fernanda Costa" },
-    { rede: "REDE OBA", uf: "DF", supervisor: "Fernanda Costa" }
-  ],
-  // Antonio
-  "e0000000-0000-0000-0000-000000000003": [
-    { rede: "SUPER LUNA", uf: "MG", supervisor: "Marcos Souza" },
-    { rede: "EPA", uf: "MG", supervisor: "Marcos Souza" }
-  ],
-  // Bianca
-  "e0000000-0000-0000-0000-000000000004": [{ rede: "SUPERNOSSO", uf: "MG", supervisor: "Fernanda Costa" }],
-  // Rafael
-  "e0000000-0000-0000-0000-000000000005": [{ rede: "BH", uf: "MG", supervisor: "Marcos Souza" }],
-  // Antonio\Bianca\Rafael (joint)
-  "e0000000-0000-0000-0000-000000000015": [{ rede: "ASSAI", uf: "MG", supervisor: "Marcos Souza" }],
-  // Joseane
-  "e0000000-0000-0000-0000-000000000006": [{ rede: "VERDEMAR", uf: "MG", supervisor: "Marcos Souza" }],
-  // Maximinia
-  "e0000000-0000-0000-0000-000000000007": [{ rede: "ZONA SUL", uf: "RJ", supervisor: "Fernanda Costa" }],
-  // Clemência
-  "e0000000-0000-0000-0000-000000000008": [{ rede: "FESTVAL", uf: "PR", supervisor: "Marcos Souza" }],
-  // Eliane
-  "e0000000-0000-0000-0000-000000000009": [{ rede: "FESTVAL", uf: "PR", supervisor: "Fernanda Costa" }],
-  // Maria Inês
-  "e0000000-0000-0000-0000-000000000010": [{ rede: "FESTVAL", uf: "PR", supervisor: "Marcos Souza" }],
-  // Solange
-  "e0000000-0000-0000-0000-000000000011": [{ rede: "FESTVAL", uf: "PR", supervisor: "Fernanda Costa" }],
-  // Carla
-  "e0000000-0000-0000-0000-000000000012": [{ rede: "ANGELONI", uf: "SC", supervisor: "Marcos Souza" }],
-  // Fabiana
-  "e0000000-0000-0000-0000-000000000013": [{ rede: "HIPERIDEAL", uf: "BA", supervisor: "Fernanda Costa" }],
-  // Carllito
-  "e0000000-0000-0000-0000-000000000014": [{ rede: "MERCADINHO SÃO LUIZ", uf: "CE", supervisor: "Marcos Souza" }],
-};
 
 export async function GET(request: Request) {
   try {
@@ -121,37 +60,7 @@ export async function GET(request: Request) {
 
     if (netErr) throw netErr;
 
-    // Auto-seed default networks if table is completely empty for our mock users
-    if (!dbMetaNetworks || dbMetaNetworks.length === 0) {
-      const seedRows: any[] = [];
-      userProfiles?.forEach(prof => {
-        const defaults = DEFAULT_PROMOTER_NETWORKS[prof.id];
-        if (defaults) {
-          defaults.forEach(d => {
-            seedRows.push({
-              promotor_id: prof.id,
-              rede: d.rede,
-              uf: d.uf,
-              active: true
-            });
-          });
-        }
-      });
 
-      if (seedRows.length > 0) {
-        const { error: seedErr } = await adminClient
-          .from("cm_promotor_meta_network")
-          .insert(seedRows);
-        if (!seedErr) {
-          // Re-fetch
-          const { data: reFetched } = await adminClient
-            .from("cm_promotor_meta_network")
-            .select("promotor_id, rede, uf")
-            .eq("active", true);
-          dbMetaNetworks = reFetched || [];
-        }
-      }
-    }
 
     // Group dbMetaNetworks by promotor_id
     const metaNetworksMap = new Map<string, { rede: string; uf: string }[]>();
@@ -203,17 +112,15 @@ export async function GET(request: Request) {
     });
 
     // 6. Construct Promoters list
-    const promotersData = (userProfiles || []).map(prof => {
-      const empId = userToEmpMap.get(prof.id);
-      let name = empId ? empNameMap.get(empId) : undefined;
-      let supervisor = "Marcos Souza";
+    const promotersData = (userProfiles || [])
+      .map(prof => {
+        const empId = userToEmpMap.get(prof.id);
+        let name = empId ? empNameMap.get(empId) : undefined;
+        
+        // Se não tiver um employee real atrelado no banco (mocks de dev), ignoramos
+        if (!name) return null;
 
-      if (!name && STATIC_PROMOTERS[prof.id]) {
-        name = STATIC_PROMOTERS[prof.id].name;
-        supervisor = STATIC_PROMOTERS[prof.id].supervisor;
-      } else if (!name) {
-        name = `Promotor ${prof.employee_code}`;
-      }
+        let supervisor = "Marcos Souza";
 
       // Load networks list from our structural mapping table
       const networksList = metaNetworksMap.get(prof.id) || [];
@@ -288,7 +195,8 @@ export async function GET(request: Request) {
           quarter_gap: totalGoal
         }
       };
-    });
+    })
+    .filter(Boolean);
 
     return NextResponse.json({
       success: true,
