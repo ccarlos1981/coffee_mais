@@ -53,3 +53,19 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    696ec40..e0eb049  main -> main
 [29/06/2026 06:18] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 3863f92] auto-save: 29/06/2026 09:18
+ 16 files changed, 11077 insertions(+), 4 deletions(-)
+ create mode 100644 public/pdf.min.js
+ create mode 100644 public/pdf.worker.min.js
+ create mode 100644 public/uploads/processos/instrucao_viagem_corporativa.pdf
+ create mode 100644 src/app/api/processos/[id]/leitura/route.ts
+ create mode 100644 src/app/api/processos/[id]/route.ts
+ create mode 100644 src/app/api/processos/import/route.ts
+ create mode 100644 src/app/api/processos/pendencias/route.ts
+ create mode 100644 src/app/api/processos/route.ts
+ create mode 100644 src/app/processos/[id]/page.tsx
+ create mode 100644 src/app/processos/page.tsx
+ create mode 100644 src/components/PdfViewer.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   e0eb049..3863f92  main -> main
+[29/06/2026 09:18] ✅ Alterações enviadas com sucesso para o GitHub.

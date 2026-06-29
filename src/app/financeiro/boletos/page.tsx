@@ -29,7 +29,10 @@ export default function BoletosPage() {
     rede: "",
     numero_boleto: "",
     valor_total: "",
-    vencimento: ""
+    vencimento: "",
+    parceiro_codigo: "",
+    tipo_titulo: "BOLETO",
+    valor_liquido: ""
   });
 
   // Filter states
@@ -45,13 +48,19 @@ export default function BoletosPage() {
       if (filterRede) {
         const original = boleto.rede.toLowerCase();
         const matriz = shortenRedeName(boleto.rede).toLowerCase();
+        const code = (boleto.parceiro_codigo || "").toLowerCase();
         const search = filterRede.toLowerCase();
-        if (!original.includes(search) && !matriz.includes(search)) {
+        if (!original.includes(search) && !matriz.includes(search) && !code.includes(search)) {
           return false;
         }
       }
-      if (filterNumeroBoleto && !boleto.numero_boleto.toLowerCase().includes(filterNumeroBoleto.toLowerCase())) {
-        return false;
+      if (filterNumeroBoleto) {
+        const numero = boleto.numero_boleto.toLowerCase();
+        const nota = (boleto.nro_nota || "").toLowerCase();
+        const search = filterNumeroBoleto.toLowerCase();
+        if (!numero.includes(search) && !nota.includes(search)) {
+          return false;
+        }
       }
       if (filterStatus !== "Todos" && boleto.status !== filterStatus) {
         return false;
@@ -203,22 +212,27 @@ export default function BoletosPage() {
 
   const handleAddManual = async () => {
     try {
-      if (!manualBoleto.rede || !manualBoleto.numero_boleto || !manualBoleto.valor_total || !manualBoleto.vencimento) {
-        setFeedback({ type: "error", msg: "Preencha todos os campos." });
+      if (!manualBoleto.rede || !manualBoleto.numero_boleto || !manualBoleto.valor_liquido || !manualBoleto.vencimento) {
+        setFeedback({ type: "error", msg: "Preencha Parceiro, Nr da nota, Valor Líquido e Vencimento." });
         return;
       }
       setImporting(true);
+      const val = parseFloat(manualBoleto.valor_liquido.replace(',', '.'));
       const res = await importarBoletos([{
         rede: manualBoleto.rede,
         numero_boleto: manualBoleto.numero_boleto,
-        valor_total: parseFloat(manualBoleto.valor_total.replace(',', '.')),
-        vencimento: manualBoleto.vencimento
+        valor_total: val,
+        vencimento: manualBoleto.vencimento,
+        nro_nota: manualBoleto.numero_boleto,
+        parceiro_codigo: manualBoleto.parceiro_codigo,
+        valor_liquido: val,
+        tipo_titulo: manualBoleto.tipo_titulo || "BOLETO",
       }]);
 
       if (res.success) {
         setFeedback({ type: "success", msg: "Boleto adicionado com sucesso!" });
         setShowManualForm(false);
-        setManualBoleto({ rede: "", numero_boleto: "", valor_total: "", vencimento: "" });
+        setManualBoleto({ rede: "", numero_boleto: "", valor_total: "", vencimento: "", parceiro_codigo: "", tipo_titulo: "BOLETO", valor_liquido: "" });
         fetchBoletos();
       } else {
         throw new Error(res.error);
@@ -235,21 +249,34 @@ export default function BoletosPage() {
     setEditBoletoData({
       numero_boleto: boleto.numero_boleto,
       valor_total: boleto.valor_total,
-      vencimento: boleto.vencimento
+      vencimento: boleto.vencimento,
+      nro_nota: boleto.nro_nota,
+      parceiro_codigo: boleto.parceiro_codigo,
+      valor_liquido: boleto.valor_liquido,
+      tipo_titulo: boleto.tipo_titulo,
+      rede: boleto.rede,
     });
   };
 
   const handleSaveEdit = async (id: string) => {
-    if (!editBoletoData.numero_boleto || !editBoletoData.valor_total || !editBoletoData.vencimento) {
-      setFeedback({ type: "error", msg: "Preencha todos os campos do boleto." });
+    if (!editBoletoData.numero_boleto || !editBoletoData.vencimento) {
+      setFeedback({ type: "error", msg: "Preencha o número do boleto e o vencimento." });
       return;
     }
 
     setLoading(true);
+    const valTotal = editBoletoData.valor_total !== undefined ? Number(editBoletoData.valor_total) : 0;
+    const valLiq = editBoletoData.valor_liquido !== undefined ? Number(editBoletoData.valor_liquido) : valTotal;
+
     const res = await atualizarBoleto(id, {
       numero_boleto: editBoletoData.numero_boleto,
-      valor_total: Number(editBoletoData.valor_total),
-      vencimento: editBoletoData.vencimento
+      valor_total: valLiq || valTotal,
+      vencimento: editBoletoData.vencimento,
+      nro_nota: editBoletoData.nro_nota || editBoletoData.numero_boleto,
+      parceiro_codigo: editBoletoData.parceiro_codigo,
+      valor_liquido: valLiq,
+      tipo_titulo: editBoletoData.tipo_titulo,
+      rede: editBoletoData.rede,
     });
 
     if (res.success) {
@@ -312,32 +339,40 @@ export default function BoletosPage() {
         )}
 
         {showManualForm && (userRole === 'Admin' || userRole === 'Financeiro') && (
-          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+          <div className="bg-card border border-border p-5 rounded-2xl shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-end">
             <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">Rede</label>
+              <label className="block text-xs font-medium text-muted mb-1.5">Nome do Parceiro</label>
               <SearchableSelect 
                 value={manualBoleto.rede} 
                 onChange={(val) => setManualBoleto({...manualBoleto, rede: val})} 
                 options={redesDisponiveis}
-                placeholder="Selecione a Rede..."
-                searchPlaceholder="Pesquisar Rede..."
+                placeholder="Selecione..."
+                searchPlaceholder="Pesquisar..."
                 className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">Nº do Boleto</label>
-              <input type="text" value={manualBoleto.numero_boleto} onChange={e => setManualBoleto({...manualBoleto, numero_boleto: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50" placeholder="Ex: 123456789" />
+              <label className="block text-xs font-medium text-muted mb-1.5">Cód. Parceiro</label>
+              <input type="text" value={manualBoleto.parceiro_codigo} onChange={e => setManualBoleto({...manualBoleto, parceiro_codigo: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px]" placeholder="Ex: 24554" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted mb-1.5">Valor (R$)</label>
-              <input type="number" step="0.01" value={manualBoleto.valor_total} onChange={e => setManualBoleto({...manualBoleto, valor_total: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50" placeholder="Ex: 5000.00" />
+              <label className="block text-xs font-medium text-muted mb-1.5">Nr da nota</label>
+              <input type="text" value={manualBoleto.numero_boleto} onChange={e => setManualBoleto({...manualBoleto, numero_boleto: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px]" placeholder="Ex: 19839" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Descrição</label>
+              <input type="text" value={manualBoleto.tipo_titulo} onChange={e => setManualBoleto({...manualBoleto, tipo_titulo: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px]" placeholder="Ex: BOLETO" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-muted mb-1.5">Valor Líquido (R$)</label>
+              <input type="text" value={manualBoleto.valor_liquido} onChange={e => setManualBoleto({...manualBoleto, valor_liquido: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px]" placeholder="Ex: 1428.00" />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted mb-1.5">Vencimento</label>
-              <input type="date" value={manualBoleto.vencimento} onChange={e => setManualBoleto({...manualBoleto, vencimento: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50" />
+              <input type="date" value={manualBoleto.vencimento} onChange={e => setManualBoleto({...manualBoleto, vencimento: e.target.value})} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gold/50 h-[38px] [color-scheme:dark]" />
             </div>
-            <button onClick={handleAddManual} disabled={importing} className="w-full bg-foreground text-background py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity">
-              Salvar Boleto
+            <button onClick={handleAddManual} disabled={importing} className="w-full md:col-span-6 bg-foreground text-background py-2.5 rounded-xl text-sm font-black uppercase hover:opacity-90 transition-opacity mt-2">
+              Salvar Novo Boleto
             </button>
           </div>
         )}
@@ -434,10 +469,12 @@ export default function BoletosPage() {
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-elevated border-b border-border">
                 <tr>
-                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Rede</th>
-                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Número Boleto</th>
-                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Valor</th>
-                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Vencimento</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Nr da nota</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Parceiro</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Nome do parceiro</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Data de vencimento</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Descrição</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Valor Líquido</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Status</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Ações</th>
                 </tr>
@@ -445,15 +482,15 @@ export default function BoletosPage() {
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
+                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
                   </tr>
                 ) : boletos.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
+                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
                   </tr>
                 ) : filteredBoletos.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-muted">Nenhum boleto encontrado com os filtros selecionados.</td>
+                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Nenhum boleto encontrado com os filtros selecionados.</td>
                   </tr>
                 ) : (
                   filteredBoletos.map((boleto) => {
@@ -462,41 +499,58 @@ export default function BoletosPage() {
 
                     return (
                     <tr key={boleto.id} className="hover:bg-elevated/50 transition-colors">
-                      <td className="px-6 py-4 font-medium">
-                        <div className="flex flex-col">
-                          <span>{matriz}</span>
-                          {matriz.toUpperCase() !== boleto.rede.toUpperCase() && (
-                            <span className="text-[10px] text-muted font-normal block max-w-[250px] truncate" title={boleto.rede}>
-                              {boleto.rede}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-muted">
+                      {/* Nr da nota */}
+                      <td className="px-6 py-4 font-mono text-muted text-[13px]">
                         {isEditing ? (
                           <input 
                             type="text" 
                             value={editBoletoData.numero_boleto || ''} 
-                            onChange={(e) => setEditBoletoData({...editBoletoData, numero_boleto: e.target.value})}
-                            className="bg-background border border-border rounded px-2 py-1 text-sm w-full max-w-[150px]"
-                          />
-                        ) : (
-                          boleto.numero_boleto
-                        )}
-                      </td>
-                      <td className="px-6 py-4 font-medium">
-                        {isEditing ? (
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            value={editBoletoData.valor_total || ''} 
-                            onChange={(e) => setEditBoletoData({...editBoletoData, valor_total: Number(e.target.value)})}
+                            onChange={(e) => setEditBoletoData({...editBoletoData, numero_boleto: e.target.value, nro_nota: e.target.value})}
                             className="bg-background border border-border rounded px-2 py-1 text-sm w-full max-w-[120px]"
                           />
                         ) : (
-                          new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boleto.valor_total)
+                          boleto.nro_nota || boleto.numero_boleto
                         )}
                       </td>
+
+                      {/* Parceiro */}
+                      <td className="px-6 py-4 font-mono text-muted text-[13px]">
+                        {isEditing ? (
+                          <input 
+                            type="text" 
+                            value={editBoletoData.parceiro_codigo || ''} 
+                            onChange={(e) => setEditBoletoData({...editBoletoData, parceiro_codigo: e.target.value})}
+                            className="bg-background border border-border rounded px-2 py-1 text-sm w-full max-w-[100px]"
+                          />
+                        ) : (
+                          boleto.parceiro_codigo || '-'
+                        )}
+                      </td>
+
+                      {/* Nome do parceiro */}
+                      <td className="px-6 py-4 font-medium">
+                        {isEditing ? (
+                          <SearchableSelect 
+                            value={editBoletoData.rede || ''} 
+                            onChange={(val) => setEditBoletoData({...editBoletoData, rede: val})} 
+                            options={redesDisponiveis}
+                            placeholder="Selecione a Rede..."
+                            searchPlaceholder="Pesquisar..."
+                            className="w-full bg-background border border-border rounded px-2 py-1 text-sm max-w-[200px]"
+                          />
+                        ) : (
+                          <div className="flex flex-col">
+                            <span>{matriz}</span>
+                            {matriz.toUpperCase() !== boleto.rede.toUpperCase() && (
+                              <span className="text-[10px] text-muted font-normal block max-w-[250px] truncate" title={boleto.rede}>
+                                {boleto.rede}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Data de vencimento */}
                       <td className="px-6 py-4 text-muted">
                         {isEditing ? (
                           <input 
@@ -509,6 +563,37 @@ export default function BoletosPage() {
                           new Date(boleto.vencimento).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
                         )}
                       </td>
+
+                      {/* Descrição (Tipo de Título) */}
+                      <td className="px-6 py-4 text-muted text-xs uppercase tracking-wider font-semibold">
+                        {isEditing ? (
+                          <input 
+                            type="text" 
+                            value={editBoletoData.tipo_titulo || ''} 
+                            onChange={(e) => setEditBoletoData({...editBoletoData, tipo_titulo: e.target.value})}
+                            className="bg-background border border-border rounded px-2 py-1 text-sm w-full max-w-[120px]"
+                          />
+                        ) : (
+                          boleto.tipo_titulo || 'BOLETO'
+                        )}
+                      </td>
+
+                      {/* Valor Líquido */}
+                      <td className="px-6 py-4 font-black text-right text-foreground">
+                        {isEditing ? (
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            value={(editBoletoData.valor_liquido !== undefined && editBoletoData.valor_liquido !== null) ? editBoletoData.valor_liquido : (editBoletoData.valor_total || '')} 
+                            onChange={(e) => setEditBoletoData({...editBoletoData, valor_liquido: Number(e.target.value), valor_total: Number(e.target.value)})}
+                            className="bg-background border border-border rounded px-2 py-1 text-sm w-full max-w-[120px] text-right"
+                          />
+                        ) : (
+                          new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(boleto.valor_liquido !== null && boleto.valor_liquido !== undefined ? boleto.valor_liquido : boleto.valor_total)
+                        )}
+                      </td>
+
+                      {/* Status */}
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold border uppercase tracking-wider
                           ${boleto.status === 'Aberto' ? 'bg-blue-500/10 text-blue-500 border-blue-500/20' : 
@@ -517,6 +602,8 @@ export default function BoletosPage() {
                           {boleto.status}
                         </span>
                       </td>
+
+                      {/* Ações */}
                       <td className="px-6 py-4 text-right">
                         {(userRole === 'Admin' || userRole === 'Financeiro') && (
                           isEditing ? (

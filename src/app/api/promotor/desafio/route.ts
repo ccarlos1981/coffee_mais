@@ -23,6 +23,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
     }
 
+    // Obter employee_code do usuário logado
+    const { data: loggedInProfile } = await adminClient
+      .from("cm_user_profiles")
+      .select("employee_code")
+      .eq("id", user.id)
+      .single();
+    const currentUserCode = loggedInProfile?.employee_code || "0100";
+
     const { searchParams } = new URL(request.url);
     const region = searchParams.get("region");
     const supervisor = searchParams.get("supervisor");
@@ -57,7 +65,7 @@ export async function GET(request: Request) {
       .select("user_id, employee_id");
     const userToEmpMap = new Map((promotorPerfil || []).map(p => [p.user_id, p.employee_id]));
 
-    // Construir lista real de promotores (vazia por enquanto de faturamento, pois depende da apuração real)
+    // Construir lista real de promotores com dados fictícios realistas para os testes do dashboard
     let promotersList = (userProfiles || [])
       .map(prof => {
         const empId = userToEmpMap.get(prof.id);
@@ -65,17 +73,21 @@ export async function GET(request: Request) {
         
         // Se não tiver um employee real atrelado no banco (mocks de dev), ignoramos
         if (!name) return null;
+
+        const codeNum = parseInt(prof.employee_code || "3001", 10);
+        const mockMeta = 45000 + (codeNum % 3) * 5000;      // Ex: 45k, 50k, 55k
+        const mockReal = 38000 + (codeNum % 4) * 6000;      // Ex: 38k, 44k, 50k, 56k
         
         return {
           id: prof.id,
           name: name,
           code: prof.employee_code || "0000",
-          supervisor: "Sem Supervisor", // Isso virá do cadastro real no futuro
-          uf: "SP", // Isso virá do cadastro real no futuro
+          supervisor: codeNum % 2 === 0 ? "Fernanda Costa" : "Marcos Souza",
+          uf: codeNum % 3 === 0 ? "RJ" : (codeNum % 3 === 1 ? "SP" : "MG"),
           region: "Sudeste",
-          jul: { meta: 0, realizado: 0 },
-          ago: { meta: 0, realizado: 0 },
-          set: { meta: 0, realizado: 0 }
+          jul: { meta: mockMeta, realizado: mockReal },
+          ago: { meta: mockMeta, realizado: Math.round(mockReal * 0.95) },
+          set: { meta: mockMeta, realizado: Math.round(mockReal * 1.05) }
         };
       })
       .filter(Boolean) as any[];
@@ -140,6 +152,7 @@ export async function GET(request: Request) {
       total_eligible: ranking.filter(r => r.achievement_q3 !== null).length,
       above_target: ranking.filter(r => r.achievement_q3 !== null && r.achievement_q3 >= 100).length,
       ranking,
+      currentUserCode,
       lastUpdated: new Date().toISOString()
     });
 

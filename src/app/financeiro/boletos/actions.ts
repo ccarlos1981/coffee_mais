@@ -11,6 +11,10 @@ export interface Boleto {
   vencimento: string;
   status: string;
   created_at: string;
+  nro_nota?: string | null;
+  parceiro_codigo?: string | null;
+  valor_liquido?: number | null;
+  tipo_titulo?: string | null;
 }
 
 export async function listarBoletos(): Promise<Boleto[]> {
@@ -34,6 +38,10 @@ export async function importarBoletos(boletos: Omit<Boleto, "id" | "created_at" 
       valor_total: b.valor_total,
       vencimento: b.vencimento,
       status: "Aberto",
+      nro_nota: b.nro_nota || b.numero_boleto,
+      parceiro_codigo: b.parceiro_codigo || "",
+      valor_liquido: b.valor_liquido || b.valor_total,
+      tipo_titulo: b.tipo_titulo || "BOLETO",
     }));
 
     const { error } = await supabase.from("cm_boletos").insert(boletosToInsert);
