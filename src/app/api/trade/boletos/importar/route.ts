@@ -29,9 +29,11 @@ export async function POST(request: Request) {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
     
-    // Find the header row dynamically (by looking for 'Nro Nota')
+    // Find the header row dynamically (by looking for 'Nro Nota' ignoring casing/spaces)
     const rawRows: any[][] = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-    const headerIndex = rawRows.findIndex(row => Array.isArray(row) && row.includes('Nro Nota'));
+    const headerIndex = rawRows.findIndex(row => 
+      Array.isArray(row) && row.some(cell => typeof cell === 'string' && cell.trim().toLowerCase() === 'nro nota')
+    );
     
     const data: any[] = xlsx.utils.sheet_to_json(sheet, { range: headerIndex !== -1 ? headerIndex : 0 });
 
@@ -111,7 +113,8 @@ export async function POST(request: Request) {
         cnpj_cpf: String(row['CNPJ / CPF'] || ''),
         data_negociacao: data_negociacao,
         empresa: String(row['Empresa'] || ''),
-        status: 'Aberto' // Default as per table creation
+        prazo: row['Prazo'] !== undefined && row['Prazo'] !== null ? String(row['Prazo']) : null,
+        status: 'Aberto'
       };
 
       rowsToInsert.push(insertData);
@@ -142,6 +145,63 @@ export async function POST(request: Request) {
       }
       
       insertedCount += batch.length;
+    }
+
+    // Update client terms (condições de pagamento) in cm_clientes dynamically based on imported tipo_titulo (Boleto/Transferência)
+    try {
+      const clientTermsToUpdate: { [key: number]: string } = {};
+      for (const row of rowsToInsert) {
+        const pCode = parseInt(row.parceiro_codigo, 10);
+        if (!isNaN(pCode) && row.tipo_titulo) {
+          // Capitalize: "BOLETO" -> "Boleto", "TRANSFERÊNCIA" -> "Transferência"
+          let condStr = row.tipo_titulo.trim().toLowerCase();
+          condStr = condStr.charAt(0).toUpperCase() + condStr.slice(1);
+          clientTermsToUpdate[pCode] = condStr;
+        }
+      }
+
+      const partnerCodes = Object.keys(clientTermsToUpdate).map(Number);
+      if (partnerCodes.length > 0) {
+        // Fetch matrix codes for the partners
+        const { data: clientsData } = await supabase
+          .from('cm_clientes')
+          .select('codigo, codigo_matriz')
+          .in('codigo', partnerCodes);
+
+        const matrixTermsToUpdate: { [key: string]: string } = {};
+        if (clientsData) {
+          for (const c of clientsData) {
+            if (c.codigo_matriz) {
+              const term = clientTermsToUpdate[c.codigo];
+              if (term) {
+                matrixTermsToUpdate[c.codigo_matriz] = term;
+              }
+            }
+          }
+        }
+
+        // Update all clients with the same matrix code
+        const matrixPromises = Object.entries(matrixTermsToUpdate).map(async ([matrixCode, prazo]) => {
+          return supabase
+            .from('cm_clientes')
+            .update({ condicao_pagamento: prazo })
+            .eq('codigo_matriz', matrixCode);
+        });
+
+        // Update direct code as fallback
+        const directPromises = Object.entries(clientTermsToUpdate).map(async ([codeStr, prazo]) => {
+          const code = parseInt(codeStr, 10);
+          return supabase
+            .from('cm_clientes')
+            .update({ condicao_pagamento: prazo })
+            .eq('codigo', code);
+        });
+
+        await Promise.all([...matrixPromises, ...directPromises]);
+      }
+    } catch (clientUpdateError) {
+      console.error('Failed to update client payment conditions:', clientUpdateError);
+      // We don't fail the entire boleto import if client update fails, just log it.
     }
 
     return NextResponse.json({ 

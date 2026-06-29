@@ -694,6 +694,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
   
   // Evidências
   const apuracao_evidencias_url = formData.get("apuracao_evidencias_url") as string || null;
+  const condicao_pagamento = formData.get("condicao_pagamento") as string || null;
 
   if (!apuracao_numero_acordo) {
     throw new Error("Número do Acordo é obrigatório.");
@@ -708,6 +709,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
       apuracao_valor_realizado,
       apuracao_boleto_id,
       apuracao_evidencias_url,
+      condicao_pagamento,
       apuracao_preenchida_em: new Date().toISOString(),
       apuracao_preenchida_por: user?.email || "unknown"
     })
