@@ -15,7 +15,9 @@ import {
   TrendingUp, 
   ChevronRight,
   Sparkles,
-  PlayCircle
+  PlayCircle,
+  Smartphone,
+  DollarSign
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
@@ -30,6 +32,7 @@ interface ManualConfig {
   icon: any;
   color: string;
   roles: string[];
+  category: string;
 }
 
 const AVAILABLE_MANUALS: ManualConfig[] = [
@@ -40,7 +43,8 @@ const AVAILABLE_MANUALS: ManualConfig[] = [
     description: "Instruções de campo, check-in, leitura por Shelf AI, precificação Price OCR e giro de estoque.",
     icon: User,
     color: "from-amber-600 to-amber-800",
-    roles: ["Promotor", "Supervisor", "Trade", "Admin", "CEO"]
+    roles: ["Promotor", "Supervisor", "Trade", "Admin", "CEO"],
+    category: "Operação de Campo"
   },
   {
     key: "trade",
@@ -49,7 +53,8 @@ const AVAILABLE_MANUALS: ManualConfig[] = [
     description: "Gestão de equipe, parametrização de SLAs, análise de telemetria antifraude e aprovação de ocorrências.",
     icon: ShieldCheck,
     color: "from-blue-600 to-blue-800",
-    roles: ["Supervisor", "Trade", "Admin", "CEO"]
+    roles: ["Supervisor", "Trade", "Admin", "CEO"],
+    category: "Operação de Campo"
   },
   {
     key: "investimento",
@@ -58,7 +63,8 @@ const AVAILABLE_MANUALS: ManualConfig[] = [
     description: "Guia completo da esteira de auditoria de investimentos, desde o planejamento até o pagamento.",
     icon: FileText,
     color: "from-purple-600 to-purple-800",
-    roles: ["Supervisor", "Trade", "Admin", "CEO"]
+    roles: ["Supervisor", "Trade", "Admin", "CEO"],
+    category: "Estratégia & Executiva"
   },
   {
     key: "executivo",
@@ -67,7 +73,38 @@ const AVAILABLE_MANUALS: ManualConfig[] = [
     description: "Análise de DRE, faturamento consolidado, simulador de trade e tomada de decisão preditiva.",
     icon: TrendingUp,
     color: "from-emerald-600 to-emerald-800",
-    roles: ["CEO", "Admin"]
+    roles: ["CEO", "Admin"],
+    category: "Estratégia & Executiva"
+  },
+  {
+    key: "remuneracao-promotor",
+    title: "Remuneração Variável — Mobile",
+    filename: "manual_remuneracao_promotor.md",
+    description: "Trilha para Promotores: como acompanhar metas, bônus e recuperação trimestral pelo celular.",
+    icon: Smartphone,
+    color: "from-amber-500 to-orange-600",
+    roles: ["Promotor", "Admin", "CEO"],
+    category: "Remuneração e Metas do Promotor"
+  },
+  {
+    key: "remuneracao-supervisor",
+    title: "Remuneração do Promotor — Gestão",
+    filename: "manual_remuneracao_supervisor.md",
+    description: "Trilha para Supervisores: acompanhamento de ranking, evolução e performance da equipe.",
+    icon: TrendingUp,
+    color: "from-blue-600 to-blue-800",
+    roles: ["Supervisor", "Trade", "Admin", "CEO"],
+    category: "Remuneração e Metas do Promotor"
+  },
+  {
+    key: "remuneracao-rh",
+    title: "Remuneração do Promotor — Fechamento",
+    filename: "manual_remuneracao_rh.md",
+    description: "Trilha para Gente & Gestão: workflow financeiro, overrides, auditoria e lock de trimestre.",
+    icon: DollarSign,
+    color: "from-emerald-600 to-emerald-800",
+    roles: ["Admin", "CEO", "RH"],
+    category: "Remuneração e Metas do Promotor"
   }
 ];
 
@@ -96,7 +133,7 @@ function parseMarkdownToHtml(md: string): string {
 
   const closeTable = () => {
     if (inTable) {
-      let tableHtml = `<div class="overflow-x-auto my-6 border border-neutral-800 rounded-xl bg-neutral-900/30">
+      let tableHtml = `<div class="overflow-x-auto my-6 border border-neutral-800 rounded-xl bg-neutral-900/30 print:break-inside-avoid print:page-break-inside-avoid">
         <table class="w-full text-left text-xs border-collapse">
           <thead>
             <tr class="border-b border-neutral-800 bg-neutral-900/60 font-bold text-neutral-200">`;
@@ -130,7 +167,7 @@ function parseMarkdownToHtml(md: string): string {
         caution: "bg-rose-950/20 border-rose-900/40 text-rose-300"
       };
       const title = noteType.toUpperCase();
-      result.push(`<div class="p-4 rounded-xl border border-neutral-800/80 my-5 ${styles[noteType]} flex flex-col gap-1.5">
+      result.push(`<div class="p-4 rounded-xl border border-neutral-800/80 my-5 ${styles[noteType]} flex flex-col gap-1.5 print:break-inside-avoid print:page-break-inside-avoid">
         <span class="text-[10px] font-black tracking-wider uppercase">${title}</span>
         <div class="text-xs leading-relaxed font-medium">${noteContent}</div>
       </div>`);
@@ -163,6 +200,8 @@ function parseMarkdownToHtml(md: string): string {
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
+      // Support for standard images: ![alt](url)
+      .replace(/!\[([^\]]*)\]\((.*?)\)/g, '<img src="$2" alt="$1" class="w-full max-w-full h-auto rounded-xl border border-neutral-800 shadow-lg my-6 print:break-inside-avoid print:page-break-inside-avoid" />')
       .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-neutral-100">$1</strong>')
       .replace(/\*(.*?)\*/g, '<em class="italic text-neutral-300">$1</em>')
       .replace(/`(.*?)`/g, '<code class="px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 font-mono text-[10px] text-amber-400">$1</code>');
@@ -426,6 +465,13 @@ export default async function TreinamentoPage({
   }
 
   // Dashboard Page View
+  // Group manuals by category
+  const groupedManuals = userManuals.reduce((acc, manual) => {
+    if (!acc[manual.category]) acc[manual.category] = [];
+    acc[manual.category].push(manual);
+    return acc;
+  }, {} as Record<string, ManualConfig[]>);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex flex-col font-sans">
       {/* Header */}
@@ -476,40 +522,42 @@ export default async function TreinamentoPage({
           </div>
         </div>
 
-        {/* Lista de Manuais */}
-        <div className="flex flex-col gap-4">
-          <h3 className="text-xs font-black uppercase text-neutral-400 tracking-wider">Manuais Disponíveis</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {userManuals.map(m => {
-              const IconComp = m.icon;
-              return (
-                <Link
-                  key={m.key}
-                  href={`/treinamento?manual=${m.key}`}
-                  className="group bg-neutral-900/20 border border-neutral-900 rounded-2xl p-5 hover:border-amber-500/30 transition-all duration-300 flex flex-col justify-between gap-5 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-amber-600/0 via-amber-500/10 to-amber-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="space-y-3">
-                    <span className={`p-2.5 bg-neutral-900 border border-neutral-850 rounded-xl w-fit flex items-center justify-center text-amber-500 group-hover:border-amber-500/20 transition-colors`}>
-                      <IconComp className="w-5 h-5" />
-                    </span>
-                    <div>
-                      <h4 className="text-sm font-extrabold text-neutral-100 group-hover:text-amber-500 transition-colors flex items-center gap-1">
-                        {m.title}
-                        <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
-                      </h4>
-                      <p className="text-xs text-neutral-400 mt-1 leading-relaxed">{m.description}</p>
+        {/* Lista de Manuais Agrupados */}
+        {Object.entries(groupedManuals).map(([category, manuals]) => (
+          <div key={category} className="flex flex-col gap-4 mt-2">
+            <h3 className="text-xs font-black uppercase text-neutral-400 tracking-wider pb-2 border-b border-neutral-900/60">{category}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {manuals.map(m => {
+                const IconComp = m.icon;
+                return (
+                  <Link
+                    key={m.key}
+                    href={`/treinamento?manual=${m.key}`}
+                    className="group bg-neutral-900/20 border border-neutral-900 rounded-2xl p-5 hover:border-amber-500/30 transition-all duration-300 flex flex-col justify-between gap-5 relative overflow-hidden"
+                  >
+                    <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-amber-600/0 via-amber-500/10 to-amber-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className="space-y-3">
+                      <span className={`p-2.5 bg-neutral-900 border border-neutral-850 rounded-xl w-fit flex items-center justify-center text-amber-500 group-hover:border-amber-500/20 transition-colors`}>
+                        <IconComp className="w-5 h-5" />
+                      </span>
+                      <div>
+                        <h4 className="text-sm font-extrabold text-neutral-100 group-hover:text-amber-500 transition-colors flex items-center gap-1">
+                          {m.title}
+                          <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                        </h4>
+                        <p className="text-xs text-neutral-400 mt-1 leading-relaxed">{m.description}</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-[10px] text-neutral-500 border-t border-neutral-900/60 pt-3 flex justify-between items-center">
-                    <span>Vigente (Acesso Livre)</span>
-                    <span className="font-bold text-[9px] uppercase tracking-wider text-amber-500 bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">Ler Agora</span>
-                  </div>
-                </Link>
-              );
-            })}
+                    <div className="text-[10px] text-neutral-500 border-t border-neutral-900/60 pt-3 flex justify-between items-center">
+                      <span>Vigente (Acesso Livre)</span>
+                      <span className="font-bold text-[9px] uppercase tracking-wider text-amber-500 bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">Ler Agora</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        ))}
 
       </main>
     </div>

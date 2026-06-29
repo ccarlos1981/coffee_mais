@@ -135,7 +135,8 @@ export default function MetasPromotorPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/metas-promotor?planning_cycle=${planningCycle}&version=${version}&target_type=${targetType}`
+        `/api/metas-promotor?planning_cycle=${planningCycle}&version=${version}&target_type=${targetType}`,
+        { cache: "no-store" }
       );
       const json = await res.json();
       if (json.success) {

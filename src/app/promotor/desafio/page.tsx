@@ -1,415 +1,364 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
-  ArrowLeft, 
-  Trophy, 
-  Target, 
-  Award, 
-  TrendingUp, 
-  Users, 
-  Calendar, 
-  Clock, 
-  CheckCircle2, 
-  Sparkles, 
-  ShieldAlert, 
-  Crown,
-  Gift
+  ArrowLeft, Trophy, Target, Users,
+  Filter, Eye, Clock, X
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import type { PromotorRankingEntry } from "@/lib/engines/challenge-engine";
 
-interface Challenge {
-  id: string;
-  title: string;
-  description: string;
-  target: string;
-  current: string;
-  progress: number;
-  reward: string;
-  endDate: string;
-  status: "active" | "completed" | "failed";
-  type: "positivacao" | "mix" | "vendas" | "presenca";
+interface DashboardData {
+  total_eligible: number;
+  above_target: number;
+  ranking: PromotorRankingEntry[];
+  lastUpdated: string;
 }
 
-interface LeaderboardEntry {
-  rank: number;
-  name: string;
-  supervisor: string;
-  points: number;
-  achievements: number;
-  isCurrentUser?: boolean;
-}
+const CURRENT_USER_CODE = "0100"; 
 
-export default function DesafioPromotorPage() {
-  const [activeTab, setActiveTab] = useState<"challenges" | "leaderboard">("challenges");
+type ViewRole = "PROMOTOR" | "SUPERVISOR" | "ADMIN";
 
-  // Mock data for challenges
-  const challenges: Challenge[] = [
-    {
-      id: "ch-1",
-      title: "Positivação de Ouro",
-      description: "Mantenha o índice de positivação dos PDVs da sua rota acima de 95% este mês.",
-      target: "95% de positivação",
-      current: "92% de positivação",
-      progress: 96.8,
-      reward: "Bônus de R$ 350,00",
-      endDate: "30/06/2026",
-      status: "active",
-      type: "positivacao"
-    },
-    {
-      id: "ch-2",
-      title: "Mix Perfeito Coffee++",
-      description: "Garanta a presença de pelo menos 5 SKUs diferentes em todos os PDVs atendidos.",
-      target: "5 SKUs médios por PDV",
-      current: "4.2 SKUs médios",
-      progress: 84,
-      reward: "Kit Exclusivo Coffee++ (Garrafa Térmica + Caneca)",
-      endDate: "15/07/2026",
-      status: "active",
-      type: "mix"
-    },
-    {
-      id: "ch-3",
-      title: "Fidelidade e Pontualidade",
-      description: "Registre todas as batidas de ponto no raio do PDV (geofencing) sem atrasos no mês.",
-      target: "100% de batidas válidas",
-      current: "100% (22 de 22 batidas)",
-      progress: 100,
-      reward: "Folga Compensatória (1 dia)",
-      endDate: "30/06/2026",
-      status: "completed",
-      type: "presenca"
-    },
-    {
-      id: "ch-4",
-      title: "Recorde de Vendas Extra",
-      description: "Exceder a meta de faturamento de sell-out nos PDVs da sua rota em 10%.",
-      target: "110% da meta de vendas",
-      current: "95% da meta",
-      progress: 86.3,
-      reward: "Bônus de R$ 500,00",
-      endDate: "30/06/2026",
-      status: "active",
-      type: "vendas"
-    }
-  ];
+export default function DesafioPerformancePage() {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  const [filterRegion, setFilterRegion] = useState("Geral");
+  const [filterSupervisor, setFilterSupervisor] = useState("Todos");
+  const [filterUF, setFilterUF] = useState("Todos");
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // Mock data for leaderboard
-  const leaderboard: LeaderboardEntry[] = [
-    { rank: 1, name: "Ana Paula Mendes (3006)", supervisor: "Marcos Souza", points: 2450, achievements: 6 },
-    { rank: 2, name: "Bruno Gomes (3007)", supervisor: "Fernanda Costa", points: 2310, achievements: 5 },
-    { rank: 3, name: "Cristiano Santos (0100)", supervisor: "Marcos Souza", points: 2200, achievements: 5, isCurrentUser: true },
-    { rank: 4, name: "Mariana Costa (3008)", supervisor: "Fernanda Costa", points: 2050, achievements: 4 },
-    { rank: 5, name: "Pedro Oliveira (3009)", supervisor: "Marcos Souza", points: 1980, achievements: 4 },
-    { rank: 6, name: "Juliana Santos (3010)", supervisor: "Fernanda Costa", points: 1850, achievements: 3 },
-    { rank: 7, name: "Rodrigo Almeida (3011)", supervisor: "Marcos Souza", points: 1720, achievements: 3 }
-  ];
+  const [currentRole, setCurrentRole] = useState<ViewRole>("PROMOTOR");
 
-  const getStatusBadge = (status: Challenge["status"]) => {
-    switch (status) {
-      case "completed":
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-2 py-0.5 rounded-full">
-            <CheckCircle2 className="w-3 h-3" /> Concluído
-          </span>
-        );
-      case "failed":
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-0.5 rounded-full">
-            <ShieldAlert className="w-3 h-3" /> Encerrado
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase bg-gold/10 text-gold border border-gold/20 px-2 py-0.5 rounded-full animate-pulse">
-            <Clock className="w-3 h-3" /> Em Andamento
-          </span>
-        );
-    }
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filterRegion !== "Geral") params.set("region", filterRegion);
+        if (filterSupervisor !== "Todos") params.set("supervisor", filterSupervisor);
+        if (filterUF !== "Todos") params.set("uf", filterUF);
+        
+        const res = await fetch(`/api/promotor/desafio?${params.toString()}`, { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          setData(json);
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [filterRegion, filterSupervisor, filterUF]);
+
+  const cycleRole = () => {
+    if (currentRole === "PROMOTOR") setCurrentRole("SUPERVISOR");
+    else if (currentRole === "SUPERVISOR") setCurrentRole("ADMIN");
+    else setCurrentRole("PROMOTOR");
   };
 
-  const getChallengeIcon = (type: Challenge["type"]) => {
-    switch (type) {
-      case "positivacao":
-        return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
-      case "mix":
-        return <Award className="w-5 h-5 text-indigo-500" />;
-      case "vendas":
-        return <TrendingUp className="w-5 h-5 text-blue-500" />;
-      default:
-        return <Calendar className="w-5 h-5 text-amber-500" />;
-    }
+  const formatCurrency = (val: number) => {
+    return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  };
+
+  const renderPercentage = (val: number | null) => {
+    if (val === null) return <span className="text-neutral-500 font-bold tracking-widest">--</span>;
+    return <span>{val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%</span>;
+  };
+
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return `Hoje ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const getStatusIcon = (label: string) => {
+    if (label === "META BATIDA") return "🟢";
+    if (label === "QUASE LÁ") return "🟡";
+    if (label === "ATENÇÃO") return "🟠";
+    if (label === "PRECISA MELHORAR") return "🔴";
+    return "⚪";
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex flex-col font-sans transition-colors duration-300">
-      {/* Decorative noise grain overlay */}
-      <div
-        className="fixed inset-0 opacity-[0.03] pointer-events-none z-0"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
-        }}
-      />
-
-      {/* Rich radial background glows */}
-      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] rounded-full bg-gold/5 blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-10 right-10 w-[500px] h-[500px] rounded-full bg-amber-600/3 blur-[120px] pointer-events-none translate-x-1/3 translate-y-1/3" />
-
+    <div className="min-h-screen bg-background relative overflow-hidden flex flex-col font-sans transition-colors duration-300 pb-16">
+      
       {/* Header */}
-      <header className="border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-50 px-6 py-4">
-        <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <header className="border-b border-border/60 bg-background/80 backdrop-blur-md sticky top-0 z-50 px-3 py-3 md:px-6 md:py-4">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <Link 
               href="/"
-              className="flex items-center justify-center w-9 h-9 rounded-xl border border-border bg-card/40 hover:bg-neutral-500/10 transition-all text-neutral-400 hover:text-foreground"
+              className="flex items-center justify-center w-8 h-8 md:w-9 md:h-9 rounded-xl border border-border bg-card/40 hover:bg-neutral-500/10 transition-all text-neutral-400 hover:text-foreground"
             >
               <ArrowLeft className="w-4 h-4" />
             </Link>
             <div>
               <div className="flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-gold animate-bounce" />
-                <h1 className="text-lg font-black tracking-tight text-foreground">
-                  Desafios e Campanhas
+                <Trophy className="w-4 h-4 md:w-5 md:h-5 text-gold" />
+                <h1 className="text-lg md:text-xl font-black tracking-tight text-foreground">
+                  Desafio Promotor
                 </h1>
               </div>
-              <p className="text-[10px] text-muted uppercase tracking-wider font-semibold">
-                Módulo Promotor de Campo
-              </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          
+          <div className="flex items-center gap-3 flex-wrap">
+            <button 
+              onClick={cycleRole}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-neutral-800 text-white border-neutral-700"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Visão: {currentRole}
+            </button>
             <ThemeToggle />
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-5xl mx-auto px-6 py-8 w-full flex-grow relative z-10">
+      <main className="max-w-7xl mx-auto px-3 py-4 md:px-6 md:py-6 w-full flex-grow relative z-10">
         
-        {/* Top Summary Widget */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-          {/* Card 1 */}
-          <div className="p-4 rounded-2xl glass-card border border-border shadow-sm flex items-center justify-between bg-card/30">
-            <div className="space-y-1">
-              <span className="text-[10px] text-muted uppercase tracking-wider font-bold">Sua Pontuação</span>
-              <h3 className="text-2xl font-black text-foreground flex items-center gap-1.5">
-                2.200 <span className="text-xs text-gold font-medium">pts</span>
-              </h3>
-              <p className="text-[10px] text-muted">Próximo nível em 300 pts</p>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center text-gold">
-              <Crown className="w-6 h-6" />
-            </div>
-          </div>
-
-          {/* Card 2 */}
-          <div className="p-4 rounded-2xl glass-card border border-border shadow-sm flex items-center justify-between bg-card/30">
-            <div className="space-y-1">
-              <span className="text-[10px] text-muted uppercase tracking-wider font-bold">Desafios Ativos</span>
-              <h3 className="text-2xl font-black text-foreground">3 / 4</h3>
-              <p className="text-[10px] text-emerald-500 font-medium">1 Concluído este mês</p>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-500">
-              <Target className="w-6 h-6" />
-            </div>
-          </div>
-
-          {/* Card 3 */}
-          <div className="p-4 rounded-2xl glass-card border border-border shadow-sm flex items-center justify-between bg-card/30">
-            <div className="space-y-1">
-              <span className="text-[10px] text-muted uppercase tracking-wider font-bold">Posição no Ranking</span>
-              <h3 className="text-2xl font-black text-foreground">3º Lugar</h3>
-              <p className="text-[10px] text-muted">Entre 45 promotores</p>
-            </div>
-            <div className="w-12 h-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
-              <TrendingUp className="w-6 h-6" />
-            </div>
-          </div>
+        {/* Simple Visual Legend */}
+        <div className="mb-5 flex flex-wrap justify-center items-center gap-3 md:gap-5 bg-neutral-900/40 border border-border/50 py-2 px-3 rounded-xl backdrop-blur-sm">
+          <div className="flex items-center gap-1.5"><span className="text-[14px]">🟢</span><span className="text-[10px] md:text-[14px] font-black uppercase">Meta Batida</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-[14px]">🟡</span><span className="text-[10px] md:text-[14px] font-black uppercase">Quase Lá</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-[14px]">🟠</span><span className="text-[10px] md:text-[14px] font-black uppercase">Atenção</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-[14px]">🔴</span><span className="text-[10px] md:text-[14px] font-black uppercase">Precisa Melhorar</span></div>
         </div>
 
-        {/* Tab Selection */}
-        <div className="flex border-b border-border mb-6">
-          <button
-            onClick={() => setActiveTab("challenges")}
-            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px flex items-center gap-2 ${
-              activeTab === "challenges"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            <Trophy className="w-4 h-4" />
-            Campanhas Ativas
-          </button>
-          <button
-            onClick={() => setActiveTab("leaderboard")}
-            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 -mb-px flex items-center gap-2 ${
-              activeTab === "leaderboard"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted hover:text-foreground"
-            }`}
-          >
-            <Users className="w-4 h-4" />
-            Ranking da Equipe
-          </button>
-        </div>
-
-        {/* Content Area */}
-        {activeTab === "challenges" ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {challenges.map((ch) => (
-              <div 
-                key={ch.id} 
-                className={`p-5 rounded-2xl border transition-all duration-300 relative overflow-hidden bg-card/40 ${
-                  ch.status === "completed"
-                    ? "border-emerald-500/30 shadow-md shadow-emerald-500/5"
-                    : "border-border hover:border-gold/30 shadow-sm"
-                }`}
-              >
-                {/* Accent Background Orb */}
-                <div className={`absolute -top-10 -right-10 w-24 h-24 rounded-full blur-2xl opacity-10 pointer-events-none ${
-                  ch.status === "completed" ? "bg-emerald-500" : "bg-gold"
-                }`} />
-
-                <div className="flex justify-between items-start gap-4 mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl border flex items-center justify-center ${
-                      ch.status === "completed" 
-                        ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500" 
-                        : "bg-neutral-900 border-border"
-                    }`}>
-                      {getChallengeIcon(ch.type)}
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-foreground">{ch.title}</h4>
-                      <p className="text-[10px] text-muted flex items-center gap-1 mt-0.5">
-                        <Calendar className="w-3.5 h-3.5" /> Expira em {ch.endDate}
-                      </p>
-                    </div>
-                  </div>
-                  {getStatusBadge(ch.status)}
-                </div>
-
-                <p className="text-xs text-muted mb-4 leading-relaxed">
-                  {ch.description}
-                </p>
-
-                {/* Progress bar */}
-                <div className="space-y-1.5 mb-4">
-                  <div className="flex justify-between text-[10px] font-bold">
-                    <span className="text-muted">Progresso</span>
-                    <span className={ch.status === "completed" ? "text-emerald-500" : "text-foreground"}>
-                      {ch.progress}%
-                    </span>
-                  </div>
-                  <div className="h-2 w-full bg-neutral-900 border border-border/40 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        ch.status === "completed" 
-                          ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" 
-                          : "bg-gradient-to-r from-amber-500 to-gold"
-                      }`}
-                      style={{ width: `${ch.progress}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-[9px] text-muted">
-                    <span>Atual: {ch.current}</span>
-                    <span>Meta: {ch.target}</span>
-                  </div>
-                </div>
-
-                {/* Reward section */}
-                <div className={`p-3 rounded-xl border flex items-center gap-3 bg-neutral-900/50 ${
-                  ch.status === "completed" ? "border-emerald-500/20" : "border-border/60"
-                }`}>
-                  <Gift className={`w-5 h-5 shrink-0 ${ch.status === "completed" ? "text-emerald-500" : "text-gold"}`} />
-                  <div>
-                    <span className="text-[8px] text-muted uppercase tracking-wider font-extrabold block">Recompensa</span>
-                    <span className="text-xs font-bold text-foreground">{ch.reward}</span>
-                  </div>
-                </div>
+        {/* Top KPIs & Filters for Supervisor/Admin */}
+        {currentRole !== "PROMOTOR" && (
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 mb-5">
+            <div className="flex gap-3">
+              <div className="px-3 py-2 rounded-xl border border-border bg-card/30 flex items-center gap-2">
+                <Users className="w-4 h-4 text-neutral-500" />
+                <span className="text-[10px] text-muted uppercase font-bold">Elegíveis:</span>
+                <span className="font-black text-sm">{data?.total_eligible || 0}</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-border bg-card/20 overflow-hidden shadow-sm">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-neutral-900/60 border-b border-border/80 text-muted font-bold">
-                  <th className="p-4 w-16 text-center">Posição</th>
-                  <th className="p-4">Promotor</th>
-                  <th className="p-4">Supervisor</th>
-                  <th className="p-4 text-center">Desafios Concluídos</th>
-                  <th className="p-4 text-right pr-6">Pontos Acumulados</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60">
-                {leaderboard.map((row) => (
-                  <tr 
-                    key={row.rank} 
-                    className={`transition-colors duration-150 hover:bg-neutral-500/5 ${
-                      row.isCurrentUser ? "bg-gold/5 font-semibold" : ""
-                    }`}
-                  >
-                    <td className="p-4 text-center font-bold">
-                      {row.rank === 1 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-gold/15 text-gold border border-gold/20 shadow-sm" title="1º Lugar">
-                          <Crown className="w-3.5 h-3.5" />
-                        </span>
-                      ) : row.rank === 2 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-300/15 text-slate-300 border border-slate-300/20" title="2º Lugar">
-                          2
-                        </span>
-                      ) : row.rank === 3 ? (
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-amber-700/15 text-amber-700 border border-amber-700/20" title="3º Lugar">
-                          3
-                        </span>
-                      ) : (
-                        row.rank
-                      )}
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span>{row.name}</span>
-                        {row.isCurrentUser && (
-                          <span className="bg-gold/10 text-gold border border-gold/25 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md">
-                            Você
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4 text-muted">{row.supervisor}</td>
-                    <td className="p-4 text-center font-medium">{row.achievements}</td>
-                    <td className="p-4 text-right pr-6 font-bold text-foreground">
-                      {row.points.toLocaleString("pt-BR")} <span className="text-[10px] text-muted font-normal">pts</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              <div className="px-3 py-2 rounded-xl border border-border bg-card/30 flex items-center gap-2">
+                <Target className="w-4 h-4 text-emerald-500" />
+                <span className="text-[10px] text-muted uppercase font-bold">Batendo:</span>
+                <span className="font-black text-sm">{data?.above_target || 0}</span>
+              </div>
+            </div>
+
+            {/* Mobile Filter Button */}
+            <button 
+              className="md:hidden w-full flex items-center justify-center gap-2 bg-neutral-900 border border-border rounded-xl py-2.5 text-xs font-bold uppercase"
+              onClick={() => setIsFilterOpen(true)}
+            >
+              <Filter className="w-3.5 h-3.5" /> Filtros
+            </button>
+
+            {/* Desktop Filters Inline */}
+            <div className="hidden md:flex flex-wrap items-center gap-2 bg-card/30 p-1.5 rounded-xl border border-border/50">
+              <div className="px-2 text-muted"><Filter className="w-3.5 h-3.5" /></div>
+              <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)} className="bg-neutral-900 border border-border rounded-lg text-[11px] px-2 py-1 outline-none">
+                <option value="Geral">Região: Brasil</option><option value="Sudeste">Sudeste</option><option value="Sul">Sul</option><option value="Nordeste">Nordeste</option>
+              </select>
+              <select value={filterSupervisor} onChange={(e) => setFilterSupervisor(e.target.value)} className="bg-neutral-900 border border-border rounded-lg text-[11px] px-2 py-1 outline-none">
+                <option value="Todos">Sup: Todos</option><option value="Marcos Souza">Marcos Souza</option><option value="Fernanda Costa">Fernanda Costa</option>
+              </select>
+              <select value={filterUF} onChange={(e) => setFilterUF(e.target.value)} className="bg-neutral-900 border border-border rounded-lg text-[11px] px-2 py-1 outline-none">
+                <option value="Todos">UF: Todas</option><option value="SP">SP</option><option value="MG">MG</option><option value="RJ">RJ</option><option value="PR">PR</option><option value="RS">RS</option><option value="BA">BA</option>
+              </select>
+            </div>
           </div>
         )}
 
-        {/* Helpful Info Section */}
-        <div className="mt-8 p-4 rounded-2xl border border-gold/10 bg-gold/5 flex items-start gap-3">
-          <Sparkles className="w-5 h-5 text-gold shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h4 className="text-xs font-bold text-foreground">Como funcionam as campanhas?</h4>
-            <p className="text-[11px] text-muted leading-relaxed">
-              Os desafios são lançados mensalmente pelo time de Trade e Supervisão. 
-              Ao bater as metas propostas, os pontos são creditados automaticamente na sua carteira digital, 
-              dando direito a resgatar prêmios físicos ou bônus direto em sua folha de pagamento.
-            </p>
+        {/* Mobile Filters Modal */}
+        {isFilterOpen && currentRole !== "PROMOTOR" && (
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-end md:hidden">
+            <div className="bg-neutral-950 w-full rounded-t-3xl border-t border-border p-5 pb-8 animate-in slide-in-from-bottom-full duration-200">
+              <div className="flex justify-between items-center mb-5">
+                <h3 className="font-black text-lg">Filtros</h3>
+                <button onClick={() => setIsFilterOpen(false)} className="p-2 bg-neutral-900 rounded-full"><X className="w-5 h-5"/></button>
+              </div>
+              <div className="space-y-3">
+                <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)} className="w-full bg-neutral-900 border border-border rounded-xl text-[16px] px-4 py-3 outline-none">
+                  <option value="Geral">Região: Brasil</option><option value="Sudeste">Região: Sudeste</option><option value="Sul">Região: Sul</option><option value="Nordeste">Região: Nordeste</option>
+                </select>
+                <select value={filterSupervisor} onChange={(e) => setFilterSupervisor(e.target.value)} className="w-full bg-neutral-900 border border-border rounded-xl text-[16px] px-4 py-3 outline-none">
+                  <option value="Todos">Supervisor: Todos</option><option value="Marcos Souza">Marcos Souza</option><option value="Fernanda Costa">Fernanda Costa</option>
+                </select>
+                <select value={filterUF} onChange={(e) => setFilterUF(e.target.value)} className="w-full bg-neutral-900 border border-border rounded-xl text-[16px] px-4 py-3 outline-none">
+                  <option value="Todos">UF: Todas</option><option value="SP">SP</option><option value="MG">MG</option><option value="RJ">RJ</option><option value="PR">PR</option><option value="RS">RS</option><option value="BA">BA</option>
+                </select>
+                <button onClick={() => setIsFilterOpen(false)} className="w-full bg-gold text-neutral-950 font-black py-4 rounded-xl mt-3 text-[16px]">Aplicar Filtros</button>
+              </div>
+            </div>
           </div>
+        )}
+
+        {/* Last Updated Timestamp */}
+        <div className="flex items-center gap-1.5 text-[12px] text-muted font-bold mb-3 uppercase pl-1">
+          <Clock className="w-4 h-4" />
+          <span>Última atualização: {data ? formatTime(data.lastUpdated) : '...'}</span>
         </div>
 
-      </main>
+        {/* Loading State Skeleton */}
+        {loading && (
+          <div className="space-y-3 mt-4">
+            <div className="w-full h-16 bg-neutral-900/50 rounded-lg animate-pulse"></div>
+            <div className="w-full h-16 bg-neutral-900/40 rounded-lg animate-pulse"></div>
+            <div className="w-full h-16 bg-neutral-900/30 rounded-lg animate-pulse"></div>
+          </div>
+        )}
 
-      {/* Footer */}
-      <footer className="border-t border-border/50 py-6 text-center text-[10px] text-muted z-10 mt-auto">
-        &copy; {new Date().getFullYear()} Coffee Mais S.A. Todos os direitos reservados.
-      </footer>
+        {/* Data Presentation */}
+        {!loading && data && data.ranking.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-center bg-card/10 rounded-2xl border border-border mt-6">
+            <div className="w-16 h-16 bg-neutral-900/50 rounded-full flex items-center justify-center mb-4 border border-border">
+              <Users className="w-8 h-8 text-neutral-500" />
+            </div>
+            <h3 className="text-xl font-black text-foreground mb-2">Sem Promotores Ativos</h3>
+            <p className="text-muted text-sm max-w-md mb-6">
+              Para visualizar o ranking de desafios, cadastre funcionários e atribua o perfil de "Promotor" a eles.
+            </p>
+            {(currentRole === "ADMIN" || currentRole === "SUPERVISOR") && (
+              <Link href="/gente-gestao/cadastro" className="px-5 py-2.5 bg-gold text-black hover:bg-gold/90 transition-colors rounded-lg font-black uppercase text-[12px] tracking-wide">
+                Cadastrar no Gente & Gestão
+              </Link>
+            )}
+          </div>
+        )}
+
+        {!loading && data && data.ranking.length > 0 && (
+          <>
+            {/* Desktop Table View - Layout Extremamente Simples */}
+            <div className="hidden md:block rounded-xl border border-border bg-card/20 shadow-sm mt-4 overflow-x-auto">
+              <table className="w-full text-left border-collapse text-[14px] min-w-max">
+                <thead>
+                  <tr className="bg-neutral-950 border-b border-border text-[14px] md:text-[15px] uppercase tracking-wide text-white font-bold">
+                    <th className="px-4 py-4 w-20 text-white/90">Código</th>
+                    <th className="px-3 py-4">Nome do Promotor</th>
+                    <th className="px-3 py-4 w-12 text-white/90">UF</th>
+                    <th className="px-3 py-4 text-white/90">Julho (%)</th>
+                    <th className="px-4 py-4 whitespace-nowrap min-w-[200px]">Status</th>
+                    
+                    {/* Financial Columns - Only for Supervisor & Admin */}
+                    {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
+                      <>
+                        <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Meta (Jul)</th>
+                        <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Realizado (Jul)</th>
+                      </>
+                    )}
+                    
+                    {/* Bonus Columns - Only for Admin */}
+                    {currentRole === "ADMIN" && (
+                      <th className="px-3 py-4 text-right bg-gold/10 text-gold w-28 font-black">Bônus</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {data.ranking.map((row) => (
+                    <tr 
+                      key={row.promotor_id} 
+                      className={`transition-colors duration-150 hover:bg-neutral-500/10 ${
+                        row.employee_code === CURRENT_USER_CODE ? "bg-gold/5" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3 font-mono text-muted text-[13px]">
+                        {row.employee_code}
+                      </td>
+                      <td className="px-3 py-3 font-black text-foreground whitespace-nowrap">
+                        {row.name}
+                        {row.employee_code === CURRENT_USER_CODE && <span className="ml-2 bg-gold text-neutral-950 px-1.5 py-0.5 rounded-[3px] text-[10px] font-black uppercase">Você</span>}
+                      </td>
+                      <td className="px-3 py-3 text-muted font-bold text-[13px]">
+                        {row.uf}
+                      </td>
+                      
+                      {/* Only July shown */}
+                      <td className="px-3 py-3 font-black text-[16px] text-foreground">
+                        {renderPercentage(row.jul.achievement)}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-[13px] font-black uppercase tracking-wide flex items-center gap-2">
+                           <span className="text-[16px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
+                        </span>
+                      </td>
+
+                      {/* Financial Columns - Supervisor & Admin - Adaptei meta e realizado apenas para Julho por coerência */}
+                      {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
+                        <>
+                          <td className="px-3 py-3 text-right font-mono text-muted text-[13px]">{formatCurrency(row.jul.meta)}</td>
+                          <td className="px-3 py-3 text-right font-mono font-bold text-foreground text-[13px]">{formatCurrency(row.jul.realizado)}</td>
+                        </>
+                      )}
+                      
+                      {/* Bonus Columns - Admin ONLY */}
+                      {currentRole === "ADMIN" && (
+                        <td className="px-3 py-3 text-right bg-gold/5">
+                          <div className="font-black text-gold text-[13px]">{formatCurrency(row.estimated_bonus_value)}</div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Cards View - Ultra Simplificado */}
+            <div className="flex flex-col gap-2 mt-4 md:hidden">
+              {data.ranking.map((row) => (
+                <div 
+                  key={row.promotor_id}
+                  className={`px-4 py-3 rounded-xl border flex flex-col gap-1.5 ${
+                    row.employee_code === CURRENT_USER_CODE 
+                      ? "border-gold/40 bg-gold/10 shadow-[0_0_10px_rgba(245,158,11,0.08)]" 
+                      : "border-border bg-card/20 shadow-sm"
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-[14px]">
+                    <div className="flex gap-2 items-center">
+                      <span className="font-mono text-muted/80">{row.employee_code}</span>
+                      <span className="text-muted/40">|</span>
+                      <span className="font-black text-foreground truncate">{row.name}</span>
+                    </div>
+                    <span className="font-bold text-muted">{row.uf}</span>
+                  </div>
+                  
+                  {/* Linha 2: Mês | Status */}
+                  <div className="flex items-center justify-between mt-1 px-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[14px] font-bold text-muted tracking-wide">Julho:</span>
+                      <span className="text-[16px] font-black text-foreground">
+                        {renderPercentage(row.jul.achievement)}
+                      </span>
+                    </div>
+                    
+                    <span className="text-[13px] font-black uppercase flex items-center gap-1.5">
+                       <span className="text-[15px]">{getStatusIcon(row.status.label)}</span> {row.status.label}
+                    </span>
+                  </div>
+
+                  {/* Financials super compactos (apenas se Supervisor/Admin) */}
+                  {(currentRole === "SUPERVISOR" || currentRole === "ADMIN") && (
+                    <div className="flex gap-3 text-[11px] font-mono font-bold justify-end mt-1 pt-2 border-t border-border/40">
+                        <div className="text-right">
+                          <span className="text-muted text-[9px] uppercase mr-1">Realizado</span>
+                          {formatCurrency(row.jul.realizado)}
+                        </div>
+                        {currentRole === "ADMIN" && (
+                          <div className="text-right text-gold border-l border-gold/20 pl-2">
+                            <span className="text-gold/70 text-[9px] uppercase mr-1">Prêmio (Est)</span>
+                            {formatCurrency(row.estimated_bonus_value)}
+                          </div>
+                        )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }
