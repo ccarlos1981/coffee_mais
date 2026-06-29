@@ -18,7 +18,8 @@ import {
   Edit2,
   ChevronLeft,
   ChevronRight,
-  Plus
+  Plus,
+  CreditCard
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -40,6 +41,15 @@ export default function ClientesListPage() {
   const [searchLocal, setSearchLocal] = useState("");
   const [searchGeneral, setSearchGeneral] = useState("");
   const [filterFase, setFilterFase] = useState<string | null>(null);
+  const [filterCondicao, setFilterCondicao] = useState<string>("todos");
+
+  const uniqueCondicoes = Array.from(
+    new Set(
+      clientes
+        .map(c => c.condicao_pagamento)
+        .filter((c): c is string => !!c)
+    )
+  ).sort();
 
   const phaseCounts = {
     comercial: clientes.filter(c => (c.fase || 'comercial') === 'comercial').length,
@@ -424,10 +434,18 @@ export default function ClientesListPage() {
     toast.success("Modelo completo baixado!");
   };
 
-  // Filter local & general & phase
+  // Filter local & general & phase & condition
   const filteredClientes = clientes.filter(cliente => {
     if (filterFase !== null && (cliente.fase || 'comercial') !== filterFase) {
       return false;
+    }
+
+    if (filterCondicao !== "todos") {
+      if (filterCondicao === "sem_condicao") {
+        if (cliente.condicao_pagamento) return false;
+      } else {
+        if (cliente.condicao_pagamento !== filterCondicao) return false;
+      }
     }
 
     const matchLocal = !searchLocal.trim() || 
@@ -450,7 +468,7 @@ export default function ClientesListPage() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchGeneral, searchLocal, filterFase]);
+  }, [searchGeneral, searchLocal, filterFase, filterCondicao]);
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -604,6 +622,30 @@ export default function ClientesListPage() {
               />
             </div>
           </div>
+          <div className="flex-1 space-y-1.5">
+            <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+              Condição de Pagamento
+            </label>
+            <div className="relative">
+              <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
+              <select
+                value={filterCondicao}
+                onChange={(e) => setFilterCondicao(e.target.value)}
+                className="w-full bg-background border border-border rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors appearance-none cursor-pointer text-foreground"
+              >
+                <option value="todos">Todas as Condições</option>
+                <option value="sem_condicao">Sem Condição</option>
+                {uniqueCondicoes.map(cond => (
+                  <option key={cond} value={cond}>{cond}</option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-foreground-dim">
+                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                </svg>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Listing Table */}
@@ -616,6 +658,7 @@ export default function ClientesListPage() {
                   <th className="px-3.5 py-3">Nome / Parceiro</th>
                   <th className="px-3.5 py-3">Cód. Matriz</th>
                   <th className="px-3.5 py-3">Matriz (Input)</th>
+                  <th className="px-3.5 py-3">Cond. Pagamento</th>
                   <th className="px-3.5 py-3 text-center">UF</th>
                   <th className="px-3.5 py-3">Responsável</th>
                   <th className="px-3.5 py-3">Fase</th>
@@ -625,14 +668,14 @@ export default function ClientesListPage() {
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-3.5 py-12 text-center text-foreground-secondary">
+                    <td colSpan={9} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-accent-gold" />
                       Carregando carteira de clientes...
                     </td>
                   </tr>
                 ) : paginatedClientes.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3.5 py-12 text-center text-foreground-secondary">
+                    <td colSpan={9} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
                       <p className="text-base font-medium text-foreground">Nenhum cliente encontrado.</p>
                       <p className="text-sm mt-1">Experimente mudar o filtro de busca ou sincronizar com o Sankhya.</p>
@@ -680,6 +723,17 @@ export default function ClientesListPage() {
                             className="bg-transparent hover:bg-background/80 focus:bg-background border border-transparent hover:border-border/60 focus:border-accent-gold rounded px-2 py-1 text-sm font-semibold text-foreground w-full max-w-[130px] xl:max-w-[170px] transition-all focus:outline-none"
                             placeholder="Nome matriz..."
                           />
+                        </td>
+
+                        {/* Condição de Pagamento */}
+                        <td className="px-3.5 py-3">
+                          {cliente.condicao_pagamento ? (
+                            <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 text-xs font-bold border border-purple-500/20">
+                              {cliente.condicao_pagamento}
+                            </span>
+                          ) : (
+                            <span className="text-foreground-secondary italic text-xs font-normal">—</span>
+                          )}
                         </td>
                         
                         {/* UF */}

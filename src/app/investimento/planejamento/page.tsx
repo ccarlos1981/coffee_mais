@@ -71,6 +71,7 @@ interface AcaoInvestimento {
   mes_referencia?: string | null;
   documento_url?: string | null;
   gerente_responsavel?: string | null;
+  condicao_pagamento?: string | null;
 }
 
 const supabase = createClient();

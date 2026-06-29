@@ -99,6 +99,7 @@ interface AcaoInvestimento {
   apuracao_valor_realizado?: number | null;
   apuracao_evidencias_url?: string | null;
   apuracao_boleto_id?: string | null;
+  condicao_pagamento?: string | null;
   
   trade_validado_em?: string | null;
   trade_validado_por?: string | null;
@@ -179,7 +180,7 @@ export default function InvestimentoPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isImportPending, startImportTransition] = useTransition();
   const [detailsExpanded, setDetailsExpanded] = useState(false);
-  const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "" });
+  const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "", condicao_pagamento: "" });
   const [boletosAbertos, setBoletosAbertos] = useState<any[]>([]);
   const [boletoSearchTerm, setBoletoSearchTerm] = useState("");
   const [boletoSearchResults, setBoletoSearchResults] = useState<any[]>([]);
@@ -279,7 +280,8 @@ export default function InvestimentoPage() {
         qtd_vendida: selectedAction.apuracao_qtd_vendida?.toString() || "",
         valor_realizado: selectedAction.apuracao_valor_realizado?.toString() || "",
         evidencias_url: selectedAction.apuracao_evidencias_url || "",
-        boleto_id: selectedAction.apuracao_boleto_id || ""
+        boleto_id: selectedAction.apuracao_boleto_id || "",
+        condicao_pagamento: selectedAction.condicao_pagamento || ""
       });
       
       if ((selectedAction.fase_atual || 1) >= 3) {
@@ -288,7 +290,7 @@ export default function InvestimentoPage() {
         // Buscar boletos vinculados na tabela de relações
         supabase
           .from('cm_acoes_boletos_vinculo')
-          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, valor_total, vencimento, status)')
+          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, valor_total, vencimento, status, tipo_titulo, prazo)')
           .eq('acao_id', selectedAction.id)
           .then(({ data: vinculosData, error }: any) => {
             if (!error && vinculosData && vinculosData.length > 0) {
@@ -297,9 +299,11 @@ export default function InvestimentoPage() {
                 return {
                   boleto_id: b.id,
                   valor_associado: v.valor_associado.toString(),
-                  label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                  label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                   numero_boleto: b.numero_boleto,
-                  valor_total: b.valor_total
+                  valor_total: b.valor_total,
+                  tipo_titulo: b.tipo_titulo,
+                  prazo: b.prazo
                 };
               });
               setVinculosBoletos(parsed);
@@ -316,9 +320,11 @@ export default function InvestimentoPage() {
                       setVinculosBoletos([{
                         boleto_id: b.id,
                         valor_associado: (selectedAction.apuracao_valor_realizado || getValorTotal(selectedAction)).toString(),
-                        label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                        label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                         numero_boleto: b.numero_boleto,
-                        valor_total: b.valor_total
+                        valor_total: b.valor_total,
+                        tipo_titulo: b.tipo_titulo,
+                        prazo: b.prazo
                       }]);
                     } else {
                       setVinculosBoletos([]);
@@ -1122,6 +1128,7 @@ export default function InvestimentoPage() {
       // usaremos string se tiver, mas para arquivos teríamos que usar supabase storage.
       // Vou focar apenas nos campos do form e no upload separado, ou usar um text input por agora.
       fd.append('apuracao_evidencias_url', apuracaoForm.evidencias_url);
+      fd.append('condicao_pagamento', apuracaoForm.condicao_pagamento);
       
       const { preencherApuracao } = await import('./lancar/actions');
       await preencherApuracao(selectedAction.id, fd);
@@ -2224,6 +2231,16 @@ export default function InvestimentoPage() {
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${selectedAction.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                           {selectedAction.tipo_acao}
                         </span>
+                        {selectedAction.tipo_pagamento && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-blue-500/10 text-blue-400 border-blue-500/20 uppercase tracking-wide">
+                            {selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'BOLETO' : 'TRANSFERÊNCIA'}
+                          </span>
+                        )}
+                        {selectedAction.condicao_pagamento && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/20 uppercase tracking-wide">
+                            {selectedAction.condicao_pagamento}
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-bold text-foreground text-lg leading-tight uppercase tracking-wide">{selectedAction.rede}</h3>
                       <p className="text-sm text-foreground/80 mt-0.5">{selectedAction.abrangencia === "SKU" ? "Múltiplos SKUs" : selectedAction.familia_produto}</p>
@@ -2249,6 +2266,16 @@ export default function InvestimentoPage() {
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Mês de Referência</span>
                       <span className="font-bold text-foreground">{formatMesReferencia(selectedAction.mes_referencia)}</span>
+                    </div>
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Forma de Pagamento</span>
+                      <span className="font-bold text-foreground">
+                        {selectedAction.tipo_pagamento ? (selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'Boleto' : 'Transferência') : "—"}
+                      </span>
+                    </div>
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Condição de Pagamento</span>
+                      <span className="font-bold text-foreground">{selectedAction.condicao_pagamento || "—"}</span>
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Família</span>
@@ -2429,6 +2456,10 @@ export default function InvestimentoPage() {
                           <input type="text" value={apuracaoForm.numero_acordo} onChange={e => setApuracaoForm({...apuracaoForm, numero_acordo: e.target.value})} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Ex: AC-2026-001" />
                         </div>
                         <div>
+                          <label className="block text-xs font-medium text-muted mb-1">Condição de Pagamento</label>
+                          <input type="text" value={apuracaoForm.condicao_pagamento} onChange={e => setApuracaoForm({...apuracaoForm, condicao_pagamento: e.target.value})} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Ex: 30 dias, Crédito em Nota, etc." />
+                        </div>
+                        <div>
                           <label className="block text-xs font-medium text-muted mb-1">Qtd. Vendida (Sell-out)</label>
                           <input type="number" value={apuracaoForm.qtd_vendida} onChange={e => {
                             const qtd = e.target.value;
@@ -2539,11 +2570,19 @@ export default function InvestimentoPage() {
                                             {
                                               boleto_id: b.id,
                                               valor_associado: defaultVal.toFixed(2),
-                                              label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                              label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                                               numero_boleto: b.numero_boleto,
-                                              valor_total: b.valor_total
+                                              valor_total: b.valor_total,
+                                              tipo_titulo: b.tipo_titulo,
+                                              prazo: b.prazo
                                             }
                                           ]);
+                                          if (b.prazo) {
+                                            const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
+                                              ? b.prazo 
+                                              : `${b.prazo} dias`;
+                                            setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
+                                          }
                                           setShowBoletoDropdown(false);
                                           setBoletoSearchTerm("");
                                         }}
@@ -2553,6 +2592,11 @@ export default function InvestimentoPage() {
                                           <div className="flex items-center gap-2">
                                             <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
                                             <span className="text-xs text-muted">{b.rede}</span>
+                                            {b.tipo_titulo && (
+                                              <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
+                                                {b.tipo_titulo}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="flex items-center gap-3 mt-0.5">
                                             <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
@@ -2602,11 +2646,19 @@ export default function InvestimentoPage() {
                                             {
                                               boleto_id: b.id,
                                               valor_associado: defaultVal.toFixed(2),
-                                              label: `${b.rede} — Nº ${b.numero_boleto} — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                              label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                                               numero_boleto: b.numero_boleto,
-                                              valor_total: b.valor_total
+                                              valor_total: b.valor_total,
+                                              tipo_titulo: b.tipo_titulo,
+                                              prazo: b.prazo
                                             }
                                           ]);
+                                          if (b.prazo) {
+                                            const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
+                                              ? b.prazo 
+                                              : `${b.prazo} dias`;
+                                            setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
+                                          }
                                           setShowBoletoDropdown(false);
                                           setBoletoSearchTerm("");
                                         }}
@@ -2616,6 +2668,11 @@ export default function InvestimentoPage() {
                                           <div className="flex items-center gap-2">
                                             <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
                                             <span className="text-xs text-muted truncate">{b.rede}</span>
+                                            {b.tipo_titulo && (
+                                              <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
+                                                {b.tipo_titulo}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="flex items-center gap-3 mt-0.5">
                                             <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
