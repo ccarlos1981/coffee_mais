@@ -15,6 +15,8 @@ interface UserProfile {
   receber_pdf_vendas?: boolean;
   receber_pdf_investimento?: boolean;
   approved?: boolean;
+  phone?: string | null;
+  uf?: string | null;
 }
 
 interface UserListProps {
@@ -87,8 +89,16 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
                         />
                       )}
                     </div>
-                    <p className="text-xs text-foreground-muted mt-1 flex items-center gap-2">
+                    <p className="text-xs text-foreground-muted mt-1 flex flex-wrap items-center gap-2">
                       Criado em {new Date(user.created_at).toLocaleDateString('pt-BR')}
+                      {profilesMap[user.id]?.phone && (
+                        <span>• Celular: {profilesMap[user.id].phone}</span>
+                      )}
+                      {profilesMap[user.id]?.uf && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold uppercase">
+                          UF: {profilesMap[user.id].uf}
+                        </span>
+                      )}
                       {profilesMap[user.id]?.manager_name && (
                         <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-accent-gold/10 border border-accent-gold/20 text-accent-gold text-[10px] font-semibold uppercase">
                           RPS: {profilesMap[user.id].manager_name}

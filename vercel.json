@@ -7,6 +7,22 @@
     {
       "path": "/api/cron/acoes-atrasadas",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/sync-bigquery",
+      "schedule": "0 9 * * 1-5"
+    },
+    {
+      "path": "/api/cron/sync-bigquery",
+      "schedule": "0 15 * * 1-5"
+    },
+    {
+      "path": "/api/cron/sync-bigquery",
+      "schedule": "0 21 * * 1-5"
+    },
+    {
+      "path": "/api/cron/sync-bigquery?mode=reconciliation",
+      "schedule": "0 5 * * 1"
     }
   ]
 }

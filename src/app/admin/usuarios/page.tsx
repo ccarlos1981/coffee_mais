@@ -13,6 +13,8 @@ interface UserProfile {
   receber_pdf_vendas?: boolean;
   receber_pdf_investimento?: boolean;
   approved?: boolean;
+  phone?: string | null;
+  uf?: string | null;
 }
 
 export const metadata = {
@@ -35,13 +37,13 @@ export default async function AdminUsuariosPage() {
     let profilesData: UserProfile[] | null = null;
     const response = await adminClient
       .from('cm_user_profiles')
-      .select('id, role, manager_name, receber_pdf_vendas, receber_pdf_investimento, approved');
+      .select('id, role, manager_name, receber_pdf_vendas, receber_pdf_investimento, approved, phone, uf');
 
     if (response.error) {
       // Se deu erro (ex: colunas não existem ainda), faz fallback apenas para role
       const fallbackResponse = await adminClient
         .from('cm_user_profiles')
-        .select('id, role, manager_name, approved');
+        .select('id, role, manager_name, approved, phone, uf');
       profilesData = fallbackResponse.data;
     } else {
       profilesData = response.data;

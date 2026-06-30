@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -11,7 +11,11 @@ import {
   ArrowLeft,
   Coffee,
   Trash2,
+  Database,
+  RefreshCw,
+  Clock,
 } from "lucide-react";
+import { createBrowserClient } from "@supabase/ssr";
 type UploadStatus = "idle" | "selected" | "uploading" | "processing" | "done" | "error";
 
 interface UploadResult {
@@ -29,6 +33,63 @@ export default function UploadPage() {
   const [result, setResult] = useState<UploadResult | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // BigQuery sync state
+  type SyncStatus = "idle" | "syncing" | "done" | "error";
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncStartDate, setSyncStartDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  });
+  const [syncEndDate, setSyncEndDate] = useState(() => {
+    const d = new Date();
+    return d.toISOString().split("T")[0];
+  });
+  const [syncResult, setSyncResult] = useState<{
+    rowsInserted: number;
+    rowsUpdated: number;
+    rowsFetched: number;
+    durationMs: number;
+  } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncLogs, setSyncLogs] = useState<any[]>([]);
+
+  // Fetch recent sync logs
+  useEffect(() => {
+    async function fetchLogs() {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { data } = await supabase
+        .from("cm_sync_logs")
+        .select("*")
+        .order("started_at", { ascending: false })
+        .limit(5);
+      if (data) setSyncLogs(data);
+    }
+    fetchLogs();
+  }, [syncStatus]);
+
+  const handleBigQuerySync = async () => {
+    setSyncStatus("syncing");
+    setSyncError(null);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/bigquery/sync-faturamento", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startDate: syncStartDate, endDate: syncEndDate }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Erro na sincronização");
+      setSyncResult(data);
+      setSyncStatus("done");
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : String(err));
+      setSyncStatus("error");
+    }
+  };
 
   const validExtensions = [".xls", ".xlsx", ".xlsm", ".xlsb"];
   const maxSize = 50 * 1024 * 1024; // 50MB
@@ -358,6 +419,145 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
+        {/* BigQuery Sync Section */}
+        <div className="mt-12 pt-8 border-t border-border">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700">
+              <Database className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-foreground">Sincronização BigQuery</h2>
+              <p className="text-xs text-muted">Importar faturamento direto do Sankhya</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-border bg-card/80 p-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex-1">
+                <label className="block text-xs text-muted mb-1">Data início</label>
+                <input
+                  type="date"
+                  value={syncStartDate}
+                  onChange={(e) => setSyncStartDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground"
+                  disabled={syncStatus === "syncing"}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-muted mb-1">Data fim</label>
+                <input
+                  type="date"
+                  value={syncEndDate}
+                  onChange={(e) => setSyncEndDate(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground"
+                  disabled={syncStatus === "syncing"}
+                />
+              </div>
+              <div className="flex items-end">
+                <button
+                  onClick={handleBigQuerySync}
+                  disabled={syncStatus === "syncing"}
+                  className="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-500 to-blue-600 text-white font-semibold text-sm hover:from-blue-400 hover:to-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {syncStatus === "syncing" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Sincronizando...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Sincronizar Agora
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Sync result */}
+            {syncStatus === "done" && syncResult && (
+              <div className="rounded-xl bg-emerald-900/20 border border-emerald-700/50 p-4 mt-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span className="text-sm font-medium text-emerald-300">Sincronização concluída</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div>
+                    <p className="text-lg font-bold text-emerald-300">{syncResult.rowsFetched.toLocaleString("pt-BR")}</p>
+                    <p className="text-xs text-zinc-400">Buscadas</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-blue-300">{syncResult.rowsInserted.toLocaleString("pt-BR")}</p>
+                    <p className="text-xs text-zinc-400">Inseridas</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-amber-300">{syncResult.rowsUpdated.toLocaleString("pt-BR")}</p>
+                    <p className="text-xs text-zinc-400">Atualizadas</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-zinc-300">{(syncResult.durationMs / 1000).toFixed(1)}s</p>
+                    <p className="text-xs text-zinc-400">Duração</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Sync error */}
+            {syncStatus === "error" && syncError && (
+              <div className="rounded-xl bg-red-900/20 border border-red-700/50 p-4 mt-4">
+                <div className="flex items-center gap-2">
+                  <XCircle className="w-4 h-4 text-red-400" />
+                  <span className="text-sm text-red-300">{syncError}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Recent sync logs */}
+          {syncLogs.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-xs uppercase tracking-wider text-muted mb-3 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                Últimas sincronizações
+              </h3>
+              <div className="space-y-2">
+                {syncLogs.map((log: any) => (
+                  <div
+                    key={log.id}
+                    className={`flex items-center justify-between rounded-lg border p-3 text-xs ${
+                      log.status === "SUCCESS"
+                        ? "border-emerald-800/40 bg-emerald-900/10"
+                        : log.status === "ERROR"
+                        ? "border-red-800/40 bg-red-900/10"
+                        : "border-amber-800/40 bg-amber-900/10"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {log.status === "SUCCESS" && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+                      {log.status === "ERROR" && <XCircle className="w-3.5 h-3.5 text-red-400" />}
+                      {log.status === "RUNNING" && <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />}
+                      <span className="text-zinc-300">
+                        {new Date(log.started_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="rounded-full bg-zinc-700/60 px-2 py-0.5 text-zinc-400">
+                        {log.triggered_by}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-zinc-400">
+                      <span>{(log.rows_fetched || 0).toLocaleString("pt-BR")} linhas</span>
+                      {log.finished_at && (
+                        <span>
+                          {((new Date(log.finished_at).getTime() - new Date(log.started_at).getTime()) / 1000).toFixed(1)}s
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

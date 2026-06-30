@@ -2428,7 +2428,13 @@ export default function InvestimentoPage() {
                         )}
                       </div>
                       <h3 className="font-bold text-foreground text-lg leading-tight uppercase tracking-wide">{selectedAction.rede}</h3>
-                      <p className="text-sm text-foreground/80 mt-0.5">{selectedAction.abrangencia === "SKU" ? "Múltiplos SKUs" : selectedAction.familia_produto}</p>
+                      <p className="text-sm text-foreground/80 mt-0.5">
+                        {selectedAction.abrangencia === "SKU" 
+                          ? "Múltiplos SKUs" 
+                          : selectedAction.familia_produto === "KG" 
+                            ? "1KG" 
+                            : selectedAction.familia_produto}
+                      </p>
                     </div>
                     <div className="text-right flex flex-col items-end">
                       <span className="font-black text-foreground text-lg tracking-tight">{formatCurrency(getValorTotal(selectedAction), false)}</span>
@@ -2464,7 +2470,13 @@ export default function InvestimentoPage() {
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Família</span>
-                      <span className="font-bold text-foreground">{selectedAction.abrangencia === "SKU" ? "Múltiplos SKUs" : selectedAction.familia_produto}</span>
+                      <span className="font-bold text-foreground">
+                        {selectedAction.abrangencia === "SKU" 
+                          ? "Múltiplos SKUs" 
+                          : selectedAction.familia_produto === "KG" 
+                            ? "1KG" 
+                            : selectedAction.familia_produto}
+                      </span>
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border col-span-2">
                       <span className="text-xs text-muted block mb-1">Período</span>
