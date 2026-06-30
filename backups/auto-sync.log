@@ -89,3 +89,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    aab7d2e..02c138c  main -> main
 [30/06/2026 00:21] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 909b66b] auto-save: 30/06/2026 05:04
+ 11 files changed, 7639 insertions(+), 70 deletions(-)
+ create mode 100644 sql/add_sem_boleto_to_investimento.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   02c138c..909b66b  main -> main
+[30/06/2026 05:04] ✅ Alterações enviadas com sucesso para o GitHub.

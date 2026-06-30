@@ -1,14 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import { Coffee, Lock, Mail, Eye, EyeOff, AlertCircle, Briefcase, CheckCircle2 } from "lucide-react";
+import { Coffee, Lock, Mail, Eye, EyeOff, AlertCircle, Briefcase, CheckCircle2, Phone, MapPin } from "lucide-react";
 import { signUp } from "./actions";
+
+const UFS = [
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"
+];
 
 export default function CadastroPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("");
+  const [phoneValue, setPhoneValue] = useState("");
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, "");
+    if (value.length > 11) value = value.slice(0, 11);
+    
+    if (value.length > 10) {
+      value = `(${value.slice(0, 2)}) ${value.slice(2, 7)}-${value.slice(7)}`;
+    } else if (value.length > 6) {
+      value = `(${value.slice(0, 2)}) ${value.slice(2, 6)}-${value.slice(6)}`;
+    } else if (value.length > 2) {
+      value = `(${value.slice(0, 2)}) ${value.slice(2)}`;
+    } else if (value.length > 0) {
+      value = `(${value}`;
+    }
+    setPhoneValue(value);
+  };
 
   const ROLES = [
     "Gerente Regional",
@@ -69,20 +92,22 @@ export default function CadastroPage() {
         <div style={{ textAlign: "center", marginBottom: "36px" }}>
           <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: "16px 24px",
+              display: "inline-block",
+              position: "relative",
+              width: "64px",
+              height: "64px",
               borderRadius: "16px",
-              background: "linear-gradient(135deg, #c8a96e 0%, #8b6914 100%)",
+              overflow: "hidden",
+              border: "1px solid var(--border)",
+              boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
               marginBottom: "16px",
-              boxShadow: "0 8px 32px rgba(200,169,110,0.25)",
+              background: "#000",
             }}
           >
             <img 
-              src="https://coffeemais.com/cdn/shop/files/logo-coffee-mais-branca.png?v=1687448656&width=400" 
+              src="/images/login/logo_white.png" 
               alt="Coffee Mais" 
-              style={{ height: "40px", objectFit: "contain" }} 
+              style={{ width: "100%", height: "100%", objectFit: "cover" }} 
             />
           </div>
           <h1
@@ -203,6 +228,48 @@ export default function CadastroPage() {
 
             <div style={{ marginBottom: "16px" }}>
               <label
+                htmlFor="phone"
+                style={{
+                  display: "block",
+                  fontSize: "0.7rem",
+                  fontWeight: 600,
+                  color: "var(--foreground-secondary)",
+                  marginBottom: "6px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Celular / WhatsApp
+              </label>
+              <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                <Phone style={{ position: "absolute", left: "12px", width: 16, height: 16, color: "var(--foreground-dim)", pointerEvents: "none" }} />
+                <input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  required
+                  placeholder="(31) 99999-9999"
+                  value={phoneValue}
+                  onChange={handlePhoneChange}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px 10px 40px",
+                    background: "var(--background)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "8px",
+                    color: "var(--foreground)",
+                    fontSize: "0.85rem",
+                    outline: "none",
+                    transition: "border-color 0.2s ease",
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-gold)")}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: "16px" }}>
+              <label
                 htmlFor="role"
                 style={{
                   display: "block",
@@ -222,6 +289,8 @@ export default function CadastroPage() {
                   id="role"
                   name="role"
                   required
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
                   style={{
                     width: "100%",
                     padding: "10px 12px 10px 40px",
@@ -249,6 +318,58 @@ export default function CadastroPage() {
                 </div>
               </div>
             </div>
+
+            {selectedRole === "Promotor" && (
+              <div style={{ marginBottom: "16px" }}>
+                <label
+                  htmlFor="uf"
+                  style={{
+                    display: "block",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    color: "var(--foreground-secondary)",
+                    marginBottom: "6px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  UF (Estado de atuação)
+                </label>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <MapPin style={{ position: "absolute", left: "12px", width: 16, height: 16, color: "var(--foreground-dim)", pointerEvents: "none" }} />
+                  <select
+                    id="uf"
+                    name="uf"
+                    required
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 40px",
+                      background: "var(--background)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      color: "var(--foreground)",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      transition: "border-color 0.2s ease",
+                      appearance: "none",
+                      cursor: "pointer"
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-gold)")}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                  >
+                    <option value="">Selecione o estado...</option>
+                    {UFS.map((uf) => (
+                      <option key={uf} value={uf}>
+                        {uf}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ position: "absolute", right: "12px", pointerEvents: "none", color: "var(--foreground-dim)" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div style={{ marginBottom: "24px" }}>
               <label

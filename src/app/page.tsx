@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Suspense } from "react";
+import SyncStatusWidget from "@/components/SyncStatusWidget";
 import { redirect } from "next/navigation";
 import {
   BarChart3,
@@ -393,6 +395,13 @@ export default async function HomePage() {
             Selecione um módulo corporativo para iniciar as apurações de metas e indicadores
           </p>
         </div>
+
+        {/* BigQuery sync status - Admin only */}
+        {role === 'Admin' && (
+          <Suspense fallback={null}>
+            <SyncStatusWidget />
+          </Suspense>
+        )}
 
         <div className="space-y-8">
           {filteredModules.length > 0 ? (
