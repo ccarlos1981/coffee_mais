@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { 
   calculateAchievement, 
   calculateBonusPercentage, 
+  calculateMonthlyRemuneration,
+  calculateQuarterlyBonus,
   getPerformanceBadge, 
   getProgressBarColor,
   PromotorRankingEntry 
@@ -75,8 +77,8 @@ export async function GET(request: Request) {
         if (!name) return null;
 
         const codeNum = parseInt(prof.employee_code || "3001", 10);
-        const mockMeta = 45000 + (codeNum % 3) * 5000;      // Ex: 45k, 50k, 55k
-        const mockReal = 38000 + (codeNum % 4) * 6000;      // Ex: 38k, 44k, 50k, 56k
+        const mockMeta = 5000 + (codeNum % 3) * 500;      // Ex: 5000, 5500, 6000 (cx)
+        const mockReal = 4800 + (codeNum % 4) * 600;      // Ex: 4800, 5400, 6000, 6600 (cx)
         
         return {
           id: prof.id,
@@ -111,9 +113,17 @@ export async function GET(request: Request) {
       const realizadoQ3 = p.jul.realizado + p.ago.realizado + p.set.realizado;
       const achQ3 = calculateAchievement(realizadoQ3, metaQ3);
 
-      const bonusPct = calculateBonusPercentage(achQ3);
-      const maxBonusPool = metaQ3 * 0.03; 
-      const estimatedBonus = maxBonusPool * (bonusPct / 100);
+      const julEarned = calculateMonthlyRemuneration(p.jul.realizado, julAch);
+      const agoEarned = calculateMonthlyRemuneration(p.ago.realizado, agoAch);
+      const setEarned = calculateMonthlyRemuneration(p.set.realizado, setAch);
+
+      const qBonus = calculateQuarterlyBonus(julAch, agoAch, setAch);
+      const estimatedBonus = julEarned + agoEarned + setEarned + qBonus;
+
+      const monthsHit = (julAch !== null && julAch >= 100 ? 1 : 0) + 
+                        (agoAch !== null && agoAch >= 100 ? 1 : 0) + 
+                        (setAch !== null && setAch >= 100 ? 1 : 0);
+      const bonusPct = Math.round((monthsHit / 3) * 100);
 
       return {
         promotor_id: p.id,

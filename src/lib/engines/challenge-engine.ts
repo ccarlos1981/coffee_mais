@@ -21,6 +21,26 @@ export function calculateBonusPercentage(achievement: number | null): number {
   return 0;
 }
 
+export function calculateMonthlyRemuneration(realizado: number, achievement: number | null): number {
+  if (achievement === null || achievement < 100) return 0;
+  return realizado * 0.06;
+}
+
+export function calculateQuarterlyBonus(
+  julAch: number | null,
+  agoAch: number | null,
+  setAch: number | null
+): number {
+  if (
+    julAch !== null && julAch >= 100 &&
+    agoAch !== null && agoAch >= 100 &&
+    setAch !== null && setAch >= 100
+  ) {
+    return 500.00;
+  }
+  return 0;
+}
+
 export function calculateProportionalFactor(
   month: number, // 1-12
   year: number,

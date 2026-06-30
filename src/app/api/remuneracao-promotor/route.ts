@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { 
   calculateAchievement, 
   calculateBonusPercentage, 
+  calculateMonthlyRemuneration,
   getPerformanceBadge, 
   calculateProportionalFactor 
 } from "@/lib/engines/challenge-engine";
@@ -51,6 +52,21 @@ export async function GET(request: Request) {
 
     if (remErr) throw remErr;
     
+    // 4. Fetch target quantities from cm_promotor_metas for this month and year
+    const { data: dbMetas, error: metasErr } = await adminClient
+      .from("cm_promotor_metas")
+      .select("promotor_id, volume_target_boxes")
+      .eq("month", month)
+      .eq("year", year);
+
+    if (metasErr) console.error("Error fetching metas:", metasErr.message);
+
+    const metasQtyMap = new Map<string, number>();
+    (dbMetas || []).forEach(m => {
+      const currentVal = metasQtyMap.get(m.promotor_id) || 0;
+      metasQtyMap.set(m.promotor_id, currentVal + parseFloat(m.volume_target_boxes || 0));
+    });
+
     const qRemMap = new Map<string, any[]>();
     (qRemuneracoes || []).forEach(r => {
       if(!qRemMap.has(r.promotor_id)) qRemMap.set(r.promotor_id, []);
@@ -73,47 +89,48 @@ export async function GET(request: Request) {
         const profRems = qRemMap.get(prof.id) || [];
         const savedRem = profRems.find(r => r.competency_month === month);
         
-        const variavelBase = savedRem ? parseFloat(savedRem.variavel_base_utilizada || 0) : parseFloat(prof.default_variavel_mensal || 0);
+        const hash = prof.id.charCodeAt(0) + month;
+        
+        // Target Quantity (Meta)
+        // If they have a database target, use it; otherwise mock a realistic one
+        const dbTargetQty = metasQtyMap.get(prof.id) || 0;
+        const targetQty = dbTargetQty > 0 ? dbTargetQty : (5000 + (hash % 3) * 500);
+
         const factor = calculateProportionalFactor(month, year, dtAdm, dtDeslig);
         
-        // Mock Realizado (MVP)
-        const hash = prof.id.charCodeAt(0) + month;
-        const realAch = factor === 0 ? null : (90 + (hash % 15)); // between 90% and 105%
+        // Mock Realizado quantity based on factor and random variation
+        const mockAch = factor === 0 ? 0 : (95 + (hash % 12)); 
         
-        const atingimento_mensal = savedRem ? parseFloat(savedRem.atingimento_mensal_percent || 0) : (factor === 0 ? 0 : realAch);
-        const bonusPct = calculateBonusPercentage(atingimento_mensal);
+        const atingimento_mensal = savedRem ? parseFloat(savedRem.atingimento_mensal_percent || 0) : mockAch;
+        const realQty = Math.round(targetQty * (atingimento_mensal / 100) * factor);
         
-        const propVariabel = variavelBase * factor;
-        let valor_calculado = propVariabel * (bonusPct / 100);
+        // Variable base is targetQty (so it's stored in the DB field)
+        const variavelBase = targetQty;
+        
+        // Monthly payment: if they hit >= 100%, they get quantity_sold * 0.06
+        let valor_calculado = calculateMonthlyRemuneration(realQty, atingimento_mensal);
+        
         let recuperacao_trimestral = 0;
-
-        // RECUPERAÇÃO TRIMESTRAL LÓGICA (CATCH-UP) - Com verificação de Idempotência
         const catchupAlreadyProcessed = savedRem?.catchup_processed;
 
         if (isQuarterEnd && factor > 0) {
           if (catchupAlreadyProcessed) {
-            // Idempotent: Just load saved recuperacao
             recuperacao_trimestral = parseFloat(savedRem.recuperacao_trimestral || 0);
             valor_calculado += recuperacao_trimestral;
           } else {
-            // Not yet processed, so we dynamically calculate
-            const q3Ach = 98 + (hash % 5); // 98 to 102
-            if (q3Ach >= 100) {
-               let paidPrevMonths = 0;
-               profRems.forEach(pr => {
-                 if (pr.competency_month !== month) {
-                   paidPrevMonths += parseFloat(pr.valor_pago_mensal || 0);
-                 }
-               });
-               
-               const trimestersWorked = 3; 
-               const totalQPotential = (variavelBase * trimestersWorked);
-               
-               const targetCatchUp = totalQPotential - paidPrevMonths - valor_calculado;
-               if (targetCatchUp > 0) {
-                 recuperacao_trimestral = targetCatchUp;
-                 valor_calculado += recuperacao_trimestral;
-               }
+            // Check if they hit all 3 months of the quarter
+            const m1Record = profRems.find(r => r.competency_month === qMonths[0]);
+            const m2Record = profRems.find(r => r.competency_month === qMonths[1]);
+            
+            // For past months, if not saved, we simulate based on their hash (using the same mock logic)
+            const m1Ach = m1Record ? parseFloat(m1Record.atingimento_mensal_percent || 0) : (95 + ((prof.id.charCodeAt(0) + qMonths[0]) % 12));
+            const m2Ach = m2Record ? parseFloat(m2Record.atingimento_mensal_percent || 0) : (95 + ((prof.id.charCodeAt(0) + qMonths[1]) % 12));
+            const m3Ach = atingimento_mensal;
+
+            const hitAllThree = (m1Ach >= 100 && m2Ach >= 100 && m3Ach >= 100);
+            if (hitAllThree) {
+              recuperacao_trimestral = 500.00;
+              valor_calculado += recuperacao_trimestral;
             }
           }
         }
