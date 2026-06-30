@@ -1266,16 +1266,28 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 
 export async function obterRedesMatrizes() {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  
+  // PostgREST/Supabase forces a max limit of 1000 rows on client/API requests.
+  // We use range queries to fetch all pages dynamically.
+  const { data: page1, error: error1 } = await supabase
     .from("v_redes_matrizes_detalhes")
     .select("codigo, nome, canal")
-    .order("nome", { ascending: true });
-  
-  if (error) {
-    console.error("Erro ao carregar redes matrizes:", error);
+    .order("nome", { ascending: true })
+    .range(0, 999);
+
+  const { data: page2, error: error2 } = await supabase
+    .from("v_redes_matrizes_detalhes")
+    .select("codigo, nome, canal")
+    .order("nome", { ascending: true })
+    .range(1000, 1999);
+
+  if (error1) {
+    console.error("Erro ao carregar redes matrizes (pág 1):", error1);
     return [];
   }
-  return data || [];
+  
+  const allRedes = [...(page1 || []), ...(page2 || [])];
+  return allRedes;
 }
 
 export async function importarInvestimentosEmLote(acoes: any[]) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package } from "lucide-react";
 import Link from "next/link";
@@ -33,6 +33,50 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   const [searchRede, setSearchRede] = useState("");
   const [isRedeOpen, setIsRedeOpen] = useState(false);
   const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(initRedeObj || null);
+  const [paymentDisabled, setPaymentDisabled] = useState(false);
+
+  useEffect(() => {
+    if (!selectedRede) {
+      setPaymentDisabled(false);
+      return;
+    }
+
+    const checkPaymentCondition = async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client");
+        const supabase = createClient();
+        
+        const { data: clients } = await supabase
+          .from("cm_clientes")
+          .select("condicao_pagamento")
+          .or(`codigo_matriz.eq.${selectedRede.codigo},codigo.eq.${parseInt(selectedRede.codigo, 10) || 0}`)
+          .not("condicao_pagamento", "is", null)
+          .limit(1);
+
+        if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
+          const cond = clients[0].condicao_pagamento.trim().toLowerCase();
+          if (cond.includes("boleto")) {
+            setTipoPagamento("Boleto");
+            setPaymentDisabled(true);
+          } else if (cond.includes("transf") || cond.includes("ted") || cond.includes("banc")) {
+            setTipoPagamento("Transf. Bancária");
+            setPaymentDisabled(true);
+          } else if (cond.includes("bonif")) {
+            setTipoPagamento("Bonificação");
+            setPaymentDisabled(true);
+          } else {
+            setPaymentDisabled(false);
+          }
+        } else {
+          setPaymentDisabled(false);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar condição de pagamento do cliente:", err);
+      }
+    };
+
+    checkPaymentCondition();
+  }, [selectedRede]);
 
   const filteredRedes = redes.filter(r => 
     r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
@@ -335,13 +379,21 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
             <label className="block text-sm font-medium text-muted">Pagamento</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {["Transf. Bancária", "Boleto", "Bonificação"].map((opcao) => (
-                <label key={opcao} className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
+                <label 
+                  key={opcao} 
+                  className={`relative flex items-center gap-3 rounded-lg border border-border bg-elevated p-2.5 transition-colors ${
+                    paymentDisabled 
+                      ? 'opacity-60 cursor-not-allowed' 
+                      : 'cursor-pointer focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border'
+                  }`}
+                >
                   <input 
                     type="radio" 
                     name="tipo_pagamento_ui" 
                     className="sr-only peer" 
                     checked={tipoPagamento === opcao}
-                    onChange={() => setTipoPagamento(opcao)}
+                    onChange={() => !paymentDisabled && setTipoPagamento(opcao)}
+                    disabled={paymentDisabled}
                   />
                   <div className="w-4 h-4 rounded-full border-2 border-foreground-muted peer-checked:border-[#C4A25D] peer-checked:bg-[#C4A25D] flex items-center justify-center transition-colors">
                     <div className="w-2 h-2 rounded-full bg-black opacity-0 peer-checked:opacity-100" />

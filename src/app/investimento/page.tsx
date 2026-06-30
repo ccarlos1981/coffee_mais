@@ -40,7 +40,7 @@ import {
 import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, parseISO, startOfDay } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
@@ -213,6 +213,7 @@ export default function InvestimentoPage() {
   }, []);
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedAction, setSelectedAction] = useState<AcaoInvestimento | null>(null);
   const fetchBoletosDaRede = async (rede: string) => {
@@ -1852,63 +1853,200 @@ export default function InvestimentoPage() {
               </>
             ) : viewMode === "calendar" ? (
               <div className="flex-1 flex flex-col p-4 bg-background/50 overflow-y-auto">
-                <div className="flex items-center justify-between mb-4 bg-elevated p-3 rounded-2xl border border-border">
-                  <button onClick={() => setCurrentMonth(subMonths(currentMonth, 1))} className="p-2 hover:bg-border rounded-xl transition-colors">
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-                  <h2 className="text-lg font-bold capitalize text-foreground">
-                    {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
-                  </h2>
-                  <button onClick={() => setCurrentMonth(addMonths(currentMonth, 1))} className="p-2 hover:bg-border rounded-xl transition-colors">
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
+                {/* Calendar Header with View Toggle */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 bg-elevated p-3 rounded-2xl border border-border">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={() => {
+                        setCurrentMonth(calendarView === "month" ? subMonths(currentMonth, 1) : subWeeks(currentMonth, 1))
+                      }} 
+                      className="p-2 hover:bg-border rounded-xl transition-colors"
+                    >
+                      <ChevronLeft className="w-5 h-5 text-foreground" />
+                    </button>
+                    <h2 className="text-base sm:text-lg font-bold capitalize text-foreground min-w-[220px] text-center">
+                      {calendarView === "month" ? (
+                        format(currentMonth, "MMMM yyyy", { locale: ptBR })
+                      ) : (
+                        (() => {
+                          const start = startOfWeek(currentMonth, { weekStartsOn: 0 });
+                          const end = endOfWeek(currentMonth, { weekStartsOn: 0 });
+                          const startFmt = format(start, "dd 'de' MMMM", { locale: ptBR });
+                          const endFmt = format(end, "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+                          return `${startFmt} - ${endFmt}`;
+                        })()
+                      )}
+                    </h2>
+                    <button 
+                      onClick={() => {
+                        setCurrentMonth(calendarView === "month" ? addMonths(currentMonth, 1) : addWeeks(currentMonth, 1))
+                      }} 
+                      className="p-2 hover:bg-border rounded-xl transition-colors"
+                    >
+                      <ChevronRight className="w-5 h-5 text-foreground" />
+                    </button>
+                  </div>
+                  
+                  {/* View Toggles (Mensal / Semanal) */}
+                  <div className="flex items-center bg-background border border-border p-1 rounded-xl gap-1 w-full sm:w-auto justify-center">
+                    <button
+                      onClick={() => setCalendarView("month")}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        calendarView === "month"
+                          ? "bg-gold text-black font-bold shadow-sm"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      Mês
+                    </button>
+                    <button
+                      onClick={() => setCalendarView("week")}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                        calendarView === "week"
+                          ? "bg-gold text-black font-bold shadow-sm"
+                          : "text-muted hover:text-foreground"
+                      }`}
+                    >
+                      Semana
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-7 gap-1 sm:gap-2 flex-1">
-                  {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
-                    <div key={day} className="text-center text-xs font-bold text-muted py-2">{day}</div>
-                  ))}
-                  {eachDayOfInterval({ 
-                    start: startOfWeek(startOfMonth(currentMonth)), 
-                    end: endOfWeek(endOfMonth(currentMonth)) 
-                  }).map((day, idx) => {
-                    const isCurrentMonth = isSameMonth(day, currentMonth);
-                    const isToday = isSameDay(day, new Date());
-                    
-                    const dayActions = filteredData.filter(action => {
-                      if (!action.data_inicio || !action.data_fim) return false;
-                      const start = startOfDay(parseISO(action.data_inicio));
-                      const end = startOfDay(parseISO(action.data_fim));
-                      return isWithinInterval(day, { start, end });
-                    });
+                {calendarView === "month" ? (
+                  /* Monthly View */
+                  <div className="grid grid-cols-7 gap-1 sm:gap-2 flex-1">
+                    {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(day => (
+                      <div key={day} className="text-center text-xs font-bold text-muted py-2">{day}</div>
+                    ))}
+                    {eachDayOfInterval({ 
+                      start: startOfWeek(startOfMonth(currentMonth)), 
+                      end: endOfWeek(endOfMonth(currentMonth)) 
+                    }).map((day, idx) => {
+                      const isCurrentMonth = isSameMonth(day, currentMonth);
+                      const isToday = isSameDay(day, new Date());
+                      
+                      const dayActions = filteredData.filter(action => {
+                        if (!action.data_inicio || !action.data_fim) return false;
+                        const start = startOfDay(parseISO(action.data_inicio));
+                        const end = startOfDay(parseISO(action.data_fim));
+                        return isWithinInterval(day, { start, end });
+                      });
 
-                    const hasActions = dayActions.length > 0;
+                      const hasActions = dayActions.length > 0;
 
-                    return (
-                      <div 
-                        key={idx}
-                        onClick={() => { if (hasActions) setSelectedDate(day) }}
-                        className={`min-h-[48px] sm:min-h-[64px] p-1 sm:p-1.5 rounded-xl flex flex-col items-center justify-center transition-all ${
-                          isCurrentMonth ? 'bg-elevated border border-border' : 'bg-transparent border border-transparent opacity-40'
-                        } ${isToday ? 'ring-2 ring-gold ring-offset-2 ring-offset-background' : ''} ${
-                          hasActions ? 'cursor-pointer hover:border-red-500 hover:shadow-md' : ''
-                        }`}
-                      >
-                        <div className={`text-sm sm:text-base font-bold ${
-                          hasActions ? 'text-red-500' : isToday ? 'text-gold' : 'text-muted'
-                        }`}>
-                          {format(day, 'd')}
-                        </div>
-                        {hasActions && (
-                          <div className="flex items-center gap-0.5 mt-1">
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                            <span className="text-[10px] font-bold text-red-500">{dayActions.length}</span>
+                      return (
+                        <div 
+                          key={idx}
+                          onClick={() => { if (hasActions) setSelectedDate(day) }}
+                          className={`min-h-[48px] sm:min-h-[64px] p-1 sm:p-1.5 rounded-xl flex flex-col items-center justify-center transition-all ${
+                            isCurrentMonth ? 'bg-elevated border border-border' : 'bg-transparent border border-transparent opacity-40'
+                          } ${isToday ? 'ring-2 ring-gold ring-offset-2 ring-offset-background' : ''} ${
+                            hasActions ? 'cursor-pointer hover:border-red-500 hover:shadow-md' : ''
+                          }`}
+                        >
+                          <div className={`text-sm sm:text-base font-bold ${
+                            hasActions ? 'text-red-500' : isToday ? 'text-gold' : 'text-muted'
+                          }`}>
+                            {format(day, 'd')}
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {hasActions && (
+                            <div className="flex items-center gap-0.5 mt-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
+                              <span className="text-[10px] font-bold text-red-500">{dayActions.length}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* Weekly View (Google Agenda style) */
+                  <div className="grid grid-cols-1 lg:grid-cols-7 gap-3 flex-1 min-h-[480px]">
+                    {eachDayOfInterval({
+                      start: startOfWeek(currentMonth, { weekStartsOn: 0 }),
+                      end: endOfWeek(currentMonth, { weekStartsOn: 0 })
+                    }).map((day, idx) => {
+                      const isToday = isSameDay(day, new Date());
+                      const dayActions = filteredData.filter(action => {
+                        if (!action.data_inicio || !action.data_fim) return false;
+                        const start = startOfDay(parseISO(action.data_inicio));
+                        const end = startOfDay(parseISO(action.data_fim));
+                        return isWithinInterval(day, { start, end });
+                      });
+
+                      return (
+                        <div 
+                          key={idx}
+                          className={`bg-elevated border border-border rounded-2xl p-3 flex flex-col min-h-[250px] lg:min-h-[400px] transition-all ${
+                            isToday ? 'ring-2 ring-gold ring-offset-2 ring-offset-background' : ''
+                          }`}
+                        >
+                          {/* Column Day Header */}
+                          <div className="flex items-center justify-between border-b border-border pb-2 mb-3">
+                            <span className="text-xs font-black uppercase text-muted tracking-widest">
+                              {format(day, 'eee', { locale: ptBR })}
+                            </span>
+                            <span className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-black ${
+                              isToday ? 'bg-gold text-black shadow-md' : 'text-foreground bg-background/40'
+                            }`}>
+                              {format(day, 'd')}
+                            </span>
+                          </div>
+
+                          {/* Column Actions List */}
+                          <div className="flex-1 overflow-y-auto space-y-2.5 max-h-[350px] pr-0.5 scrollbar-thin">
+                            {dayActions.length > 0 ? (
+                              dayActions.map(action => {
+                                const valor = getValorTotal(action);
+                                return (
+                                  <div
+                                    key={action.id}
+                                    onClick={() => setSelectedAction(action)}
+                                    className="bg-card border border-border hover:border-gold hover:shadow-md hover:scale-[1.02] p-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden text-left"
+                                  >
+                                    {/* Visual Left tag bar */}
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                                      action.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]' : 'bg-blue-500'
+                                    }`} />
+
+                                    <div className="pl-1.5 space-y-1">
+                                      <span className="block font-black text-xs text-foreground group-hover:text-gold transition-colors line-clamp-2 leading-tight">
+                                        {action.rede}
+                                      </span>
+
+                                      <div className="flex items-center justify-between text-[10px] text-muted gap-1">
+                                        <span className="truncate max-w-[65%]">
+                                          {action.abrangencia === "SKU" ? "SKUs" : action.familia_produto}
+                                        </span>
+                                        <span className="font-extrabold text-foreground flex-shrink-0">
+                                          {formatCurrency(valor)}
+                                        </span>
+                                      </div>
+
+                                      <div className="flex items-center justify-between pt-0.5">
+                                        <span className={`px-1 rounded text-[8px] font-bold border ${
+                                          action.tipo_acao === 'Sell Out'
+                                            ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20'
+                                            : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                                        }`}>
+                                          {action.tipo_acao}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            ) : (
+                              <div className="flex flex-col items-center justify-center h-24 border border-dashed border-border/40 rounded-xl p-3 text-center">
+                                <span className="text-[10px] text-muted italic font-medium">Sem ações</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex-1 flex flex-col min-h-0 bg-card overflow-hidden">
