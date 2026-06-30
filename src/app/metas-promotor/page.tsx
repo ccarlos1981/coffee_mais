@@ -97,7 +97,7 @@ export default function MetasPromotorPage() {
   // Configuration States
   const [planningCycle, setPlanningCycle] = useState("2026_Q3");
   const [version, setVersion] = useState("1");
-  const [targetType, setTargetType] = useState<"revenue" | "volume" | "sellout">("revenue");
+  const [targetType, setTargetType] = useState<"revenue" | "volume" | "sellout">("volume");
 
   // Data States
   const [promoters, setPromoters] = useState<Promoter[]>([]);

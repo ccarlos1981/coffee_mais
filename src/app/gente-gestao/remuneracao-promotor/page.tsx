@@ -92,13 +92,16 @@ export default function RemuneracaoPromotorPage() {
     setRecords(prev => prev.map(r => {
       if (r.id === id) {
         const updated = { ...r, [field]: value };
-        if (field === "variavel_base") {
-          const bp = updated.atingimento_mensal !== null 
-            ? updated.atingimento_mensal >= 100 ? 100 
-            : updated.atingimento_mensal >= 90 ? 70 
-            : updated.atingimento_mensal >= 80 ? 50 : 0
-            : 0;
-          updated.valor_calculado = (updated.variavel_base * updated.fator_proporcional) * (bp / 100) + updated.recuperacao_trimestral;
+        if (field === "variavel_base" || field === "atingimento_mensal") {
+          const targetQty = updated.variavel_base;
+          const ach = updated.atingimento_mensal || 0;
+          const realQty = Math.round(targetQty * (ach / 100) * updated.fator_proporcional);
+          
+          let basePayment = 0;
+          if (ach >= 100) {
+            basePayment = realQty * 0.06;
+          }
+          updated.valor_calculado = basePayment + updated.recuperacao_trimestral;
           updated.valor_pago_mensal = updated.valor_calculado;
         }
         return updated;
@@ -208,6 +211,24 @@ export default function RemuneracaoPromotorPage() {
           </div>
         </div>
 
+        {/* REGRAS DE REMUNERAÇÃO CARD */}
+        <div className="bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-xl p-5 mb-8">
+          <h3 className="text-sm font-black text-amber-850 dark:text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <FileText size={16} /> Regras de Remuneração Variável (Q3 2026)
+          </h3>
+          <ul className="text-xs space-y-2 text-zinc-800 dark:text-zinc-200 font-medium">
+            <li className="leading-relaxed">
+              🎯 <strong>Indicador Principal (KPI):</strong> Quantidade de produto (Volume em caixas), em substituição ao Faturamento.
+            </li>
+            <li className="leading-relaxed">
+              💰 <strong>Apuração Mensal:</strong> Atingindo <strong className="text-amber-900 dark:text-amber-400 font-black">100% ou mais</strong> da meta do mês, o promotor ganha <strong className="text-amber-900 dark:text-amber-400 font-black">R$ 0,06 por caixa vendida</strong>. Caso o atingimento seja inferior a 100%, a remuneração variável do mês é R$ 0,00.
+            </li>
+            <li className="leading-relaxed">
+              🏆 <strong>Super Bônus Trimestral:</strong> Se o promotor atingir a meta em todos os 3 meses do ciclo (Julho, Agosto e Setembro), receberá um prêmio extra de <strong className="text-amber-900 dark:text-amber-400 font-black">R$ 500,00</strong> no fechamento trimestral (consolidado na folha de Setembro).
+            </li>
+          </ul>
+        </div>
+
         {/* SUMMARY CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-card/50 border border-border rounded-xl p-5 flex items-center gap-4">
@@ -255,10 +276,11 @@ export default function RemuneracaoPromotorPage() {
                 <tr className="bg-neutral-900/20 dark:bg-black/60 border-b border-border text-muted">
                   <th className="px-4 py-4 font-semibold w-16">CÓD.</th>
                   <th className="px-4 py-4 font-semibold">NOME DO PROMOTOR</th>
-                  <th className="px-4 py-4 font-semibold w-32">VARIÁVEL BASE</th>
-                  <th className="px-4 py-4 font-semibold text-amber-400 w-24">ATING. MÊS</th>
+                  <th className="px-4 py-4 font-semibold w-28 text-right">META (QTD)</th>
+                  <th className="px-4 py-4 font-semibold w-28 text-right">REAL (QTD)</th>
+                  <th className="px-4 py-4 font-semibold text-amber-400 w-24 text-center">ATING. MÊS</th>
                   {isQuarterEnd && (
-                    <th className="px-4 py-4 font-semibold text-emerald-400 w-32 text-right">+ RECUPERAÇÃO</th>
+                    <th className="px-4 py-4 font-semibold text-emerald-400 w-32 text-right">+ BÔNUS TRI</th>
                   )}
                   <th className="px-4 py-4 font-semibold text-right w-32">CALCULADO</th>
                   <th className="px-4 py-4 font-semibold text-right w-48">VALOR FINAL (RH)</th>
@@ -305,19 +327,23 @@ export default function RemuneracaoPromotorPage() {
                         
                         <td className="px-4 py-3">
                           <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-xs">R$</span>
                             <input 
                               type="number"
                               disabled={isLocked}
                               value={record.variavel_base}
                               onChange={(e) => updateRecord(record.id, "variavel_base", parseFloat(e.target.value) || 0)}
-                              className="w-full bg-background border border-border rounded-md py-1.5 pl-8 pr-2 text-right text-sm focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="w-full bg-background border border-border rounded-md py-1.5 px-2 text-right text-sm focus:outline-none focus:border-amber-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             />
+                            <span className="text-[10px] text-muted block text-right mt-1">cx</span>
                           </div>
                         </td>
 
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                        <td className="px-4 py-3 text-right font-mono text-foreground font-bold">
+                          {Math.round(record.variavel_base * ((record.atingimento_mensal || 0) / 100) * record.fator_proporcional).toLocaleString("pt-BR")} cx
+                        </td>
+
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
                             <span className="font-bold text-amber-400">{record.atingimento_mensal !== null ? record.atingimento_mensal.toFixed(1) + '%' : '-'}</span>
                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${record.status_performance.colorClass} border`}>
                               {record.status_performance.label.split(' ')[0]}
@@ -362,7 +388,7 @@ export default function RemuneracaoPromotorPage() {
                               
                               {record.recuperacao_trimestral > 0 && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
-                                  + Recuperação Tri
+                                  + Bônus Trimestral
                                 </span>
                               )}
                             </div>

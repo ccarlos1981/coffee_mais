@@ -241,8 +241,8 @@ export default function DesafioPerformancePage() {
                     <th className="px-3 py-4 w-12 text-white/90">UF</th>
                     
                     {/* Financial Columns - Desafio e Real */}
-                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Desafio</th>
-                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Real</th>
+                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Desafio (Qtd)</th>
+                    <th className="px-3 py-4 text-right bg-neutral-900/80 text-white/90 w-28">Real (Qtd)</th>
 
                     <th className="px-3 py-4 text-white/90">Julho (%)</th>
                     <th className="px-4 py-4 whitespace-nowrap min-w-[200px]">Status</th>
@@ -279,16 +279,16 @@ export default function DesafioPerformancePage() {
                           {/* Financial Columns - Desafio & Real */}
                           <td className="px-3 py-3 text-right font-mono text-muted text-[13px]">
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 R$ --</span>
+                              <span className="text-neutral-550">🔒 -- cx</span>
                             ) : (
-                              formatCurrency(row.jul.meta)
+                              `${row.jul.meta.toLocaleString("pt-BR")} cx`
                             )}
                           </td>
                           <td className="px-3 py-3 text-right font-mono font-bold text-foreground text-[13px]">
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 R$ --</span>
+                              <span className="text-neutral-550">🔒 -- cx</span>
                             ) : (
-                              formatCurrency(row.jul.realizado)
+                              `${row.jul.realizado.toLocaleString("pt-BR")} cx`
                             )}
                           </td>
                           
@@ -360,19 +360,19 @@ export default function DesafioPerformancePage() {
                       {/* Financials super compactos */}
                       <div className="flex gap-3 text-[11px] font-mono font-bold justify-end mt-1 pt-2 border-t border-border/40">
                           <div className="text-right">
-                            <span className="text-muted text-[9px] uppercase mr-1">Desafio</span>
+                            <span className="text-muted text-[9px] uppercase mr-1">Desafio (Qtd)</span>
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 R$ --</span>
+                              <span className="text-neutral-550">🔒 -- cx</span>
                             ) : (
-                              formatCurrency(row.jul.meta)
+                              `${row.jul.meta.toLocaleString("pt-BR")} cx`
                             )}
                           </div>
                           <div className="text-right">
-                            <span className="text-muted text-[9px] uppercase mr-1">Real</span>
+                            <span className="text-muted text-[9px] uppercase mr-1">Real (Qtd)</span>
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 R$ --</span>
+                              <span className="text-neutral-550">🔒 -- cx</span>
                             ) : (
-                              formatCurrency(row.jul.realizado)
+                              `${row.jul.realizado.toLocaleString("pt-BR")} cx`
                             )}
                           </div>
                           {currentRole === "ADMIN" && (

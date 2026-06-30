@@ -100,6 +100,7 @@ interface AcaoInvestimento {
   apuracao_evidencias_url?: string | null;
   apuracao_boleto_id?: string | null;
   condicao_pagamento?: string | null;
+  sem_boleto?: boolean | null;
   
   trade_validado_em?: string | null;
   trade_validado_por?: string | null;
@@ -188,6 +189,8 @@ export default function InvestimentoPage() {
   const [showBoletoDropdown, setShowBoletoDropdown] = useState(false);
   const [selectedBoletoLabel, setSelectedBoletoLabel] = useState("");
   const [vinculosBoletos, setVinculosBoletos] = useState<any[]>([]);
+  const [semBoleto, setSemBoleto] = useState(false);
+  const [clientHasBoletoCondition, setClientHasBoletoCondition] = useState(false);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
   const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
 
@@ -284,6 +287,41 @@ export default function InvestimentoPage() {
         boleto_id: selectedAction.apuracao_boleto_id || "",
         condicao_pagamento: selectedAction.condicao_pagamento || ""
       });
+      setSemBoleto(selectedAction.sem_boleto || false);
+
+      const checkBoletoCondition = async () => {
+        const actionIsBoleto = selectedAction.tipo_pagamento?.toLowerCase().includes('boleto') || 
+                              selectedAction.tipo_pagamento?.toLowerCase().includes('abatimento') ||
+                              selectedAction.condicao_pagamento?.toLowerCase().includes('boleto');
+                              
+        if (actionIsBoleto) {
+          setClientHasBoletoCondition(true);
+          return;
+        }
+
+        try {
+          const { data: clients } = await supabase
+            .from("cm_clientes")
+            .select("condicao_pagamento")
+            .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
+            .not("condicao_pagamento", "is", null)
+            .limit(1);
+
+          if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
+            const cond = clients[0].condicao_pagamento.trim().toLowerCase();
+            if (cond.includes("boleto")) {
+              setClientHasBoletoCondition(true);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Erro ao verificar condição de pagamento:", err);
+        }
+        
+        setClientHasBoletoCondition(false);
+      };
+
+      checkBoletoCondition();
       
       if ((selectedAction.fase_atual || 1) >= 3) {
         fetchBoletosDaRede(selectedAction.rede);
@@ -304,6 +342,8 @@ export default function InvestimentoPage() {
                   numero_boleto: b.numero_boleto,
                   valor_total: b.valor_total,
                   tipo_titulo: b.tipo_titulo,
+                  vencimento: b.vencimento,
+                  rede: b.rede,
                   prazo: b.prazo
                 };
               });
@@ -325,6 +365,8 @@ export default function InvestimentoPage() {
                         numero_boleto: b.numero_boleto,
                         valor_total: b.valor_total,
                         tipo_titulo: b.tipo_titulo,
+                        vencimento: b.vencimento,
+                        rede: b.rede,
                         prazo: b.prazo
                       }]);
                     } else {
@@ -1110,6 +1152,10 @@ export default function InvestimentoPage() {
   const handleApuracaoSubmit = async () => {
     if (!selectedAction) return;
     try {
+      if (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto) {
+        throw new Error("Por favor, vincule pelo menos um boleto ou sinalize que o cliente não possui boletos em aberto.");
+      }
+
       setActionLoading(selectedAction.id);
       const fd = new FormData();
       fd.append('apuracao_numero_acordo', apuracaoForm.numero_acordo);
@@ -1130,6 +1176,7 @@ export default function InvestimentoPage() {
       // Vou focar apenas nos campos do form e no upload separado, ou usar um text input por agora.
       fd.append('apuracao_evidencias_url', apuracaoForm.evidencias_url);
       fd.append('condicao_pagamento', apuracaoForm.condicao_pagamento);
+      fd.append('sem_boleto', semBoleto ? 'true' : 'false');
       
       const { preencherApuracao } = await import('./lancar/actions');
       await preencherApuracao(selectedAction.id, fd);
@@ -2618,6 +2665,23 @@ export default function InvestimentoPage() {
                           <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">
                             Nota Fiscal
                           </label>
+
+                          {/* Checkbox: Cliente não possui boleto em aberto */}
+                          {clientHasBoletoCondition && boletosAbertos.length === 0 && (
+                            <div className="mb-3 p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl flex items-start gap-3">
+                              <input
+                                id="sem_boleto_checkbox"
+                                type="checkbox"
+                                checked={semBoleto}
+                                onChange={(e) => setSemBoleto(e.target.checked)}
+                                className="mt-0.5 w-4 h-4 rounded border-purple-500/30 text-purple-600 focus:ring-purple-500/50 bg-background cursor-pointer"
+                              />
+                              <label htmlFor="sem_boleto_checkbox" className="text-xs text-foreground cursor-pointer select-none">
+                                <span className="font-bold block text-purple-300">Cliente não possui boleto em aberto</span>
+                                <span className="text-muted block mt-0.5">Sinalize que a apuração será concluída sem boletos associados.</span>
+                              </label>
+                            </div>
+                          )}
                           
                           {/* List of currently associated boletos */}
                           {vinculosBoletos.length > 0 ? (
@@ -2625,12 +2689,21 @@ export default function InvestimentoPage() {
                               {vinculosBoletos.map((vinculo, index) => (
                                 <div key={vinculo.boleto_id || index} className="flex flex-col sm:flex-row sm:items-center gap-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl relative">
                                   <div className="flex-1 min-w-0">
-                                    <span className="text-xs font-semibold text-purple-300 block truncate" title={vinculo.label}>
-                                      {vinculo.label}
+                                    <span className="text-xs font-bold text-purple-300 block truncate" title={vinculo.label}>
+                                      {vinculo.rede ? `${vinculo.rede} — ` : ''}Nº {vinculo.numero_boleto} {vinculo.tipo_titulo ? `[${vinculo.tipo_titulo}]` : ''}
                                     </span>
+                                    {vinculo.valor_total !== undefined && (
+                                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-purple-300/80">
+                                        <span>Valor Original: <strong className="text-gold font-bold">{formatCurrency(vinculo.valor_total)}</strong></span>
+                                        {vinculo.vencimento && <span className="opacity-40">|</span>}
+                                        {vinculo.vencimento && <span>Venc: <strong className="text-foreground">{formatDate(vinculo.vencimento)}</strong></span>}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="flex items-center gap-2 flex-shrink-0">
-                                    <span className="text-[10px] text-muted font-bold uppercase">Valor Associado (R$):</span>
+                                    <span className="text-[10px] text-muted font-bold uppercase text-right leading-tight block">
+                                      Valor para<br />abatimento (R$):
+                                    </span>
                                     <input
                                       type="text"
                                       value={vinculo.valor_associado}
@@ -2712,6 +2785,8 @@ export default function InvestimentoPage() {
                                               numero_boleto: b.numero_boleto,
                                               valor_total: b.valor_total,
                                               tipo_titulo: b.tipo_titulo,
+                                              vencimento: b.vencimento,
+                                              rede: b.rede,
                                               prazo: b.prazo
                                             }
                                           ]);
@@ -2788,6 +2863,8 @@ export default function InvestimentoPage() {
                                               numero_boleto: b.numero_boleto,
                                               valor_total: b.valor_total,
                                               tipo_titulo: b.tipo_titulo,
+                                              vencimento: b.vencimento,
+                                              rede: b.rede,
                                               prazo: b.prazo
                                             }
                                           ]);
@@ -2831,6 +2908,13 @@ export default function InvestimentoPage() {
                             const totalVinculado = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
                             if (totalRealizado > 0) {
                               if (totalVinculado === 0) {
+                                if (semBoleto) {
+                                  return (
+                                    <div className="mt-2 text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                                      ✓ Sinalizado que o cliente não possui boleto em aberto. Apuração pronta para envio.
+                                    </div>
+                                  );
+                                }
                                 return (
                                   <div className="mt-2 text-[11px] text-amber-500 font-medium">
                                     ⚠️ Nenhum boleto vinculado. Por favor, adicione pelo menos um boleto.
@@ -2899,8 +2983,8 @@ export default function InvestimentoPage() {
                       </div>
                       <button
                         onClick={handleApuracaoSubmit}
-                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo}
-                        className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto)}
+                        className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
                         Concluir Apuração
@@ -2916,17 +3000,31 @@ export default function InvestimentoPage() {
                           <div className="space-y-2">
                             {vinculosBoletos.map((vinculo, index) => (
                               <div key={vinculo.boleto_id || index} className="flex flex-col p-2.5 bg-background border border-border rounded-xl">
-                                <span className="text-xs font-semibold text-foreground-secondary break-all">
-                                  {vinculo.label}
+                                <span className="text-xs font-bold text-foreground-secondary break-all">
+                                  {vinculo.rede ? `${vinculo.rede} — ` : ''}Nº {vinculo.numero_boleto} {vinculo.tipo_titulo ? `[${vinculo.tipo_titulo}]` : ''}
                                 </span>
+                                {vinculo.valor_total !== undefined && (
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] text-muted-foreground/80">
+                                    <span>Valor Original: <strong className="text-gold font-bold">{formatCurrency(vinculo.valor_total)}</strong></span>
+                                    {vinculo.vencimento && <span className="text-border mx-1">|</span>}
+                                    {vinculo.vencimento && <span>Venc: <strong className="text-foreground">{formatDate(vinculo.vencimento)}</strong></span>}
+                                  </div>
+                                )}
                                 <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-border/50">
-                                  <span className="text-[10px] text-muted font-bold uppercase">Valor Associado:</span>
+                                  <span className="text-[10px] text-muted font-bold uppercase text-left leading-tight block">
+                                    Valor para<br />abatimento:
+                                  </span>
                                   <span className="text-sm font-extrabold text-gold">
                                     {formatCurrency(Number(vinculo.valor_associado))}
                                   </span>
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        ) : selectedAction.sem_boleto ? (
+                          <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            Sinalizado que o cliente não possui boletos em aberto.
                           </div>
                         ) : (
                           <span className="text-xs text-muted italic">Nenhum boleto em aberto ou vinculado.</span>
