@@ -220,6 +220,180 @@ export async function enviarParaTrade(id: string) {
     throw new Error("Falha ao enviar para o Trade.");
   }
 
+  // Enviar e-mail de notificação para o Trade
+  try {
+    const { data: actionView } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const adminClient = createAdminClient();
+
+      // Buscar e-mail do gerente regional
+      let managerEmail = "";
+      if (actionView.gerente_responsavel) {
+        const { data: profiles } = await adminClient
+          .from("cm_user_profiles")
+          .select("id")
+          .eq("name", actionView.gerente_responsavel);
+
+        if (profiles && profiles.length > 0) {
+          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
+          if (authUser?.user?.email) managerEmail = authUser.user.email;
+        }
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        tls: { rejectUnauthorized: false }
+      });
+
+      const recipientsSet = new Set<string>();
+      recipientsSet.add("trade@coffeemais.com");
+      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
+      const recipients = Array.from(recipientsSet).join(", ");
+
+      const formatCurrency = (val: number | null | undefined) => {
+        if (val === null || val === undefined) return "R$ 0,00";
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+      };
+
+      const formatDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return "-";
+        try { const d = new Date(dateStr); d.setMinutes(d.getMinutes() + d.getTimezoneOffset()); return d.toLocaleDateString('pt-BR'); } catch { return dateStr || "-"; }
+      };
+
+      const formatMesReferencia = (mes: string | null | undefined) => {
+        if (!mes) return "-";
+        const parts = mes.split('-');
+        if (parts.length === 2) {
+          const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+          const idx = parseInt(parts[1]) - 1;
+          if (idx >= 0 && idx < 12) return `${meses[idx]}/${parts[0]}`;
+        }
+        return mes;
+      };
+
+      const getValorTotal = (r: any) => {
+        if (r.abrangencia === "SKU" && r.skus_detalhes) {
+          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+        }
+        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+      };
+
+      const subject = `📋 NOVA AÇÃO PARA VALIDAÇÃO — Fase 2 — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+
+      const htmlBody = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 24px 30px;">
+            <h1 style="margin: 0; font-size: 20px; color: #ffffff; font-weight: 700;">📋 Nova Ação Enviada para Validação</h1>
+            <p style="margin: 6px 0 0 0; font-size: 13px; color: #bfdbfe;">A ação abaixo foi enviada pelo Comercial e aguarda validação do Trade.</p>
+          </div>
+
+          <div style="padding: 25px 30px;">
+            <!-- Fase Indicator -->
+            <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+              <table style="width: 100%; font-size: 12px; color: #6b7280;">
+                <tr>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #10b981; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">1</div>
+                    <div style="margin-top: 2px; color: #10b981; font-weight: 600;">Criação ✓</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #2563eb; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">2</div>
+                    <div style="margin-top: 2px; color: #2563eb; font-weight: 700;">Trade ◀ ATUAL</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #d1d5db; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">3</div>
+                    <div style="margin-top: 2px;">Apuração</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #d1d5db; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">4</div>
+                    <div style="margin-top: 2px;">Conferência</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #d1d5db; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">5</div>
+                    <div style="margin-top: 2px;">Pagamento</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Action: what just happened -->
+            <div style="background: #dbeafe; border-left: 4px solid #2563eb; padding: 10px 14px; border-radius: 0 8px 8px 0; margin-bottom: 20px; font-size: 13px; color: #1e40af;">
+              <strong>Ação realizada:</strong> O Comercial finalizou o cadastro desta ação e a enviou para validação do Trade.
+            </div>
+
+            <!-- Dados da Ação -->
+            <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Detalhes da Ação</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563; width: 40%;">Código:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">#${actionView.codigo || actionView.id}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Rede:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${actionView.rede}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Tipo de Ação:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.tipo_acao || "-"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Abrangência:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia || "Família"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Família / SKU:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familia_produto || "-")}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Mês Referência:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatMesReferencia(actionView.mes_referencia)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Período:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatDate(actionView.data_inicio)} a ${formatDate(actionView.data_fim)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Valor Estimado:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getValorTotal(actionView))}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Gerente Regional:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+              </tr>
+            </table>
+
+            <!-- Rodapé -->
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+            <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+              Este é um e-mail automático do sistema <strong>Coffee++ Mais</strong>.<br/>
+              Acesse a plataforma para revisar e validar esta ação.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+        to: recipients,
+        subject,
+        html: htmlBody,
+      });
+
+      console.log(`[Email Fase 1→2] Notificação enviada para: ${recipients}`);
+    }
+  } catch (mailErr) {
+    console.error("Erro ao enviar e-mail de envio para Trade:", mailErr);
+  }
+
   revalidatePath("/investimento");
 }
 
@@ -251,6 +425,192 @@ export async function validarTrade(id: string, checklist: {
   if (error) {
     console.error("Erro ao validar pelo Trade:", error);
     throw new Error("Falha ao validar pelo Trade.");
+  }
+
+  // Enviar e-mail de notificação para Trade + Financeiro
+  try {
+    const { data: actionView } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const adminClient = createAdminClient();
+
+      let managerEmail = "";
+      if (actionView.gerente_responsavel) {
+        const { data: profiles } = await adminClient
+          .from("cm_user_profiles")
+          .select("id")
+          .eq("name", actionView.gerente_responsavel);
+
+        if (profiles && profiles.length > 0) {
+          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
+          if (authUser?.user?.email) managerEmail = authUser.user.email;
+        }
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        tls: { rejectUnauthorized: false }
+      });
+
+      const recipientsSet = new Set<string>();
+      recipientsSet.add("trade@coffeemais.com");
+      recipientsSet.add("financeiro@coffeemais.com");
+      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
+      const recipients = Array.from(recipientsSet).join(", ");
+
+      const formatCurrency = (val: number | null | undefined) => {
+        if (val === null || val === undefined) return "R$ 0,00";
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+      };
+
+      const formatDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return "-";
+        try { const d = new Date(dateStr); d.setMinutes(d.getMinutes() + d.getTimezoneOffset()); return d.toLocaleDateString('pt-BR'); } catch { return dateStr || "-"; }
+      };
+
+      const formatMesReferencia = (mes: string | null | undefined) => {
+        if (!mes) return "-";
+        const parts = mes.split('-');
+        if (parts.length === 2) {
+          const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+          const idx = parseInt(parts[1]) - 1;
+          if (idx >= 0 && idx < 12) return `${meses[idx]}/${parts[0]}`;
+        }
+        return mes;
+      };
+
+      const getValorTotal = (r: any) => {
+        if (r.abrangencia === "SKU" && r.skus_detalhes) {
+          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+        }
+        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+      };
+
+      const checkIcon = (val: boolean) => val ? "✅" : "⬜";
+
+      const subject = `✅ AÇÃO VALIDADA PELO TRADE — Fase 3 — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+
+      const htmlBody = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 24px 30px;">
+            <h1 style="margin: 0; font-size: 20px; color: #ffffff; font-weight: 700;">✅ Ação Validada pelo Trade</h1>
+            <p style="margin: 6px 0 0 0; font-size: 13px; color: #a7f3d0;">O Trade validou esta ação. Ela agora aguarda apuração comercial (dossiê).</p>
+          </div>
+
+          <div style="padding: 25px 30px;">
+            <!-- Fase Indicator -->
+            <div style="background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px;">
+              <table style="width: 100%; font-size: 12px; color: #6b7280;">
+                <tr>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #10b981; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">1</div>
+                    <div style="margin-top: 2px; color: #10b981; font-weight: 600;">Criação ✓</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #10b981; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">2</div>
+                    <div style="margin-top: 2px; color: #10b981; font-weight: 600;">Trade ✓</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #2563eb; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">3</div>
+                    <div style="margin-top: 2px; color: #2563eb; font-weight: 700;">Apuração ◀ ATUAL</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #d1d5db; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">4</div>
+                    <div style="margin-top: 2px;">Conferência</div>
+                  </td>
+                  <td style="text-align: center; padding: 4px;">
+                    <div style="background: #d1d5db; color: white; border-radius: 50%; width: 24px; height: 24px; line-height: 24px; text-align: center; margin: 0 auto; font-weight: bold; font-size: 11px;">5</div>
+                    <div style="margin-top: 2px;">Pagamento</div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+
+            <!-- Action: what just happened -->
+            <div style="background: #d1fae5; border-left: 4px solid #059669; padding: 10px 14px; border-radius: 0 8px 8px 0; margin-bottom: 20px; font-size: 13px; color: #065f46;">
+              <strong>Ação realizada:</strong> O Trade validou esta ação. Validado por <strong>${user?.email || "—"}</strong> em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}. A ação segue agora para apuração comercial (dossiê).
+            </div>
+
+            <!-- Checklist do Trade -->
+            <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Checklist do Trade</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">
+              <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 6px 8px;">${checkIcon(checklist.comunicacao)} Comunicação</td></tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 6px 8px;">${checkIcon(checklist.logistica)} Logística</td></tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 6px 8px;">${checkIcon(checklist.auditoria)} Auditoria</td></tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 6px 8px;">${checkIcon(checklist.garantia)} Garantia</td></tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;"><td style="padding: 6px 8px;">${checkIcon(checklist.conferencia)} Conferência</td></tr>
+            </table>
+
+            <!-- Dados da Ação -->
+            <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Detalhes da Ação</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 15px;">
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563; width: 40%;">Código:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">#${actionView.codigo || actionView.id}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Rede:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${actionView.rede}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Tipo de Ação:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.tipo_acao || "-"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Abrangência:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia || "Família"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Família / SKU:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familia_produto || "-")}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Mês Referência:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatMesReferencia(actionView.mes_referencia)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Período:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatDate(actionView.data_inicio)} a ${formatDate(actionView.data_fim)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Valor Estimado:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getValorTotal(actionView))}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Gerente Regional:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+              </tr>
+            </table>
+
+            <!-- Rodapé -->
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 25px 0 15px 0;" />
+            <p style="text-align: center; margin: 0; font-size: 11px; color: #9ca3af; line-height: 1.5;">
+              Este é um e-mail automático do sistema <strong>Coffee++ Mais</strong>.<br/>
+              A ação aguarda agora a apuração comercial (dossiê) pelo Gerente Regional.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+        to: recipients,
+        subject,
+        html: htmlBody,
+      });
+
+      console.log(`[Email Fase 2→3] Notificação enviada para: ${recipients}`);
+    }
+  } catch (mailErr) {
+    console.error("Erro ao enviar e-mail de validação do Trade:", mailErr);
   }
 
   revalidatePath("/investimento");
