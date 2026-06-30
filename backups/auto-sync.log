@@ -95,3 +95,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    02c138c..909b66b  main -> main
 [30/06/2026 05:04] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 5f131be] auto-save: 30/06/2026 15:36
+ 17 files changed, 1754 insertions(+), 18 deletions(-)
+ create mode 100644 sql/migration_bigquery_sync.sql
+ create mode 100644 src/app/api/bigquery/sync-faturamento/route.ts
+ create mode 100644 src/app/api/cron/sync-bigquery/route.ts
+ create mode 100644 src/components/SyncStatusWidget.tsx
+ create mode 100644 src/lib/bigquery.ts
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[30/06/2026 15:36] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
