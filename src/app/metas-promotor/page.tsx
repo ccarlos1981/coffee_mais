@@ -1385,59 +1385,70 @@ export default function MetasPromotorPage() {
 
       {/* Modal overlay for Adding Network Target */}
       {showAddNetworkModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-neutral-900 border border-border rounded-3xl p-6 max-w-md w-full space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-border/40 pb-3">
-              <h3 className="text-sm font-black uppercase text-foreground flex items-center gap-2">
-                <Plus className="w-4.5 h-4.5 text-gold" />
-                Vincular Rede à Meta Comercial
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-800 bg-neutral-950/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-gold/15 flex items-center justify-center">
+                  <Plus className="w-4 h-4 text-gold" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">Vincular Rede à Meta</h3>
+                  <p className="text-[10px] text-neutral-400">Selecione a rede e o estado</p>
+                </div>
+              </div>
               <button 
                 onClick={() => setShowAddNetworkModal(null)}
-                className="text-muted-foreground hover:text-foreground cursor-pointer"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-neutral-400 hover:text-white hover:bg-neutral-800 transition-all cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleAddNetworkSubmit} className="space-y-4">
-              <div className="flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold text-gold uppercase">Escolha a Rede / Estado:</span>
+            {/* Body */}
+            <form onSubmit={handleAddNetworkSubmit} className="p-6 space-y-5">
+              
+              <div className="flex flex-col gap-2">
+                <label className="text-[11px] font-bold text-gold uppercase tracking-wider">
+                  Escolha a Rede / Estado:
+                </label>
                 <select
                   value={newNetworkSelection}
                   onChange={(e) => setNewNetworkSelection(e.target.value)}
-                  className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-gold cursor-pointer"
+                  className="bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold/60 focus:ring-1 focus:ring-gold/30 cursor-pointer transition-all"
                   required
                 >
-                  <option value="">Selecione...</option>
+                  <option value="">Selecione uma rede...</option>
                   {AVAILABLE_NETWORKS_UF.map((item, index) => (
                     <option key={index} value={index}>
                       {item.rede} ({item.uf})
                     </option>
                   ))}
-                  <option value="custom">Outra Rede (Personalizada)...</option>
+                  <option value="custom">+ Outra Rede (Personalizada)</option>
                 </select>
               </div>
 
               {newNetworkSelection === "custom" && (
                 <div className="grid grid-cols-2 gap-3 animate-fade-in">
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] font-bold text-gold uppercase">Nome da Rede:</span>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[11px] font-bold text-gold uppercase tracking-wider">Nome da Rede:</label>
                     <input
                       type="text"
                       placeholder="Ex: Carrefour"
-                      className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-gold"
+                      className="bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold/60 focus:ring-1 focus:ring-gold/30 transition-all"
                       value={customRede}
                       onChange={(e) => setCustomRede(e.target.value)}
                       required
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[10px] font-bold text-gold uppercase">UF:</span>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[11px] font-bold text-gold uppercase tracking-wider">UF:</label>
                     <select
                       value={customUF}
                       onChange={(e) => setCustomUF(e.target.value)}
-                      className="bg-neutral-950 border border-neutral-800 rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-gold cursor-pointer"
+                      className="bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-gold/60 focus:ring-1 focus:ring-gold/30 cursor-pointer transition-all"
                     >
                       {["SP", "DF", "MG", "RJ", "PR", "SC", "BA", "CE", "ES", "GO", "RS"].map(uf => (
                         <option key={uf} value={uf}>{uf}</option>
@@ -1447,22 +1458,25 @@ export default function MetasPromotorPage() {
                 </div>
               )}
 
-              <p className="text-[10px] text-muted-foreground flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-gold shrink-0" />
-                <span>O vínculo nesta tela serve para fins de metas comerciais. Não altera a roteirização operacional do promotor.</span>
-              </p>
+              <div className="flex items-start gap-2 p-3 bg-neutral-800/50 rounded-xl border border-neutral-700/50">
+                <Info className="w-3.5 h-3.5 text-gold shrink-0 mt-0.5" />
+                <p className="text-[11px] text-neutral-400 leading-relaxed">
+                  O vínculo serve para fins de metas comerciais. Não altera a roteirização operacional do promotor.
+                </p>
+              </div>
 
-              <div className="flex gap-3 pt-2">
+              {/* Actions */}
+              <div className="flex gap-3 pt-1">
                 <button
                   type="submit"
-                  className="flex-1 bg-gold text-neutral-950 font-black py-2 rounded-xl text-xs hover:bg-gold/90 transition-all cursor-pointer"
+                  className="flex-1 bg-gold text-neutral-950 font-black py-2.5 rounded-xl text-sm hover:bg-gold/90 transition-all cursor-pointer"
                 >
                   Adicionar à Meta
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAddNetworkModal(null)}
-                  className="flex-1 bg-neutral-950 border border-neutral-800 text-foreground py-2 rounded-xl text-xs hover:bg-neutral-900 transition-all cursor-pointer"
+                  className="flex-1 bg-neutral-800 border border-neutral-700 text-white py-2.5 rounded-xl text-sm hover:bg-neutral-700 transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1471,6 +1485,7 @@ export default function MetasPromotorPage() {
           </div>
         </div>
       )}
+
 
       {/* Footer */}
       <footer className="border-t border-border/50 py-6 text-center text-[10px] text-muted z-10 mt-auto">
