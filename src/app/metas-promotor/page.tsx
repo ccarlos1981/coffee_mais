@@ -893,53 +893,67 @@ export default function MetasPromotorPage() {
               </p>
             </div>
 
-            <div className="flex gap-2">
-              {!isLocked && (
-                <button
-                  onClick={() => handleSaveMetas("save")}
-                  disabled={saving}
-                  className="flex-1 bg-white border-2 border-neutral-300 dark:bg-neutral-900 dark:border-neutral-800 text-neutral-900 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                >
-                  <Save className="w-3.5 h-3.5" /> Salvar Rascunho
-                </button>
-              )}
+            <div className="flex gap-2 flex-wrap">
+              {/* DRAFT: Salvar Rascunho + Submeter */}
               {generalStatus === "DRAFT" && (
-                <button
-                  onClick={() => handleSaveMetas("submit")}
-                  disabled={saving}
-                  className="flex-1 bg-gold hover:bg-gold/90 text-neutral-950 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-gold/10"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-neutral-950" /> Submeter
-                </button>
-              )}
-              {generalStatus === "SUBMITTED" && (userRole === "Admin" || userRole === "CEO" || userRole === "Supervisor") && (
-                <div className="flex gap-2 w-full">
+                <>
                   <button
-                    onClick={() => handleSaveMetas("approve")}
+                    onClick={() => handleSaveMetas("save")}
                     disabled={saving}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-550/15"
+                    className="flex-1 bg-white border-2 border-neutral-300 dark:bg-neutral-900 dark:border-neutral-800 text-neutral-900 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-800 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-sm whitespace-nowrap"
                   >
-                    <Lock className="w-3.5 h-3.5" /> Aprovar e Congelar
+                    <Save className="w-3.5 h-3.5 shrink-0" /> Salvar Rascunho
                   </button>
                   <button
-                    onClick={() => handleSaveMetas("unlock")}
+                    onClick={() => handleSaveMetas("submit")}
                     disabled={saving}
-                    className="flex-1 bg-red-650 hover:bg-red-600 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-red-550/15"
+                    className="flex-1 bg-gold hover:bg-gold/90 text-neutral-950 py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-gold/10 whitespace-nowrap"
                   >
-                    Rejeitar
+                    <UserCheck className="w-3.5 h-3.5 shrink-0 text-neutral-950" /> Submeter
                   </button>
-                </div>
+                </>
               )}
+
+              {/* SUBMITTED: Admin vê Aprovar + Rejeitar; outros veem aviso */}
+              {generalStatus === "SUBMITTED" && (
+                <>
+                  {(userRole === "Admin" || userRole === "CEO" || userRole === "Supervisor") ? (
+                    <>
+                      <button
+                        onClick={() => handleSaveMetas("approve")}
+                        disabled={saving}
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-emerald-550/15 whitespace-nowrap"
+                      >
+                        <Lock className="w-3.5 h-3.5 shrink-0" /> Aprovar e Congelar
+                      </button>
+                      <button
+                        onClick={() => handleSaveMetas("unlock")}
+                        disabled={saving}
+                        className="flex-1 bg-red-650 hover:bg-red-600 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-red-550/15 whitespace-nowrap"
+                      >
+                        Rejeitar
+                      </button>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-blue-400 font-bold text-center w-full py-1">
+                      ⏳ Aguardando aprovação gerencial…
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* LOCKED: apenas Desbloquear (admin) */}
               {isLocked && (userRole === "Admin" || userRole === "CEO" || userRole === "Supervisor") && (
                 <button
                   onClick={() => handleSaveMetas("unlock")}
                   disabled={saving}
-                  className="w-full bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-550/15"
+                  className="w-full bg-amber-600 hover:bg-amber-500 text-white py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-550/15 whitespace-nowrap"
                 >
-                  <Unlock className="w-3.5 h-3.5" /> Desbloquear para Ajustes
+                  <Unlock className="w-3.5 h-3.5 shrink-0" /> Desbloquear para Ajustes
                 </button>
               )}
             </div>
+
           </div>
         </div>
 
