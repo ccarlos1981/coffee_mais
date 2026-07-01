@@ -619,7 +619,7 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = 
       emp.nome_completo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      emp.cpf.includes(searchTerm.replace(/\D/g, ""));
+      (emp.cpf || "").includes(searchTerm.replace(/\D/g, ""));
       
     const matchesStatus = 
       statusFilter === "all" ||
@@ -828,7 +828,7 @@ export function EmployeeDashboard({ employees }: EmployeeDashboardProps) {
                       {emp.nome_completo}
                     </td>
                     <td className="p-4 text-center text-foreground-secondary font-mono">
-                      {emp.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4")}
+                      {emp.cpf ? emp.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4") : <span className="text-foreground-muted italic text-xs">Não informado</span>}
                     </td>
                     <td className="p-4 text-center text-foreground-secondary">
                       {emp.identidade || "-"}

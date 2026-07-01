@@ -157,6 +157,7 @@ export async function updateUserApproval(userId: string, approved: boolean) {
       return { error: "Usuário é obrigatório." };
     }
 
+    // Update approval status
     const { error } = await adminClient
       .from('cm_user_profiles')
       .update({ approved })
@@ -166,6 +167,47 @@ export async function updateUserApproval(userId: string, approved: boolean) {
       return { error: error.message };
     }
 
+    // Auto-create basic HR record when approving a Promotor
+    // This allows the system to work before formal RH onboarding
+    if (approved) {
+      const { data: profile } = await adminClient
+        .from('cm_user_profiles')
+        .select('role, name, uf')
+        .eq('id', userId)
+        .single();
+
+      if (profile?.role === 'Promotor') {
+        // Check if HR record already exists
+        const { data: existing } = await adminClient
+          .from('cm_promotor_perfil')
+          .select('id')
+          .eq('user_id', userId)
+          .single();
+
+        if (!existing) {
+          // Create basic employee record
+          const { data: newEmployee, error: empError } = await adminClient
+            .from('cm_employees')
+            .insert({
+              nome_completo: profile.name || 'Promotor',
+              funcao: 'Promotor',
+              area_funcao: 'Trade',
+              ativo: true,
+            })
+            .select('id')
+            .single();
+
+          if (!empError && newEmployee) {
+            // Link user to employee
+            await adminClient.from('cm_promotor_perfil').insert({
+              user_id: userId,
+              employee_id: newEmployee.id,
+            });
+          }
+        }
+      }
+    }
+
     revalidatePath("/admin/usuarios");
     return { success: true, message: "Aprovação atualizada com sucesso!" };
   } catch (error) {
@@ -173,6 +215,7 @@ export async function updateUserApproval(userId: string, approved: boolean) {
     return { error: errorMsg };
   }
 }
+
 
 export async function updateManagerName(userId: string, managerName: string | null) {
   try {

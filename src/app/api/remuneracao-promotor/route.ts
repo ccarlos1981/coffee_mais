@@ -26,17 +26,17 @@ export async function GET(request: Request) {
     const quarter = Math.ceil(month / 3);
     const isQuarterEnd = (month % 3 === 0);
 
-    // 1. Fetch Promotores with their default variables
+    // 1. Fetch Promotores com ficha vinculada ao RH (cm_employees)
     const { data: userProfiles, error: upErr } = await adminClient
       .from("cm_user_profiles")
-      .select("id, employee_code, default_variavel_mensal, name, uf")
+      .select("id, employee_code, default_variavel_mensal")
       .eq("role", "Promotor");
 
     if (upErr) throw upErr;
 
     // 2. Fetch Employee details
     const { data: promotorPerfil } = await adminClient.from("cm_promotor_perfil").select("user_id, employee_id");
-    const { data: employees } = await adminClient.from("cm_employees").select("id, nome_completo, uf_alocacao, data_admissao, data_desligamento");
+    const { data: employees } = await adminClient.from("cm_employees").select("id, nome_completo, data_admissao");
     
     const empMap = new Map();
     if (employees) employees.forEach(e => empMap.set(e.id, e));
@@ -78,26 +78,28 @@ export async function GET(request: Request) {
         const empId = userToEmpMap.get(prof.id);
         const emp = empId ? empMap.get(empId) : null;
         
-        // Use employee data if available, otherwise fallback to profile data
-        const name = emp?.nome_completo || (prof as any).name || "Promotor sem nome";
-        const uf = emp?.uf_alocacao || (prof as any).uf || "—";
-        const dtAdm = emp?.data_admissao || null;
-        const dtDeslig = emp?.data_desligamento || null;
+        // Apenas promotores com ficha de RH cadastrada aparecem na folha.
+        // Acesso ao sistema e cadastro de funcionário são bases separadas.
+        if (!emp) return null;
+        
+        const name = emp.nome_completo;
+        const uf = (prof as any).uf || "—";
+        const dtAdm = emp.data_admissao || null;
+        const dtDeslig = null;
 
         const profRems = qRemMap.get(prof.id) || [];
         const savedRem = profRems.find(r => r.competency_month === month);
         
         const hash = prof.id.charCodeAt(0) + month;
         
-        // Target Quantity (Meta)
-        // If they have a database target, use it; otherwise mock a realistic one
+        // Target Quantity (Meta) — only from DB, no mock fallback
         const dbTargetQty = metasQtyMap.get(prof.id) || 0;
-        const targetQty = dbTargetQty > 0 ? dbTargetQty : (5000 + (hash % 3) * 500);
+        const targetQty = dbTargetQty; // 0 = sem meta definida ainda
 
         const factor = calculateProportionalFactor(month, year, dtAdm, dtDeslig);
         
-        // Mock Realizado quantity based on factor and random variation
-        const mockAch = factor === 0 ? 0 : (95 + (hash % 12)); 
+        // Mock Realizado: 0 if no meta set
+        const mockAch = (factor === 0 || targetQty === 0) ? 0 : (95 + (hash % 12)); 
         
         const atingimento_mensal = savedRem ? parseFloat(savedRem.atingimento_mensal_percent || 0) : mockAch;
         const realQty = Math.round(targetQty * (atingimento_mensal / 100) * factor);
