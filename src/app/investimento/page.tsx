@@ -191,6 +191,7 @@ export default function InvestimentoPage() {
   const [vinculosBoletos, setVinculosBoletos] = useState<any[]>([]);
   const [semBoleto, setSemBoleto] = useState(false);
   const [clientHasBoletoCondition, setClientHasBoletoCondition] = useState(false);
+  const [modalPrazo, setModalPrazo] = useState<string | null>(null);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
   const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
 
@@ -321,7 +322,39 @@ export default function InvestimentoPage() {
         setClientHasBoletoCondition(false);
       };
 
+      // Buscar prazo do cliente via cm_boletos
+      const fetchModalPrazo = async () => {
+        try {
+          // 1. Tenta via boleto da rede
+          const { data: boletos } = await supabase
+            .from("cm_boletos")
+            .select("prazo")
+            .ilike("rede", `%${selectedAction.rede}%`)
+            .not("prazo", "is", null)
+            .limit(1);
+          if (boletos && boletos.length > 0 && boletos[0].prazo) {
+            setModalPrazo(boletos[0].prazo);
+            return;
+          }
+          // 2. Fallback: condicao_pagamento do cm_clientes
+          const { data: clients } = await supabase
+            .from("cm_clientes")
+            .select("condicao_pagamento")
+            .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
+            .not("condicao_pagamento", "is", null)
+            .limit(1);
+          if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
+            setModalPrazo(clients[0].condicao_pagamento);
+          } else {
+            setModalPrazo(selectedAction.condicao_pagamento || null);
+          }
+        } catch {
+          setModalPrazo(selectedAction.condicao_pagamento || null);
+        }
+      };
+
       checkBoletoCondition();
+      fetchModalPrazo();
       
       if ((selectedAction.fase_atual || 1) >= 3) {
         fetchBoletosDaRede(selectedAction.rede);
@@ -2461,16 +2494,15 @@ export default function InvestimentoPage() {
                     </div>
 
                     <div className={`p-3 rounded-xl border ${(() => {
-                      const dias = selectedAction.condicao_pagamento ? parseInt(selectedAction.condicao_pagamento) : null;
+                      const dias = modalPrazo ? parseInt(modalPrazo) : null;
                       return (dias !== null && !isNaN(dias) && dias > 35)
                         ? 'bg-red-500/10 border-red-500/30'
                         : 'bg-elevated border-border';
                     })()}`}>
                       <span className="text-xs text-muted block mb-1">Prazo de Pagamento</span>
                       {(() => {
-                        const raw = selectedAction.condicao_pagamento;
-                        const dias = raw ? parseInt(raw) : null;
-                        if (!raw || dias === null || isNaN(dias)) {
+                        const dias = modalPrazo ? parseInt(modalPrazo) : null;
+                        if (!modalPrazo || dias === null || isNaN(dias)) {
                           return <span className="font-bold text-foreground">—</span>;
                         }
                         const foraDopadrao = dias > 35;
