@@ -1170,10 +1170,10 @@ export default function MetasPromotorPage() {
                             className="transition-colors hover:bg-neutral-500/5 group font-medium"
                           >
                             {/* Checkbox */}
-                            <td className="px-2 py-2 text-center">
+                            <td className="px-2 py-2 text-center align-top">
                               <input 
                                 type="checkbox" 
-                                className="rounded border-neutral-800 text-gold focus:ring-gold bg-neutral-950 w-3.5 h-3.5 cursor-pointer"
+                                className="rounded border-neutral-800 text-gold focus:ring-gold bg-neutral-950 w-3.5 h-3.5 cursor-pointer mt-0.5"
                                 checked={!!net.selected}
                                 title="Selecionar esta rede"
                                 onChange={() => handleToggleSelectNetwork(prom.id, nIdx)}
@@ -1181,13 +1181,13 @@ export default function MetasPromotorPage() {
                             </td>
 
                             {/* Network/UF */}
-                            <td className="px-2 py-2">
+                            <td className="px-2 py-2 align-top">
                               <span className="font-extrabold text-neutral-900 dark:text-neutral-100 block text-xs">{net.rede}</span>
                               <span className="text-[9px] text-neutral-500 dark:text-neutral-400 block uppercase tracking-wider font-extrabold">{net.uf}</span>
                             </td>
 
                             {/* Status badge */}
-                            <td className="px-1 py-2 text-center">
+                            <td className="px-1 py-2 text-center align-top">
                               {renderRowStatusBadge(net.status, goalsSum)}
                             </td>
 
@@ -1197,7 +1197,7 @@ export default function MetasPromotorPage() {
                               return (
                                 <td 
                                   key={hIdx} 
-                                  className={`px-1.5 py-2 text-right font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-950/20 border-r border-border/10 relative ${
+                                  className={`px-1.5 py-2 text-right font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-950/20 border-r border-border/10 relative align-top ${
                                     hIdx === 5 ? "border-r-2 border-r-neutral-400 dark:border-r-neutral-700" : ""
                                   }`}
                                 >
@@ -1227,7 +1227,7 @@ export default function MetasPromotorPage() {
                               const aiSuggestValue = parseFloat((baseVal * 1.12).toFixed(2));
 
                               return (
-                                <td key={gIdx} className="px-1.5 py-2 text-right bg-gold/5 border-r border-border/10 min-w-[110px] max-w-[125px]">
+                                <td key={gIdx} className="px-1.5 py-2 text-right bg-gold/5 border-r border-border/10 min-w-[110px] max-w-[125px] align-top">
                                   <div className="flex flex-col gap-1.5 items-end">
                                     
                                     {/* White high-contrast target input with golden borders */}
