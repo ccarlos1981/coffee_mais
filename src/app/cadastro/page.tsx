@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Coffee, Lock, Mail, Eye, EyeOff, AlertCircle, Briefcase, CheckCircle2, Phone, MapPin } from "lucide-react";
+import { Coffee, Lock, Mail, Eye, EyeOff, AlertCircle, Briefcase, CheckCircle2, Phone, MapPin, User } from "lucide-react";
 import { signUp } from "./actions";
 
 const UFS = [
@@ -186,6 +186,88 @@ export default function CadastroPage() {
           )}
 
           <form action={handleSubmit}>
+            {/* Nome */}
+            <div style={{ display: "flex", gap: "12px", marginBottom: "16px" }}>
+              <div style={{ flex: 1 }}>
+                <label
+                  htmlFor="first_name"
+                  style={{
+                    display: "block",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    color: "var(--foreground-secondary)",
+                    marginBottom: "6px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Primeiro nome
+                </label>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <User style={{ position: "absolute", left: "12px", width: 16, height: 16, color: "var(--foreground-dim)", pointerEvents: "none" }} />
+                  <input
+                    id="first_name"
+                    name="first_name"
+                    type="text"
+                    required
+                    placeholder="João"
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 40px",
+                      background: "var(--background)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      color: "var(--foreground)",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      transition: "border-color 0.2s ease",
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-gold)")}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label
+                  htmlFor="last_name"
+                  style={{
+                    display: "block",
+                    fontSize: "0.7rem",
+                    fontWeight: 600,
+                    color: "var(--foreground-secondary)",
+                    marginBottom: "6px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Último nome
+                </label>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <User style={{ position: "absolute", left: "12px", width: 16, height: 16, color: "var(--foreground-dim)", pointerEvents: "none" }} />
+                  <input
+                    id="last_name"
+                    name="last_name"
+                    type="text"
+                    required
+                    placeholder="Silva"
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px 10px 40px",
+                      background: "var(--background)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      color: "var(--foreground)",
+                      fontSize: "0.85rem",
+                      outline: "none",
+                      transition: "border-color 0.2s ease",
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = "var(--accent-gold)")}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div style={{ marginBottom: "16px" }}>
               <label
                 htmlFor="email"

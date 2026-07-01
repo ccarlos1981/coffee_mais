@@ -396,12 +396,13 @@ export default async function HomePage() {
           </p>
         </div>
 
-        {/* BigQuery sync status - Admin only */}
+        {/* BigQuery sync status - Hidden until BigQuery integration is configured
         {role === 'Admin' && (
           <Suspense fallback={null}>
             <SyncStatusWidget />
           </Suspense>
         )}
+        */}
 
         <div className="space-y-8">
           {filteredModules.length > 0 ? (

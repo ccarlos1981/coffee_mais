@@ -11,6 +11,9 @@ export async function createUser(formData: FormData) {
     const password = formData.get("password") as string;
     const role = formData.get("role") as string;
     const managerName = (formData.get("manager_name") as string) || null;
+    const firstName = (formData.get("first_name") as string || "").trim();
+    const lastName = (formData.get("last_name") as string || "").trim();
+    const fullName = `${firstName} ${lastName}`.trim() || null;
     
     const receber_pdf_vendas = formData.get("receber_pdf_vendas") === "on";
     const receber_pdf_investimento = formData.get("receber_pdf_investimento") === "on";
@@ -30,7 +33,12 @@ export async function createUser(formData: FormData) {
     const { data, error } = await adminClient.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirma para facilitar, já que é o admin que está criando
+      email_confirm: true,
+      user_metadata: {
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+        full_name: fullName || undefined,
+      },
     });
 
     if (error) {
@@ -44,6 +52,7 @@ export async function createUser(formData: FormData) {
         .insert({
           id: data.user.id,
           role: role,
+          name: fullName,
           manager_name: managerName,
           receber_pdf_vendas,
           receber_pdf_investimento,

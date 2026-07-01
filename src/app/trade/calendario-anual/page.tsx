@@ -9,6 +9,7 @@ import {
   MapPin,
   Plus,
   Trash2,
+  Pencil,
   ArrowLeft,
   RotateCw,
   Info,
@@ -67,6 +68,7 @@ export default function CalendarioAnualPage() {
     rede: ""
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
 
   // Dynamic filter lists fetched from API
   const [managersList, setManagersList] = useState<string[]>([]);
@@ -196,6 +198,63 @@ export default function CalendarioAnualPage() {
     } catch (err: any) {
       console.error("Erro ao criar evento:", err);
       setFeedback({ type: "error", msg: err.message || "Erro ao salvar evento." });
+    } finally {
+      setFormSubmitting(false);
+    }
+  };
+
+  const handleEditEvent = (ev: CalendarioEvent) => {
+    setEditingEventId(ev.id);
+    setFormData({
+      data_inicio: ev.data_inicio,
+      data_fim: ev.data_fim,
+      assunto: ev.assunto,
+      observacao: ev.observacao || "",
+      gerente: ev.gerente || "",
+      regiao: ev.regiao || "",
+      rede: ev.rede || ""
+    });
+    setShowFormModal(true);
+  };
+
+  const handleUpdateEvent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEventId) return;
+    if (!formData.data_inicio || !formData.data_fim || !formData.assunto) {
+      setFeedback({ type: "error", msg: "Data inicial, data final e assunto são obrigatórios." });
+      return;
+    }
+
+    try {
+      setFormSubmitting(true);
+      setFeedback(null);
+
+      const computedAno = parseLocalDate(formData.data_inicio).getFullYear();
+
+      const { error } = await supabase
+        .from("cm_trade_calendario_anual")
+        .update({
+          data_inicio: formData.data_inicio,
+          data_fim: formData.data_fim,
+          assunto: formData.assunto,
+          observacao: formData.observacao || null,
+          gerente: formData.gerente || null,
+          regiao: formData.regiao || null,
+          rede: formData.rede || null,
+          ano: computedAno,
+        })
+        .eq("id", editingEventId);
+
+      if (error) throw error;
+
+      setFeedback({ type: "success", msg: "Evento atualizado com sucesso!" });
+      setShowFormModal(false);
+      setEditingEventId(null);
+      setFormData({ data_inicio: "", data_fim: "", assunto: "", observacao: "", gerente: "", regiao: "", rede: "" });
+      loadEvents();
+    } catch (err: any) {
+      console.error("Erro ao atualizar evento:", err);
+      setFeedback({ type: "error", msg: err.message || "Erro ao atualizar evento." });
     } finally {
       setFormSubmitting(false);
     }
@@ -352,7 +411,7 @@ export default function CalendarioAnualPage() {
             </p>
           </div>
           <button
-            onClick={() => setShowFormModal(true)}
+            onClick={() => { setEditingEventId(null); setFormData({ data_inicio: "", data_fim: "", assunto: "", observacao: "", gerente: "", regiao: "", rede: "" }); setShowFormModal(true); }}
             className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold rounded-xl flex items-center gap-2 transition cursor-pointer text-sm shadow-md"
           >
             <Plus className="w-4 h-4" />
@@ -424,13 +483,22 @@ export default function CalendarioAnualPage() {
                     <h3 className="font-extrabold text-sm text-neutral-100 group-hover:text-gold transition-colors line-clamp-2">
                       {ev.assunto}
                     </h3>
-                    <button
-                      onClick={() => handleDeleteEvent(ev.id)}
-                      className="p-1.5 bg-neutral-900 hover:bg-red-500/10 text-neutral-500 hover:text-red-400 rounded-lg transition-colors border border-transparent hover:border-red-950 cursor-pointer shrink-0"
-                      title="Excluir evento"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleEditEvent(ev)}
+                        className="p-1.5 bg-neutral-900 hover:bg-amber-500/10 text-neutral-500 hover:text-amber-400 rounded-lg transition-colors border border-transparent hover:border-amber-950 cursor-pointer"
+                        title="Editar evento"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteEvent(ev.id)}
+                        className="p-1.5 bg-neutral-900 hover:bg-red-500/10 text-neutral-500 hover:text-red-400 rounded-lg transition-colors border border-transparent hover:border-red-950 cursor-pointer"
+                        title="Excluir evento"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Event Date Info */}
@@ -480,16 +548,16 @@ export default function CalendarioAnualPage() {
           <div className="bg-neutral-900 border border-neutral-850 rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
             
             <header className="p-5 border-b border-neutral-850 bg-neutral-900 flex justify-between items-center">
-              <h2 className="text-sm font-extrabold text-amber-500 uppercase tracking-wider">Cadastrar Evento</h2>
+              <h2 className="text-sm font-extrabold text-amber-500 uppercase tracking-wider">{editingEventId ? "Editar Evento" : "Cadastrar Evento"}</h2>
               <button 
-                onClick={() => setShowFormModal(false)} 
+                onClick={() => { setShowFormModal(false); setEditingEventId(null); }} 
                 className="text-xs text-neutral-400 hover:text-white font-bold cursor-pointer hover:bg-neutral-800 px-2 py-1 rounded-lg transition"
               >
                 Fechar
               </button>
             </header>
 
-            <form onSubmit={handleCreateEvent} className="p-6 flex flex-col gap-4 overflow-y-auto">
+            <form onSubmit={editingEventId ? handleUpdateEvent : handleCreateEvent} className="p-6 flex flex-col gap-4 overflow-y-auto">
               
               {/* Date Inputs */}
               <div className="grid grid-cols-2 gap-4">
@@ -591,7 +659,7 @@ export default function CalendarioAnualPage() {
                 disabled={formSubmitting}
                 className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-neutral-950 font-black text-sm rounded-xl shadow-lg transition active:scale-98 mt-2 cursor-pointer disabled:opacity-50"
               >
-                {formSubmitting ? "Salvando..." : "Salvar Evento"}
+                {formSubmitting ? "Salvando..." : editingEventId ? "Atualizar Evento" : "Salvar Evento"}
               </button>
             </form>
           </div>

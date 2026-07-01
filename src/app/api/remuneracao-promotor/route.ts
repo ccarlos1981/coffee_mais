@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     // 1. Fetch Promotores with their default variables
     const { data: userProfiles, error: upErr } = await adminClient
       .from("cm_user_profiles")
-      .select("id, employee_code, default_variavel_mensal")
+      .select("id, employee_code, default_variavel_mensal, name, uf")
       .eq("role", "Promotor");
 
     if (upErr) throw upErr;
@@ -78,13 +78,11 @@ export async function GET(request: Request) {
         const empId = userToEmpMap.get(prof.id);
         const emp = empId ? empMap.get(empId) : null;
         
-        // Se não tiver um employee real atrelado no banco (mocks de dev), ignoramos
-        if (!emp) return null;
-        
-        const name = emp.nome_completo;
-        const uf = emp.uf_alocacao || "SP";
-        const dtAdm = emp.data_admissao || null;
-        const dtDeslig = emp.data_desligamento || null;
+        // Use employee data if available, otherwise fallback to profile data
+        const name = emp?.nome_completo || (prof as any).name || "Promotor sem nome";
+        const uf = emp?.uf_alocacao || (prof as any).uf || "—";
+        const dtAdm = emp?.data_admissao || null;
+        const dtDeslig = emp?.data_desligamento || null;
 
         const profRems = qRemMap.get(prof.id) || [];
         const savedRem = profRems.find(r => r.competency_month === month);

@@ -17,6 +17,7 @@ interface UserProfile {
   approved?: boolean;
   phone?: string | null;
   uf?: string | null;
+  name?: string | null;
 }
 
 interface UserListProps {
@@ -31,10 +32,13 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
   const [roleFilter, setRoleFilter] = useState("");
 
   const filteredUsers = users.filter(user => {
-    const matchesEmail = user.email?.toLowerCase().includes(searchTerm.toLowerCase());
-    const userRole = profilesMap[user.id]?.role || "";
+    const profile = profilesMap[user.id];
+    const searchLower = searchTerm.toLowerCase();
+    const matchesEmail = user.email?.toLowerCase().includes(searchLower);
+    const matchesName = profile?.name?.toLowerCase().includes(searchLower);
+    const userRole = profile?.role || "";
     const matchesRole = roleFilter === "" || userRole === roleFilter;
-    return matchesEmail && matchesRole;
+    return (matchesEmail || matchesName) && matchesRole;
   });
 
   return (
@@ -44,7 +48,7 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-foreground-muted" />
           <input
             type="text"
-            placeholder="Buscar por e-mail..."
+            placeholder="Buscar por nome ou e-mail..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-4 py-2 bg-background-elevated border border-border rounded-lg text-sm focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50"
@@ -79,7 +83,12 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
                     </span>
                   </div>
                   <div>
-                    <div className="text-foreground font-medium flex items-center gap-2">
+                    {profilesMap[user.id]?.name && (
+                      <div className="text-foreground font-bold text-sm">
+                        {profilesMap[user.id].name}
+                      </div>
+                    )}
+                    <div className={`flex items-center gap-2 ${profilesMap[user.id]?.name ? 'text-foreground-muted text-xs' : 'text-foreground font-medium'}`}>
                       {user.email}
                       {profilesMap[user.id] !== undefined && (
                         <EditUserRoleSelect 
