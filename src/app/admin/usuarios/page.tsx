@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createUser, deleteUser } from "./actions";
 import { UserList } from "./UserList";
-import { Coffee, Mail, Lock, UserPlus, AlertCircle } from "lucide-react";
+import { Coffee, Mail, Lock, UserPlus, AlertCircle, User as UserIcon } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import Link from "next/link";
 import { User } from "@supabase/supabase-js";
@@ -15,6 +15,7 @@ interface UserProfile {
   approved?: boolean;
   phone?: string | null;
   uf?: string | null;
+  name?: string | null;
 }
 
 export const metadata = {
@@ -37,13 +38,13 @@ export default async function AdminUsuariosPage() {
     let profilesData: UserProfile[] | null = null;
     const response = await adminClient
       .from('cm_user_profiles')
-      .select('id, role, manager_name, receber_pdf_vendas, receber_pdf_investimento, approved, phone, uf');
+      .select('id, role, manager_name, receber_pdf_vendas, receber_pdf_investimento, approved, phone, uf, name');
 
     if (response.error) {
       // Se deu erro (ex: colunas não existem ainda), faz fallback apenas para role
       const fallbackResponse = await adminClient
         .from('cm_user_profiles')
-        .select('id, role, manager_name, approved, phone, uf');
+        .select('id, role, manager_name, approved, phone, uf, name');
       profilesData = fallbackResponse.data;
     } else {
       profilesData = response.data;
@@ -134,6 +135,37 @@ export default async function AdminUsuariosPage() {
                 <div className="absolute top-0 inset-x-0 h-px bg-linear-to-r from-transparent via-gold/30 to-transparent" />
                 
                 <form action={async (formData) => { "use server"; await createUser(formData); }} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground-secondary mb-1.5 ml-1">
+                        Primeiro Nome
+                      </label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3.5 top-3 w-5 h-5 text-foreground-muted" />
+                        <input
+                          type="text"
+                          name="first_name"
+                          placeholder="João"
+                          className="w-full bg-background-elevated border border-border rounded-xl py-2.5 pl-11 pr-4 text-foreground placeholder-foreground-muted focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground-secondary mb-1.5 ml-1">
+                        Último Nome
+                      </label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3.5 top-3 w-5 h-5 text-foreground-muted" />
+                        <input
+                          type="text"
+                          name="last_name"
+                          placeholder="Silva"
+                          className="w-full bg-background-elevated border border-border rounded-xl py-2.5 pl-11 pr-4 text-foreground placeholder-foreground-muted focus:outline-none focus:border-accent-gold/50 focus:ring-1 focus:ring-accent-gold/50 transition-all"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground-secondary mb-1.5 ml-1">
                       E-mail Corporativo
