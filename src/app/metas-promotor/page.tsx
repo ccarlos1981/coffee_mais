@@ -646,28 +646,29 @@ export default function MetasPromotorPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-neutral-900/60 border border-border px-3 py-1.5 rounded-xl text-xs font-semibold">
-              <span className="text-muted text-[10px] uppercase font-bold">Ciclo:</span>
+            <div className="flex items-center gap-2 bg-neutral-200 dark:bg-neutral-900/60 border border-neutral-400 dark:border-border px-3 py-1.5 rounded-xl text-xs font-semibold shadow-sm">
+              <span className="text-neutral-600 dark:text-muted text-[10px] uppercase font-bold tracking-wider">Ciclo:</span>
               <select 
                 value={planningCycle}
                 onChange={(e) => setPlanningCycle(e.target.value)}
-                className="bg-transparent border-0 p-0 pr-6 text-xs font-bold text-foreground focus:ring-0 focus:outline-none cursor-pointer"
+                className="bg-transparent border-0 p-0 pr-6 text-xs font-black text-neutral-900 dark:text-foreground focus:ring-0 focus:outline-none cursor-pointer"
               >
                 <option value="2026_Q3">2026 Q3 (Jul-Set)</option>
                 <option value="2026_Q4">2026 Q4 (Out-Dez)</option>
               </select>
 
-              <span className="text-muted border-l border-border pl-2 text-[10px] uppercase font-bold">Versão:</span>
+              <span className="text-neutral-500 dark:text-muted border-l border-neutral-400 dark:border-border pl-2 text-[10px] uppercase font-bold tracking-wider">Versão:</span>
               <select 
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
-                className="bg-transparent border-0 p-0 text-xs font-bold text-foreground focus:ring-0 focus:outline-none cursor-pointer"
+                className="bg-transparent border-0 p-0 text-xs font-black text-neutral-900 dark:text-foreground focus:ring-0 focus:outline-none cursor-pointer"
               >
                 <option value="1">v1</option>
                 <option value="2">v2 (Revisão)</option>
                 <option value="3">v3 (Ajuste)</option>
               </select>
             </div>
+
 
             <ThemeToggle />
           </div>
