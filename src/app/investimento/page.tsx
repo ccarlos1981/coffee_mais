@@ -2421,11 +2421,6 @@ export default function InvestimentoPage() {
                             {selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'BOLETO' : 'TRANSFERÊNCIA'}
                           </span>
                         )}
-                        {selectedAction.condicao_pagamento && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-purple-500/10 text-purple-400 border-purple-500/20 uppercase tracking-wide">
-                            {selectedAction.condicao_pagamento}
-                          </span>
-                        )}
                       </div>
                       <h3 className="font-bold text-foreground text-lg leading-tight uppercase tracking-wide">{selectedAction.rede}</h3>
                       <p className="text-sm text-foreground/80 mt-0.5">
