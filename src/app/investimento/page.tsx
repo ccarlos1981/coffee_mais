@@ -322,10 +322,11 @@ export default function InvestimentoPage() {
         setClientHasBoletoCondition(false);
       };
 
-      // Buscar prazo do cliente via cm_boletos
+      // Buscar prazo do cliente via cm_boletos e salvar na ação
       const fetchModalPrazo = async () => {
+        let foundPrazo: string | null = selectedAction.condicao_pagamento || null;
         try {
-          // 1. Tenta via boleto da rede
+          // 1. Tenta via boleto da rede (mais preciso)
           const { data: boletos } = await supabase
             .from("cm_boletos")
             .select("prazo")
@@ -333,25 +334,32 @@ export default function InvestimentoPage() {
             .not("prazo", "is", null)
             .limit(1);
           if (boletos && boletos.length > 0 && boletos[0].prazo) {
-            setModalPrazo(boletos[0].prazo);
-            return;
-          }
-          // 2. Fallback: condicao_pagamento do cm_clientes
-          const { data: clients } = await supabase
-            .from("cm_clientes")
-            .select("condicao_pagamento")
-            .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
-            .not("condicao_pagamento", "is", null)
-            .limit(1);
-          if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
-            setModalPrazo(clients[0].condicao_pagamento);
+            foundPrazo = boletos[0].prazo;
           } else {
-            setModalPrazo(selectedAction.condicao_pagamento || null);
+            // 2. Fallback: condicao_pagamento do cm_clientes
+            const { data: clients } = await supabase
+              .from("cm_clientes")
+              .select("condicao_pagamento")
+              .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
+              .not("condicao_pagamento", "is", null)
+              .limit(1);
+            if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
+              foundPrazo = clients[0].condicao_pagamento;
+            }
           }
-        } catch {
-          setModalPrazo(selectedAction.condicao_pagamento || null);
+        } catch { /* mantém o valor anterior */ }
+
+        setModalPrazo(foundPrazo);
+
+        // Persistir prazo na ação se encontrou e o campo estava vazio
+        if (foundPrazo && !selectedAction.condicao_pagamento && selectedAction.id) {
+          await supabase
+            .from("cm_investimentos")
+            .update({ condicao_pagamento: foundPrazo })
+            .eq("id", selectedAction.id);
         }
       };
+
 
       checkBoletoCondition();
       fetchModalPrazo();
