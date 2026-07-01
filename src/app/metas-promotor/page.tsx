@@ -1158,11 +1158,11 @@ export default function MetasPromotorPage() {
                         
                         const julGoal = net.goals[0] || 0;
                         const julReal = net.realizado[0] || 0;
-                        const julGap = Math.max(0, julGoal - julReal);
+                        const julSaldo = julReal - julGoal; // negativo = falta, positivo = sobra
 
                         const agoGoal = net.goals[1] || 0;
                         const agoReal = net.realizado[1] || 0;
-                        const agoGap = Math.max(0, (agoGoal + julGap) - agoReal);
+                        const agoSaldo = agoReal - (agoGoal + Math.max(0, -julSaldo)); // desconta déficit anterior
 
                         return (
                           <tr 
@@ -1220,8 +1220,8 @@ export default function MetasPromotorPage() {
 
                             {/* Goals editable inputs (Jul-Set) - future visually distinct appearance (light gold back, white high-contrast input) */}
                             {net.goals.map((goal, gIdx) => {
-                              const showCarryOverJulToAgo = gIdx === 1 && julGap > 0;
-                              const showCarryOverAgoToSet = gIdx === 2 && agoGap > 0;
+                              const showSaldoJulToAgo = gIdx === 1 && julSaldo !== 0 && julReal > 0;
+                              const showSaldoAgoToSet = gIdx === 2 && agoSaldo !== 0 && agoReal > 0;
 
                               const baseVal = Math.max(0, net.history[5] || 0);
                               const aiSuggestValue = parseFloat((baseVal * 1.12).toFixed(2));
@@ -1232,10 +1232,14 @@ export default function MetasPromotorPage() {
                                     
                                     {/* White high-contrast target input with golden borders */}
                                     <input
-                                      type="number"
+                                      type="text"
+                                      inputMode="numeric"
                                       className="w-full bg-white dark:bg-neutral-950 border-2 border-amber-500/80 dark:border-amber-400/80 focus:ring-4 focus:ring-amber-500/20 rounded-lg px-2 py-1 text-right font-mono text-xs font-extrabold text-neutral-950 dark:text-neutral-50 focus:outline-none transition-all duration-200 shadow-sm"
-                                      value={goal || ""}
-                                      onChange={(e) => handleInputChange(prom.id, nIdx, gIdx, e.target.value)}
+                                      value={goal ? goal.toLocaleString("pt-BR") : ""}
+                                      onChange={(e) => {
+                                        const raw = e.target.value.replace(/\./g, "").replace(/[^0-9]/g, "");
+                                        handleInputChange(prom.id, nIdx, gIdx, raw);
+                                      }}
                                       placeholder="0"
                                       disabled={isLocked}
                                     />
@@ -1251,15 +1255,23 @@ export default function MetasPromotorPage() {
                                       </span>
                                     </div>
 
-                                    {/* Carry Over */}
-                                    {showCarryOverJulToAgo && (
-                                      <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate">
-                                        +Carry {formatValue(julGap)}
+                                    {/* Saldo (antigo Carry) */}
+                                    {showSaldoJulToAgo && (
+                                      <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate border ${
+                                        julSaldo >= 0
+                                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                                          : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
+                                      }`}>
+                                        Saldo {julSaldo >= 0 ? "+" : ""}{julSaldo.toLocaleString("pt-BR")} cx
                                       </span>
                                     )}
-                                    {showCarryOverAgoToSet && (
-                                      <span className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25 px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate">
-                                        +Carry {formatValue(agoGap)}
+                                    {showSaldoAgoToSet && (
+                                      <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate border ${
+                                        agoSaldo >= 0
+                                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
+                                          : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
+                                      }`}>
+                                        Saldo {agoSaldo >= 0 ? "+" : ""}{agoSaldo.toLocaleString("pt-BR")} cx
                                       </span>
                                     )}
                                   </div>
