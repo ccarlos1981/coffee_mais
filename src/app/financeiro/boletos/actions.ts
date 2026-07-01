@@ -15,7 +15,9 @@ export interface Boleto {
   parceiro_codigo?: string | null;
   valor_liquido?: number | null;
   tipo_titulo?: string | null;
+  prazo?: string | null;
 }
+
 
 export async function listarBoletos(): Promise<Boleto[]> {
   const { data, error } = await supabase

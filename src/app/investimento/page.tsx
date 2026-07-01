@@ -2460,6 +2460,35 @@ export default function InvestimentoPage() {
                       </span>
                     </div>
 
+                    <div className={`p-3 rounded-xl border ${(() => {
+                      const dias = selectedAction.condicao_pagamento ? parseInt(selectedAction.condicao_pagamento) : null;
+                      return (dias !== null && !isNaN(dias) && dias > 35)
+                        ? 'bg-red-500/10 border-red-500/30'
+                        : 'bg-elevated border-border';
+                    })()}`}>
+                      <span className="text-xs text-muted block mb-1">Prazo de Pagamento</span>
+                      {(() => {
+                        const raw = selectedAction.condicao_pagamento;
+                        const dias = raw ? parseInt(raw) : null;
+                        if (!raw || dias === null || isNaN(dias)) {
+                          return <span className="font-bold text-foreground">—</span>;
+                        }
+                        const foraDopadrao = dias > 35;
+                        return (
+                          <div className="flex items-center gap-2">
+                            <span className={`font-black text-base ${foraDopadrao ? 'text-red-500' : 'text-foreground'}`}>
+                              {dias} dias
+                            </span>
+                            {foraDopadrao && (
+                              <span className="bg-red-500/20 text-red-500 border border-red-500/30 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider">
+                                ⚠ Fora do Padrão
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Família</span>
                       <span className="font-bold text-foreground">

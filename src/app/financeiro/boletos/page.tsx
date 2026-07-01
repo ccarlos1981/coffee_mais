@@ -474,6 +474,7 @@ export default function BoletosPage() {
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Nome do parceiro</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Data de vencimento</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Descrição</th>
+                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-center">Prazo (dias)</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Valor Líquido</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Status</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Ações</th>
@@ -576,6 +577,25 @@ export default function BoletosPage() {
                         ) : (
                           boleto.tipo_titulo || 'BOLETO'
                         )}
+                      </td>
+
+                      {/* Prazo (dias) */}
+                      <td className="px-6 py-4 text-center">
+                        {(() => {
+                          const dias = boleto.prazo ? parseInt(boleto.prazo) : null;
+                          if (dias === null || isNaN(dias)) return <span className="text-muted text-xs">—</span>;
+                          const foraDopadrao = dias > 35;
+                          return (
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border ${
+                              foraDopadrao
+                                ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                                : 'bg-green-500/10 text-green-600 border-green-500/20'
+                            }`} title={foraDopadrao ? 'Fora do padrão (> 35 dias)' : 'Dentro do padrão'}>
+                              {dias}d
+                              {foraDopadrao && <span className="text-[9px] font-black uppercase tracking-wide">⚠</span>}
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Valor Líquido */}
