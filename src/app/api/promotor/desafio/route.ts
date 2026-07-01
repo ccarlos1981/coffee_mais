@@ -67,32 +67,57 @@ export async function GET(request: Request) {
       .select("user_id, employee_id");
     const userToEmpMap = new Map((promotorPerfil || []).map(p => [p.user_id, p.employee_id]));
 
-    // Construir lista real de promotores com dados fictícios realistas para os testes do dashboard
+    // Construir lista de promotores com ficha de RH
     let promotersList = (userProfiles || [])
       .map(prof => {
         const empId = userToEmpMap.get(prof.id);
         const name = empId ? empNameMap.get(empId) : undefined;
-        
-        // Se não tiver um employee real atrelado no banco (mocks de dev), ignoramos
         if (!name) return null;
-
-        const codeNum = parseInt(prof.employee_code || "3001", 10);
-        const mockMeta = 5000 + (codeNum % 3) * 500;      // Ex: 5000, 5500, 6000 (cx)
-        const mockReal = 4800 + (codeNum % 4) * 600;      // Ex: 4800, 5400, 6000, 6600 (cx)
-        
         return {
           id: prof.id,
-          name: name,
+          name,
           code: prof.employee_code || "0000",
-          supervisor: codeNum % 2 === 0 ? "Fernanda Costa" : "Marcos Souza",
-          uf: codeNum % 3 === 0 ? "RJ" : (codeNum % 3 === 1 ? "SP" : "MG"),
-          region: "Sudeste",
-          jul: { meta: mockMeta, realizado: mockReal },
-          ago: { meta: mockMeta, realizado: Math.round(mockReal * 0.95) },
-          set: { meta: mockMeta, realizado: Math.round(mockReal * 1.05) }
+          empId,
         };
       })
       .filter(Boolean) as any[];
+
+    // Fetch real metas for current quarter (Jul/Ago/Set)
+    const { data: allMetas } = await adminClient
+      .from("cm_promotor_metas")
+      .select("promotor_id, month, year, volume_target_boxes")
+      .eq("year", new Date().getFullYear())
+      .in("month", [7, 8, 9]);
+
+    // Fetch UF from user profiles
+    const { data: allProfiles } = await adminClient
+      .from("cm_user_profiles")
+      .select("id, uf, employee_code")
+      .eq("role", "Promotor");
+    const profileMap = new Map((allProfiles || []).map(p => [p.id, p]));
+
+    // Build metas map: promotor_id -> month -> total_boxes
+    const metaMap = new Map<string, Map<number, number>>();
+    (allMetas || []).forEach(m => {
+      if (!metaMap.has(m.promotor_id)) metaMap.set(m.promotor_id, new Map());
+      const cur = metaMap.get(m.promotor_id)!.get(m.month) || 0;
+      metaMap.get(m.promotor_id)!.set(m.month, cur + parseFloat(m.volume_target_boxes || 0));
+    });
+
+    promotersList = promotersList.map(p => {
+      const profile = profileMap.get(p.id);
+      const metas = metaMap.get(p.id);
+      return {
+        ...p,
+        code: profile?.employee_code || p.code,
+        uf: profile?.uf || "—",
+        supervisor: "—",
+        region: "—",
+        jul: { meta: metas?.get(7) || 0, realizado: 0 },
+        ago: { meta: metas?.get(8) || 0, realizado: 0 },
+        set: { meta: metas?.get(9) || 0, realizado: 0 },
+      };
+    });
 
     if (region && region !== "Geral") {
       promotersList = promotersList.filter(p => p.region === region);

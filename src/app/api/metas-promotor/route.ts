@@ -141,10 +141,8 @@ export async function GET(request: Request) {
           }
 
           if (val === 0) {
-            const hash = net.rede.charCodeAt(0) + net.uf.charCodeAt(0) + m;
-            val = targetType === "volume"
-              ? Math.floor(100 + (hash % 150))
-              : Math.floor(25000 + (hash % 6) * 7500);
+            // No real data — keep as 0 (sem PDV associado ou sem histórico)
+            val = 0;
           }
           history.push(val);
         }
