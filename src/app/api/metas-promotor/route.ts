@@ -120,7 +120,8 @@ export async function GET(request: Request) {
         // Se não tiver um employee real atrelado no banco (mocks de dev), ignoramos
         if (!name) return null;
 
-        let supervisor = "Marcos Souza";
+        let supervisor = "—"; // Será preenchido quando supervisor mapping estiver configurado
+
 
       // Load networks list from our structural mapping table
       const networksList = metaNetworksMap.get(prof.id) || [];
