@@ -262,6 +262,8 @@ export default async function HomePage() {
     
     if (canViewLogs || role === 'Admin') {
       adminItems.push({ title: "Logs do Sistema", description: "Auditoria de ações", href: "/admin/logs", iconNode: <History className="w-3 h-3 text-white" />, color: "from-slate-600 to-slate-800", ready: true });
+      adminItems.push({ title: "Ranking Usuários", description: "Quem mais acessa", href: "/admin/ranking-usuarios", iconNode: <Trophy className="w-3 h-3 text-white" />, color: "from-amber-600 to-orange-700", ready: true });
+      adminItems.push({ title: "Ranking Módulos", description: "Funções mais usadas", href: "/admin/ranking-modulos", iconNode: <BarChart3 className="w-3 h-3 text-white" />, color: "from-blue-600 to-indigo-700", ready: true });
     }
 
     filteredModules.push({
