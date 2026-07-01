@@ -2459,10 +2459,7 @@ export default function InvestimentoPage() {
                         {selectedAction.tipo_pagamento ? (selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'Boleto' : 'Transferência') : "—"}
                       </span>
                     </div>
-                    <div className="bg-elevated p-3 rounded-xl border border-border">
-                      <span className="text-xs text-muted block mb-1">Condição de Pagamento</span>
-                      <span className="font-bold text-foreground">{selectedAction.condicao_pagamento || "—"}</span>
-                    </div>
+
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Família</span>
                       <span className="font-bold text-foreground">
