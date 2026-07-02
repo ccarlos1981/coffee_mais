@@ -2690,10 +2690,14 @@ export default function InvestimentoPage() {
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Rede</span>
-                      <span className="font-bold text-foreground">
+                      <span className="font-bold text-foreground block truncate" title={selectedAction.rede}>
                         {selectedAction.rede}
-                        {selectedAction.codigo_matriz && <span className="text-xs text-muted font-mono ml-1.5">({selectedAction.codigo_matriz})</span>}
                       </span>
+                      {selectedAction.codigo_matriz && (
+                        <span className="text-[11px] text-muted font-mono block mt-0.5">
+                          ({selectedAction.codigo_matriz})
+                        </span>
+                      )}
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Mês de Referência</span>
