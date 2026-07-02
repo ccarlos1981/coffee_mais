@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { DRE_LINHAS, DRESalvarInput, DREHistoricoRow } from "../constants";
+import crypto from "crypto";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -344,4 +345,355 @@ export async function importarExcelDRE({
     throw error;
   }
 }
+
+// ─── FECHAMENTO E AUDITORIA DRE (Fase 3) ──────────────────────────────────────
+
+export async function fecharMesDRE({
+  ano,
+  mes,
+  notes,
+}: {
+  ano: number;
+  mes: number;
+  notes?: string;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  // 1. Consultar todos os registros ativos da competência
+  const { data: activeRows, error: fetchError } = await supabase
+    .from("cm_dre_financeiro")
+    .select("*")
+    .eq("ano", ano)
+    .eq("mes", mes)
+    .eq("is_active", true)
+    .eq("is_deleted", false);
+
+  if (fetchError) {
+    console.error("Erro ao buscar registros ativos para fechamento:", fetchError);
+    throw new Error("Falha ao recuperar dados da competência.");
+  }
+
+  // 2. Calcular agregados estruturados para o snapshot
+  const resumoGeral = {
+    volume: 0,
+    receita_bruta: 0,
+    impostos: 0,
+    investimento_comercial: 0,
+    receita_liquida: 0,
+    custo_produtos: 0,
+    frete: 0,
+    margem_contribuicao: 0,
+    dga: 0,
+    custo_rede: 0,
+    ebitda: 0,
+  };
+
+  const porGerente: Record<string, typeof resumoGeral> = {};
+  const porRede: Record<string, typeof resumoGeral> = {};
+
+  activeRows?.forEach((row) => {
+    // Totais gerais
+    resumoGeral.volume += Number(row.volume) || 0;
+    resumoGeral.receita_bruta += Number(row.receita_bruta) || 0;
+    resumoGeral.impostos += Number(row.impostos) || 0;
+    resumoGeral.investimento_comercial += Number(row.investimento_comercial) || 0;
+    resumoGeral.receita_liquida += Number(row.receita_liquida) || 0;
+    resumoGeral.custo_produtos += Number(row.custo_produtos) || 0;
+    resumoGeral.frete += Number(row.frete) || 0;
+    resumoGeral.margem_contribuicao += Number(row.margem_contribuicao) || 0;
+    resumoGeral.dga += Number(row.dga) || 0;
+    resumoGeral.custo_rede += Number(row.custo_rede) || 0;
+    resumoGeral.ebitda += Number(row.ebitda) || 0;
+
+    // Agrupamento por Gerente
+    const gId = row.gerente_id || "ALL";
+    if (!porGerente[gId]) {
+      porGerente[gId] = { ...resumoGeral };
+      Object.keys(porGerente[gId]).forEach(k => (porGerente[gId] as any)[k] = 0);
+    }
+    porGerente[gId].volume += Number(row.volume) || 0;
+    porGerente[gId].receita_bruta += Number(row.receita_bruta) || 0;
+    porGerente[gId].ebitda += Number(row.ebitda) || 0;
+
+    // Agrupamento por Rede
+    const rId = row.codigo_matriz || "ALL";
+    if (!porRede[rId]) {
+      porRede[rId] = { ...resumoGeral };
+      Object.keys(porRede[rId]).forEach(k => (porRede[rId] as any)[k] = 0);
+    }
+    porRede[rId].volume += Number(row.volume) || 0;
+    porRede[rId].receita_bruta += Number(row.receita_bruta) || 0;
+    porRede[rId].ebitda += Number(row.ebitda) || 0;
+  });
+
+  const snapshotJson = {
+    resumo_geral: resumoGeral,
+    por_gerente: porGerente,
+    por_rede: porRede,
+    totais_auxiliares: {
+      preco_medio_kg: resumoGeral.volume > 0 ? (resumoGeral.receita_bruta) / (resumoGeral.volume) : 0,
+      percentual_imposto: resumoGeral.receita_bruta > 0 ? (resumoGeral.impostos / resumoGeral.receita_bruta) * 100 : 0,
+      percentual_investimento: resumoGeral.receita_bruta > 0 ? (resumoGeral.investimento_comercial / resumoGeral.receita_bruta) * 100 : 0,
+    }
+  };
+
+  // 3. Gerar Checksum MD5 do snapshot para auditoria de integridade
+  const snapshotChecksum = crypto
+    .createHash("md5")
+    .update(JSON.stringify(snapshotJson))
+    .digest("hex");
+
+  // 4. Executar o fechamento oficial via RPC (com Lock preventivo)
+  const { error: rpcError } = await supabase.rpc("close_dre_month", {
+    p_ano: ano,
+    p_mes: mes,
+    p_closed_by: user.id,
+    p_notes: notes || null,
+    p_snapshot_json: snapshotJson,
+    p_snapshot_checksum: snapshotChecksum,
+  });
+
+  if (rpcError) {
+    console.error("Erro no fechamento oficial:", rpcError);
+    throw new Error(`Falha no fechamento do período: ${rpcError.message}`);
+  }
+
+  // 5. Avaliar alertas do mês fechado
+  await avaliarAlertasDRE({ ano, mes });
+
+  revalidatePath("/dre/historico");
+  revalidatePath("/dre");
+
+  return { success: true, checksum: snapshotChecksum };
+}
+
+export async function reabrirMesDRE({
+  ano,
+  mes,
+  reason,
+}: {
+  ano: number;
+  mes: number;
+  reason: string;
+}) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  // Verificar se o usuário possui cargo autorizado (Admin/CEO/Diretor)
+  const { data: profile, error: profError } = await supabase
+    .from("cm_user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profError || !profile) {
+    throw new Error("Perfil de usuário não encontrado.");
+  }
+
+  const role = String(profile.role).toLowerCase();
+  if (!["admin", "ceo", "diretor", "gestor"].includes(role)) {
+    throw new Error("Permissão insuficiente para reabrir períodos.");
+  }
+
+  // Reabrir o período utilizando stored procedure
+  const { error: rpcError } = await supabase.rpc("reopen_dre_month", {
+    p_ano: ano,
+    p_mes: mes,
+    p_reopened_by: user.id,
+    p_reopen_reason: reason,
+  });
+
+  if (rpcError) {
+    console.error("Erro na reabertura do mês:", rpcError);
+    throw new Error(`Falha ao reabrir período: ${rpcError.message}`);
+  }
+
+  revalidatePath("/dre/historico");
+  revalidatePath("/dre");
+
+  return { success: true };
+}
+
+// ─── MOTOR DE ALERTAS DRE (Fase 3) ───────────────────────────────────────────
+
+export async function avaliarAlertasDRE({
+  ano,
+  mes,
+}: {
+  ano: number;
+  mes: number;
+}) {
+  const supabase = await createClient();
+  
+  // 1. Obter registros ativos do período
+  const { data: currentRows } = await supabase
+    .from("cm_dre_financeiro")
+    .select("*")
+    .eq("ano", ano)
+    .eq("mes", mes)
+    .eq("is_active", true)
+    .eq("is_deleted", false);
+
+  if (!currentRows || currentRows.length === 0) return [];
+
+  // Obter registros da competência anterior para verificação de queda de receita
+  const prevAno = mes === 1 ? ano - 1 : ano;
+  const prevMes = mes === 1 ? 12 : mes - 1;
+
+  const { data: prevRows } = await supabase
+    .from("cm_dre_financeiro")
+    .select("*")
+    .eq("ano", prevAno)
+    .eq("mes", prevMes)
+    .eq("is_active", true)
+    .eq("is_deleted", false);
+
+  const prevMap = new Map<string, number>();
+  prevRows?.forEach((row) => {
+    const key = `${row.codigo_matriz}_${row.gerente_id}`;
+    prevMap.set(key, (prevMap.get(key) || 0) + (Number(row.receita_bruta) || 0));
+  });
+
+  // Agrupado do mês corrente
+  const currentMap = new Map<string, number>();
+  currentRows.forEach((row) => {
+    const key = `${row.codigo_matriz}_${row.gerente_id}`;
+    currentMap.set(key, (currentMap.get(key) || 0) + (Number(row.receita_bruta) || 0));
+  });
+
+  const alertsToUpsert: any[] = [];
+
+  // A. Queda de Receita > 20%
+  currentMap.forEach((rec, key) => {
+    const prevRec = prevMap.get(key) || 0;
+    if (prevRec > 0) {
+      const dropPct = ((prevRec - rec) / prevRec) * 100;
+      if (dropPct > 20) {
+        const [codigoMatriz] = key.split("_");
+        const alertHash = crypto
+          .createHash("md5")
+          .update(`${ano}_${mes}_RECEITA_QUEDA_${key}`)
+          .digest("hex");
+
+        alertsToUpsert.push({
+          alert_hash: alertHash,
+          ano,
+          mes,
+          alert_type: "RECEITA_QUEDA",
+          severity: "WARNING",
+          title: "Queda expressiva de receita",
+          description: `A receita bruta da Rede caiu ${dropPct.toFixed(1)}% comparado ao mês anterior (R$ ${prevRec.toLocaleString("pt-BR")} $\\rightarrow$ R$ ${rec.toLocaleString("pt-BR")}).`,
+          metadata: { current_value: rec, previous_value: prevRec, drop_percent: dropPct, codigo_matriz: codigoMatriz },
+        });
+      }
+    }
+  });
+
+  // B. EBITDA Negativo, Investimento Excessivo
+  currentRows.forEach((row) => {
+    const ebitdaVal = Number(row.ebitda) || 0;
+    const receitaVal = Number(row.receita_bruta) || 0;
+    const investVal = Number(row.investimento_comercial) || 0;
+
+    // Margem EBITDA Crítica
+    if (ebitdaVal < 0) {
+      const alertHash = crypto
+        .createHash("md5")
+        .update(`${ano}_${mes}_MARGEM_CRITICA_${row.codigo_matriz}_${row.gerente_id}`)
+        .digest("hex");
+
+      alertsToUpsert.push({
+        alert_hash: alertHash,
+        ano,
+        mes,
+        alert_type: "MARGEM_CRITICA",
+        severity: "CRITICAL",
+        title: "EBITDA Negativo Detectado",
+        description: `Operação gerou margem de contribuição ou EBITDA negativo de R$ ${ebitdaVal.toLocaleString("pt-BR")} mil na Rede.`,
+        metadata: { ebitda: ebitdaVal, codigo_matriz: row.codigo_matriz },
+      });
+    }
+
+    // Investimento Comercial Excessivo (>45%)
+    if (receitaVal > 0) {
+      const investRatio = investVal / receitaVal;
+      if (investRatio > 0.45) {
+        const alertHash = crypto
+          .createHash("md5")
+          .update(`${ano}_${mes}_INVESTIMENTO_EXCESSIVO_${row.codigo_matriz}_${row.gerente_id}`)
+          .digest("hex");
+
+        alertsToUpsert.push({
+          alert_hash: alertHash,
+          ano,
+          mes,
+          alert_type: "INVESTIMENTO_EXCESSIVO",
+          severity: "CRITICAL",
+          title: "Investimento comercial excessivo",
+          description: `Investimento Comercial (R$ ${investVal.toLocaleString("pt-BR")}) representa ${(investRatio * 100).toFixed(1)}% da Receita Bruta, excedendo o limite crítico de 45%.`,
+          metadata: { ratio: investRatio, receita: receitaVal, investimento: investVal, codigo_matriz: row.codigo_matriz },
+        });
+      }
+    }
+  });
+
+  // C. Frete Anormal (>30% vs média de 3 meses históricos)
+  // Buscamos faturamento/frete histórico da rede
+  for (const row of currentRows) {
+    const vol = Number(row.volume) || 0;
+    const fret = Number(row.frete) || 0;
+    if (vol <= 0 || fret <= 0) continue;
+
+    const freteKg = fret / vol;
+
+    // Média de frete_kg histórico nos últimos 3 meses
+    const { data: histRows } = await supabase
+      .from("cm_dre_financeiro")
+      .select("volume, frete")
+      .eq("codigo_matriz", row.codigo_matriz)
+      .eq("is_active", true)
+      .eq("is_deleted", false)
+      .or(`ano.eq.${ano},ano.eq.${ano - 1}`)
+      .neq("mes", mes);
+
+    const validHist = histRows?.filter(h => (Number(h.volume) || 0) > 0 && (Number(h.frete) || 0) > 0) || [];
+    if (validHist.length > 0) {
+      const avgHistFreteKg = validHist.reduce((acc, h) => acc + (Number(h.frete) / Number(h.volume)), 0) / validHist.length;
+      if (freteKg > 1.30 * avgHistFreteKg) {
+        const alertHash = crypto
+          .createHash("md5")
+          .update(`${ano}_${mes}_FRETE_ANORMAL_${row.codigo_matriz}`)
+          .digest("hex");
+
+        alertsToUpsert.push({
+          alert_hash: alertHash,
+          ano,
+          mes,
+          alert_type: "FRETE_ANORMAL",
+          severity: "WARNING",
+          title: "Custo de frete anormal",
+          description: `Custo unitário de frete (R$ ${freteKg.toFixed(2)}/Ton) está ${( (freteKg / avgHistFreteKg - 1) * 100).toFixed(1)}% acima da média histórica recente (R$ ${avgHistFreteKg.toFixed(2)}/Ton).`,
+          metadata: { frete_kg: freteKg, avg_hist_frete_kg: avgHistFreteKg, codigo_matriz: row.codigo_matriz },
+        });
+      }
+    }
+  }
+
+  // Gravar alertas gerados no Supabase de forma deduplicada (ON CONFLICT DO UPDATE)
+  for (const alert of alertsToUpsert) {
+    await supabase
+      .from("cm_dre_alerts")
+      .upsert(alert, { onConflict: "alert_hash" });
+  }
+
+  return alertsToUpsert;
+}
+
 
