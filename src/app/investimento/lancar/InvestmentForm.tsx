@@ -259,17 +259,20 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   // Toggles and SKU states
   const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
-  const [showFamilias, setShowFamilias] = useState<boolean>(
-    initialData?.abrangencia === "Família" || 
-    initialData?.abrangencia === "Misto" || 
-    (initialData?.familias_detalhes && initialData.familias_detalhes.length > 0) ||
-    !initialData
-  );
-  const [showSkus, setShowSkus] = useState<boolean>(
-    initialData?.abrangencia === "SKU" || 
-    initialData?.abrangencia === "Misto" ||
-    (initialData?.skus_detalhes && initialData.skus_detalhes.length > 0)
-  );
+  const [abrangenciaUi, setAbrangenciaUi] = useState<"Família" | "SKU" | "Misto">(() => {
+    if (initialData?.abrangencia) {
+      return initialData.abrangencia as any;
+    }
+    if (initialData?.familias_detalhes && initialData.familias_detalhes.length > 0 && initialData?.skus_detalhes && initialData.skus_detalhes.length > 0) {
+      return "Misto";
+    }
+    if (initialData?.skus_detalhes && initialData.skus_detalhes.length > 0) {
+      return "SKU";
+    }
+    return "Família";
+  });
+  const showFamilias = abrangenciaUi === "Família" || abrangenciaUi === "Misto";
+  const showSkus = abrangenciaUi === "SKU" || abrangenciaUi === "Misto";
   
   const [selectedSkus, setSelectedSkus] = useState<string[]>(
     initialData?.skus_detalhes ? initialData.skus_detalhes.map((s:any) => s.sku) : []
@@ -703,38 +706,63 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         <div className="pt-4 border-t border-border space-y-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Abrangência</label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                disabled={isLocked}
-                onClick={() => setShowFamilias(!showFamilias)}
-                className={`flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
-                  showFamilias ? 'border-gold bg-gold/5 text-gold' : 'border-border bg-elevated text-foreground'
-                }`}
-              >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                  showFamilias ? 'border-gold bg-gold text-black' : 'border-foreground-muted'
+            <div className="grid grid-cols-3 gap-3">
+              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                abrangenciaUi === "Família" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input 
+                  type="radio" 
+                  name="abrangencia_ui" 
+                  disabled={isLocked}
+                  className="sr-only" 
+                  checked={abrangenciaUi === "Família"}
+                  onChange={() => setAbrangenciaUi("Família")}
+                />
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  abrangenciaUi === "Família" ? 'border-gold bg-gold' : 'border-foreground-muted'
                 }`}>
-                  {showFamilias && <Check className="w-3 h-3 stroke-[3]" />}
+                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Família" ? 1 : 0 }} />
                 </div>
-                <span className="font-bold">Família</span>
-              </button>
+                <span className="text-sm">Família</span>
+              </label>
 
-              <button
-                type="button"
-                disabled={isLocked}
-                onClick={() => setShowSkus(!showSkus)}
-                className={`flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
-                  showSkus ? 'border-gold bg-gold/5 text-gold' : 'border-border bg-elevated text-foreground'
-                }`}
-              >
-                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-                  showSkus ? 'border-gold bg-gold text-black' : 'border-foreground-muted'
+              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                abrangenciaUi === "SKU" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input 
+                  type="radio" 
+                  name="abrangencia_ui" 
+                  disabled={isLocked}
+                  className="sr-only" 
+                  checked={abrangenciaUi === "SKU"}
+                  onChange={() => setAbrangenciaUi("SKU")}
+                />
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  abrangenciaUi === "SKU" ? 'border-gold bg-gold' : 'border-foreground-muted'
                 }`}>
-                  {showSkus && <Check className="w-3 h-3 stroke-[3]" />}
+                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "SKU" ? 1 : 0 }} />
                 </div>
-                <span className="font-bold">SKU</span>
-              </button>
+                <span className="text-sm">SKU</span>
+              </label>
+
+              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                abrangenciaUi === "Misto" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input 
+                  type="radio" 
+                  name="abrangencia_ui" 
+                  disabled={isLocked}
+                  className="sr-only" 
+                  checked={abrangenciaUi === "Misto"}
+                  onChange={() => setAbrangenciaUi("Misto")}
+                />
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  abrangenciaUi === "Misto" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                }`}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Misto" ? 1 : 0 }} />
+                </div>
+                <span className="text-sm">Ambos</span>
+              </label>
             </div>
           </div>
 
