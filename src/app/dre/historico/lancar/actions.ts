@@ -645,27 +645,44 @@ export async function avaliarAlertasDRE({
   });
 
   // C. Frete Anormal (>30% vs média de 3 meses históricos)
-  // Buscamos faturamento/frete histórico da rede
+  // Carregar dados históricos de frete de uma vez para evitar query N+1
+  const matrizIds = [...new Set(currentRows.map(r => r.codigo_matriz).filter(Boolean))];
+  const histMap = new Map<string, { volume: number; frete: number }[]>();
+
+  if (matrizIds.length > 0) {
+    const { data: allHistRows } = await supabase
+      .from("cm_dre_financeiro")
+      .select("codigo_matriz, volume, frete")
+      .in("codigo_matriz", matrizIds)
+      .eq("is_active", true)
+      .eq("is_deleted", false)
+      .or(`ano.eq.${ano},ano.eq.${ano - 1}`)
+      .neq("mes", mes);
+
+    allHistRows?.forEach((h) => {
+      const mId = h.codigo_matriz || "ALL";
+      if (!histMap.has(mId)) {
+        histMap.set(mId, []);
+      }
+      histMap.get(mId)!.push({
+        volume: Number(h.volume) || 0,
+        frete: Number(h.frete) || 0,
+      });
+    });
+  }
+
   for (const row of currentRows) {
     const vol = Number(row.volume) || 0;
     const fret = Number(row.frete) || 0;
     if (vol <= 0 || fret <= 0) continue;
 
     const freteKg = fret / vol;
+    const mId = row.codigo_matriz || "ALL";
+    const histRowsForMatriz = histMap.get(mId) || [];
 
-    // Média de frete_kg histórico nos últimos 3 meses
-    const { data: histRows } = await supabase
-      .from("cm_dre_financeiro")
-      .select("volume, frete")
-      .eq("codigo_matriz", row.codigo_matriz)
-      .eq("is_active", true)
-      .eq("is_deleted", false)
-      .or(`ano.eq.${ano},ano.eq.${ano - 1}`)
-      .neq("mes", mes);
-
-    const validHist = histRows?.filter(h => (Number(h.volume) || 0) > 0 && (Number(h.frete) || 0) > 0) || [];
+    const validHist = histRowsForMatriz.filter(h => h.volume > 0 && h.frete > 0);
     if (validHist.length > 0) {
-      const avgHistFreteKg = validHist.reduce((acc, h) => acc + (Number(h.frete) / Number(h.volume)), 0) / validHist.length;
+      const avgHistFreteKg = validHist.reduce((acc, h) => acc + (h.frete / h.volume), 0) / validHist.length;
       if (freteKg > 1.30 * avgHistFreteKg) {
         const alertHash = crypto
           .createHash("md5")
