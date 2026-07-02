@@ -2755,7 +2755,7 @@ export default function InvestimentoPage() {
                       <span className="text-xs text-muted block mb-1">Valor do Investimento Total Estimado</span>
                       <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction), false)}</span>
                     </div>
-                    {selectedAction.abrangencia !== "SKU" && selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 && (
+                    {selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 && (
                       <div className="col-span-2 space-y-3 mt-2">
                         <span className="text-xs text-muted block font-bold">Detalhes das Famílias</span>
                         <div className="grid grid-cols-1 gap-2">
@@ -2785,7 +2785,7 @@ export default function InvestimentoPage() {
                         </div>
                       </div>
                     )}
-                    {selectedAction.abrangencia !== "SKU" && (!selectedAction.familias_detalhes || selectedAction.familias_detalhes.length === 0) && (
+                    {(!selectedAction.familias_detalhes || selectedAction.familias_detalhes.length === 0) && (!selectedAction.skus_detalhes || selectedAction.skus_detalhes.length === 0) && (
                       <>
                         <div className="bg-elevated p-3 rounded-xl border border-border">
                           <span className="text-xs text-muted block mb-1">Preço Flat</span>
@@ -2805,7 +2805,7 @@ export default function InvestimentoPage() {
                         </div>
                       </>
                     )}
-                    {selectedAction.abrangencia === "SKU" && selectedAction.skus_detalhes && (
+                    {selectedAction.skus_detalhes && selectedAction.skus_detalhes.length > 0 && (
                       <div className="col-span-2 space-y-3 mt-2">
                         <span className="text-xs text-muted block font-bold">Detalhes dos SKUs</span>
                         <div className="grid grid-cols-1 gap-2">

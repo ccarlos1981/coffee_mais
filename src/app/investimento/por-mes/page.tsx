@@ -116,7 +116,7 @@ export default function InvestimentoPorMesPage() {
       // 3. Fetch Investimentos
       const { data: invs, error: iErr } = await supabase
         .from("cm_acoes_investimento")
-        .select("mes_referencia, rede, familia_produto, valor_investimento, preco_flat, preco_acao, familias_detalhes")
+        .select("mes_referencia, rede, familia_produto, valor_investimento, preco_flat, preco_acao, familias_detalhes, skus_detalhes")
         .eq("is_planejamento", false)
         .gte("mes_referencia", sDate)
         .lte("mes_referencia", eDate);
@@ -233,8 +233,10 @@ export default function InvestimentoPorMesPage() {
       const { redeKey, row } = getOrCreateRede(i.rede);
       const mes = i.mes_referencia;
 
-      // Use familias_detalhes if available, otherwise fallback to flat fields
+      let processedAny = false;
+
       if (i.familias_detalhes && Array.isArray(i.familias_detalhes) && i.familias_detalhes.length > 0) {
+        processedAny = true;
         i.familias_detalhes.forEach((fd: any) => {
           const famRow = getOrCreateFamilia(row, fd.familia_nome || 'N/I');
           const inv = Number(fd.investimento) || 0;
@@ -264,7 +266,42 @@ export default function InvestimentoPorMesPage() {
 
           mapOptions.familias.add(famRow.familia);
         });
-      } else {
+      }
+
+      if (i.skus_detalhes && Array.isArray(i.skus_detalhes) && i.skus_detalhes.length > 0) {
+        processedAny = true;
+        i.skus_detalhes.forEach((sd: any) => {
+          const famRow = getOrCreateFamilia(row, "Múltiplos SKUs");
+          const inv = Number(sd.investimento) || 0;
+          const precoFlat = Number(sd.preco_flat) || 0;
+          const precoAcao = Number(sd.preco_acao) || 0;
+
+          if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+          if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+
+          row.months[mes].inv += inv;
+          famRow.months[mes].inv += inv;
+          row.total.inv += inv;
+          famRow.total.inv += inv;
+
+          if (precoFlat > 0) {
+            row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
+            famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
+            row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
+            famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
+          }
+          if (precoAcao > 0) {
+            row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
+            famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
+            row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
+            famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
+          }
+
+          mapOptions.familias.add(famRow.familia);
+        });
+      }
+
+      if (!processedAny) {
         // Fallback for legacy records
         const famRow = getOrCreateFamilia(row, i.familia_produto);
         const inv = Number(i.valor_investimento) || 0;

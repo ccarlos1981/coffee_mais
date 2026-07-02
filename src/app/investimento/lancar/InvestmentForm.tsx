@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package, Lock, Unlock, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package, Lock, Unlock, AlertTriangle, Check } from "lucide-react";
 import Link from "next/link";
 import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -259,7 +259,17 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   // Toggles and SKU states
   const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
-  const [abrangencia, setAbrangencia] = useState<"Família" | "SKU">(initialData?.abrangencia || "Família");
+  const [showFamilias, setShowFamilias] = useState<boolean>(
+    initialData?.abrangencia === "Família" || 
+    initialData?.abrangencia === "Misto" || 
+    (initialData?.familias_detalhes && initialData.familias_detalhes.length > 0) ||
+    !initialData
+  );
+  const [showSkus, setShowSkus] = useState<boolean>(
+    initialData?.abrangencia === "SKU" || 
+    initialData?.abrangencia === "Misto" ||
+    (initialData?.skus_detalhes && initialData.skus_detalhes.length > 0)
+  );
   
   const [selectedSkus, setSelectedSkus] = useState<string[]>(
     initialData?.skus_detalhes ? initialData.skus_detalhes.map((s:any) => s.sku) : []
@@ -352,20 +362,33 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       return;
     }
 
-    if (abrangencia === "Família" && selectedFamilias.length === 0) {
+    if (!showFamilias && !showSkus) {
+      setError("Por favor, selecione ao menos uma abrangência (Família ou SKU).");
+      return;
+    }
+
+    if (showFamilias && selectedFamilias.length === 0) {
       setError("Por favor, selecione ao menos uma família.");
       return;
     }
 
-    if (abrangencia === "SKU" && selectedSkus.length === 0) {
+    if (showSkus && selectedSkus.length === 0) {
       setError("Por favor, selecione ao menos um SKU.");
       return;
     }
 
     // Validate preco_acao <= preco_flat and override justificativa
-    const items = abrangencia === "Família" 
-      ? selectedFamilias.map(f => ({ name: f, details: familiaDetails[f], lockKey: `fam_${f}` }))
-      : selectedSkus.map(s => ({ name: s, details: skuDetails[s], lockKey: `sku_${s}` }));
+    const items: Array<{ name: string; details: any; lockKey: string }> = [];
+    if (showFamilias) {
+      selectedFamilias.forEach(f => {
+        items.push({ name: `Família ${f}`, details: familiaDetails[f], lockKey: `fam_${f}` });
+      });
+    }
+    if (showSkus) {
+      selectedSkus.forEach(s => {
+        items.push({ name: `SKU ${s}`, details: skuDetails[s], lockKey: `sku_${s}` });
+      });
+    }
 
     for (const item of items) {
       const err = getPrecoError(item.details);
@@ -379,21 +402,25 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
     }
 
+    const calculatedAbrangencia = (showFamilias && showSkus) ? "Misto" : showFamilias ? "Família" : "SKU";
+
     const formData = new FormData(e.currentTarget);
     formData.append("rede", selectedRede.nome);
     formData.append("codigo_matriz", selectedRede.codigo);
     formData.append("tipo_pagamento", tipoPagamento);
     formData.append("tipo_acao_detalhe", tipoAcaoDetalhe);
-    formData.append("abrangencia", abrangencia);
+    formData.append("abrangencia", calculatedAbrangencia);
 
-    if (abrangencia === "Família") {
-      const parseVal = (str: string) => {
-        if (!str) return null;
-        let v = str.replace(/[R\$\s]/g, "");
-        if (v.includes(",")) v = v.replace(/\./g, "").replace(",", ".");
-        return parseFloat(v);
-      };
-      const now = new Date().toISOString();
+    const parseVal = (str: string) => {
+      if (!str) return null;
+      let v = str.replace(/[R\$\s]/g, "");
+      if (v.includes(",")) v = v.replace(/\./g, "").replace(",", ".");
+      return parseFloat(v);
+    };
+
+    const now = new Date().toISOString();
+
+    if (showFamilias) {
       const packedFamilias = selectedFamilias.map(fam => {
         const d = familiaDetails[fam] || {};
         const lockKey = `fam_${fam}`;
@@ -415,18 +442,14 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       });
       formData.append("familias_detalhes", JSON.stringify(packedFamilias));
       formData.append("familia_produto", selectedFamilias.join(", "));
+    } else {
+      formData.append("familias_detalhes", "[]");
+      formData.append("familia_produto", "");
     }
 
-    if (abrangencia === "SKU") {
-      const now = new Date().toISOString();
+    if (showSkus) {
       const packedSkus = selectedSkus.map(sku => {
         const d = skuDetails[sku] || {};
-        const parseVal = (str: string) => {
-          if (!str) return null;
-          let v = str.replace(/[R\$\s]/g, "");
-          if (v.includes(",")) v = v.replace(/\./g, "").replace(",", ".");
-          return parseFloat(v);
-        };
         const lockKey = `sku_${sku}`;
         const isManual = overrideLocks[lockKey] || false;
         return {
@@ -444,6 +467,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         };
       });
       formData.append("skus_detalhes", JSON.stringify(packedSkus));
+    } else {
+      formData.append("skus_detalhes", "[]");
     }
 
     formData.append("is_planejamento", isPlanejamento ? "true" : "false");
@@ -679,38 +704,42 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Abrangência</label>
             <div className="grid grid-cols-2 gap-3">
-              <label className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
-                <input 
-                  type="radio" 
-                  name="abrangencia_ui" 
-                  className="sr-only peer" 
-                  checked={abrangencia === "Família"}
-                  onChange={() => setAbrangencia("Família")}
-                />
-                <div className="w-4 h-4 rounded-full border-2 border-foreground-muted peer-checked:border-[#C4A25D] peer-checked:bg-[#C4A25D] flex items-center justify-center transition-colors">
-                  <div className="w-2 h-2 rounded-full bg-black opacity-0 peer-checked:opacity-100" />
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => setShowFamilias(!showFamilias)}
+                className={`flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+                  showFamilias ? 'border-gold bg-gold/5 text-gold' : 'border-border bg-elevated text-foreground'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                  showFamilias ? 'border-gold bg-gold text-black' : 'border-foreground-muted'
+                }`}>
+                  {showFamilias && <Check className="w-3 h-3 stroke-[3]" />}
                 </div>
-                <span className="font-medium text-foreground">Família</span>
-              </label>
+                <span className="font-bold">Família</span>
+              </button>
 
-              <label className="relative flex items-center gap-3 cursor-pointer rounded-lg border border-border bg-elevated p-2.5 focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border transition-colors">
-                <input 
-                  type="radio" 
-                  name="abrangencia_ui" 
-                  className="sr-only peer" 
-                  checked={abrangencia === "SKU"}
-                  onChange={() => setAbrangencia("SKU")}
-                />
-                <div className="w-4 h-4 rounded-full border-2 border-foreground-muted peer-checked:border-[#C4A25D] peer-checked:bg-[#C4A25D] flex items-center justify-center transition-colors">
-                  <div className="w-2 h-2 rounded-full bg-black opacity-0 peer-checked:opacity-100" />
+              <button
+                type="button"
+                disabled={isLocked}
+                onClick={() => setShowSkus(!showSkus)}
+                className={`flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${
+                  showSkus ? 'border-gold bg-gold/5 text-gold' : 'border-border bg-elevated text-foreground'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                  showSkus ? 'border-gold bg-gold text-black' : 'border-foreground-muted'
+                }`}>
+                  {showSkus && <Check className="w-3 h-3 stroke-[3]" />}
                 </div>
-                <span className="font-medium text-foreground">SKU</span>
-              </label>
+                <span className="font-bold">SKU</span>
+              </button>
             </div>
           </div>
 
-          {/* Render based on Abrangência */}
-          {abrangencia === "Família" ? (
+          {/* Seção Famílias */}
+          {showFamilias && (
             <div className="space-y-6 animate-in fade-in relative z-40">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted">Seleção de Famílias</label>
@@ -741,134 +770,121 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                     const isOverridden = overrideLocks[lockKey];
                     const precoError = getPrecoError(familiaDetails[familia]);
                     return (
-                    <div key={familia} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
-                      <h4 className="font-bold text-gold">{familia}</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Preço Flat</label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={familiaDetails[familia]?.preco_flat || ""}
-                              onChange={(e) => handleFamiliaChange(familia, "preco_flat", e.target.value)}
-                              placeholder="R$ 0,00"
-                              className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                            />
+                      <div key={familia} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
+                        <h4 className="font-bold text-gold">{familia}</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Preço Flat</label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={familiaDetails[familia]?.preco_flat || ""}
+                                onChange={(e) => handleFamiliaChange(familia, "preco_flat", e.target.value)}
+                                placeholder="R$ 0,00"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                              />
+                            </div>
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Preço Ação</label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={familiaDetails[familia]?.preco_acao || ""}
-                              onChange={(e) => handleFamiliaChange(familia, "preco_acao", e.target.value)}
-                              placeholder="R$ 0,00"
-                              className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
-                            />
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Preço Ação</label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={familiaDetails[familia]?.preco_acao || ""}
+                                onChange={(e) => handleFamiliaChange(familia, "preco_acao", e.target.value)}
+                                placeholder="R$ 0,00"
+                                className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
+                              />
+                            </div>
+                            {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
+                            {getDescontoAlerta(familiaDetails[familia]) && (
+                              <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                {getDescontoAlerta(familiaDetails[familia])}
+                              </p>
+                            )}
                           </div>
-                          {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
-                          {getDescontoAlerta(familiaDetails[familia]) && (
-                            <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              {getDescontoAlerta(familiaDetails[familia])}
-                            </p>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-xs font-medium text-muted">Investimento</label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!isOverridden) {
+                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
+                                  } else {
+                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
+                                    setFamiliaDetails(prev => {
+                                      const updated = { ...prev, [familia]: { ...(prev[familia] || {}), investimento_justificativa: "" } };
+                                      updated[familia].investimento = computeInvestimento(updated[familia]?.preco_flat || "", updated[familia]?.preco_acao || "");
+                                      return updated;
+                                    });
+                                  }
+                                }}
+                                className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
+                                title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
+                              >
+                                {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={familiaDetails[familia]?.investimento || ""}
+                                onChange={(e) => handleFamiliaChange(familia, "investimento", e.target.value)}
+                                placeholder="R$ 0,00"
+                                readOnly={!isOverridden}
+                                className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
+                              />
+                              {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
+                            <div className="relative">
+                              <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={familiaDetails[familia]?.expectativa_volume || ""}
+                                onChange={(e) => handleFamiliaChange(familia, "expectativa_volume", e.target.value, true)}
+                                placeholder="0"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                              />
+                            </div>
+                          </div>
+                          {isOverridden && (
+                            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
+                              <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
+                              <input
+                                type="text"
+                                value={familiaDetails[familia]?.investimento_justificativa || ""}
+                                onChange={(e) => handleFamiliaChange(familia, "investimento_justificativa", e.target.value)}
+                                placeholder="Ex: Negociação especial com a rede"
+                                className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
+                              />
+                            </div>
                           )}
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="block text-xs font-medium text-muted">Investimento</label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!isOverridden) {
-                                  setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
-                                } else {
-                                  setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
-                                  // Recalculate
-                                  setFamiliaDetails(prev => {
-                                    const updated = { ...prev, [familia]: { ...(prev[familia] || {}), investimento_justificativa: "" } };
-                                    updated[familia].investimento = computeInvestimento(updated[familia]?.preco_flat || "", updated[familia]?.preco_acao || "");
-                                    return updated;
-                                  });
-                                }
-                              }}
-                              className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                              title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
-                            >
-                              {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                            </button>
+                          <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
+                            <span className="text-xs font-bold text-gold">Custo Estimado ({familia})</span>
+                            <span className="text-sm font-black text-gold">
+                              {formatCurrencyValue(parseNumericValue(familiaDetails[familia]?.investimento || "") * parseNumericValue(familiaDetails[familia]?.expectativa_volume || ""))}
+                            </span>
                           </div>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={familiaDetails[familia]?.investimento || ""}
-                              onChange={(e) => handleFamiliaChange(familia, "investimento", e.target.value)}
-                              placeholder="R$ 0,00"
-                              readOnly={!isOverridden}
-                              className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
-                            />
-                            {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
-                          <div className="relative">
-                            <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={familiaDetails[familia]?.expectativa_volume || ""}
-                              onChange={(e) => handleFamiliaChange(familia, "expectativa_volume", e.target.value, true)}
-                              placeholder="0"
-                              className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                            />
-                          </div>
-                        </div>
-                        {isOverridden && (
-                          <div className="col-span-1 sm:col-span-2 lg:col-span-4">
-                            <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
-                            <input
-                              type="text"
-                              value={familiaDetails[familia]?.investimento_justificativa || ""}
-                              onChange={(e) => handleFamiliaChange(familia, "investimento_justificativa", e.target.value)}
-                              placeholder="Ex: Negociação especial com a rede"
-                              className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
-                            />
-                          </div>
-                        )}
-                        <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
-                          <span className="text-xs font-bold text-gold">Custo Estimado ({familia})</span>
-                          <span className="text-sm font-black text-gold">
-                            {formatCurrencyValue(parseNumericValue(familiaDetails[familia]?.investimento || "") * parseNumericValue(familiaDetails[familia]?.expectativa_volume || ""))}
-                          </span>
                         </div>
                       </div>
-                    </div>
                     );
                   })}
-
-                  {selectedFamilias.length > 0 && (
-                    <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-4">
-                      <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
-                      <span className="text-xl font-black text-gold">
-                        {formatCurrencyValue(
-                          selectedFamilias.reduce((total, fam) => {
-                            const inv = parseNumericValue(familiaDetails[fam]?.investimento || "");
-                            const vol = parseNumericValue(familiaDetails[fam]?.expectativa_volume || "");
-                            return total + (inv * vol);
-                          }, 0)
-                        )}
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
-          ) : (
-            <div className="space-y-6 animate-in fade-in relative z-40">
+          )}
+
+          {/* Seção SKUs */}
+          {showSkus && (
+            <div className="space-y-6 animate-in fade-in relative z-40 pt-4">
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-muted">Seleção de SKUs</label>
                 <div className="relative">
@@ -898,130 +914,136 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                     const isOverridden = overrideLocks[lockKey];
                     const precoError = getPrecoError(skuDetails[sku]);
                     return (
-                    <div key={sku} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
-                      <h4 className="font-bold text-gold">{sku}</h4>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Preço Flat</label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={skuDetails[sku]?.preco_flat || ""}
-                              onChange={(e) => handleSkuChange(sku, "preco_flat", e.target.value)}
-                              placeholder="R$ 0,00"
-                              className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                            />
+                      <div key={sku} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
+                        <h4 className="font-bold text-gold">{sku}</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Preço Flat</label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={skuDetails[sku]?.preco_flat || ""}
+                                onChange={(e) => handleSkuChange(sku, "preco_flat", e.target.value)}
+                                placeholder="R$ 0,00"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                              />
+                            </div>
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Preço Ação</label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={skuDetails[sku]?.preco_acao || ""}
-                              onChange={(e) => handleSkuChange(sku, "preco_acao", e.target.value)}
-                              placeholder="R$ 0,00"
-                              className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
-                            />
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Preço Ação</label>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={skuDetails[sku]?.preco_acao || ""}
+                                onChange={(e) => handleSkuChange(sku, "preco_acao", e.target.value)}
+                                placeholder="R$ 0,00"
+                                className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
+                              />
+                            </div>
+                            {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
+                            {getDescontoAlerta(skuDetails[sku]) && (
+                              <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                {getDescontoAlerta(skuDetails[sku])}
+                              </p>
+                            )}
                           </div>
-                          {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
-                          {getDescontoAlerta(skuDetails[sku]) && (
-                            <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
-                              <AlertTriangle className="w-3 h-3" />
-                              {getDescontoAlerta(skuDetails[sku])}
-                            </p>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="block text-xs font-medium text-muted">Investimento</label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!isOverridden) {
+                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
+                                  } else {
+                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
+                                    setSkuDetails(prev => {
+                                      const updated = { ...prev, [sku]: { ...(prev[sku] || {}), investimento_justificativa: "" } };
+                                      updated[sku].investimento = computeInvestimento(updated[sku]?.preco_flat || "", updated[sku]?.preco_acao || "");
+                                      return updated;
+                                    });
+                                  }
+                                }}
+                                className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
+                                title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
+                              >
+                                {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                            <div className="relative">
+                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={skuDetails[sku]?.investimento || ""}
+                                onChange={(e) => handleSkuChange(sku, "investimento", e.target.value)}
+                                placeholder="R$ 0,00"
+                                readOnly={!isOverridden}
+                                className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
+                              />
+                              {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
+                            <div className="relative">
+                              <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                              <input
+                                type="text"
+                                value={skuDetails[sku]?.expectativa_volume || ""}
+                                onChange={(e) => handleSkuChange(sku, "expectativa_volume", e.target.value, true)}
+                                placeholder="0"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                              />
+                            </div>
+                          </div>
+                          {isOverridden && (
+                            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
+                              <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
+                              <input
+                                type="text"
+                                value={skuDetails[sku]?.investimento_justificativa || ""}
+                                onChange={(e) => handleSkuChange(sku, "investimento_justificativa", e.target.value)}
+                                placeholder="Ex: Preço negociado diretamente"
+                                className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
+                              />
+                            </div>
                           )}
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="block text-xs font-medium text-muted">Investimento</label>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!isOverridden) {
-                                  setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
-                                } else {
-                                  setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
-                                  setSkuDetails(prev => {
-                                    const updated = { ...prev, [sku]: { ...(prev[sku] || {}), investimento_justificativa: "" } };
-                                    updated[sku].investimento = computeInvestimento(updated[sku]?.preco_flat || "", updated[sku]?.preco_acao || "");
-                                    return updated;
-                                  });
-                                }
-                              }}
-                              className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                              title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
-                            >
-                              {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                            </button>
+                          <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
+                            <span className="text-xs font-bold text-gold">Custo Estimado ({sku})</span>
+                            <span className="text-sm font-black text-gold">
+                              {formatCurrencyValue(parseNumericValue(skuDetails[sku]?.investimento || "") * parseNumericValue(skuDetails[sku]?.expectativa_volume || ""))}
+                            </span>
                           </div>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={skuDetails[sku]?.investimento || ""}
-                              onChange={(e) => handleSkuChange(sku, "investimento", e.target.value)}
-                              placeholder="R$ 0,00"
-                              readOnly={!isOverridden}
-                              className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
-                            />
-                            {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
-                          <div className="relative">
-                            <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                            <input
-                              type="text"
-                              value={skuDetails[sku]?.expectativa_volume || ""}
-                              onChange={(e) => handleSkuChange(sku, "expectativa_volume", e.target.value, true)}
-                              placeholder="0"
-                              className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                            />
-                          </div>
-                        </div>
-                        {isOverridden && (
-                          <div className="col-span-1 sm:col-span-2 lg:col-span-4">
-                            <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
-                            <input
-                              type="text"
-                              value={skuDetails[sku]?.investimento_justificativa || ""}
-                              onChange={(e) => handleSkuChange(sku, "investimento_justificativa", e.target.value)}
-                              placeholder="Ex: Preço negociado diretamente"
-                              className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
-                            />
-                          </div>
-                        )}
-                        <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
-                          <span className="text-xs font-bold text-gold">Custo Estimado ({sku})</span>
-                          <span className="text-sm font-black text-gold">
-                            {formatCurrencyValue(parseNumericValue(skuDetails[sku]?.investimento || "") * parseNumericValue(skuDetails[sku]?.expectativa_volume || ""))}
-                          </span>
                         </div>
                       </div>
-                    </div>
                     );
                   })}
-
-                  {selectedSkus.length > 0 && (
-                    <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-4">
-                      <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
-                      <span className="text-xl font-black text-gold">
-                        {formatCurrencyValue(
-                          selectedSkus.reduce((total, sku) => {
-                            const inv = parseNumericValue(skuDetails[sku]?.investimento || "");
-                            const vol = parseNumericValue(skuDetails[sku]?.expectativa_volume || "");
-                            return total + (inv * vol);
-                          }, 0)
-                        )}
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* COMBINED Investimento Total Estimado */}
+          {((showFamilias && selectedFamilias.length > 0) || (showSkus && selectedSkus.length > 0)) && (
+            <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-4">
+              <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
+              <span className="text-xl font-black text-gold">
+                {formatCurrencyValue(
+                  (showFamilias ? selectedFamilias.reduce((total, fam) => {
+                    const inv = parseNumericValue(familiaDetails[fam]?.investimento || "");
+                    const vol = parseNumericValue(familiaDetails[fam]?.expectativa_volume || "");
+                    return total + (inv * vol);
+                  }, 0) : 0) +
+                  (showSkus ? selectedSkus.reduce((total, sku) => {
+                    const inv = parseNumericValue(skuDetails[sku]?.investimento || "");
+                    const vol = parseNumericValue(skuDetails[sku]?.expectativa_volume || "");
+                    return total + (inv * vol);
+                  }, 0) : 0)
+                )}
+              </span>
             </div>
           )}
         </div>
