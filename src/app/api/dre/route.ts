@@ -159,29 +159,55 @@ export async function GET(request: Request) {
     // 2. Construir dados mensais do ano (12 meses)
     const monthlyList: typeof actual[] = Array(12).fill(null).map((_, i) => aggregatePeriod(allRows || [], ano, i + 1));
     
+    // Calcular acumulados totais do ano
+    const accumTotal = {
+      volume: monthlyList.reduce((acc, m) => acc + m.volume, 0),
+      receita_bruta: monthlyList.reduce((acc, m) => acc + m.receita_bruta, 0),
+      impostos: monthlyList.reduce((acc, m) => acc + m.impostos, 0),
+      investimento_comercial: monthlyList.reduce((acc, m) => acc + m.investimento_comercial, 0),
+      receita_liquida: monthlyList.reduce((acc, m) => acc + m.receita_liquida, 0),
+      custo_produtos: monthlyList.reduce((acc, m) => acc + m.custo_produtos, 0),
+      frete: monthlyList.reduce((acc, m) => acc + m.frete, 0),
+      margem_contribuicao: monthlyList.reduce((acc, m) => acc + m.margem_contribuicao, 0),
+      dga: monthlyList.reduce((acc, m) => acc + m.dga, 0),
+      custo_rede: monthlyList.reduce((acc, m) => acc + m.custo_rede, 0),
+      ebitda: monthlyList.reduce((acc, m) => acc + m.ebitda, 0),
+    };
+
     const monthlyRows = [
-      { label: "Volume (Tons)", months: monthlyList.map(m => m.volume) },
-      { label: "Receita Bruta", months: monthlyList.map(m => m.receita_bruta), isHighlight: true },
-      { label: "Impostos", months: monthlyList.map(m => -m.impostos) },
-      { label: "Invest. Comerciais", months: monthlyList.map(m => -m.investimento_comercial) },
-      { label: "Receita Líquida", months: monthlyList.map(m => m.receita_liquida), isBold: true, isHighlight: true },
-      { label: "Custo de Produtos", months: monthlyList.map(m => -m.custo_produtos) },
-      { label: "Fretes", months: monthlyList.map(m => -m.frete) },
-      { label: "Mrg de Contribuição", months: monthlyList.map(m => m.margem_contribuicao), isBold: true, isHighlight: true },
-      { label: "DGA", months: monthlyList.map(m => -m.dga) },
-      { label: "Custo Rede", months: monthlyList.map(m => -m.custo_rede) },
-      { label: "EBITDA", months: monthlyList.map(m => m.ebitda), isBold: true, isHighlight: true },
+      { label: "Volume (Tons)", months: monthlyList.map(m => m.volume), acum: accumTotal.volume },
+      { label: "Receita Bruta", months: monthlyList.map(m => m.receita_bruta), isHighlight: true, acum: accumTotal.receita_bruta },
+      { label: "Impostos", months: monthlyList.map(m => -m.impostos), acum: -accumTotal.impostos },
+      { label: "Invest. Comerciais", months: monthlyList.map(m => -m.investimento_comercial), acum: -accumTotal.investimento_comercial },
+      { label: "Receita Líquida", months: monthlyList.map(m => m.receita_liquida), isBold: true, isHighlight: true, acum: accumTotal.receita_liquida },
+      { label: "Custo de Produtos", months: monthlyList.map(m => -m.custo_produtos), acum: -accumTotal.custo_produtos },
+      { label: "Fretes", months: monthlyList.map(m => -m.frete), acum: -accumTotal.frete },
+      { label: "Mrg de Contribuição", months: monthlyList.map(m => m.margem_contribuicao), isBold: true, isHighlight: true, acum: accumTotal.margem_contribuicao },
+      { label: "DGA", months: monthlyList.map(m => -m.dga), acum: -accumTotal.dga },
+      { label: "Custo Rede", months: monthlyList.map(m => -m.custo_rede), acum: -accumTotal.custo_rede },
+      { label: "EBITDA", months: monthlyList.map(m => m.ebitda), isBold: true, isHighlight: true, acum: accumTotal.ebitda },
     ];
 
+    const accumUnit = {
+      preco_kg: accumTotal.volume > 0 ? accumTotal.receita_bruta / accumTotal.volume : 0,
+      pct_impostos: accumTotal.receita_bruta > 0 ? -(accumTotal.impostos / accumTotal.receita_bruta) * 100 : 0,
+      pct_invest: accumTotal.receita_bruta > 0 ? -(accumTotal.investimento_comercial / accumTotal.receita_bruta) * 100 : 0,
+      custo_kg: accumTotal.volume > 0 ? -accumTotal.custo_produtos / accumTotal.volume : 0,
+      frete_kg: accumTotal.volume > 0 ? -accumTotal.frete / accumTotal.volume : 0,
+      mc_kg: accumTotal.volume > 0 ? accumTotal.margem_contribuicao / accumTotal.volume : 0,
+      ebitda_kg: accumTotal.volume > 0 ? accumTotal.ebitda / accumTotal.volume : 0,
+      pct_ebitda: accumTotal.receita_bruta > 0 ? (accumTotal.ebitda / accumTotal.receita_bruta) * 100 : 0,
+    };
+
     const monthlyUnitRows = [
-      { label: "Preço/Kg", months: monthlyList.map(m => m.volume > 0 ? m.receita_bruta / m.volume : 0) },
-      { label: "% Impostos", months: monthlyList.map(m => m.receita_bruta > 0 ? -(m.impostos / m.receita_bruta) * 100 : 0), isPercent: true },
-      { label: "% Investimentos", months: monthlyList.map(m => m.receita_bruta > 0 ? -(m.investimento_comercial / m.receita_bruta) * 100 : 0), isPercent: true },
-      { label: "Custo/Kg", months: monthlyList.map(m => m.volume > 0 ? -m.custo_produtos / m.volume : 0) },
-      { label: "Frete/Kg", months: monthlyList.map(m => m.volume > 0 ? -m.frete / m.volume : 0) },
-      { label: "MC/Kg", months: monthlyList.map(m => m.volume > 0 ? m.margem_contribuicao / m.volume : 0), isBold: true },
-      { label: "EBITDA/Kg", months: monthlyList.map(m => m.volume > 0 ? m.ebitda / m.volume : 0) },
-      { label: "% EBITDA", months: monthlyList.map(m => m.receita_bruta > 0 ? (m.ebitda / m.receita_bruta) * 100 : 0), isPercent: true, isBold: true },
+      { label: "Preço/Kg", months: monthlyList.map(m => m.volume > 0 ? m.receita_bruta / m.volume : 0), acum: accumUnit.preco_kg },
+      { label: "% Impostos", months: monthlyList.map(m => m.receita_bruta > 0 ? -(m.impostos / m.receita_bruta) * 100 : 0), isPercent: true, acum: accumUnit.pct_impostos },
+      { label: "% Investimentos", months: monthlyList.map(m => m.receita_bruta > 0 ? -(m.investimento_comercial / m.receita_bruta) * 100 : 0), isPercent: true, acum: accumUnit.pct_invest },
+      { label: "Custo/Kg", months: monthlyList.map(m => m.volume > 0 ? -m.custo_produtos / m.volume : 0), acum: accumUnit.custo_kg },
+      { label: "Frete/Kg", months: monthlyList.map(m => m.volume > 0 ? -m.frete / m.volume : 0), acum: accumUnit.frete_kg },
+      { label: "MC/Kg", months: monthlyList.map(m => m.volume > 0 ? m.margem_contribuicao / m.volume : 0), isBold: true, acum: accumUnit.mc_kg },
+      { label: "EBITDA/Kg", months: monthlyList.map(m => m.volume > 0 ? m.ebitda / m.volume : 0), acum: accumUnit.ebitda_kg },
+      { label: "% EBITDA", months: monthlyList.map(m => m.receita_bruta > 0 ? (m.ebitda / m.receita_bruta) * 100 : 0), isPercent: true, isBold: true, acum: accumUnit.pct_ebitda },
     ];
 
     return NextResponse.json({

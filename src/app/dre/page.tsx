@@ -386,10 +386,11 @@ export default function DREPage() {
             <>
             <div className="glass-card" style={{ overflow: "hidden", padding: 0 }}>
               <div style={{ overflowX: "auto" }}>
-                <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 900 }}>
+                <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 980 }}>
                   <colgroup>
                     <col style={{ width: "15%" }} />
-                    {MONTHS.map((_, i) => <col key={i} style={{ width: `${85/12}%` }} />)}
+                    {MONTHS.map((_, i) => <col key={i} style={{ width: `${77/12}%` }} />)}
+                    <col style={{ width: "8%" }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -407,6 +408,17 @@ export default function DREPage() {
                           {m.slice(0, 3)}
                         </th>
                       ))}
+                      <th style={{
+                        textAlign: "center",
+                        padding: "4px 5px",
+                        fontSize: "0.65rem",
+                        borderLeft: "2px solid var(--border)",
+                        background: "rgba(128,128,128,0.12)",
+                        color: "var(--accent-gold)",
+                        fontWeight: 700,
+                      }}>
+                        ACUM
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -434,6 +446,16 @@ export default function DREPage() {
                               {fmtVal(val)}
                             </td>
                           ))}
+                          <td style={{
+                            textAlign: "center",
+                            padding: "3px 5px",
+                            borderLeft: "2px solid var(--border)",
+                            fontWeight: 700,
+                            background: "rgba(128,128,128,0.06)",
+                            color: row.acum < 0 ? "#dc143c" : undefined,
+                          }}>
+                            {fmtVal(row.acum || 0)}
+                          </td>
                         </tr>
                       );
                     })}
@@ -445,10 +467,11 @@ export default function DREPage() {
             {/* Indicadores Unitários — Mensal */}
             <div className="glass-card" style={{ overflow: "hidden", padding: 0, marginTop: 10 }}>
               <div style={{ overflowX: "auto" }}>
-                <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 900 }}>
+                <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 980 }}>
                   <colgroup>
                     <col style={{ width: "15%" }} />
-                    {MONTHS.map((_, i) => <col key={i} style={{ width: `${85/12}%` }} />)}
+                    {MONTHS.map((_, i) => <col key={i} style={{ width: `${77/12}%` }} />)}
+                    <col style={{ width: "8%" }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -466,6 +489,17 @@ export default function DREPage() {
                           {m.slice(0, 3)}
                         </th>
                       ))}
+                      <th style={{
+                        textAlign: "center",
+                        padding: "4px 5px",
+                        fontSize: "0.65rem",
+                        borderLeft: "2px solid var(--border)",
+                        background: "rgba(128,128,128,0.12)",
+                        color: "var(--accent-gold)",
+                        fontWeight: 700,
+                      }}>
+                        ACUM
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -493,6 +527,16 @@ export default function DREPage() {
                               {display(val)}
                             </td>
                           ))}
+                          <td style={{
+                            textAlign: "center",
+                            padding: "3px 5px",
+                            borderLeft: "2px solid var(--border)",
+                            fontWeight: 700,
+                            background: "rgba(128,128,128,0.06)",
+                            color: row.acum < 0 ? "#dc143c" : undefined,
+                          }}>
+                            {display(row.acum || 0)}
+                          </td>
                         </tr>
                       );
                     })}
