@@ -481,5 +481,43 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 12. Stored Procedure para Rollback de Importações com recuperação de versão anterior
+CREATE OR REPLACE FUNCTION public.rollback_import_log(p_log_id UUID)
+RETURNS VOID
+AS $$
+DECLARE
+    v_row RECORD;
+BEGIN
+    -- 1. Marcar o log como rolled_back
+    UPDATE public.cm_dre_import_logs
+    SET status = 'rolled_back',
+        finished_at = now()
+    WHERE id = p_log_id;
+    
+    -- 2. Loop sobre as linhas que foram afetadas por este log
+    FOR v_row IN 
+        SELECT dre_key, version
+        FROM public.cm_dre_financeiro
+        WHERE import_log_id = p_log_id AND is_active = true
+    LOOP
+        -- Desativa a versão atual importada
+        UPDATE public.cm_dre_financeiro
+        SET is_active = false,
+            is_deleted = true,
+            deleted_at = now(),
+            deleted_reason = 'Rollback do log de importação ' || p_log_id::text
+        WHERE dre_key = v_row.dre_key AND import_log_id = p_log_id;
+        
+        -- Se era uma versão incremental (version > 1), reativa a versão imediatamente anterior
+        IF v_row.version > 1 THEN
+            UPDATE public.cm_dre_financeiro
+            SET is_active = true
+            WHERE dre_key = v_row.dre_key AND version = v_row.version - 1;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
 
 
