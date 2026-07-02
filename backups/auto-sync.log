@@ -121,3 +121,14 @@ To https://github.com/ccarlos1981/coffee_mais.git
 [01/07/2026 08:27] ✅ Alterações enviadas com sucesso para o GitHub.
 [01/07/2026 11:41] Nenhuma alteração encontrada. Nada a enviar.
 [01/07/2026 17:01] Nenhuma alteração encontrada. Nada a enviar.
+[main 83a878f] auto-save: 02/07/2026 08:23
+ 12 files changed, 9207 insertions(+), 1 deletion(-)
+ create mode 100644 src/app/dre/historico/constants.ts
+ create mode 100644 src/app/dre/historico/lancar/ExcelParser.tsx
+ create mode 100644 src/app/dre/historico/lancar/LancarDREForm.tsx
+ create mode 100644 src/app/dre/historico/lancar/actions.ts
+ create mode 100644 src/app/dre/historico/lancar/page.tsx
+ create mode 100644 src/app/dre/historico/page.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   0f14df0..83a878f  main -> main
+[02/07/2026 08:23] ✅ Alterações enviadas com sucesso para o GitHub.

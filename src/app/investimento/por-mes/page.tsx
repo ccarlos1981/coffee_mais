@@ -116,7 +116,7 @@ export default function InvestimentoPorMesPage() {
       // 3. Fetch Investimentos
       const { data: invs, error: iErr } = await supabase
         .from("cm_acoes_investimento")
-        .select("mes_referencia, rede, familia_produto, valor_investimento, preco_flat, preco_acao")
+        .select("mes_referencia, rede, familia_produto, valor_investimento, preco_flat, preco_acao, familias_detalhes")
         .eq("is_planejamento", false)
         .gte("mes_referencia", sDate)
         .lte("mes_referencia", eDate);
@@ -231,38 +231,74 @@ export default function InvestimentoPorMesPage() {
     // 2. Process Investimentos
     rawInvest.forEach((i: any) => {
       const { redeKey, row } = getOrCreateRede(i.rede);
-      const famRow = getOrCreateFamilia(row, i.familia_produto);
       const mes = i.mes_referencia;
-      const inv = Number(i.valor_investimento) || 0;
-      const precoFlat = Number(i.preco_flat) || 0;
-      const precoAcao = Number(i.preco_acao) || 0;
 
-      if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-      if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+      // Use familias_detalhes if available, otherwise fallback to flat fields
+      if (i.familias_detalhes && Array.isArray(i.familias_detalhes) && i.familias_detalhes.length > 0) {
+        i.familias_detalhes.forEach((fd: any) => {
+          const famRow = getOrCreateFamilia(row, fd.familia_nome || 'N/I');
+          const inv = Number(fd.investimento) || 0;
+          const precoFlat = Number(fd.preco_flat) || 0;
+          const precoAcao = Number(fd.preco_acao) || 0;
 
-      row.months[mes].inv += inv;
-      famRow.months[mes].inv += inv;
-      row.total.inv += inv;
-      famRow.total.inv += inv;
-      
-      if (precoFlat > 0) {
-        row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
-        famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
-        row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
-        famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
-      }
-      if (precoAcao > 0) {
-        row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
-        famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
-        row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
-        famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
+          if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+          if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+
+          row.months[mes].inv += inv;
+          famRow.months[mes].inv += inv;
+          row.total.inv += inv;
+          famRow.total.inv += inv;
+
+          if (precoFlat > 0) {
+            row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
+            famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
+            row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
+            famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
+          }
+          if (precoAcao > 0) {
+            row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
+            famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
+            row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
+            famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
+          }
+
+          mapOptions.familias.add(famRow.familia);
+        });
+      } else {
+        // Fallback for legacy records
+        const famRow = getOrCreateFamilia(row, i.familia_produto);
+        const inv = Number(i.valor_investimento) || 0;
+        const precoFlat = Number(i.preco_flat) || 0;
+        const precoAcao = Number(i.preco_acao) || 0;
+
+        if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+        if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
+
+        row.months[mes].inv += inv;
+        famRow.months[mes].inv += inv;
+        row.total.inv += inv;
+        famRow.total.inv += inv;
+
+        if (precoFlat > 0) {
+          row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
+          famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
+          row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
+          famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
+        }
+        if (precoAcao > 0) {
+          row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
+          famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
+          row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
+          famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
+        }
+
+        mapOptions.familias.add(famRow.familia);
       }
 
       mapOptions.managers.add(row.gerente);
       mapOptions.ufs.add(row.uf);
       mapOptions.channels.add(row.canal);
       mapOptions.matrizes.add(row.rede);
-      mapOptions.familias.add(famRow.familia);
     });
 
     // 3. Apply Filters

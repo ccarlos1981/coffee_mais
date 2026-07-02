@@ -68,6 +68,14 @@ interface AcaoInvestimento {
     investimento?: number | null;
     expectativa_volume?: number | null;
   }> | null;
+  familias_detalhes?: Array<{
+    familia_id: string;
+    familia_nome: string;
+    preco_flat?: number | null;
+    preco_acao?: number | null;
+    investimento?: number | null;
+    expectativa_volume?: number | null;
+  }> | null;
   mes_referencia?: string | null;
   documento_url?: string | null;
   gerente_responsavel?: string | null;
@@ -220,8 +228,15 @@ export default function PlanejamentoInvestimentoPage() {
   }, [managerFilteredAcoes]);
 
   const familiasDisponiveis = useMemo(() => {
-    const fams = managerFilteredAcoes.map(d => d.familia_produto).filter(Boolean) as string[];
-    return Array.from(new Set(fams)).sort();
+    const fams = new Set<string>();
+    managerFilteredAcoes.forEach(d => {
+      if (d.familias_detalhes && d.familias_detalhes.length > 0) {
+        d.familias_detalhes.forEach(f => fams.add(f.familia_nome));
+      } else if (d.familia_produto) {
+        fams.add(d.familia_produto);
+      }
+    });
+    return Array.from(fams).sort();
   }, [managerFilteredAcoes]);
 
   const mesesDisponiveis = useMemo(() => {
@@ -232,7 +247,12 @@ export default function PlanejamentoInvestimentoPage() {
   const filteredData = useMemo(() => {
     return managerFilteredAcoes.filter(r => {
       if (filterRede && r.rede !== filterRede) return false;
-      if (filterFamilia && r.familia_produto !== filterFamilia) return false;
+      if (filterFamilia) {
+        const hasFamilia = r.familias_detalhes && r.familias_detalhes.length > 0
+          ? r.familias_detalhes.some(f => f.familia_nome === filterFamilia)
+          : r.familia_produto === filterFamilia;
+        if (!hasFamilia) return false;
+      }
       if (filterDataInicio && r.data_inicio < filterDataInicio) return false;
       if (filterDataFim && r.data_inicio > filterDataFim) return false;
       if (filterMes && r.mes_referencia !== filterMes) return false;
@@ -243,6 +263,9 @@ export default function PlanejamentoInvestimentoPage() {
   const getValorTotal = (r: AcaoInvestimento) => {
     if (r.abrangencia === "SKU" && r.skus_detalhes) {
       return r.skus_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+    }
+    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
+      return r.familias_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
     }
     return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
   };
@@ -425,7 +448,7 @@ export default function PlanejamentoInvestimentoPage() {
       headers.join(";"),
       ...filteredData.map(row => {
         const val = getValorTotal(row);
-        const fam = row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familia_produto || "");
+        const fam = row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (row.familia_produto || ""));
         return [
           row.codigo || "",
           new Date(row.created_at).toLocaleDateString("pt-BR"),
@@ -708,6 +731,7 @@ export default function PlanejamentoInvestimentoPage() {
 
         const groupedAcoes: any[] = [];
         const skuGroups: Record<string, any[]> = {};
+        const familiaGroups: Record<string, any[]> = {};
 
         parsedLines.forEach(line => {
           if (!line.valid) {
@@ -721,21 +745,60 @@ export default function PlanejamentoInvestimentoPage() {
           }
 
           if (line.data.abrangencia === "Família") {
-            groupedAcoes.push({
-              originalRow: line.originalRow,
-              data: {
-                ...line.data,
-                skus_detalhes: [],
-                fase_atual: 1
-              },
-              valid: true,
-              errors: []
-            });
+            const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
+            if (!familiaGroups[key]) familiaGroups[key] = [];
+            familiaGroups[key].push(line);
           } else {
             const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
             if (!skuGroups[key]) skuGroups[key] = [];
             skuGroups[key].push(line);
           }
+        });
+
+        // Group Família lines
+        Object.entries(familiaGroups).forEach(([key, lines]) => {
+          const first = lines[0].data;
+          const famDetails = lines.map(line => {
+            const famNome = line.data.familia_produto || "";
+            const famId = famNome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+            return {
+              familia_id: famId,
+              familia_nome: famNome,
+              preco_flat: line.data.preco_flat,
+              preco_acao: line.data.preco_acao,
+              investimento: line.data.valor_investimento,
+              expectativa_volume: line.data.expectativa_volume,
+              _lineIndex: line.originalRow
+            };
+          });
+          const famNames = famDetails.map(f => f.familia_nome);
+          const duplicateFams = famNames.filter((item, index) => famNames.indexOf(item) !== index);
+          const groupErrors: string[] = [];
+          if (duplicateFams.length > 0) {
+            const dupLines = duplicateFams.map(dup => {
+              const lineNums = famDetails.filter(f => f.familia_nome === dup).map(f => f._lineIndex);
+              return `${dup} (linhas ${lineNums.join(", ")})`;
+            });
+            groupErrors.push(`Famílias duplicadas: ${Array.from(new Set(dupLines)).join("; ")}`);
+          }
+          const cleanFamDetails = famDetails.map(({ _lineIndex, ...rest }) => rest);
+          groupedAcoes.push({
+            originalRow: lines[0].originalRow,
+            data: {
+              ...first,
+              abrangencia: "Família",
+              familia_produto: famNames.join(", "),
+              familias_detalhes: cleanFamDetails,
+              preco_flat: null,
+              preco_acao: null,
+              valor_investimento: null,
+              expectativa_volume: null,
+              skus_detalhes: [],
+              fase_atual: 1
+            },
+            valid: groupErrors.length === 0,
+            errors: groupErrors
+          });
         });
 
         Object.entries(skuGroups).forEach(([key, lines]) => {
@@ -1100,7 +1163,7 @@ export default function PlanejamentoInvestimentoPage() {
                           {row.abrangencia === "SKU" ? (
                             <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 border border-purple-500/25 rounded text-[10px] font-bold">Múltiplos SKUs</span>
                           ) : (
-                            row.familia_produto
+                            (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)
                           )}
                         </td>
                         <td className="px-6 py-4 text-right font-semibold text-foreground">
@@ -1185,7 +1248,7 @@ export default function PlanejamentoInvestimentoPage() {
                         <div>
                           <span className="text-muted block text-[10px]">Abrangência</span>
                           <span className="font-medium">
-                            {row.abrangencia === "SKU" ? "Múltiplos SKUs" : row.familia_produto}
+                            {row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)}
                           </span>
                         </div>
                       </div>
@@ -1422,7 +1485,7 @@ export default function PlanejamentoInvestimentoPage() {
                       {row.tipo_acao}
                     </span>
                     <span className="font-bold text-sm text-foreground group-hover:text-gold transition-colors truncate">{row.rede}</span>
-                    <span className="text-xs text-muted truncate hidden sm:inline">{row.abrangencia === "SKU" ? "SKUs" : row.familia_produto}</span>
+                    <span className="text-xs text-muted truncate hidden sm:inline">{row.abrangencia === "SKU" ? "SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)}</span>
                   </div>
                   <span className="font-black text-sm text-foreground flex-shrink-0">
                     {formatCurrency(getValorTotal(row))}
@@ -1526,7 +1589,7 @@ export default function PlanejamentoInvestimentoPage() {
                   <h3 className="font-bold text-foreground border-b border-border/50 pb-1.5">Detalhes da Família</h3>
                   <div className="grid grid-cols-2 gap-y-2">
                     <span className="text-muted">Família:</span>
-                    <span className="font-semibold text-foreground text-right">{selectedAction.familia_produto || '-'}</span>
+                    <span className="font-semibold text-foreground text-right">{selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 ? selectedAction.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (selectedAction.familia_produto || '-')}</span>
 
                     <span className="text-muted">Preço Flat:</span>
                     <span className="font-semibold text-foreground text-right">{selectedAction.preco_flat ? formatCurrency(selectedAction.preco_flat) : '-'}</span>
