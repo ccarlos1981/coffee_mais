@@ -1562,12 +1562,35 @@ export default function PlanejamentoInvestimentoPage() {
                 </div>
               </div>
 
-              {/* Detalhes de SKUs ou Família */}
-              {selectedAction.abrangencia === "SKU" && selectedAction.skus_detalhes && selectedAction.skus_detalhes.length > 0 ? (
+              {/* Detalhes de SKUs e/ou Família */}
+              {selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 && (
+                <div className="space-y-3 mb-4">
+                  <h3 className="text-sm font-bold text-foreground border-b border-border pb-1.5">Famílias Planejadas</h3>
+                  <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                    {selectedAction.familias_detalhes.map((f: any, idx: number) => (
+                      <div key={idx} className="bg-background border border-border p-3 rounded-xl flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-gold block mb-0.5">{f.familia_nome}</span>
+                          <span className="text-muted">
+                            Vol: <span className="text-foreground font-medium">{f.expectativa_volume || '-'}</span>
+                            {f.preco_acao && <span className="ml-2">PPC: <span className="text-foreground font-medium">{formatCurrency(f.preco_acao)}</span></span>}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-gold font-bold block">{f.investimento ? formatCurrency(f.investimento) : '-'}</span>
+                          <span className="text-[10px] text-muted">Custo: {formatCurrency((f.investimento || 0) * (f.expectativa_volume || 0))}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedAction.skus_detalhes && selectedAction.skus_detalhes.length > 0 && (
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-foreground border-b border-border pb-1.5">SKUs Planejados</h3>
                   <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-                    {selectedAction.skus_detalhes.map((s, idx) => (
+                    {selectedAction.skus_detalhes.map((s: any, idx: number) => (
                       <div key={idx} className="bg-background border border-border p-3 rounded-xl flex items-center justify-between text-xs">
                         <div>
                           <span className="font-bold text-foreground block mb-0.5">{s.sku}</span>
@@ -1584,12 +1607,14 @@ export default function PlanejamentoInvestimentoPage() {
                     ))}
                   </div>
                 </div>
-              ) : (
+              )}
+
+              {(!selectedAction.familias_detalhes || selectedAction.familias_detalhes.length === 0) && (!selectedAction.skus_detalhes || selectedAction.skus_detalhes.length === 0) && (
                 <div className="bg-background border border-border p-4 rounded-xl space-y-3 text-sm">
                   <h3 className="font-bold text-foreground border-b border-border/50 pb-1.5">Detalhes da Família</h3>
                   <div className="grid grid-cols-2 gap-y-2">
                     <span className="text-muted">Família:</span>
-                    <span className="font-semibold text-foreground text-right">{selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 ? selectedAction.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (selectedAction.familia_produto || '-')}</span>
+                    <span className="font-semibold text-foreground text-right">{selectedAction.familia_produto || '-'}</span>
 
                     <span className="text-muted">Preço Flat:</span>
                     <span className="font-semibold text-foreground text-right">{selectedAction.preco_flat ? formatCurrency(selectedAction.preco_flat) : '-'}</span>

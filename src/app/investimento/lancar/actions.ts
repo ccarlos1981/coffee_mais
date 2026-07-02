@@ -29,21 +29,33 @@ async function avaliarAlertasAcaoInvestimento(
   codigo_matriz: string
 ): Promise<any[]> {
   const alertas: any[] = [];
-  const items = abrangencia === "Família" ? familias_detalhes : skus_detalhes;
+
+  // Construct items with their source details
+  const items: Array<{ label: string; source: 'familia' | 'sku'; details: any }> = [];
+  if (familias_detalhes && familias_detalhes.length > 0) {
+    familias_detalhes.forEach(f => {
+      items.push({ label: f.familia_nome, source: 'familia', details: f });
+    });
+  }
+  if (skus_detalhes && skus_detalhes.length > 0) {
+    skus_detalhes.forEach(s => {
+      items.push({ label: s.sku, source: 'sku', details: s });
+    });
+  }
 
   // 1. Desconto acima de 40%
-  items.forEach((item: any) => {
-    const flat = Number(item.preco_flat) || 0;
-    const acao = Number(item.preco_acao) || 0;
-    const label = abrangencia === "Família" ? item.familia_nome : item.sku;
+  items.forEach((item) => {
+    const flat = Number(item.details.preco_flat) || 0;
+    const acao = Number(item.details.preco_acao) || 0;
     if (flat > 0) {
       const desc = (flat - acao) / flat;
       if (desc > 0.40) {
         alertas.push({
           tipo: "DESCONTO_ALTO",
-          mensagem: `Desconto de ${(desc * 100).toFixed(1)}% em ${label} acima do limite preventivo de 40%.`,
-          item: label,
-          valor: desc
+          mensagem: `Desconto de ${(desc * 100).toFixed(1)}% em ${item.label} acima do limite preventivo de 40%.`,
+          item: item.label,
+          valor: desc,
+          source: item.source
         });
       }
     }
@@ -58,8 +70,7 @@ async function avaliarAlertasAcaoInvestimento(
 
   // Check Volume and ROI per item
   for (const item of items) {
-    const label = abrangencia === "Família" ? item.familia_nome : item.sku;
-    const vol = Number(item.expectativa_volume) || 0;
+    const vol = Number(item.details.expectativa_volume) || 0;
 
     let matchedVolumes: number[] = [];
     let matchedROIs: number[] = [];
@@ -67,11 +78,11 @@ async function avaliarAlertasAcaoInvestimento(
     // Fallback 1: Rede + SKU/Família
     if (pastActions) {
       pastActions.forEach((pa: any) => {
-        const details = pa.abrangencia === "Família" ? pa.familias_detalhes : pa.skus_detalhes;
-        if (Array.isArray(details) && pa.abrangencia === abrangencia) {
-          details.forEach((d: any) => {
-            const detailLabel = pa.abrangencia === "Família" ? d.familia_nome : d.sku;
-            if (detailLabel === label) {
+        const targetDetails = item.source === 'familia' ? pa.familias_detalhes : pa.skus_detalhes;
+        if (Array.isArray(targetDetails)) {
+          targetDetails.forEach((d: any) => {
+            const detailLabel = item.source === 'familia' ? d.familia_nome : d.sku;
+            if (detailLabel === item.label) {
               const pastVol = Number(pa.real_volume || d.expectativa_volume) || 0;
               if (pastVol > 0) matchedVolumes.push(pastVol);
               const pastRoi = Number(pa.roi || (Number(d.real_margem || 0) / Number(d.investimento || 1))) || 0;
@@ -101,11 +112,11 @@ async function avaliarAlertasAcaoInvestimento(
         .limit(50);
       if (catActions) {
         catActions.forEach((pa: any) => {
-          const details = pa.abrangencia === "Família" ? pa.familias_detalhes : pa.skus_detalhes;
-          if (Array.isArray(details) && pa.abrangencia === abrangencia) {
-            details.forEach((d: any) => {
-              const detailLabel = pa.abrangencia === "Família" ? d.familia_nome : d.sku;
-              if (detailLabel === label) {
+          const targetDetails = item.source === 'familia' ? pa.familias_detalhes : pa.skus_detalhes;
+          if (Array.isArray(targetDetails)) {
+            targetDetails.forEach((d: any) => {
+              const detailLabel = item.source === 'familia' ? d.familia_nome : d.sku;
+              if (detailLabel === item.label) {
                 const pastVol = Number(pa.real_volume || d.expectativa_volume) || 0;
                 if (pastVol > 0) matchedVolumes.push(pastVol);
                 const pastRoi = Number(pa.roi) || 0;
@@ -125,10 +136,11 @@ async function avaliarAlertasAcaoInvestimento(
       if (vol > avgVol * 2) {
         alertas.push({
           tipo: "VOLUME_ALTO",
-          mensagem: `Volume de ${vol.toLocaleString('pt-BR')} para ${label} está muito acima da média histórica de ${Math.round(avgVol).toLocaleString('pt-BR')}.`,
-          item: label,
+          mensagem: `Volume de ${vol.toLocaleString('pt-BR')} para ${item.label} está muito acima da média histórica de ${Math.round(avgVol).toLocaleString('pt-BR')}.`,
+          item: item.label,
           valor: vol,
-          media_historica: avgVol
+          media_historica: avgVol,
+          source: item.source
         });
       }
     }
@@ -139,9 +151,10 @@ async function avaliarAlertasAcaoInvestimento(
       if (avgRoi < 1.0) {
         alertas.push({
           tipo: "ROI_HISTORICO_RUIM",
-          mensagem: `ROI histórico para ${label} nesta rede/geral é crítico (${avgRoi.toFixed(2)} < 1.0).`,
-          item: label,
-          valor: avgRoi
+          mensagem: `ROI histórico para ${item.label} nesta rede/geral é crítico (${avgRoi.toFixed(2)} < 1.0).`,
+          item: item.label,
+          valor: avgRoi,
+          source: item.source
         });
       }
     }
@@ -165,34 +178,32 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
-  // Parse familias_detalhes (new multi-family JSONB)
+  // Parse familias_detalhes (multi-family JSONB)
   let familias_detalhes: any = [];
-  if (abrangencia === "Família") {
-    const fam_str = formData.get("familias_detalhes") as string;
-    if (fam_str) {
-      try {
-        familias_detalhes = JSON.parse(fam_str);
-      } catch(e) {}
-    }
+  const fam_str = formData.get("familias_detalhes") as string;
+  if (fam_str) {
+    try {
+      familias_detalhes = JSON.parse(fam_str);
+    } catch(e) {}
   }
 
+  // Parse skus_detalhes (multi-SKU JSONB)
   let skus_detalhes: any = [];
-  if (abrangencia === "SKU") {
-    const skus_str = formData.get("skus_detalhes") as string;
-    if (skus_str) {
-      try {
-        skus_detalhes = JSON.parse(skus_str);
-      } catch(e) {}
-    }
+  const skus_str = formData.get("skus_detalhes") as string;
+  if (skus_str) {
+    try {
+      skus_detalhes = JSON.parse(skus_str);
+    } catch(e) {}
   }
 
   // Backward compat: familia_produto as comma-separated string
   let familia_produto = formData.get("familia_produto") as string || "";
   if (!familia_produto) {
-    if (abrangencia === "SKU") {
-      familia_produto = "Múltiplos SKUs";
+    const famNames = (familias_detalhes || []).map((f: any) => f.familia_nome);
+    if (famNames.length > 0) {
+      familia_produto = famNames.join(", ");
     } else {
-      familia_produto = familias_detalhes.map((f: any) => f.familia_nome).join(", ");
+      familia_produto = "Múltiplos SKUs";
     }
   }
 
@@ -200,12 +211,12 @@ export async function criarAcaoInvestimento(formData: FormData) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
-  // Exclusive validation: Família OR SKU, never both
-  if (abrangencia === "Família") {
-    if (!familias_detalhes || familias_detalhes.length === 0) {
-      throw new Error("Para abrangência Família, ao menos uma família deve ser selecionada.");
-    }
-    // Financial validations
+  if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
+    throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
+  }
+
+  // Financial validations for families
+  if (familias_detalhes && familias_detalhes.length > 0) {
     for (const f of familias_detalhes) {
       if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
         throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
@@ -218,10 +229,10 @@ export async function criarAcaoInvestimento(formData: FormData) {
         f.investimento_override_by = user?.id || null;
       }
     }
-  } else if (abrangencia === "SKU") {
-    if (!skus_detalhes || skus_detalhes.length === 0) {
-      throw new Error("Para abrangência SKU, ao menos um SKU deve ser detalhado.");
-    }
+  }
+
+  // Financial validations for SKUs
+  if (skus_detalhes && skus_detalhes.length > 0) {
     for (const s of skus_detalhes) {
       if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
         throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
@@ -236,13 +247,13 @@ export async function criarAcaoInvestimento(formData: FormData) {
     }
   }
 
-  // Calculate weighted averages for database columns to satisfy NOT NULL constraints
+  // Calculate weighted averages across both Families and SKUs for database columns
   let total_volume = 0;
   let total_investimento = 0;
   let total_flat_weighted = 0;
   let total_acao_weighted = 0;
 
-  if (abrangencia === "Família") {
+  if (familias_detalhes && familias_detalhes.length > 0) {
     for (const f of familias_detalhes) {
       const vol = Number(f.expectativa_volume) || 0;
       const inv = Number(f.investimento) || 0;
@@ -253,7 +264,9 @@ export async function criarAcaoInvestimento(formData: FormData) {
       total_flat_weighted += flat * vol;
       total_acao_weighted += acao * vol;
     }
-  } else if (abrangencia === "SKU") {
+  }
+
+  if (skus_detalhes && skus_detalhes.length > 0) {
     for (const s of skus_detalhes) {
       const vol = Number(s.expectativa_volume) || 0;
       const inv = Number(s.investimento) || 0;
@@ -329,33 +342,31 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
-  // Parse familias_detalhes (new multi-family JSONB)
+  // Parse familias_detalhes (multi-family JSONB)
   let familias_detalhes: any = [];
-  if (abrangencia === "Família") {
-    const fam_str = formData.get("familias_detalhes") as string;
-    if (fam_str) {
-      try {
-        familias_detalhes = JSON.parse(fam_str);
-      } catch(e) {}
-    }
+  const fam_str = formData.get("familias_detalhes") as string;
+  if (fam_str) {
+    try {
+      familias_detalhes = JSON.parse(fam_str);
+    } catch(e) {}
   }
 
+  // Parse skus_detalhes (multi-SKU JSONB)
   let skus_detalhes: any = [];
-  if (abrangencia === "SKU") {
-    const skus_str = formData.get("skus_detalhes") as string;
-    if (skus_str) {
-      try {
-        skus_detalhes = JSON.parse(skus_str);
-      } catch(e) {}
-    }
+  const skus_str = formData.get("skus_detalhes") as string;
+  if (skus_str) {
+    try {
+      skus_detalhes = JSON.parse(skus_str);
+    } catch(e) {}
   }
 
   let familia_produto = formData.get("familia_produto") as string || "";
   if (!familia_produto) {
-    if (abrangencia === "SKU") {
-      familia_produto = "Múltiplos SKUs";
+    const famNames = (familias_detalhes || []).map((f: any) => f.familia_nome);
+    if (famNames.length > 0) {
+      familia_produto = famNames.join(", ");
     } else {
-      familia_produto = familias_detalhes.map((f: any) => f.familia_nome).join(", ");
+      familia_produto = "Múltiplos SKUs";
     }
   }
 
@@ -363,11 +374,12 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
-  // Exclusive validation: Família OR SKU, never both
-  if (abrangencia === "Família") {
-    if (!familias_detalhes || familias_detalhes.length === 0) {
-      throw new Error("Para abrangência Família, ao menos uma família deve ser selecionada.");
-    }
+  if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
+    throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
+  }
+
+  // Financial validations for families
+  if (familias_detalhes && familias_detalhes.length > 0) {
     for (const f of familias_detalhes) {
       if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
         throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
@@ -380,10 +392,10 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
         f.investimento_override_by = user?.id || null;
       }
     }
-  } else if (abrangencia === "SKU") {
-    if (!skus_detalhes || skus_detalhes.length === 0) {
-      throw new Error("Para abrangência SKU, ao menos um SKU deve ser detalhado.");
-    }
+  }
+
+  // Financial validations for SKUs
+  if (skus_detalhes && skus_detalhes.length > 0) {
     for (const s of skus_detalhes) {
       if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
         throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
@@ -421,13 +433,13 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     }
   }
 
-  // Calculate weighted averages for database columns to satisfy NOT NULL constraints
+  // Calculate weighted averages across both Families and SKUs for database columns
   let total_volume = 0;
   let total_investimento = 0;
   let total_flat_weighted = 0;
   let total_acao_weighted = 0;
 
-  if (abrangencia === "Família") {
+  if (familias_detalhes && familias_detalhes.length > 0) {
     for (const f of familias_detalhes) {
       const vol = Number(f.expectativa_volume) || 0;
       const inv = Number(f.investimento) || 0;
@@ -438,7 +450,9 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
       total_flat_weighted += flat * vol;
       total_acao_weighted += acao * vol;
     }
-  } else if (abrangencia === "SKU") {
+  }
+
+  if (skus_detalhes && skus_detalhes.length > 0) {
     for (const s of skus_detalhes) {
       const vol = Number(s.expectativa_volume) || 0;
       const inv = Number(s.investimento) || 0;
