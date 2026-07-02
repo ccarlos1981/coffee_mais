@@ -12,7 +12,7 @@ import { Filter,
   TrendingUp,
   Target,
   CalendarDays,
-  Calendar, Package, CheckCircle2 } from "lucide-react";
+  Calendar, Package, CheckCircle2, Loader2 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { SearchableSelect } from "@/components/SearchableSelect";
 
@@ -48,65 +48,27 @@ interface DREUnitRow {
   isBold?: boolean;
 }
 
-// P&L principal — dados mock representando valores em R$ mil
-const MOCK_DRE: DRERow[] = [
-  { label: "Volume (Tons)", actual: 98, budget: 174, prevMonth: 146, prevYear: 138 },
-  { label: "Receita Bruta", actual: 2215, budget: 3391, prevMonth: 3078, prevYear: 2736, isHighlight: true },
-  { label: "Impostos", actual: -201, budget: -273, prevMonth: -237, prevYear: -131 },
-  { label: "Invest. Comerciais", actual: -707, budget: -839, prevMonth: -736, prevYear: -616 },
-  { label: "Receita Líquida", actual: 1306, budget: 2817, prevMonth: 2105, prevYear: 1988, isBold: true, isHighlight: true },
-  { label: "Custo de Produtos", actual: -617, budget: -1075, prevMonth: -856, prevYear: -795 },
-  { label: "Fretes", actual: -13, budget: -52, prevMonth: -10, prevYear: -48 },
-  { label: "Desp. de Exportação", actual: 0, budget: 0, prevMonth: 0, prevYear: 0 },
-  { label: "Mrg de Contribuição", actual: 676, budget: 1586, prevMonth: 1238, prevYear: 1146, isBold: true, isHighlight: true },
-  { label: "GGF", actual: -279, budget: 0, prevMonth: -512, prevYear: -344 },
-  { label: "Depreciação", actual: -33, budget: 0, prevMonth: -42, prevYear: -63 },
-  { label: "Armazenagem", actual: -118, budget: 0, prevMonth: -123, prevYear: -174 },
-  { label: "Mrg Bruta", actual: 246, budget: 0, prevMonth: 560, prevYear: 565, isBold: true, isHighlight: true },
-  { label: "Desp. Comerciais", actual: -175, budget: -186, prevMonth: -112, prevYear: -207 },
-  { label: "Marketing", actual: -24, budget: 0, prevMonth: -4, prevYear: -87 },
-  { label: "EBITDA", actual: 47, budget: 0, prevMonth: 444, prevYear: 270, isBold: true, isHighlight: true },
-];
+// Estado do DRE carregado dinamicamente via API
+interface DRERow {
+  label: string;
+  actual: number;
+  budget: number;
+  prevMonth: number;
+  prevYear: number;
+  isBold?: boolean;
+  isHighlight?: boolean;
+}
 
-// Indicadores unitários
-const MOCK_UNIT: DREUnitRow[] = [
-  { label: "Preço/Kg", actual: 22.63, budget: 19.44, prevMonth: 21.05, prevYear: 19.81 },
-  { label: "% Impostos", actual: -9.1, budget: -8.0, prevMonth: -7.7, prevYear: -4.8, isPercent: true },
-  { label: "% Investimentos", actual: -31.9, budget: -24.7, prevMonth: -23.9, prevYear: -22.5, isPercent: true },
-  { label: "Custo/Kg", actual: -6.30, budget: -6.16, prevMonth: -5.86, prevYear: -5.76 },
-  { label: "Frete/Kg", actual: -0.14, budget: -0.30, prevMonth: -0.07, prevYear: -0.34 },
-  { label: "MC/Kg", actual: 6.91, budget: 9.09, prevMonth: 8.47, prevYear: 8.30, isBold: true },
-];
+interface DREUnitRow {
+  label: string;
+  actual: number;
+  budget: number;
+  prevMonth: number;
+  prevYear: number;
+  isPercent?: boolean;
+  isBold?: boolean;
+}
 
-// Dados mock mensais (Jan-Dez) — cada linha do P&L com 12 valores
-const MOCK_MONTHLY: { label: string; months: number[]; isBold?: boolean; isHighlight?: boolean }[] = [
-  { label: "Volume (Tons)", months: [110, 95, 98, 120, 130, 105, 115, 125, 140, 135, 128, 118] },
-  { label: "Receita Bruta", months: [2500, 2300, 2215, 2800, 3050, 2400, 2600, 2900, 3200, 3100, 2950, 2700], isHighlight: true },
-  { label: "Impostos", months: [-225, -210, -201, -252, -275, -216, -234, -261, -288, -279, -266, -243] },
-  { label: "Invest. Comerciais", months: [-750, -700, -707, -840, -915, -720, -780, -870, -960, -930, -885, -810] },
-  { label: "Receita Líquida", months: [1525, 1390, 1306, 1708, 1860, 1464, 1586, 1769, 1952, 1891, 1799, 1647], isBold: true, isHighlight: true },
-  { label: "Custo de Produtos", months: [-660, -610, -617, -720, -780, -630, -690, -750, -840, -810, -770, -700] },
-  { label: "Fretes", months: [-15, -12, -13, -18, -20, -14, -16, -17, -22, -20, -19, -16] },
-  { label: "Desp. de Exportação", months: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
-  { label: "Mrg de Contribuição", months: [850, 768, 676, 970, 1060, 820, 880, 1002, 1090, 1061, 1010, 931], isBold: true, isHighlight: true },
-  { label: "GGF", months: [-290, -285, -279, -310, -320, -295, -300, -315, -330, -325, -310, -300] },
-  { label: "Depreciação", months: [-33, -33, -33, -33, -33, -33, -33, -33, -33, -33, -33, -33] },
-  { label: "Armazenagem", months: [-120, -118, -118, -125, -130, -119, -121, -126, -132, -130, -127, -122] },
-  { label: "Mrg Bruta", months: [407, 332, 246, 502, 577, 373, 426, 528, 595, 573, 540, 476], isBold: true, isHighlight: true },
-  { label: "Desp. Comerciais", months: [-180, -178, -175, -190, -195, -182, -185, -192, -200, -198, -193, -188] },
-  { label: "Marketing", months: [-25, -22, -24, -30, -35, -23, -26, -28, -38, -35, -30, -27] },
-  { label: "EBITDA", months: [202, 132, 47, 282, 347, 168, 215, 308, 357, 340, 317, 261], isBold: true, isHighlight: true },
-];
-
-// Indicadores unitários mensais (Jan-Dez)
-const MOCK_UNIT_MONTHLY: { label: string; months: number[]; isPercent?: boolean; isBold?: boolean }[] = [
-  { label: "Preço/Kg", months: [22.73, 24.21, 22.63, 23.33, 23.46, 22.86, 22.61, 23.20, 22.86, 22.96, 23.05, 22.88] },
-  { label: "% Impostos", months: [-9.0, -9.1, -9.1, -9.0, -9.0, -9.0, -9.0, -9.0, -9.0, -9.0, -9.0, -9.0], isPercent: true },
-  { label: "% Investimentos", months: [-30.0, -30.4, -31.9, -30.0, -30.0, -30.0, -30.0, -30.0, -30.0, -30.0, -30.0, -30.0], isPercent: true },
-  { label: "Custo/Kg", months: [-6.00, -6.42, -6.30, -6.00, -6.00, -6.00, -6.00, -6.00, -6.00, -6.00, -6.02, -5.93] },
-  { label: "Frete/Kg", months: [-0.14, -0.13, -0.14, -0.15, -0.15, -0.13, -0.14, -0.14, -0.16, -0.15, -0.15, -0.14] },
-  { label: "MC/Kg", months: [7.73, 8.08, 6.91, 8.08, 8.15, 7.81, 7.65, 8.02, 7.79, 7.86, 7.89, 7.89], isBold: true },
-];
 
 /* ═══════════════════════════════════════════ */
 
@@ -132,6 +94,41 @@ export default function DREPage() {
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
     managers: [], familias: [], ufs: [], channels: [], products: [],
   });
+
+  const [dreRows, setDreRows] = useState<DRERow[]>([]);
+  const [unitRows, setUnitRows] = useState<DREUnitRow[]>([]);
+  const [monthlyRows, setMonthlyRows] = useState<any[]>([]);
+  const [monthlyUnitRows, setMonthlyUnitRows] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Buscar dados reais do DRE
+  const fetchDREData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const query = new URLSearchParams({
+        year: String(filterYear),
+        month: String(filterMonth),
+        manager: filterManager,
+        familia: filterFamilia,
+        uf: filterUf,
+        channel: filterChannel,
+        product: filterProduct,
+      });
+      const res = await fetch(`/api/dre?${query.toString()}`);
+      const json = await res.json();
+      if (json.success) {
+        setDreRows(json.dreRows);
+        setUnitRows(json.unitRows);
+        setMonthlyRows(json.monthlyRows);
+        setMonthlyUnitRows(json.monthlyUnitRows);
+      }
+    } catch (e) {
+      console.error("Erro ao carregar dados do DRE:", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
+
 
   // Sync DRE single-value filters with multi-select filters in localStorage
   useEffect(() => {
@@ -200,8 +197,9 @@ export default function DREPage() {
   useEffect(() => {
     Promise.resolve().then(() => {
       fetchFilters();
+      fetchDREData();
     });
-  }, [fetchFilters]);
+  }, [fetchFilters, fetchDREData]);
 
   const handleClearFilters = () => {
     setFilterManager("Todos");
@@ -378,7 +376,12 @@ export default function DREPage() {
 
         {/* MAIN CONTENT */}
         <main className="dash-content" style={{ maxWidth: 1200, margin: "0 auto" }}>
-          {viewMode === "monthly" ? (
+          {isLoading ? (
+            <div className="glass-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "60px 20px" }}>
+              <Loader2 className="animate-spin text-gold" style={{ width: 32, height: 32 }} />
+              <span style={{ fontSize: "0.85rem", color: "var(--foreground-muted)" }}>Carregando dados do DRE...</span>
+            </div>
+          ) : viewMode === "monthly" ? (
             /* ═══ VISÃO MÊS A MÊS ═══ */
             <>
             <div className="glass-card" style={{ overflow: "hidden", padding: 0 }}>
@@ -407,7 +410,7 @@ export default function DREPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {MOCK_MONTHLY.map((row, ri) => {
+                    {monthlyRows.map((row, ri) => {
                       const rowBg = row.isHighlight ? "rgba(128,128,128,0.1)" : "transparent";
                       const rowStyle: React.CSSProperties = {
                         fontWeight: row.isBold ? 700 : 400,
@@ -419,7 +422,7 @@ export default function DREPage() {
                           <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
                             {row.label}
                           </td>
-                          {row.months.map((val, mi) => (
+                          {(row.months || []).map((val: number, mi: number) => (
                             <td key={mi} style={{
                               textAlign: "center",
                               padding: "3px 5px",
@@ -466,7 +469,7 @@ export default function DREPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {MOCK_UNIT_MONTHLY.map((row, ri) => {
+                    {monthlyUnitRows.map((row, ri) => {
                       const rowStyle: React.CSSProperties = row.isBold
                         ? { fontWeight: 700, background: "rgba(128,128,128,0.1)", borderTop: "1px solid var(--border)" }
                         : {};
@@ -478,7 +481,7 @@ export default function DREPage() {
                           <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
                             {row.label}
                           </td>
-                          {row.months.map((val, mi) => (
+                          {(row.months || []).map((val: number, mi: number) => (
                             <td key={mi} style={{
                               textAlign: "center",
                               padding: "3px 5px",
@@ -539,7 +542,7 @@ export default function DREPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {MOCK_DRE.map((row, i) => {
+                      {(dreRows || []).map((row, i) => {
                         const dBud = delta(row.actual, row.budget);
                         const pBud = pctDelta(row.actual, row.budget);
                         const dMonth = delta(row.actual, row.prevMonth);
@@ -607,7 +610,7 @@ export default function DREPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {MOCK_UNIT.map((row, i) => {
+                      {(unitRows || []).map((row, i) => {
                         const dBud = delta(row.actual, row.budget);
                         const pBud = pctDelta(row.actual, row.budget);
                         const dMonth = delta(row.actual, row.prevMonth);

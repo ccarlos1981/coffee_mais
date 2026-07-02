@@ -696,4 +696,28 @@ export async function avaliarAlertasDRE({
   return alertsToUpsert;
 }
 
+export async function desfazerImportacao(logId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  // Chamar stored procedure de rollback no banco
+  const { error } = await supabase.rpc("rollback_import_log", {
+    p_log_id: logId
+  });
+
+  if (error) {
+    console.error("Erro ao desfazer importação:", error);
+    throw new Error(`Falha ao desfazer importação: ${error.message}`);
+  }
+
+  revalidatePath("/dre/historico");
+  revalidatePath("/dre");
+
+  return { success: true };
+}
+
+
 
