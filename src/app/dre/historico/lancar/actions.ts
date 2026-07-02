@@ -205,3 +205,143 @@ export async function buscarAnosDisponiveis(): Promise<number[]> {
   if (!anos.includes(new Date().getFullYear())) anos.unshift(new Date().getFullYear());
   return anos;
 }
+
+// ─── IMPORTAR Excel DRE (Fase 2) ──────────────────────────────────────────────
+
+export async function importarExcelDRE({
+  ano,
+  mes,
+  filename,
+  rawRows,
+  normalizedRows,
+}: {
+  ano: number;
+  mes: number;
+  filename: string;
+  rawRows: any[];
+  normalizedRows: any[];
+}) {
+  const startedAt = new Date();
+  const supabase = await createClient();
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  // 1. Criar o log de importação com status 'uploaded'
+  const { data: log, error: logError } = await supabase
+    .from("cm_dre_import_logs")
+    .insert({
+      filename,
+      source: "excel",
+      status: "uploaded",
+      started_at: startedAt.toISOString(),
+      imported_by: user.id,
+    })
+    .select("id")
+    .single();
+
+  if (logError || !log) {
+    console.error("Erro ao criar log de importação:", logError);
+    throw new Error("Falha ao registrar log de importação.");
+  }
+
+  const logId = log.id;
+
+  try {
+    // 2. Mudar status para 'parsing' (gravando staging)
+    await supabase
+      .from("cm_dre_import_logs")
+      .update({ status: "parsing" })
+      .eq("id", logId);
+
+    // Gravar as linhas originais na staging cm_dre_excel_raw em lotes de 100
+    const rawInserts = rawRows.map((row, idx) => ({
+      import_log_id: logId,
+      row_number: idx + 1,
+      raw_data: row,
+      imported_by: user.id,
+      imported_at: new Date().toISOString(),
+    }));
+
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < rawInserts.length; i += CHUNK_SIZE) {
+      const chunk = rawInserts.slice(i, i + CHUNK_SIZE);
+      const { error: rawError } = await supabase
+        .from("cm_dre_excel_raw")
+        .insert(chunk);
+
+      if (rawError) {
+        console.error("Erro ao gravar staging:", rawError);
+        throw new Error(`Falha ao gravar staging na linha ${i + 1}: ${rawError.message}`);
+      }
+    }
+
+    // 3. Mudar status para 'normalizing'
+    await supabase
+      .from("cm_dre_import_logs")
+      .update({ status: "normalizing" })
+      .eq("id", logId);
+
+    // 4. Executar normalização e versionamento no banco através do RPC
+    const { data: syncResult, error: syncError } = await supabase.rpc("import_dre_excel_data", {
+      p_ano: ano,
+      p_mes: mes,
+      p_import_log_id: logId,
+      p_uploaded_by: user.id,
+      p_rows: normalizedRows,
+    });
+
+    if (syncError) {
+      console.error("Erro na stored procedure import_dre_excel_data:", syncError);
+      throw new Error(`Erro na consolidação DRE: ${syncError.message}`);
+    }
+
+    // 5. Finalizar log com sucesso
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+
+    await supabase
+      .from("cm_dre_import_logs")
+      .update({
+        status: "success",
+        finished_at: finishedAt.toISOString(),
+        duration_ms: durationMs,
+        rows_imported: syncResult?.processed || 0,
+      })
+      .eq("id", logId);
+
+    revalidatePath("/dre/historico");
+    revalidatePath("/dre");
+
+    return {
+      success: true,
+      logId,
+      processed: syncResult?.processed || 0,
+      inserted: syncResult?.inserted || 0,
+      updated: syncResult?.updated || 0,
+      durationMs,
+    };
+
+  } catch (error: any) {
+    console.error("Erro durante importação Excel DRE:", error);
+    
+    // Atualizar log para 'error'
+    const finishedAt = new Date();
+    const durationMs = finishedAt.getTime() - startedAt.getTime();
+    
+    await supabase
+      .from("cm_dre_import_logs")
+      .update({
+        status: "error",
+        finished_at: finishedAt.toISOString(),
+        duration_ms: durationMs,
+        error_log: error.message || String(error),
+      })
+      .eq("id", logId);
+
+    throw error;
+  }
+}
+
