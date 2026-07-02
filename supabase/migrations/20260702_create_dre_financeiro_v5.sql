@@ -422,4 +422,64 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- 10. Stored Procedure para fechar o mês com lock e integridade
+CREATE OR REPLACE FUNCTION public.close_dre_month(
+    p_ano INT,
+    p_mes INT,
+    p_closed_by UUID,
+    p_notes TEXT,
+    p_snapshot_json JSONB,
+    p_snapshot_checksum TEXT
+)
+RETURNS VOID
+AS $$
+BEGIN
+    -- Advisory lock
+    PERFORM pg_advisory_xact_lock(hashtext('dre_lock_' || p_ano || '_' || p_mes));
+    
+    -- Upsert closure log
+    INSERT INTO public.cm_dre_month_closure (
+        ano, mes, is_closed, closed_by, closed_at, notes, snapshot_json, snapshot_checksum,
+        reopened_by, reopened_at, reopen_reason
+    ) VALUES (
+        p_ano, p_mes, true, p_closed_by, now(), p_notes, p_snapshot_json, p_snapshot_checksum,
+        null, null, null
+    )
+    ON CONFLICT (ano, mes) DO UPDATE SET
+        is_closed = true,
+        closed_by = EXCLUDED.closed_by,
+        closed_at = now(),
+        notes = EXCLUDED.notes,
+        snapshot_json = EXCLUDED.snapshot_json,
+        snapshot_checksum = EXCLUDED.snapshot_checksum,
+        reopened_by = null,
+        reopened_at = null,
+        reopen_reason = null;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 11. Stored Procedure para reabrir o mês com lock e integridade
+CREATE OR REPLACE FUNCTION public.reopen_dre_month(
+    p_ano INT,
+    p_mes INT,
+    p_reopened_by UUID,
+    p_reopen_reason TEXT
+)
+RETURNS VOID
+AS $$
+BEGIN
+    -- Advisory lock
+    PERFORM pg_advisory_xact_lock(hashtext('dre_lock_' || p_ano || '_' || p_mes));
+    
+    -- Update closure log
+    UPDATE public.cm_dre_month_closure
+    SET is_closed = false,
+        reopened_by = p_reopened_by,
+        reopened_at = now(),
+        reopen_reason = p_reopen_reason
+    WHERE ano = p_ano AND mes = p_mes;
+END;
+$$ LANGUAGE plpgsql;
+
+
 
