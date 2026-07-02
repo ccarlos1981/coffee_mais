@@ -20,6 +20,136 @@ function parseVolume(str: string | null): number | null {
   return isNaN(num) ? null : num;
 }
 
+async function avaliarAlertasAcaoInvestimento(
+  supabase: any,
+  abrangencia: string,
+  familias_detalhes: any[],
+  skus_detalhes: any[],
+  rede: string,
+  codigo_matriz: string
+): Promise<any[]> {
+  const alertas: any[] = [];
+  const items = abrangencia === "Família" ? familias_detalhes : skus_detalhes;
+
+  // 1. Desconto acima de 40%
+  items.forEach((item: any) => {
+    const flat = Number(item.preco_flat) || 0;
+    const acao = Number(item.preco_acao) || 0;
+    const label = abrangencia === "Família" ? item.familia_nome : item.sku;
+    if (flat > 0) {
+      const desc = (flat - acao) / flat;
+      if (desc > 0.40) {
+        alertas.push({
+          tipo: "DESCONTO_ALTO",
+          mensagem: `Desconto de ${(desc * 100).toFixed(1)}% em ${label} acima do limite preventivo de 40%.`,
+          item: label,
+          valor: desc
+        });
+      }
+    }
+  });
+
+  // 2. Fetch past approved actions for history checks
+  const { data: pastActions } = await supabase
+    .from("cm_acoes_investimento")
+    .select("abrangencia, familias_detalhes, skus_detalhes, real_volume, roi, valor_investimento, real_margem, expectativa_volume")
+    .eq("codigo_matriz", codigo_matriz)
+    .gte("fase_atual", 5);
+
+  // Check Volume and ROI per item
+  for (const item of items) {
+    const label = abrangencia === "Família" ? item.familia_nome : item.sku;
+    const vol = Number(item.expectativa_volume) || 0;
+
+    let matchedVolumes: number[] = [];
+    let matchedROIs: number[] = [];
+
+    // Fallback 1: Rede + SKU/Família
+    if (pastActions) {
+      pastActions.forEach((pa: any) => {
+        const details = pa.abrangencia === "Família" ? pa.familias_detalhes : pa.skus_detalhes;
+        if (Array.isArray(details) && pa.abrangencia === abrangencia) {
+          details.forEach((d: any) => {
+            const detailLabel = pa.abrangencia === "Família" ? d.familia_nome : d.sku;
+            if (detailLabel === label) {
+              const pastVol = Number(pa.real_volume || d.expectativa_volume) || 0;
+              if (pastVol > 0) matchedVolumes.push(pastVol);
+              const pastRoi = Number(pa.roi || (Number(d.real_margem || 0) / Number(d.investimento || 1))) || 0;
+              if (pastRoi > 0) matchedROIs.push(pastRoi);
+            }
+          });
+        }
+      });
+    }
+
+    // Fallback 2: Rede General
+    if (matchedVolumes.length === 0 && pastActions) {
+      pastActions.forEach((pa: any) => {
+        const pastVol = Number(pa.real_volume || pa.expectativa_volume) || 0;
+        if (pastVol > 0) matchedVolumes.push(pastVol);
+        const pastRoi = Number(pa.roi) || 0;
+        if (pastRoi > 0) matchedROIs.push(pastRoi);
+      });
+    }
+
+    // Fallback 3: Category General (Overall past actions for same SKU/Family across all networks)
+    if (matchedVolumes.length === 0) {
+      const { data: catActions } = await supabase
+        .from("cm_acoes_investimento")
+        .select("abrangencia, familias_detalhes, skus_detalhes, real_volume, roi, expectativa_volume")
+        .gte("fase_atual", 5)
+        .limit(50);
+      if (catActions) {
+        catActions.forEach((pa: any) => {
+          const details = pa.abrangencia === "Família" ? pa.familias_detalhes : pa.skus_detalhes;
+          if (Array.isArray(details) && pa.abrangencia === abrangencia) {
+            details.forEach((d: any) => {
+              const detailLabel = pa.abrangencia === "Família" ? d.familia_nome : d.sku;
+              if (detailLabel === label) {
+                const pastVol = Number(pa.real_volume || d.expectativa_volume) || 0;
+                if (pastVol > 0) matchedVolumes.push(pastVol);
+                const pastRoi = Number(pa.roi) || 0;
+                if (pastRoi > 0) matchedROIs.push(pastRoi);
+              }
+            });
+          }
+        });
+      }
+    }
+
+    // Fallback 4: Sem alerta if matchedVolumes is empty
+
+    // Analyze volume
+    if (matchedVolumes.length > 0) {
+      const avgVol = matchedVolumes.reduce((a, b) => a + b, 0) / matchedVolumes.length;
+      if (vol > avgVol * 2) {
+        alertas.push({
+          tipo: "VOLUME_ALTO",
+          mensagem: `Volume de ${vol.toLocaleString('pt-BR')} para ${label} está muito acima da média histórica de ${Math.round(avgVol).toLocaleString('pt-BR')}.`,
+          item: label,
+          valor: vol,
+          media_historica: avgVol
+        });
+      }
+    }
+
+    // Analyze ROI
+    if (matchedROIs.length > 0) {
+      const avgRoi = matchedROIs.reduce((a, b) => a + b, 0) / matchedROIs.length;
+      if (avgRoi < 1.0) {
+        alertas.push({
+          tipo: "ROI_HISTORICO_RUIM",
+          mensagem: `ROI histórico para ${label} nesta rede/geral é crítico (${avgRoi.toFixed(2)} < 1.0).`,
+          item: label,
+          valor: avgRoi
+        });
+      }
+    }
+  }
+
+  return alertas;
+}
+
 // ─── Fase 1: Criar / Editar Ação (Comercial) ───────────────────────────
 
 export async function criarAcaoInvestimento(formData: FormData) {
@@ -35,6 +165,17 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
+  // Parse familias_detalhes (new multi-family JSONB)
+  let familias_detalhes: any = [];
+  if (abrangencia === "Família") {
+    const fam_str = formData.get("familias_detalhes") as string;
+    if (fam_str) {
+      try {
+        familias_detalhes = JSON.parse(fam_str);
+      } catch(e) {}
+    }
+  }
+
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {
     const skus_str = formData.get("skus_detalhes") as string;
@@ -45,28 +186,60 @@ export async function criarAcaoInvestimento(formData: FormData) {
     }
   }
 
+  // Backward compat: familia_produto as comma-separated string
   const familia_produto = formData.get("familia_produto") as string || null;
-  
-  const preco_flat = parseCurrency(formData.get("preco_flat") as string);
-  const preco_acao = parseCurrency(formData.get("preco_acao") as string);
-  const valor_investimento = parseCurrency(formData.get("valor_investimento") as string);
-  const expectativa_volume = parseVolume(formData.get("expectativa_volume") as string);
 
   if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
+  // Exclusive validation: Família OR SKU, never both
   if (abrangencia === "Família") {
-    if (!familia_produto) {
-      throw new Error("Para abrangência Família, Família de Produto é obrigatório.");
+    if (!familias_detalhes || familias_detalhes.length === 0) {
+      throw new Error("Para abrangência Família, ao menos uma família deve ser selecionada.");
     }
-  } else {
+    // Financial validations
+    for (const f of familias_detalhes) {
+      if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
+        throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
+      }
+      if (f.investimento_manual && !f.investimento_justificativa?.trim()) {
+        throw new Error(`Família ${f.familia_nome}: Justificativa obrigatória para override manual de investimento.`);
+      }
+      if (f.investimento_manual) {
+        const { data: { user } } = await supabase.auth.getUser();
+        f.investimento_override_by = user?.id || null;
+      }
+    }
+  } else if (abrangencia === "SKU") {
     if (!skus_detalhes || skus_detalhes.length === 0) {
       throw new Error("Para abrangência SKU, ao menos um SKU deve ser detalhado.");
+    }
+    for (const s of skus_detalhes) {
+      if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
+        throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
+      }
+      if (s.investimento_manual && !s.investimento_justificativa?.trim()) {
+        throw new Error(`SKU ${s.sku}: Justificativa obrigatória para override manual de investimento.`);
+      }
+      if (s.investimento_manual) {
+        const { data: { user } } = await supabase.auth.getUser();
+        s.investimento_override_by = user?.id || null;
+      }
     }
   }
 
   const is_planejamento = formData.get("is_planejamento") === "true";
+
+  // Evaluate alerts
+  const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
+    supabase,
+    abrangencia,
+    familias_detalhes,
+    skus_detalhes,
+    rede,
+    codigo_matriz
+  );
 
   const { error } = await supabase.from("cm_acoes_investimento").insert([
     {
@@ -76,16 +249,18 @@ export async function criarAcaoInvestimento(formData: FormData) {
       data_fim,
       tipo_acao,
       familia_produto,
-      preco_flat,
-      preco_acao,
-      valor_investimento,
-      expectativa_volume,
+      familias_detalhes,
+      preco_flat: null,
+      preco_acao: null,
+      valor_investimento: null,
+      expectativa_volume: null,
       abrangencia,
       tipo_pagamento,
       skus_detalhes,
       mes_referencia,
       fase_atual: 1,
-      is_planejamento
+      is_planejamento,
+      alertas_preventivos
     }
   ]);
 
@@ -112,6 +287,17 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
   
+  // Parse familias_detalhes (new multi-family JSONB)
+  let familias_detalhes: any = [];
+  if (abrangencia === "Família") {
+    const fam_str = formData.get("familias_detalhes") as string;
+    if (fam_str) {
+      try {
+        familias_detalhes = JSON.parse(fam_str);
+      } catch(e) {}
+    }
+  }
+
   let skus_detalhes: any = [];
   if (abrangencia === "SKU") {
     const skus_str = formData.get("skus_detalhes") as string;
@@ -123,27 +309,78 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   }
 
   const familia_produto = formData.get("familia_produto") as string || null;
-  
-  const preco_flat = parseCurrency(formData.get("preco_flat") as string);
-  const preco_acao = parseCurrency(formData.get("preco_acao") as string);
-  const valor_investimento = parseCurrency(formData.get("valor_investimento") as string);
-  const expectativa_volume = parseVolume(formData.get("expectativa_volume") as string);
 
   if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
+  // Exclusive validation: Família OR SKU, never both
   if (abrangencia === "Família") {
-    if (!familia_produto) {
-      throw new Error("Para abrangência Família, Família de Produto é obrigatório.");
+    if (!familias_detalhes || familias_detalhes.length === 0) {
+      throw new Error("Para abrangência Família, ao menos uma família deve ser selecionada.");
     }
-  } else {
+    for (const f of familias_detalhes) {
+      if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
+        throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
+      }
+      if (f.investimento_manual && !f.investimento_justificativa?.trim()) {
+        throw new Error(`Família ${f.familia_nome}: Justificativa obrigatória para override manual de investimento.`);
+      }
+      if (f.investimento_manual) {
+        const { data: { user } } = await supabase.auth.getUser();
+        f.investimento_override_by = user?.id || null;
+      }
+    }
+  } else if (abrangencia === "SKU") {
     if (!skus_detalhes || skus_detalhes.length === 0) {
       throw new Error("Para abrangência SKU, ao menos um SKU deve ser detalhado.");
+    }
+    for (const s of skus_detalhes) {
+      if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
+        throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
+      }
+      if (s.investimento_manual && !s.investimento_justificativa?.trim()) {
+        throw new Error(`SKU ${s.sku}: Justificativa obrigatória para override manual de investimento.`);
+      }
+      if (s.investimento_manual) {
+        const { data: { user } } = await supabase.auth.getUser();
+        s.investimento_override_by = user?.id || null;
+      }
     }
   }
 
   const is_planejamento = formData.get("is_planejamento") === "true";
+
+  // Check lock by status (fase_atual >= 5)
+  const { data: currentAction } = await supabase
+    .from("cm_acoes_investimento")
+    .select("fase_atual")
+    .eq("id", id)
+    .single();
+
+  if (currentAction && (currentAction.fase_atual || 1) >= 5) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Não autorizado.");
+    const { data: profile } = await supabase
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    const roleLower = profile?.role?.toLowerCase();
+    if (roleLower !== "admin" && roleLower !== "ceo" && roleLower !== "diretor") {
+      throw new Error("Esta ação está aprovada e bloqueada para edição. Somente diretores, CEO ou Admin podem reabrir ou alterar.");
+    }
+  }
+
+  // Evaluate alerts
+  const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
+    supabase,
+    abrangencia,
+    familias_detalhes,
+    skus_detalhes,
+    rede,
+    codigo_matriz
+  );
 
   const { error } = await supabase
     .from("cm_acoes_investimento")
@@ -154,15 +391,17 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
       data_fim,
       tipo_acao,
       familia_produto,
-      preco_flat,
-      preco_acao,
-      valor_investimento,
-      expectativa_volume,
+      familias_detalhes,
+      preco_flat: null,
+      preco_acao: null,
+      valor_investimento: null,
+      expectativa_volume: null,
       abrangencia,
       tipo_pagamento,
       skus_detalhes,
       mes_referencia,
-      is_planejamento
+      is_planejamento,
+      alertas_preventivos
     })
     .eq("id", id);
 
@@ -351,7 +590,7 @@ export async function enviarParaTrade(id: string) {
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Família / SKU:</td>
-                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familia_produto || "-")}</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familias_detalhes && actionView.familias_detalhes.length > 0 ? actionView.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (actionView.familia_produto || "-"))}</td>
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Mês Referência:</td>
@@ -570,7 +809,7 @@ export async function validarTrade(id: string, checklist: {
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Família / SKU:</td>
-                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familia_produto || "-")}</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familias_detalhes && actionView.familias_detalhes.length > 0 ? actionView.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (actionView.familia_produto || "-"))}</td>
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Mês Referência:</td>
@@ -773,7 +1012,7 @@ async function enviarEmailNotificacaoApuracao(
         <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; margin-bottom: 15px;">
           <tr style="border-bottom: 1px solid #f3f4f6;">
             <td style="padding: 6px 8px; color: #4b5563; width: 40%;">Família de Produto:</td>
-            <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${acao.familia_produto || "-"}</td>
+            <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${acao.familias_detalhes && acao.familias_detalhes.length > 0 ? acao.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (acao.familia_produto || "-")}</td>
           </tr>
           <tr style="border-bottom: 1px solid #f3f4f6;">
             <td style="padding: 6px 8px; color: #4b5563;">Preço Flat:</td>
@@ -1121,6 +1360,8 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  if (!user) throw new Error("Usuário não autenticado.");
+
   const updateData: any = {
     trade_conferido_em: new Date().toISOString(),
     trade_conferido_por: user?.email || "unknown",
@@ -1129,11 +1370,26 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
   };
 
   if (aprovado) {
-    // Aprovado → avança para Fase 5 (Financeiro)
+    // Fetch current action state for approved_snapshot
+    const { data: currentAction } = await supabase
+      .from("cm_acoes_investimento")
+      .select("*")
+      .eq("id", id)
+      .single();
+
     updateData.fase_atual = 5;
+    updateData.approved_snapshot = currentAction || null;
+    updateData.approved_alerts_snapshot = currentAction?.alertas_preventivos || null;
+    updateData.approved_by = user.id;
+    updateData.approved_at = new Date().toISOString();
+    updateData.approval_comment = observacao || null;
   } else {
+    if (!observacao?.trim()) {
+      throw new Error("Motivo da reprovação é obrigatório.");
+    }
     // Reprovado → volta para Fase 3 (Gerente refaz apuração)
     updateData.fase_atual = 3;
+    updateData.rejection_reason = observacao;
     // Limpar dados de apuração para refazer
     updateData.apuracao_preenchida_em = null;
     updateData.apuracao_preenchida_por = null;
@@ -1691,7 +1947,10 @@ export async function promoverPlanejamento(id: string) {
   return { success: true };
 }
 
-export async function marcarAcaoNaoAconteceu(id: string) {
+export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
+  if (!motivo || !motivo.trim()) {
+    throw new Error("Motivo do cancelamento é obrigatório.");
+  }
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -1737,6 +1996,7 @@ export async function marcarAcaoNaoAconteceu(id: string) {
         checklist_conferencia: false,
         trade_validado_em: null,
         trade_validado_por: null,
+        cancel_reason: motivo,
       })
       .eq("id", id);
 
@@ -1864,4 +2124,112 @@ export async function marcarAcaoNaoAconteceu(id: string) {
     console.error("Erro na action marcarAcaoNaoAconteceu:", error);
     throw error;
   }
+}
+
+export async function reabrirAcaoInvestimento(id: string, reason: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Não autorizado.");
+
+  if (!reason || !reason.trim()) {
+    throw new Error("Motivo da reabertura é obrigatório.");
+  }
+
+  // Check role
+  const { data: profile } = await supabase
+    .from("cm_user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const roleLower = profile?.role?.toLowerCase();
+  if (roleLower !== "admin" && roleLower !== "ceo" && roleLower !== "diretor") {
+    throw new Error("Apenas Admin, Diretores ou CEO podem reabrir uma ação aprovada.");
+  }
+
+  const { error } = await supabase
+    .from("cm_acoes_investimento")
+    .update({
+      is_reopened: true,
+      reopened_by: user.id,
+      reopened_at: new Date().toISOString(),
+      reopened_reason: reason
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Erro ao reabrir ação:", error);
+    throw new Error("Falha ao reabrir ação.");
+  }
+
+  // Record reopened audit log manually
+  await supabase.from("cm_audit_logs").insert({
+    table_name: "cm_acoes_investimento",
+    action: "REOPEN",
+    user_id: user.id,
+    new_data: { id, reopened_reason: reason }
+  });
+
+  revalidatePath("/investimento");
+  return { success: true };
+}
+
+export async function fecharAcaoInvestimento(
+  id: string, 
+  data: { 
+    real_volume: number; 
+    real_faturamento: number; 
+    real_margem: number;
+    action_result: string;
+    post_action_notes: string;
+    execution_score?: number;
+  }
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error("Não autorizado.");
+
+  // Fetch the current action to get total investment
+  const { data: action } = await supabase
+    .from("cm_acoes_investimento")
+    .select("valor_investimento, abrangencia, familias_detalhes, skus_detalhes")
+    .eq("id", id)
+    .single();
+
+  if (!action) throw new Error("Ação não encontrada.");
+
+  // Calculate investment
+  let totalInvestment = Number(action.valor_investimento) || 0;
+  if (totalInvestment === 0) {
+    if (action.abrangencia === "Família" && Array.isArray(action.familias_detalhes)) {
+      totalInvestment = action.familias_detalhes.reduce((acc: number, f: any) => acc + (Number(f.investimento) || 0) * (Number(f.expectativa_volume) || 0), 0);
+    } else if (action.abrangencia === "SKU" && Array.isArray(action.skus_detalhes)) {
+      totalInvestment = action.skus_detalhes.reduce((acc: number, s: any) => acc + (Number(s.investimento) || 0) * (Number(s.expectativa_volume) || 0), 0);
+    }
+  }
+
+  const roi = totalInvestment > 0 ? (data.real_margem / totalInvestment) : 0;
+
+  const { error } = await supabase
+    .from("cm_acoes_investimento")
+    .update({
+      real_volume: data.real_volume,
+      real_faturamento: data.real_faturamento,
+      real_margem: data.real_margem,
+      roi: roi,
+      roi_mode: "MANUAL",
+      action_result: data.action_result,
+      post_action_notes: data.post_action_notes,
+      execution_score: data.execution_score !== undefined ? data.execution_score : null,
+      fase_atual: 6 // Set to Completed (Concluído)
+    })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Erro ao fechar ação:", error);
+    throw new Error("Falha ao salvar dados de ROI pós-ação.");
+  }
+
+  revalidatePath("/investimento");
+  return { success: true };
 }

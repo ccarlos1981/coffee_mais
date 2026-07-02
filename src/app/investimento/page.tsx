@@ -27,6 +27,8 @@ import {
   AlertTriangle,
   List,
   X,
+  Lock,
+  Unlock,
   Pencil,
   CheckCircle,
   Clock,
@@ -37,7 +39,7 @@ import {
   Sparkles,
   HelpCircle
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -85,6 +87,14 @@ interface AcaoInvestimento {
   abrangencia?: string;
   tipo_pagamento?: string;
   skus_detalhes?: any[];
+  familias_detalhes?: Array<{
+    familia_id: string;
+    familia_nome: string;
+    preco_flat?: number | null;
+    preco_acao?: number | null;
+    investimento?: number | null;
+    expectativa_volume?: number | null;
+  }> | null;
   // Phase fields
   checklist_comunicacao?: boolean;
   checklist_logistica?: boolean;
@@ -120,6 +130,26 @@ interface AcaoInvestimento {
   financeiro_boleto_url?: string | null;
   financeiro_observacoes?: string | null;
   gerente_responsavel?: string | null;
+  approved_snapshot?: any;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  real_volume?: number | null;
+  real_faturamento?: number | null;
+  real_margem?: number | null;
+  roi?: number | null;
+  alertas_preventivos?: any;
+  is_reopened?: boolean | null;
+  reopened_by?: string | null;
+  reopened_at?: string | null;
+  reopened_reason?: string | null;
+  approval_comment?: string | null;
+  rejection_reason?: string | null;
+  cancel_reason?: string | null;
+  roi_mode?: string | null;
+  approved_alerts_snapshot?: any;
+  action_result?: string | null;
+  post_action_notes?: string | null;
+  execution_score?: number | null;
 }
 
 const FASE_CONFIG: Record<number, { label: string; sublabel: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
@@ -220,6 +250,77 @@ export default function InvestimentoPage() {
   const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedAction, setSelectedAction] = useState<AcaoInvestimento | null>(null);
+  const [realVolume, setRealVolume] = useState("");
+  const [realFaturamento, setRealFaturamento] = useState("");
+  const [realMargem, setRealMargem] = useState("");
+  const [actionResult, setActionResult] = useState("SUCESSO");
+  const [postActionNotes, setPostActionNotes] = useState("");
+  const [executionScore, setExecutionScore] = useState("");
+
+  useEffect(() => {
+    if (selectedAction) {
+      setRealVolume(selectedAction.real_volume?.toString() || "");
+      setRealFaturamento(selectedAction.real_faturamento?.toString() || "");
+      setRealMargem(selectedAction.real_margem?.toString() || "");
+      setActionResult(selectedAction.action_result || "SUCESSO");
+      setPostActionNotes(selectedAction.post_action_notes || "");
+      setExecutionScore(selectedAction.execution_score?.toString() || "");
+    } else {
+      setRealVolume("");
+      setRealFaturamento("");
+      setRealMargem("");
+      setActionResult("SUCESSO");
+      setPostActionNotes("");
+      setExecutionScore("");
+    }
+  }, [selectedAction?.id]);
+
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditExpanded, setAuditExpanded] = useState(false);
+
+  // Fetch audit logs when action selected
+  useEffect(() => {
+    if (!selectedAction?.id) {
+      setAuditLogs([]);
+      setAuditExpanded(false);
+      return;
+    }
+    const fetchAuditLogs = async () => {
+      setAuditLoading(true);
+      try {
+        const { data: logs } = await supabase
+          .from('cm_audit_logs')
+          .select('*')
+          .eq('table_name', 'cm_acoes_investimento')
+          .or(`new_data->>id.eq.${selectedAction.id},old_data->>id.eq.${selectedAction.id}`)
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (logs && logs.length > 0) {
+          // Resolve user names
+          const userIds = [...new Set(logs.map((l: any) => l.user_id).filter(Boolean))];
+          let userMap: Record<string, string> = {};
+          if (userIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('cm_user_profiles')
+              .select('id, nome')
+              .in('id', userIds);
+            if (profiles) {
+              profiles.forEach((p: any) => { userMap[p.id] = p.nome; });
+            }
+          }
+          setAuditLogs(logs.map((l: any) => ({ ...l, user_name: userMap[l.user_id] || 'Sistema' })));
+        } else {
+          setAuditLogs([]);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar auditoria:', err);
+      }
+      setAuditLoading(false);
+    };
+    fetchAuditLogs();
+  }, [selectedAction?.id]);
   const fetchBoletosDaRede = async (rede: string) => {
     const redeUpper = rede.toUpperCase().trim();
     const { data } = await supabase
@@ -455,7 +556,17 @@ export default function InvestimentoPage() {
   }, [data, userRole, userEmail]);
 
   const redesDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.rede))).sort(), [managerFilteredAcoes]);
-  const familiasDisponiveis = useMemo(() => Array.from(new Set(managerFilteredAcoes.map(d => d.familia_produto).filter(Boolean) as string[])).sort(), [managerFilteredAcoes]);
+  const familiasDisponiveis = useMemo(() => {
+    const fams = new Set<string>();
+    managerFilteredAcoes.forEach(d => {
+      if (d.familias_detalhes && d.familias_detalhes.length > 0) {
+        d.familias_detalhes.forEach(f => fams.add(f.familia_nome));
+      } else if (d.familia_produto) {
+        fams.add(d.familia_produto);
+      }
+    });
+    return Array.from(fams).sort();
+  }, [managerFilteredAcoes]);
 
   const isRegionalManager = userRole && userRole !== 'Admin' && userRole !== 'Financeiro' && userRole !== 'CEO' && userRole !== 'Trade';
 
@@ -855,6 +966,7 @@ export default function InvestimentoPage() {
         // Agrupamento de SKUs
         const groupedAcoes: any[] = [];
         const skuGroups: Record<string, any[]> = {};
+        const familiaGroups: Record<string, any[]> = {};
 
         parsedLines.forEach(line => {
           if (!line.valid) {
@@ -871,31 +983,9 @@ export default function InvestimentoPage() {
           }
 
           if (line.data.abrangencia === "Família") {
-            groupedAcoes.push({
-              originalRow: line.originalRow,
-              data: {
-                rede: line.data.rede,
-                codigo_matriz: line.data.codigo_matriz,
-                uf: line.data.uf,
-                gerente: line.data.gerente,
-                canal: line.data.canal,
-                tipo_acao: line.data.tipo_acao,
-                tipo_pagamento: line.data.tipo_pagamento,
-                mes_referencia: line.data.mes_referencia,
-                data_inicio: line.data.data_inicio,
-                data_fim: line.data.data_fim,
-                abrangencia: "Família",
-                familia_produto: line.data.familia_produto,
-                preco_flat: line.data.preco_flat,
-                preco_acao: line.data.preco_acao,
-                valor_investimento: line.data.valor_investimento,
-                expectativa_volume: line.data.expectativa_volume,
-                skus_detalhes: [],
-                fase_atual: 1
-              },
-              valid: true,
-              errors: []
-            });
+            const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
+            if (!familiaGroups[key]) familiaGroups[key] = [];
+            familiaGroups[key].push(line);
           } else {
             const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
             if (!skuGroups[key]) {
@@ -903,6 +993,65 @@ export default function InvestimentoPage() {
             }
             skuGroups[key].push(line);
           }
+        });
+
+        // Group Família lines
+        Object.entries(familiaGroups).forEach(([key, lines]) => {
+          const first = lines[0].data;
+          const famDetails = lines.map(line => {
+            const famNome = line.data.familia_produto || "";
+            const famId = famNome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+            return {
+              familia_id: famId,
+              familia_nome: famNome,
+              preco_flat: line.data.preco_flat,
+              preco_acao: line.data.preco_acao,
+              investimento: line.data.valor_investimento,
+              expectativa_volume: line.data.expectativa_volume,
+              _lineIndex: line.originalRow
+            };
+          });
+
+          const famNames = famDetails.map(f => f.familia_nome);
+          const duplicateFams = famNames.filter((item, index) => famNames.indexOf(item) !== index);
+          const groupErrors: string[] = [];
+          if (duplicateFams.length > 0) {
+            const dupLines = duplicateFams.map(dup => {
+              const lineNums = famDetails.filter(f => f.familia_nome === dup).map(f => f._lineIndex);
+              return `${dup} (linhas ${lineNums.join(", ")})`;
+            });
+            groupErrors.push(`Famílias duplicadas: ${Array.from(new Set(dupLines)).join("; ")}`);
+          }
+
+          // Remove _lineIndex before saving
+          const cleanFamDetails = famDetails.map(({ _lineIndex, ...rest }) => rest);
+
+          groupedAcoes.push({
+            originalRow: lines[0].originalRow,
+            data: {
+              rede: first.rede,
+              codigo_matriz: first.codigo_matriz,
+              uf: first.uf,
+              gerente: first.gerente,
+              canal: first.canal,
+              tipo_acao: first.tipo_acao,
+              tipo_pagamento: first.tipo_pagamento,
+              mes_referencia: first.mes_referencia,
+              data_inicio: first.data_inicio,
+              data_fim: first.data_fim,
+              abrangencia: "Família",
+              familia_produto: famNames.join(", "),
+              familias_detalhes: cleanFamDetails,
+              preco_flat: null,
+              preco_acao: null,
+              valor_investimento: null,
+              expectativa_volume: null,
+              skus_detalhes: [],
+              fase_atual: 1
+            },
+            valid: groupErrors.length === 0,
+            errors: groupErrors
+          });
         });
 
         Object.entries(skuGroups).forEach(([key, lines]) => {
@@ -1160,7 +1309,12 @@ export default function InvestimentoPage() {
     return managerFilteredAcoes.filter(r => {
       if (filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
       if (filterRede && r.rede !== filterRede) return false;
-      if (filterFamilia && r.familia_produto !== filterFamilia) return false;
+      if (filterFamilia) {
+        const hasFamilia = r.familias_detalhes && r.familias_detalhes.length > 0
+          ? r.familias_detalhes.some(f => f.familia_nome === filterFamilia)
+          : r.familia_produto === filterFamilia;
+        if (!hasFamilia) return false;
+      }
       if (filterDataInicio && r.data_inicio < filterDataInicio) return false;
       if (filterDataFim && r.data_inicio > filterDataFim) return false;
       if (filterMes && r.mes_referencia !== filterMes) return false;
@@ -1236,6 +1390,10 @@ export default function InvestimentoPage() {
     if (r.abrangencia === "SKU" && r.skus_detalhes) {
       return r.skus_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
     }
+    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
+      return r.familias_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+    }
+    // Fallback for legacy records
     return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
   };
 
@@ -1294,7 +1452,11 @@ export default function InvestimentoPage() {
       headers.join(";"),
       ...filteredData.map(row => {
         const val = getValorTotal(row);
-        const fam = row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familia_produto || "");
+        const fam = row.abrangencia === "SKU" 
+          ? "Múltiplos SKUs" 
+          : (row.familias_detalhes && row.familias_detalhes.length > 0 
+            ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
+            : (row.familia_produto || ""));
         return [
           row.codigo || "",
           new Date(row.created_at).toLocaleDateString("pt-BR"),
@@ -1716,16 +1878,28 @@ export default function InvestimentoPage() {
                           })()}
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                          {row.abrangencia === "SKU" ? "Múltiplos SKUs" : row.familia_produto}
+                          {row.abrangencia === "SKU" 
+                            ? "Múltiplos SKUs" 
+                            : (row.familias_detalhes && row.familias_detalhes.length > 0 
+                              ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
+                              : row.familia_produto)}
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
                           {formatCurrency(getValorTotal(row), false)}
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
-                          {row.abrangencia === "SKU" ? "-" : (row.preco_acao ? formatCurrency(row.preco_acao) : '-')}
+                          {row.abrangencia === "SKU" 
+                            ? "-" 
+                            : (row.familias_detalhes && row.familias_detalhes.length > 0
+                              ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].preco_acao ? formatCurrency(row.familias_detalhes[0].preco_acao) : '-') : 'Múltiplos')
+                              : (row.preco_acao ? formatCurrency(row.preco_acao) : '-'))}
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
-                          {row.abrangencia === "SKU" ? "-" : (row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-')}
+                          {row.abrangencia === "SKU" 
+                            ? "-" 
+                            : (row.familias_detalhes && row.familias_detalhes.length > 0
+                              ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].expectativa_volume ? row.familias_detalhes[0].expectativa_volume.toLocaleString('pt-BR') : '-') : 'Múltiplos')
+                              : (row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-'))}
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-center">
                           <div className="flex items-center justify-center gap-2">
@@ -1816,7 +1990,7 @@ export default function InvestimentoPage() {
                           {row.rede}
                           {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
                         </h3>
-                        <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : row.familia_produto}</p>
+                        <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map(f => f.familia_nome).join(", ") : row.familia_produto)}</p>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`px-2 py-1 rounded-md text-xs font-bold border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
@@ -2104,7 +2278,7 @@ export default function InvestimentoPage() {
 
                                       <div className="flex items-center justify-between text-[10px] text-muted gap-1">
                                         <span className="truncate max-w-[65%]">
-                                          {action.abrangencia === "SKU" ? "SKUs" : action.familia_produto}
+                                          {action.abrangencia === "SKU" ? "SKUs" : (action.familias_detalhes && action.familias_detalhes.length > 0 ? action.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : action.familia_produto)}
                                         </span>
                                         <span className="font-extrabold text-foreground flex-shrink-0">
                                           {formatCurrency(valor)}
@@ -2247,7 +2421,7 @@ export default function InvestimentoPage() {
                         {row.tipo_acao}
                       </span>
                       <span className="font-bold text-sm text-foreground group-hover:text-gold transition-colors truncate">{row.rede}</span>
-                      <span className="text-xs text-muted truncate hidden sm:inline">{row.abrangencia === "SKU" ? "SKUs" : row.familia_produto}</span>
+                      <span className="text-xs text-muted truncate hidden sm:inline">{row.abrangencia === "SKU" ? "SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map(f => f.familia_nome).join(", ") : row.familia_produto)}</span>
                     </div>
                     <span className="font-black text-sm text-foreground flex-shrink-0">
                       {formatCurrency(getValorTotal(row))}
@@ -2372,7 +2546,11 @@ export default function InvestimentoPage() {
                                 </td>
                                 <td className="p-2.5">
                                   {item.data.abrangencia === "Família" ? (
-                                    <span className="text-foreground-secondary">{item.data.familia_produto} — {item.data.expectativa_volume} un.</span>
+                                    <span className="text-foreground-secondary">
+                                      {item.data.familias_detalhes && item.data.familias_detalhes.length > 0 
+                                        ? item.data.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
+                                        : item.data.familia_produto}
+                                    </span>
                                   ) : (
                                     <span className="text-foreground-secondary">{item.data.skus_detalhes?.length || 0} SKU(s) detalhado(s)</span>
                                   )}
@@ -2467,9 +2645,9 @@ export default function InvestimentoPage() {
                       <p className="text-sm text-foreground/80 mt-0.5">
                         {selectedAction.abrangencia === "SKU" 
                           ? "Múltiplos SKUs" 
-                          : selectedAction.familia_produto === "KG" 
-                            ? "1KG" 
-                            : selectedAction.familia_produto}
+                          : (selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 
+                            ? selectedAction.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
+                            : selectedAction.familia_produto)}
                       </p>
                     </div>
                     <div className="text-right flex flex-col items-end">
@@ -2480,7 +2658,34 @@ export default function InvestimentoPage() {
                     {detailsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                   </div>
                 </button>
-
+                {selectedAction.cancel_reason && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-1">
+                    <span className="font-bold block">❌ Ação Cancelada / Não Aconteceu:</span>
+                    <p className="italic">"{selectedAction.cancel_reason}"</p>
+                  </div>
+                )}
+                {selectedAction.rejection_reason && (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-1">
+                    <span className="font-bold block">⚠️ Devolvida pelo Financeiro:</span>
+                    <p className="italic">"{selectedAction.rejection_reason}"</p>
+                  </div>
+                )}
+                {selectedAction.is_reopened && selectedAction.reopened_reason && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl text-xs space-y-1">
+                    <span className="font-bold block">🔓 Ação Reaberta:</span>
+                    <p className="italic">"{selectedAction.reopened_reason}"</p>
+                  </div>
+                )}
+                {selectedAction.alertas_preventivos && Array.isArray(selectedAction.alertas_preventivos) && selectedAction.alertas_preventivos.length > 0 && (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl text-xs space-y-1">
+                    <span className="font-bold block flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Alertas Preventivos Detectados:</span>
+                    <ul className="list-disc pl-4 space-y-0.5 mt-1">
+                      {selectedAction.alertas_preventivos.map((al: any, idx: number) => (
+                        <li key={idx}>{al.mensagem}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {detailsExpanded && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="bg-elevated p-3 rounded-xl border border-border">
@@ -2534,9 +2739,9 @@ export default function InvestimentoPage() {
                       <span className="font-bold text-foreground">
                         {selectedAction.abrangencia === "SKU" 
                           ? "Múltiplos SKUs" 
-                          : selectedAction.familia_produto === "KG" 
-                            ? "1KG" 
-                            : selectedAction.familia_produto}
+                          : (selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 
+                            ? selectedAction.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
+                            : selectedAction.familia_produto)}
                       </span>
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border col-span-2">
@@ -2550,7 +2755,37 @@ export default function InvestimentoPage() {
                       <span className="text-xs text-muted block mb-1">Valor do Investimento Total Estimado</span>
                       <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction), false)}</span>
                     </div>
-                    {selectedAction.abrangencia !== "SKU" && (
+                    {selectedAction.abrangencia !== "SKU" && selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 && (
+                      <div className="col-span-2 space-y-3 mt-2">
+                        <span className="text-xs text-muted block font-bold">Detalhes das Famílias</span>
+                        <div className="grid grid-cols-1 gap-2">
+                          {selectedAction.familias_detalhes.map((f: any, idx: number) => (
+                            <div key={idx} className="bg-background border border-border p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <span className="font-bold text-gold text-sm flex-1">{f.familia_nome}</span>
+                              <div className="flex flex-wrap gap-4 text-xs">
+                                <div className="flex flex-col">
+                                  <span className="text-muted">Flat</span>
+                                  <span className="font-medium text-foreground">{f.preco_flat ? formatCurrency(f.preco_flat) : '-'}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-muted">Ação</span>
+                                  <span className="font-medium text-foreground">{f.preco_acao ? formatCurrency(f.preco_acao) : '-'}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-muted">Inv.</span>
+                                  <span className="font-medium text-gold">{f.investimento ? formatCurrency(f.investimento, false) : '-'}</span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-muted">Vol.</span>
+                                  <span className="font-medium text-foreground">{f.expectativa_volume ? f.expectativa_volume : '-'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedAction.abrangencia !== "SKU" && (!selectedAction.familias_detalhes || selectedAction.familias_detalhes.length === 0) && (
                       <>
                         <div className="bg-elevated p-3 rounded-xl border border-border">
                           <span className="text-xs text-muted block mb-1">Preço Flat</span>
@@ -2602,6 +2837,118 @@ export default function InvestimentoPage() {
                     )}
                   </div>
                 )}
+
+                {/* Histórico de Alterações */}
+                <div className="pt-3 border-t border-border">
+                  <button
+                    onClick={() => setAuditExpanded(!auditExpanded)}
+                    className="w-full flex items-center justify-between text-xs text-muted font-bold hover:text-foreground transition-colors"
+                  >
+                    <span>Histórico de Alterações ({auditLogs.length})</span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${auditExpanded ? 'rotate-180' : ''}`} />
+                  </button>
+                  {auditExpanded && (
+                    <div className="mt-3 space-y-3 max-h-60 overflow-y-auto">
+                      {auditLoading ? (
+                        <p className="text-xs text-muted text-center py-4">Carregando...</p>
+                      ) : auditLogs.length === 0 ? (
+                        <p className="text-xs text-muted text-center py-4">Nenhum registro de auditoria</p>
+                      ) : (
+                        auditLogs.map((log, idx) => {
+                          const oldFam = log.old_data?.familias_detalhes || [];
+                          const newFam = log.new_data?.familias_detalhes || [];
+                          const oldSkus = log.old_data?.skus_detalhes || [];
+                          const newSkus = log.new_data?.skus_detalhes || [];
+                          
+                          // Build granular diff
+                          const diffs: string[] = [];
+                          const fields = ['fase_atual', 'rede', 'tipo_acao', 'tipo_pagamento', 'abrangencia', 'data_inicio', 'data_fim'];
+                          fields.forEach(f => {
+                            if (log.old_data && log.new_data && String(log.old_data[f] ?? '') !== String(log.new_data[f] ?? '')) {
+                              const labels: Record<string, string> = { fase_atual: 'Fase', rede: 'Rede', tipo_acao: 'Tipo', tipo_pagamento: 'Pagamento', abrangencia: 'Abrangência', data_inicio: 'Início', data_fim: 'Fim' };
+                              diffs.push(`${labels[f] || f}: ${log.old_data[f] ?? '–'} → ${log.new_data[f] ?? '–'}`);
+                            }
+                          });
+                          
+                          // Diff familias_detalhes granularly
+                          if (JSON.stringify(oldFam) !== JSON.stringify(newFam)) {
+                            const oldMap = new Map(oldFam.map((f: any) => [f.familia_nome || f.familia_id, f]));
+                            newFam.forEach((nf: any) => {
+                              const of_: any = oldMap.get(nf.familia_nome || nf.familia_id);
+                              if (!of_) {
+                                diffs.push(`+ ${nf.familia_nome} adicionada`);
+                              } else {
+                                ['preco_flat', 'preco_acao', 'investimento', 'expectativa_volume'].forEach(k => {
+                                  if (String(of_[k] ?? '') !== String(nf[k] ?? '')) {
+                                    const label = k === 'preco_flat' ? 'Flat' : k === 'preco_acao' ? 'Ação' : k === 'investimento' ? 'Inv.' : 'Vol.';
+                                    diffs.push(`${nf.familia_nome} ${label}: ${of_[k] ?? '–'} → ${nf[k] ?? '–'}`);
+                                  }
+                                });
+                              }
+                            });
+                            oldFam.forEach((of_: any) => {
+                              if (!newFam.find((nf: any) => (nf.familia_nome || nf.familia_id) === (of_.familia_nome || of_.familia_id))) {
+                                diffs.push(`− ${of_.familia_nome} removida`);
+                              }
+                            });
+                          }
+                          
+                          // Diff skus_detalhes granularly
+                          if (JSON.stringify(oldSkus) !== JSON.stringify(newSkus)) {
+                            const oldSkuMap = new Map(oldSkus.map((s: any) => [s.sku, s]));
+                            newSkus.forEach((ns: any) => {
+                              const os: any = oldSkuMap.get(ns.sku);
+                              if (!os) {
+                                diffs.push(`+ SKU ${ns.sku} adicionado`);
+                              } else {
+                                ['preco_flat', 'preco_acao', 'investimento', 'expectativa_volume'].forEach(k => {
+                                  if (String(os[k] ?? '') !== String(ns[k] ?? '')) {
+                                    const label = k === 'preco_flat' ? 'Flat' : k === 'preco_acao' ? 'Ação' : k === 'investimento' ? 'Inv.' : 'Vol.';
+                                    diffs.push(`SKU ${ns.sku} ${label}: ${os[k] ?? '–'} → ${ns[k] ?? '–'}`);
+                                  }
+                                });
+                              }
+                            });
+                            oldSkus.forEach((os: any) => {
+                              if (!newSkus.find((ns: any) => ns.sku === os.sku)) {
+                                diffs.push(`− SKU ${os.sku} removido`);
+                              }
+                            });
+                          }
+                          
+                          return (
+                            <div key={log.id || idx} className="bg-background border border-border rounded-xl p-3 space-y-1.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                    log.action === 'INSERT' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                                    log.action === 'DELETE' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                    'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                                  }`}>{log.action === 'INSERT' ? 'Criação' : log.action === 'DELETE' ? 'Exclusão' : 'Alteração'}</span>
+                                  <span className="text-[10px] text-muted">{log.user_name}</span>
+                                </div>
+                                <span className="text-[10px] text-muted">
+                                  {new Date(log.created_at).toLocaleDateString('pt-BR')} {new Date(log.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                              {diffs.length > 0 && (
+                                <div className="space-y-0.5">
+                                  {diffs.slice(0, 8).map((d, i) => (
+                                    <p key={i} className={`text-[10px] font-medium ${d.startsWith('+') ? 'text-green-400' : d.startsWith('−') ? 'text-red-400' : 'text-foreground/70'}`}>{d}</p>
+                                  ))}
+                                  {diffs.length > 8 && <p className="text-[10px] text-muted">... +{diffs.length - 8} alterações</p>}
+                                </div>
+                              )}
+                              {diffs.length === 0 && log.action !== 'INSERT' && (
+                                <p className="text-[10px] text-muted italic">Sem alterações detectáveis nos campos monitorados</p>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Phase Timeline */}
                 <div className="pt-3 border-t border-border">
@@ -2687,7 +3034,14 @@ export default function InvestimentoPage() {
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handlePhaseAction(selectedAction.id, () => marcarAcaoNaoAconteceu(selectedAction.id))}
+                        onClick={() => {
+                          const reason = prompt("Motivo obrigatório pelo qual a ação não aconteceu / cancelada:");
+                          if (reason && reason.trim()) {
+                            handlePhaseAction(selectedAction.id, () => marcarAcaoNaoAconteceu(selectedAction.id, reason));
+                          } else if (reason !== null) {
+                            alert("O motivo do cancelamento é obrigatório.");
+                          }
+                        }}
                         disabled={actionLoading === selectedAction.id}
                         className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                       >
@@ -3197,13 +3551,152 @@ export default function InvestimentoPage() {
                   )}
 
                   {(selectedAction.fase_atual || 1) === 6 && (
-                    <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
-                      <CheckCircle className="w-5 h-5 text-green-400" />
-                      <div>
-                        <span className="text-sm font-bold text-green-400">Ação Concluída</span>
-                        {selectedAction.financeiro_pago_em && (
-                          <span className="text-xs text-muted block">Pago em {new Date(selectedAction.financeiro_pago_em).toLocaleDateString('pt-BR')}</span>
+                    <div className="flex flex-col gap-3 mt-2">
+                      <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+                        <CheckCircle className="w-5 h-5 text-green-400" />
+                        <div>
+                          <span className="text-sm font-bold text-green-400">Ação Concluída</span>
+                          {selectedAction.financeiro_pago_em && (
+                            <span className="text-xs text-muted block">Pago em {new Date(selectedAction.financeiro_pago_em).toLocaleDateString('pt-BR')}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* ROI Pós-Ação Container */}
+                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3">
+                        <span className="text-sm font-bold text-foreground">Fechamento Real & ROI Pós-Ação</span>
+                        
+                        {selectedAction.roi !== null && selectedAction.roi !== undefined && (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between p-2.5 bg-background border border-border rounded-lg">
+                              <span className="text-xs text-muted font-medium">ROI da Ação:</span>
+                              <span className={`px-2 py-0.5 rounded text-xs font-black ${
+                                selectedAction.roi < 1.0 ? 'bg-red-500/15 text-red-400 border border-red-500/30' :
+                                selectedAction.roi <= 1.5 ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' :
+                                selectedAction.roi <= 3.0 ? 'bg-green-500/15 text-green-400 border border-green-500/30' :
+                                'bg-gold/15 text-gold border border-gold/30'
+                              }`}>
+                                ROI: {Number(selectedAction.roi).toFixed(2)} ({
+                                  selectedAction.roi < 1.0 ? 'Crítico' :
+                                  selectedAction.roi <= 1.5 ? 'Atenção' :
+                                  selectedAction.roi <= 3.0 ? 'Bom' : 'Excelente'
+                                })
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <div className="p-2 bg-background border border-border rounded-lg flex flex-col">
+                                <span className="text-muted font-medium">Resultado:</span>
+                                <span className="font-bold text-foreground mt-0.5">{selectedAction.action_result || 'N/A'}</span>
+                              </div>
+                              <div className="p-2 bg-background border border-border rounded-lg flex flex-col">
+                                <span className="text-muted font-medium">Score Execução:</span>
+                                <span className="font-bold text-foreground mt-0.5">{selectedAction.execution_score !== null && selectedAction.execution_score !== undefined ? `${selectedAction.execution_score}/100` : 'Pendente'}</span>
+                              </div>
+                            </div>
+
+                            {selectedAction.post_action_notes && (
+                              <div className="p-2.5 bg-background border border-border rounded-lg text-xs">
+                                <span className="text-muted font-medium block mb-0.5">Notas Operacionais:</span>
+                                <p className="text-foreground/80 italic">"{selectedAction.post_action_notes}"</p>
+                              </div>
+                            )}
+                          </div>
                         )}
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-medium text-muted mb-0.5">Volume Real</label>
+                            <input 
+                              type="number" 
+                              value={realVolume}
+                              onChange={(e) => setRealVolume(e.target.value)}
+                              placeholder="0"
+                              className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-muted mb-0.5">Faturamento Real</label>
+                            <input 
+                              type="number" 
+                              value={realFaturamento}
+                              onChange={(e) => setRealFaturamento(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-muted mb-0.5">Margem Real</label>
+                            <input 
+                              type="number" 
+                              value={realMargem}
+                              onChange={(e) => setRealMargem(e.target.value)}
+                              placeholder="0.00"
+                              className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-medium text-muted mb-0.5">Resultado Qualitativo</label>
+                            <select
+                              value={actionResult}
+                              onChange={(e) => setActionResult(e.target.value)}
+                              className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none"
+                            >
+                              <option value="SUCESSO">SUCESSO</option>
+                              <option value="PARCIAL">PARCIAL</option>
+                              <option value="FRACASSO">FRACASSO</option>
+                              <option value="NAO_EXECUTADA">NAO_EXECUTADA</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-medium text-muted mb-0.5">Execution Score (0-100)</label>
+                            <input 
+                              type="number" 
+                              min="0"
+                              max="100"
+                              value={executionScore}
+                              onChange={(e) => setExecutionScore(e.target.value)}
+                              placeholder="Score Promotor"
+                              className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-xs text-foreground focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-medium text-muted mb-0.5">Notas do Fechamento (Operacional)</label>
+                          <textarea
+                            value={postActionNotes}
+                            onChange={(e) => setPostActionNotes(e.target.value)}
+                            rows={2}
+                            placeholder="Descreva detalhes operacionais, problemas na loja, etc."
+                            className="w-full bg-background border border-border rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none"
+                          />
+                        </div>
+
+                        <button
+                          onClick={async () => {
+                            if (!realVolume || !realFaturamento || !realMargem) {
+                              alert("Por favor, preencha os campos de volume, faturamento e margem real.");
+                              return;
+                            }
+                            await handlePhaseAction(selectedAction.id, () => fecharAcaoInvestimento(selectedAction.id, {
+                              real_volume: Number(realVolume),
+                              real_faturamento: Number(realFaturamento),
+                              real_margem: Number(realMargem),
+                              action_result: actionResult,
+                              post_action_notes: postActionNotes,
+                              execution_score: executionScore ? Number(executionScore) : undefined
+                            }));
+                          }}
+                          disabled={actionLoading === selectedAction.id}
+                          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                        >
+                          {actionLoading === selectedAction.id ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                          Salvar Fechamento & ROI
+                        </button>
                       </div>
                     </div>
                   )}
@@ -3215,7 +3708,7 @@ export default function InvestimentoPage() {
                     >
                       Fechar
                     </button>
-                    {(selectedAction.fase_atual || 1) === 1 && (
+                    {((selectedAction.fase_atual || 1) === 1 || selectedAction.is_reopened) && (
                       <Link 
                         href={`/investimento/${selectedAction.id}/editar`}
                         className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-xl text-sm font-bold transition-all"
@@ -3223,6 +3716,23 @@ export default function InvestimentoPage() {
                         <Pencil className="w-4 h-4" />
                         Editar
                       </Link>
+                    )}
+                    {(selectedAction.fase_atual || 1) >= 5 && !selectedAction.is_reopened && ['admin', 'ceo', 'diretor'].includes(userRole?.toLowerCase() || '') && (
+                      <button
+                        onClick={() => {
+                          const reason = prompt("Digite o motivo obrigatório para a reabertura da ação:");
+                          if (reason && reason.trim()) {
+                            handlePhaseAction(selectedAction.id, () => reabrirAcaoInvestimento(selectedAction.id, reason));
+                          } else if (reason !== null) {
+                            alert("O motivo da reabertura é obrigatório.");
+                          }
+                        }}
+                        disabled={actionLoading === selectedAction.id}
+                        className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                      >
+                        <Unlock className="w-4 h-4" />
+                        Reabrir Ação
+                      </button>
                     )}
                   </div>
                 </div>
