@@ -187,7 +187,14 @@ export async function criarAcaoInvestimento(formData: FormData) {
   }
 
   // Backward compat: familia_produto as comma-separated string
-  const familia_produto = formData.get("familia_produto") as string || null;
+  let familia_produto = formData.get("familia_produto") as string || "";
+  if (!familia_produto) {
+    if (abrangencia === "SKU") {
+      familia_produto = "Múltiplos SKUs";
+    } else {
+      familia_produto = familias_detalhes.map((f: any) => f.familia_nome).join(", ");
+    }
+  }
 
   if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
@@ -229,6 +236,41 @@ export async function criarAcaoInvestimento(formData: FormData) {
     }
   }
 
+  // Calculate weighted averages for database columns to satisfy NOT NULL constraints
+  let total_volume = 0;
+  let total_investimento = 0;
+  let total_flat_weighted = 0;
+  let total_acao_weighted = 0;
+
+  if (abrangencia === "Família") {
+    for (const f of familias_detalhes) {
+      const vol = Number(f.expectativa_volume) || 0;
+      const inv = Number(f.investimento) || 0;
+      const flat = Number(f.preco_flat) || 0;
+      const acao = Number(f.preco_acao) || 0;
+      total_volume += vol;
+      total_investimento += inv * vol;
+      total_flat_weighted += flat * vol;
+      total_acao_weighted += acao * vol;
+    }
+  } else if (abrangencia === "SKU") {
+    for (const s of skus_detalhes) {
+      const vol = Number(s.expectativa_volume) || 0;
+      const inv = Number(s.investimento) || 0;
+      const flat = Number(s.preco_flat) || 0;
+      const acao = Number(s.preco_acao) || 0;
+      total_volume += vol;
+      total_investimento += inv * vol;
+      total_flat_weighted += flat * vol;
+      total_acao_weighted += acao * vol;
+    }
+  }
+
+  const valor_investimento = total_volume > 0 ? (total_investimento / total_volume) : 0;
+  const preco_flat = total_volume > 0 ? (total_flat_weighted / total_volume) : 0;
+  const preco_acao = total_volume > 0 ? (total_acao_weighted / total_volume) : 0;
+  const expectativa_volume = total_volume;
+
   const is_planejamento = formData.get("is_planejamento") === "true";
 
   // Evaluate alerts
@@ -250,10 +292,10 @@ export async function criarAcaoInvestimento(formData: FormData) {
       tipo_acao,
       familia_produto,
       familias_detalhes,
-      preco_flat: null,
-      preco_acao: null,
-      valor_investimento: null,
-      expectativa_volume: null,
+      preco_flat,
+      preco_acao,
+      valor_investimento,
+      expectativa_volume,
       abrangencia,
       tipo_pagamento,
       skus_detalhes,
@@ -308,7 +350,14 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     }
   }
 
-  const familia_produto = formData.get("familia_produto") as string || null;
+  let familia_produto = formData.get("familia_produto") as string || "";
+  if (!familia_produto) {
+    if (abrangencia === "SKU") {
+      familia_produto = "Múltiplos SKUs";
+    } else {
+      familia_produto = familias_detalhes.map((f: any) => f.familia_nome).join(", ");
+    }
+  }
 
   if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
@@ -372,6 +421,41 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     }
   }
 
+  // Calculate weighted averages for database columns to satisfy NOT NULL constraints
+  let total_volume = 0;
+  let total_investimento = 0;
+  let total_flat_weighted = 0;
+  let total_acao_weighted = 0;
+
+  if (abrangencia === "Família") {
+    for (const f of familias_detalhes) {
+      const vol = Number(f.expectativa_volume) || 0;
+      const inv = Number(f.investimento) || 0;
+      const flat = Number(f.preco_flat) || 0;
+      const acao = Number(f.preco_acao) || 0;
+      total_volume += vol;
+      total_investimento += inv * vol;
+      total_flat_weighted += flat * vol;
+      total_acao_weighted += acao * vol;
+    }
+  } else if (abrangencia === "SKU") {
+    for (const s of skus_detalhes) {
+      const vol = Number(s.expectativa_volume) || 0;
+      const inv = Number(s.investimento) || 0;
+      const flat = Number(s.preco_flat) || 0;
+      const acao = Number(s.preco_acao) || 0;
+      total_volume += vol;
+      total_investimento += inv * vol;
+      total_flat_weighted += flat * vol;
+      total_acao_weighted += acao * vol;
+    }
+  }
+
+  const valor_investimento = total_volume > 0 ? (total_investimento / total_volume) : 0;
+  const preco_flat = total_volume > 0 ? (total_flat_weighted / total_volume) : 0;
+  const preco_acao = total_volume > 0 ? (total_acao_weighted / total_volume) : 0;
+  const expectativa_volume = total_volume;
+
   // Evaluate alerts
   const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
     supabase,
@@ -392,10 +476,10 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
       tipo_acao,
       familia_produto,
       familias_detalhes,
-      preco_flat: null,
-      preco_acao: null,
-      valor_investimento: null,
-      expectativa_volume: null,
+      preco_flat,
+      preco_acao,
+      valor_investimento,
+      expectativa_volume,
       abrangencia,
       tipo_pagamento,
       skus_detalhes,
