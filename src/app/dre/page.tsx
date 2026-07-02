@@ -264,6 +264,9 @@ export default function DREPage() {
             </span>
           </Link>
           <Link href="/investimento" className="cm-nav-link">Investimento</Link>
+          <Link href="/dre/historico" className="cm-nav-link" style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 600, color: "var(--accent)" }}>
+            Histórico DRE
+          </Link>
           <Link href="/atendimento" className="cm-nav-link">
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
               <Users style={{ width: 12, height: 12 }} /> Atendimento
