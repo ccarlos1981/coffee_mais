@@ -166,6 +166,17 @@ export default async function HomePage() {
     redirect("/login");
   }
 
+  // Registrar log de acesso do usuário de forma silenciosa
+  try {
+    await supabase.from("cm_audit_logs").insert({
+      user_id: user.id,
+      action: "Acesso",
+      table_name: "dashboard"
+    });
+  } catch (e) {
+    console.error("Erro ao gravar log de acesso:", e);
+  }
+
   // Buscar processos obrigatórios pendentes de leitura
   const { data: mandatoryProcesses } = await supabase
     .from("cm_processos")

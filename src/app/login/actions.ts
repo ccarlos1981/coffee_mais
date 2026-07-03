@@ -39,13 +39,25 @@ export async function login(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) {
     return { error: error.message };
+  }
+
+  try {
+    if (data?.user) {
+      await supabase.from("cm_audit_logs").insert({
+        user_id: data.user.id,
+        action: "Login",
+        table_name: "auth"
+      });
+    }
+  } catch (e) {
+    console.error("Erro ao gravar log de login:", e);
   }
 
   revalidatePath("/", "layout");
