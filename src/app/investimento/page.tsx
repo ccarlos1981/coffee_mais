@@ -1546,26 +1546,125 @@ export default function InvestimentoPage() {
       return;
     }
 
-    const headers = ["Código", "Data Registro", "Rede", "Família", "Ação", "Data Início", "Data Fim", "Valor"];
+    const headers = [
+      "Código",
+      "Data Registro",
+      "Gerente Responsável",
+      "Rede",
+      "Código Matriz",
+      "Mês Referência",
+      "Abrangência",
+      "Tipo Ação",
+      "Fase Atual",
+      "Modo de Datas",
+      "Data Início",
+      "Data Fim",
+      "Família Produto",
+      "Preço Flat (Un/Média)",
+      "Preço Ação (Un/Média)",
+      "Valor Investimento",
+      "Expectativa Volume",
+      "Condição Pagamento",
+      "Número Acordo",
+      "Checklist Comunicação",
+      "Checklist Logística",
+      "Checklist Auditoria",
+      "Checklist Garantia",
+      "Checklist Conferência",
+      "Apuração Preenchida Em",
+      "Apuração Qtd Vendida",
+      "Apuração Valor Realizado",
+      "Apuração Número Acordo",
+      "Sem Boleto?",
+      "Boleto ID",
+      "Financeiro Pago Em",
+      "Financeiro Pago Por",
+      "Financeiro Observações",
+      "ROI",
+      "Volume Real",
+      "Faturamento Real",
+      "Margem Real",
+      "Aprovado Por",
+      "Aprovado Em",
+      "Motivo Reabertura",
+      "Comentário Aprovação",
+      "Motivo Rejeição",
+      "Motivo Cancelamento",
+      "Score de Execução",
+      "Família Detalhes",
+      "SKU Detalhes",
+      "Documento URL",
+      "Evidências URLs",
+      "Comprovante Pagamento URL",
+      "Boleto URL"
+    ];
+
+    const escapeCSV = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val);
+      return `"${str.replace(/"/g, '""')}"`;
+    };
     
     const csvContent = [
       headers.join(";"),
       ...filteredData.map(row => {
-        const val = getValorTotal(row);
         const fam = row.abrangencia === "SKU" 
           ? "Múltiplos SKUs" 
           : (row.familias_detalhes && row.familias_detalhes.length > 0 
             ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
             : (row.familia_produto || ""));
+
         return [
-          row.codigo || "",
-          new Date(row.created_at).toLocaleDateString("pt-BR"),
-          `"${row.rede}"`,
-          `"${fam}"`,
-          `"${row.tipo_acao}"`,
-          formatDate(row.data_inicio),
-          formatDate(row.data_fim),
-          val.toString().replace('.', ',')
+          escapeCSV(row.codigo),
+          escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+          escapeCSV(row.gerente_responsavel),
+          escapeCSV(row.rede),
+          escapeCSV(row.codigo_matriz),
+          escapeCSV(row.mes_referencia),
+          escapeCSV(row.abrangencia),
+          escapeCSV(row.tipo_acao),
+          escapeCSV(FASE_CONFIG[row.fase_atual || 1]?.label || "Planej. GRV"),
+          escapeCSV(row.date_mode || "single"),
+          escapeCSV(formatDate(row.data_inicio)),
+          escapeCSV(formatDate(row.data_fim)),
+          escapeCSV(fam),
+          escapeCSV(row.preco_flat != null ? row.preco_flat.toString().replace('.', ',') : ""),
+          escapeCSV(row.preco_acao != null ? row.preco_acao.toString().replace('.', ',') : ""),
+          escapeCSV(row.valor_investimento != null ? row.valor_investimento.toString().replace('.', ',') : ""),
+          escapeCSV(row.expectativa_volume != null ? row.expectativa_volume.toString() : ""),
+          escapeCSV(row.condicao_pagamento),
+          escapeCSV(row.numero_acordo),
+          escapeCSV(row.checklist_comunicacao ? "Sim" : "Não"),
+          escapeCSV(row.checklist_logistica ? "Sim" : "Não"),
+          escapeCSV(row.checklist_auditoria ? "Sim" : "Não"),
+          escapeCSV(row.checklist_garantia ? "Sim" : "Não"),
+          escapeCSV(row.checklist_conferencia ? "Sim" : "Não"),
+          escapeCSV(row.apuracao_preenchida_em ? new Date(row.apuracao_preenchida_em).toLocaleDateString("pt-BR") : ""),
+          escapeCSV(row.apuracao_qtd_vendida != null ? row.apuracao_qtd_vendida.toString() : ""),
+          escapeCSV(row.apuracao_valor_realizado != null ? row.apuracao_valor_realizado.toString().replace('.', ',') : ""),
+          escapeCSV(row.apuracao_numero_acordo),
+          escapeCSV(row.sem_boleto ? "Sim" : "Não"),
+          escapeCSV(row.apuracao_boleto_id),
+          escapeCSV(row.financeiro_pago_em ? new Date(row.financeiro_pago_em).toLocaleDateString("pt-BR") : ""),
+          escapeCSV(row.financeiro_pago_por),
+          escapeCSV(row.financeiro_observacoes),
+          escapeCSV(row.roi != null ? row.roi.toString().replace('.', ',') : ""),
+          escapeCSV(row.real_volume != null ? row.real_volume.toString() : ""),
+          escapeCSV(row.real_faturamento != null ? row.real_faturamento.toString().replace('.', ',') : ""),
+          escapeCSV(row.real_margem != null ? row.real_margem.toString().replace('.', ',') : ""),
+          escapeCSV(row.approved_by),
+          escapeCSV(row.approved_at ? new Date(row.approved_at).toLocaleDateString("pt-BR") : ""),
+          escapeCSV(row.reopened_reason),
+          escapeCSV(row.approval_comment),
+          escapeCSV(row.rejection_reason),
+          escapeCSV(row.cancel_reason),
+          escapeCSV(row.execution_score != null ? row.execution_score.toString() : ""),
+          escapeCSV(row.familias_detalhes ? JSON.stringify(row.familias_detalhes) : ""),
+          escapeCSV(row.skus_detalhes ? JSON.stringify(row.skus_detalhes) : ""),
+          escapeCSV(row.documento_url),
+          escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
+          escapeCSV(row.financeiro_comprovante_url),
+          escapeCSV(row.financeiro_boleto_url)
         ].join(";");
       })
     ].join("\n");
@@ -1574,7 +1673,7 @@ export default function InvestimentoPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `investimentos_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `investimentos_completo_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
