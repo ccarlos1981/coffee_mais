@@ -142,3 +142,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    3b388a5..151a869  main -> main
 [03/07/2026 05:15] ✅ Alterações enviadas com sucesso para o GitHub.
+[main f9f8e72] auto-save: 03/07/2026 11:48
+ 12 files changed, 1536 insertions(+), 37 deletions(-)
+ create mode 100644 src/app/api/gente-gestao/ferias/route.ts
+ create mode 100644 src/app/gente-gestao/ferias/FeriasCalendar.tsx
+ create mode 100644 src/app/gente-gestao/ferias/page.tsx
+ create mode 100644 supabase/migrations/20260703_create_ferias.sql
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[03/07/2026 11:48] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
