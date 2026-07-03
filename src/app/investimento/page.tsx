@@ -666,12 +666,20 @@ export default function InvestimentoPage() {
         action.codigo_matriz === m.codigo || 
         (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())
       ).length;
+      const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
+      const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
       return {
         ...m,
-        acoesCount
+        acoesCount,
+        faturamentoTotal
       };
-    }).sort((a, b) => b.acoesCount - a.acoesCount);
-  }, [myMatrizes, data]);
+    }).sort((a, b) => {
+      if (b.acoesCount !== a.acoesCount) {
+        return b.acoesCount - a.acoesCount;
+      }
+      return b.faturamentoTotal - a.faturamentoTotal;
+    });
+  }, [myMatrizes, data, faturamentoTotalMap]);
 
   const filteredMatrizesInView = useMemo(() => {
     if (!matrizSearch) return sortedMatrizesWithInvestimento;
@@ -2472,6 +2480,12 @@ export default function InvestimentoPage() {
                                   Gerente: <span className="text-foreground/80 font-medium">{m.gerente || 'Não definido'}</span>
                                   {" • "}
                                   Ações: <span className="text-gold font-bold">{m.acoesCount}</span>
+                                  {m.faturamentoTotal > 0 && (
+                                    <>
+                                      {" • "}
+                                      Fat: <span className="text-emerald-500 font-semibold">{formatCompactCurrency(m.faturamentoTotal)}</span>
+                                    </>
+                                  )}
                                 </span>
                               </div>
                             </td>
