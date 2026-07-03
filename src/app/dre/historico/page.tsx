@@ -2,398 +2,427 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Upload, DollarSign, BarChart3, TrendingUp, History, Lock, Unlock, ArrowLeft, Loader2, CheckCircle2, AlertCircle, RefreshCw, Undo2 } from "lucide-react";
+import { Filter, BarChart3, Upload, Home, DollarSign, History, Users, TrendingUp, Target, CalendarDays, Calendar, Package, CheckCircle2, Loader2, Lock, ShieldAlert } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { fecharMesDRE, reabrirMesDRE, desfazerImportacao } from "@/app/dre/historico/lancar/actions";
-import { createClient } from "@/lib/supabase/client";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
 
-export default function DREHistoricoPage() {
-  const [ano, setAno] = useState(new Date().getFullYear());
-  const [logs, setLogs] = useState<any[]>([]);
-  const [closures, setClosures] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+const YEARS = [2026, 2025, 2024, 2023];
 
-  // Modal de Fechamento
-  const [closeModal, setCloseModal] = useState<{ open: boolean; mes: number; notes: string } | null>(null);
-  // Modal de Reabertura
-  const [reopenModal, setReopenModal] = useState<{ open: boolean; mes: number; reason: string } | null>(null);
+interface FiltersData {
+  managers: string[];
+  familias: string[];
+  ufs: string[];
+  channels: string[];
+  products: string[];
+}
 
-  const supabase = createClient();
+export default function DREHistoricoAnualPage() {
+  const [filterYear, setFilterYear] = useState(new Date().getFullYear());
+  const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+  const [filterManager, setFilterManager] = useState("Todos");
+  const [filterFamilia, setFilterFamilia] = useState("Todos");
+  const [filterUf, setFilterUf] = useState("Todos");
+  const [filterChannel, setFilterChannel] = useState("Todos");
+  const [filterProduct, setFilterProduct] = useState("Todos");
 
-  const loadLogsAndClosures = useCallback(async () => {
-    setLoading(true);
+  const [filterOptions, setFilterOptions] = useState<FiltersData>({
+    managers: [], familias: [], ufs: [], channels: [], products: [],
+  });
+
+  const [monthlyRows, setMonthlyRows] = useState<any[]>([]);
+  const [monthlyUnitRows, setMonthlyUnitRows] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Sync DRE filters with localStorage
+  useEffect(() => {
+    const syncFilters = () => {
+      const savedManager = localStorage.getItem("db_filter_manager");
+      if (savedManager) {
+        const arr = JSON.parse(savedManager);
+        setFilterManager(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedFamilia = localStorage.getItem("db_filter_familia");
+      if (savedFamilia) {
+        const arr = JSON.parse(savedFamilia);
+        setFilterFamilia(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedUf = localStorage.getItem("db_filter_uf");
+      if (savedUf) {
+        const arr = JSON.parse(savedUf);
+        setFilterUf(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedChannel = localStorage.getItem("db_filter_channel");
+      if (savedChannel) {
+        const arr = JSON.parse(savedChannel);
+        setFilterChannel(arr.length > 0 ? arr[0] : "Todos");
+      }
+      const savedProduct = localStorage.getItem("db_filter_product");
+      if (savedProduct) {
+        const arr = JSON.parse(savedProduct);
+        setFilterProduct(arr.length > 0 ? arr[0] : "Todos");
+      }
+    };
+    syncFilters();
+    window.addEventListener("storage", syncFilters);
+    return () => window.removeEventListener("storage", syncFilters);
+  }, []);
+
+  const changeManager = (val: string) => {
+    setFilterManager(val);
+    localStorage.setItem("db_filter_manager", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeFamilia = (val: string) => {
+    setFilterFamilia(val);
+    localStorage.setItem("db_filter_familia", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeUf = (val: string) => {
+    setFilterUf(val);
+    localStorage.setItem("db_filter_uf", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeChannel = (val: string) => {
+    setFilterChannel(val);
+    localStorage.setItem("db_filter_channel", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+  const changeProduct = (val: string) => {
+    setFilterProduct(val);
+    localStorage.setItem("db_filter_product", JSON.stringify(val === "Todos" ? [] : [val]));
+  };
+
+  // Buscar opções de filtro do dashboard
+  const fetchFilters = useCallback(async () => {
     try {
-      // 1. Carregar logs de importação
-      const { data: logsData } = await supabase
-        .from("cm_dre_import_logs")
-        .select("*")
-        .order("started_at", { ascending: false });
+      const res = await fetch(`/api/dashboard/filters?year=${filterYear}&month=${filterMonth}`);
+      const json = await res.json();
+      if (json.success) setFilterOptions(json.filters);
+    } catch (e) { console.error(e); }
+  }, [filterYear, filterMonth]);
 
-      // 2. Carregar fechamentos do ano
-      const { data: closureData } = await supabase
-        .from("cm_dre_month_closure")
-        .select("*")
-        .eq("ano", ano);
-
-      setLogs(logsData || []);
-      
-      // Mapear closures de 1 a 12
-      const mappedClosures = Array.from({ length: 12 }, (_, idx) => {
-        const mesIdx = idx + 1;
-        const info = closureData?.find(c => c.mes === mesIdx);
-        return {
-          mes: mesIdx,
-          is_closed: info ? info.is_closed : false,
-          closed_by: info?.closed_by,
-          closed_at: info?.closed_at,
-          notes: info?.notes,
-          reopened_by: info?.reopened_by,
-          reopened_at: info?.reopened_at,
-          reopen_reason: info?.reopen_reason,
-          snapshot_checksum: info?.snapshot_checksum
-        };
+  // Buscar dados reais do DRE
+  const fetchDREData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const query = new URLSearchParams({
+        year: String(filterYear),
+        month: String(filterMonth),
+        manager: filterManager,
+        familia: filterFamilia,
+        uf: filterUf,
+        channel: filterChannel,
+        product: filterProduct,
       });
-      setClosures(mappedClosures);
+      const res = await fetch(`/api/dre?${query.toString()}`);
+      const json = await res.json();
+      if (json.success) {
+        setMonthlyRows(json.monthlyRows);
+        setMonthlyUnitRows(json.monthlyUnitRows);
+      }
     } catch (e) {
-      console.error("Erro ao carregar histórico:", e);
+      console.error("Erro ao carregar dados do DRE:", e);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
-  }, [ano, supabase]);
+  }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
 
   useEffect(() => {
-    loadLogsAndClosures();
-  }, [loadLogsAndClosures]);
+    Promise.resolve().then(() => {
+      fetchFilters();
+      fetchDREData();
+    });
+  }, [fetchFilters, fetchDREData]);
 
-  const handleRollback = async (logId: string) => {
-    if (!confirm("Tem certeza que deseja desfazer essa importação? Todas as linhas e versões geradas serão revertidas.")) return;
-    setActionLoading(`rollback_${logId}`);
-    try {
-      await desfazerImportacao(logId);
-      alert("Importação desfeita e versões anteriores recuperadas com sucesso!");
-      loadLogsAndClosures();
-    } catch (e: any) {
-      alert(`Falha no rollback: ${e.message}`);
-    } finally {
-      setActionLoading(null);
-    }
+  const handleClearFilters = () => {
+    setFilterManager("Todos");
+    setFilterFamilia("Todos");
+    setFilterUf("Todos");
+    setFilterChannel("Todos");
+    setFilterProduct("Todos");
+    localStorage.setItem("db_filter_manager", JSON.stringify([]));
+    localStorage.setItem("db_filter_familia", JSON.stringify([]));
+    localStorage.setItem("db_filter_uf", JSON.stringify([]));
+    localStorage.setItem("db_filter_channel", JSON.stringify([]));
+    localStorage.setItem("db_filter_product", JSON.stringify([]));
   };
 
-  const handleCloseMonth = async () => {
-    if (!closeModal) return;
-    setActionLoading(`close_${closeModal.mes}`);
-    try {
-      const result = await fecharMesDRE({
-        ano,
-        mes: closeModal.mes,
-        notes: closeModal.notes
-      });
-      alert(`Mês fechado com sucesso! Checksum gerado: ${result.checksum}`);
-      setCloseModal(null);
-      loadLogsAndClosures();
-    } catch (e: any) {
-      alert(`Falha ao fechar mês: ${e.message}`);
-    } finally {
-      setActionLoading(null);
-    }
+  const hasActiveFilters = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct].some(f => f !== "Todos");
+  const activeFilterCount = [filterManager, filterFamilia, filterUf, filterChannel, filterProduct].filter(f => f !== "Todos").length;
+
+  /* ─── Helpers ─── */
+  const fmtVal = (v: number) => {
+    if (v === 0 || isNaN(v) || !isFinite(v)) return "0";
+    const abs = Math.abs(v);
+    const formatted = abs.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return v < 0 ? `(${formatted})` : formatted;
   };
 
-  const handleReopenMonth = async () => {
-    if (!reopenModal) return;
-    if (!reopenModal.reason.trim()) {
-      alert("O motivo de reabertura é obrigatório.");
-      return;
-    }
-    setActionLoading(`reopen_${reopenModal.mes}`);
-    try {
-      await reabrirMesDRE({
-        ano,
-        mes: reopenModal.mes,
-        reason: reopenModal.reason
-      });
-      alert("Competência reaberta com sucesso!");
-      setReopenModal(null);
-      loadLogsAndClosures();
-    } catch (e: any) {
-      alert(`Falha ao reabrir: ${e.message}`);
-    } finally {
-      setActionLoading(null);
-    }
+  const fmtUnit = (v: number) => {
+    if (v === 0 || isNaN(v) || !isFinite(v)) return "0,00";
+    const abs = Math.abs(v);
+    const formatted = abs.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return v < 0 ? `(${formatted})` : formatted;
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Navbar */}
-      <nav className="cm-navbar px-6 py-4 flex items-center justify-between border-b border-border bg-elevated/50">
-        <div className="flex items-center gap-3">
-          <Link href="/dre" className="text-muted hover:text-foreground">
-            <ArrowLeft className="w-5 h-5" />
+    <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+      {/* NAVBAR */}
+      <nav className="cm-navbar" style={{ position: "relative" }}>
+        <Link href="/" className="cm-logo">Coffee<span>++</span></Link>
+        <div className="cm-nav-links">
+          <Link href="/" className="cm-nav-link" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginRight: 10, borderRight: "1px solid var(--border)", paddingRight: 15 }}>
+            <Home style={{ width: 14, height: 14, color: "var(--accent-gold)" }} />
+            <span>Menu</span>
           </Link>
-          <span className="font-bold text-lg text-foreground flex items-center gap-2">
-            <History className="w-5 h-5 text-gold" /> Histórico & Auditoria DRE
-          </span>
+          <Link href="/dre" className="cm-nav-link">Consolidado</Link>
+          <Link href="/dre/historico" className="cm-nav-link active">Mês a Mês</Link>
+          <Link href="/dre/consolidado" className="cm-nav-link">Gerentes</Link>
+          <Link href="/dre/rede" className="cm-nav-link">Redes</Link>
+          <Link href="/dre/historico/auditoria" className="cm-nav-link">Auditoria & Fechamento</Link>
         </div>
-        <ThemeToggle />
+        <div className="cm-nav-right">
+          <ThemeToggle />
+        </div>
       </nav>
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-6 space-y-8">
-        {/* Filtro de Ano */}
-        <div className="flex items-center justify-between bg-elevated border border-border p-4 rounded-xl">
-          <div className="flex items-center gap-4">
-            <span className="text-sm font-semibold">Exercício:</span>
-            <select
-              value={ano}
-              onChange={(e) => setAno(Number(e.target.value))}
-              className="bg-background border border-border px-3 py-1.5 rounded-lg text-sm font-mono [color-scheme:dark]"
-            >
-              {[2026, 2025, 2024, 2023].map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={loadLogsAndClosures}
-              disabled={loading}
-              className="p-2 border border-border rounded-lg hover:bg-border/30 text-muted hover:text-foreground disabled:opacity-50"
-              title="Recarregar"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+      {/* BODY: SIDEBAR + MAIN */}
+      <div className="dash-body">
+        {/* SIDEBAR */}
+        <aside className="dash-sidebar">
+          <p className="dash-sidebar-title" style={{ marginTop: 0 }}>Exercício</p>
+          <select title="Ano" value={filterYear} onChange={(e) => setFilterYear(Number(e.target.value))} className="dash-filter-select">
+            {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+
+          <p className="dash-sidebar-title">Gerente</p>
+          <select value={filterManager} onChange={(e) => changeManager(e.target.value)} className="dash-filter-select">
+            <option value="Todos">Todos</option>
+            {filterOptions.managers.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+
+          <p className="dash-sidebar-title">Família</p>
+          <select value={filterFamilia} onChange={(e) => changeFamilia(e.target.value)} className="dash-filter-select">
+            <option value="Todos">Todos</option>
+            {filterOptions.familias.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+
+          <p className="dash-sidebar-title">Região (UF)</p>
+          <select value={filterUf} onChange={(e) => changeUf(e.target.value)} className="dash-filter-select">
+            <option value="Todos">Todos</option>
+            {filterOptions.ufs.map(u => <option key={u} value={u}>{u}</option>)}
+          </select>
+
+          <p className="dash-sidebar-title">Canal</p>
+          <select value={filterChannel} onChange={(e) => changeChannel(e.target.value)} className="dash-filter-select">
+            <option value="Todos">Todos</option>
+            {filterOptions.channels.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+
+          <p className="dash-sidebar-title">Linha SKU</p>
+          <SearchableSelect
+            value={filterProduct}
+            onChange={changeProduct}
+            options={filterOptions.products}
+            className="dash-filter-select"
+            placeholder="Todos"
+          />
+
+          {hasActiveFilters && (
+            <button onClick={handleClearFilters} className="cm-btn-clear" style={{ marginTop: 12 }}>
+              <Filter style={{ width: 11, height: 11 }} />
+              Limpar Filtros ({activeFilterCount})
             </button>
-            <Link
-              href="/dre/upload"
-              className="px-4 py-1.5 bg-gold hover:bg-gold-hover text-black font-bold rounded-lg text-sm flex items-center gap-1.5 transition-colors"
-            >
-              <Upload className="w-4 h-4" /> Importar Excel
-            </Link>
-          </div>
-        </div>
+          )}
+        </aside>
 
-        {loading ? (
-          <div className="flex flex-col items-center justify-center p-12 space-y-4">
-            <Loader2 className="w-8 h-8 text-gold animate-spin" />
-            <span className="text-sm text-muted">Carregando logs e fechamentos...</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            {/* Seção 1: Fechamento de Competências (1/3 width) */}
-            <div className="lg:col-span-1 space-y-4">
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <Lock className="w-4 h-4 text-gold" /> Fechamento Mensal
-              </h3>
-              <div className="bg-elevated border border-border rounded-xl divide-y divide-border">
-                {closures.map((c) => (
-                  <div key={c.mes} className="p-4 flex items-center justify-between text-sm">
-                    <div>
-                      <span className="font-semibold block">{MONTHS[c.mes - 1]}</span>
-                      {c.is_closed ? (
-                        <div className="text-[10px] text-green-400 font-mono mt-0.5 flex flex-col">
-                          <span>Checksum: {c.snapshot_checksum?.slice(0, 8)}...</span>
-                          <span className="text-muted/80">Fechado em: {new Date(c.closed_at).toLocaleDateString()}</span>
-                        </div>
-                      ) : c.reopened_at ? (
-                        <div className="text-[10px] text-yellow-400 font-mono mt-0.5 flex flex-col">
-                          <span>Reaberto: {new Date(c.reopened_at).toLocaleDateString()}</span>
-                          <span className="text-muted/80 truncate max-w-[180px]">Motivo: {c.reopen_reason}</span>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-muted font-mono mt-0.5">Sem fechamento registrado</span>
-                      )}
-                    </div>
-                    <div>
-                      {c.is_closed ? (
-                        <button
-                          onClick={() => setReopenModal({ open: true, mes: c.mes, reason: "" })}
-                          disabled={actionLoading === `reopen_${c.mes}`}
-                          className="px-2.5 py-1 text-xs border border-yellow-500/30 text-yellow-500 hover:bg-yellow-500/10 rounded-lg flex items-center gap-1 transition-colors"
-                        >
-                          <Unlock className="w-3.5 h-3.5" /> Reabrir
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => setCloseModal({ open: true, mes: c.mes, notes: "" })}
-                          disabled={actionLoading === `close_${c.mes}`}
-                          className="px-2.5 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg flex items-center gap-1 transition-colors"
-                        >
-                          <Lock className="w-3.5 h-3.5" /> Fechar
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+        {/* MAIN CONTENT */}
+        <main className="dash-content" style={{ maxWidth: 1200, margin: "0 auto" }}>
+          {/* Page Header */}
+          <div style={{ display: "flex", justifyContent: "between", alignItems: "center", marginBottom: 15, width: "100%", flexWrap: "wrap", gap: 10 }}>
+            <div>
+              <h2 style={{ fontSize: "1.2rem", fontWeight: 800, color: "var(--foreground)", margin: 0, textTransform: "uppercase" }}>
+                DRE — Mês a Mês ({filterYear})
+              </h2>
+              <p style={{ fontSize: "0.68rem", color: "var(--foreground-muted)", margin: "2px 0 0 0" }}>
+                *Valores absolutos em R$ Mil / Volume em Toneladas
+              </p>
             </div>
+          </div>
 
-            {/* Seção 2: Histórico de Importações (2/3 width) */}
-            <div className="lg:col-span-2 space-y-4">
-              <h3 className="text-base font-bold text-foreground flex items-center gap-2">
-                <History className="w-4 h-4 text-gold" /> Log de Importações
-              </h3>
-
-              <div className="bg-elevated border border-border rounded-xl overflow-hidden overflow-x-auto">
-                <table className="w-full text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-background/80 text-muted border-b border-border">
-                      <th className="p-3 font-semibold">Origem / Arquivo</th>
-                      <th className="p-3 font-semibold">Data / Hora</th>
-                      <th className="p-3 font-semibold">Status</th>
-                      <th className="p-3 font-semibold">Linhas</th>
-                      <th className="p-3 font-semibold text-right">Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
-                    {logs.length === 0 ? (
+          {isLoading ? (
+            <div className="glass-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "60px 20px" }}>
+              <Loader2 className="animate-spin text-gold" style={{ width: 32, height: 32 }} />
+              <span style={{ fontSize: "0.85rem", color: "var(--foreground-muted)" }}>Carregando histórico do DRE...</span>
+            </div>
+          ) : (
+            <>
+              {/* Tabela P&L Mês a Mês */}
+              <div className="glass-card" style={{ overflow: "hidden", padding: 0 }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 980 }}>
+                    <colgroup>
+                      <col style={{ width: "15%" }} />
+                      {MONTHS.map((_, i) => <col key={i} style={{ width: `${77/12}%` }} />)}
+                      <col style={{ width: "8%" }} />
+                    </colgroup>
+                    <thead>
                       <tr>
-                        <td colSpan={5} className="p-8 text-center text-muted">
-                          Nenhuma importação encontrada.
-                        </td>
+                        <th style={{ textAlign: "left", padding: "4px 6px", fontSize: "0.68rem" }}>P&L — {filterYear}</th>
+                        {MONTHS.map((m, i) => (
+                          <th key={i} style={{
+                            textAlign: "center",
+                            padding: "4px 5px",
+                            fontSize: "0.65rem",
+                            borderLeft: "1px solid var(--border)",
+                            background: i === filterMonth - 1 ? "rgba(184,134,11,0.12)" : "transparent",
+                            color: i === filterMonth - 1 ? "var(--accent-gold)" : undefined,
+                            fontWeight: i === filterMonth - 1 ? 700 : undefined,
+                          }}>
+                            {m.slice(0, 3)}
+                          </th>
+                        ))}
+                        <th style={{
+                          textAlign: "center",
+                          padding: "4px 5px",
+                          fontSize: "0.65rem",
+                          borderLeft: "2px solid var(--border)",
+                          background: "rgba(128,128,128,0.12)",
+                          color: "var(--accent-gold)",
+                          fontWeight: 700,
+                        }}>
+                          ACUM
+                        </th>
                       </tr>
-                    ) : (
-                      logs.map((log) => {
-                        const statusColors: any = {
-                          success: "bg-green-500/10 text-green-400 border-green-500/30",
-                          error: "bg-red-500/10 text-red-400 border-red-500/30",
-                          rolled_back: "bg-yellow-500/10 text-yellow-400 border-yellow-500/30",
-                          uploaded: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-                          parsing: "bg-purple-500/10 text-purple-400 border-purple-500/30",
-                          normalizing: "bg-indigo-500/10 text-indigo-400 border-indigo-500/30",
-                          syncing_bigquery: "bg-orange-500/10 text-orange-400 border-orange-500/30"
+                    </thead>
+                    <tbody>
+                      {monthlyRows.map((row, ri) => {
+                        const rowBg = row.isHighlight ? "rgba(128,128,128,0.1)" : "transparent";
+                        const rowStyle: React.CSSProperties = {
+                          fontWeight: row.isBold ? 700 : 400,
+                          background: rowBg,
+                          ...(row.isBold ? { borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)" } : {}),
                         };
-
                         return (
-                          <tr key={log.id} className="hover:bg-background/20 font-mono text-xs">
-                            <td className="p-3">
-                              <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] uppercase font-bold mr-2 ${
-                                log.source === 'bigquery' ? 'bg-blue-600/20 text-blue-400' : 'bg-green-600/20 text-green-400'
-                              }`}>
-                                {log.source}
-                              </span>
-                              <span className="text-foreground font-sans font-medium">{log.filename}</span>
+                          <tr key={ri} style={rowStyle}>
+                            <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
+                              {row.label}
                             </td>
-                            <td className="p-3 text-muted">
-                              {new Date(log.started_at).toLocaleString()}
-                            </td>
-                            <td className="p-3">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full border text-[10px] font-semibold ${statusColors[log.status] || "border-border text-muted"}`}>
-                                {log.status}
-                              </span>
-                            </td>
-                            <td className="p-3 text-foreground font-semibold">
-                              {log.rows_imported}
-                            </td>
-                            <td className="p-3 text-right">
-                              {log.status === "success" && (
-                                <button
-                                  onClick={() => handleRollback(log.id)}
-                                  disabled={actionLoading === `rollback_${log.id}`}
-                                  className="text-xs text-yellow-500 hover:text-yellow-400 font-bold flex items-center gap-1 ml-auto border border-yellow-500/20 px-2 py-1 rounded hover:bg-yellow-500/5 disabled:opacity-50"
-                                >
-                                  {actionLoading === `rollback_${log.id}` ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Undo2 className="w-3.5 h-3.5" />
-                                  )}
-                                  Desfazer
-                                </button>
-                              )}
-                              {log.status === "error" && log.error_log && (
-                                <div className="text-[10px] text-red-400 text-left max-w-xs truncate" title={log.error_log}>
-                                  {log.error_log}
-                                </div>
-                              )}
+                            {(row.months || []).map((val: number, mi: number) => (
+                              <td key={mi} style={{
+                                textAlign: "center",
+                                padding: "3px 5px",
+                                borderLeft: "1px solid var(--border)",
+                                fontWeight: row.isBold ? 700 : 400,
+                                background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
+                                color: val < 0 ? "#dc143c" : undefined,
+                              }}>
+                                {fmtVal(val)}
+                              </td>
+                            ))}
+                            <td style={{
+                              textAlign: "center",
+                              padding: "3px 5px",
+                              borderLeft: "2px solid var(--border)",
+                              fontWeight: 700,
+                              background: "rgba(128,128,128,0.06)",
+                              color: row.acum < 0 ? "#dc143c" : undefined,
+                            }}>
+                              {fmtVal(row.acum || 0)}
                             </td>
                           </tr>
                         );
-                      })
-                    )}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
 
-          </div>
-        )}
-      </main>
-
-      {/* Modal Fechamento */}
-      {closeModal?.open && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-xs">
-          <div className="bg-elevated border border-border p-6 rounded-2xl max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <Lock className="w-5 h-5 text-green-500" /> Fechar Mês {MONTHS[closeModal.mes - 1]} / {ano}
-            </h3>
-            <p className="text-sm text-muted">
-              Ao fechar o mês, os dados serão congelados e o snapshot consolidado com checksum MD5 será gerado.
-            </p>
-            <div>
-              <label className="text-xs text-muted block mb-1">Notas de Fechamento (Opcional)</label>
-              <textarea
-                value={closeModal.notes}
-                onChange={(e) => setCloseModal({ ...closeModal, notes: e.target.value })}
-                placeholder="Ex: Números consolidados após auditoria fiscal..."
-                className="w-full bg-background border border-border p-2.5 rounded-xl text-sm min-h-[80px] [color-scheme:dark]"
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setCloseModal(null)}
-                className="px-4 py-2 border border-border hover:bg-border/30 rounded-xl text-sm"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleCloseMonth}
-                className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm"
-              >
-                Confirmar Fechamento
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Reabertura */}
-      {reopenModal?.open && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-xs">
-          <div className="bg-elevated border border-border p-6 rounded-2xl max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <Unlock className="w-5 h-5 text-yellow-500" /> Reabrir Mês {MONTHS[reopenModal.mes - 1]} / {ano}
-            </h3>
-            <p className="text-sm text-muted">
-              A reabertura é um processo auditado. Você deve justificar a necessidade de reabrir este mês.
-            </p>
-            <div>
-              <label className="text-xs text-muted block mb-1">Justificativa de Reabertura (Obrigatório)</label>
-              <textarea
-                value={reopenModal.reason}
-                onChange={(e) => setReopenModal({ ...reopenModal, reason: e.target.value })}
-                placeholder="Ex: Necessidade de ajustar o CMV lançado na planilha de custos do gerente..."
-                className="w-full bg-background border border-border p-2.5 rounded-xl text-sm min-h-[80px] [color-scheme:dark]"
-              />
-            </div>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setReopenModal(null)}
-                className="px-4 py-2 border border-border hover:bg-border/30 rounded-xl text-sm"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleReopenMonth}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white font-bold rounded-xl text-sm"
-              >
-                Confirmar Reabertura
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              {/* Indicadores Unitários — Mensal */}
+              <div className="glass-card" style={{ overflow: "hidden", padding: 0, marginTop: 10 }}>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table" style={{ fontSize: "0.7rem", borderCollapse: "collapse", tableLayout: "fixed", width: "100%", minWidth: 980 }}>
+                    <colgroup>
+                      <col style={{ width: "15%" }} />
+                      {MONTHS.map((_, i) => <col key={i} style={{ width: `${77/12}%` }} />)}
+                      <col style={{ width: "8%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: "4px 6px", fontSize: "0.68rem" }}>Indicadores — {filterYear}</th>
+                        {MONTHS.map((m, i) => (
+                          <th key={i} style={{
+                            textAlign: "center",
+                            padding: "4px 5px",
+                            fontSize: "0.65rem",
+                            borderLeft: "1px solid var(--border)",
+                            background: i === filterMonth - 1 ? "rgba(184,134,11,0.12)" : "transparent",
+                            color: i === filterMonth - 1 ? "var(--accent-gold)" : undefined,
+                            fontWeight: i === filterMonth - 1 ? 700 : undefined,
+                          }}>
+                            {m.slice(0, 3)}
+                          </th>
+                        ))}
+                        <th style={{
+                          textAlign: "center",
+                          padding: "4px 5px",
+                          fontSize: "0.65rem",
+                          borderLeft: "2px solid var(--border)",
+                          background: "rgba(128,128,128,0.12)",
+                          color: "var(--accent-gold)",
+                          fontWeight: 700,
+                        }}>
+                          ACUM
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlyUnitRows.map((row, ri) => {
+                        const rowStyle: React.CSSProperties = row.isBold
+                          ? { fontWeight: 700, background: "rgba(128,128,128,0.1)", borderTop: "1px solid var(--border)" }
+                          : {};
+                        const display = row.isPercent
+                          ? (v: number) => (v === undefined || v === null || isNaN(v) ? "0.0%" : `${v.toFixed(1)}%`)
+                          : (v: number) => (v === undefined || v === null || isNaN(v) ? "0,00" : fmtUnit(v));
+                        return (
+                          <tr key={ri} style={rowStyle}>
+                            <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
+                              {row.label}
+                            </td>
+                            {(row.months || []).map((val: number, mi: number) => (
+                              <td key={mi} style={{
+                                textAlign: "center",
+                                padding: "3px 5px",
+                                borderLeft: "1px solid var(--border)",
+                                fontWeight: row.isBold ? 700 : 400,
+                                background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
+                                color: val < 0 ? "#dc143c" : undefined,
+                              }}>
+                                {display(val)}
+                              </td>
+                            ))}
+                            <td style={{
+                              textAlign: "center",
+                              padding: "3px 5px",
+                              borderLeft: "2px solid var(--border)",
+                              fontWeight: 700,
+                              background: "rgba(128,128,128,0.06)",
+                              color: row.acum < 0 ? "#dc143c" : undefined,
+                            }}>
+                              {display(row.acum || 0)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </main>
+      </div>
     </div>
   );
 }

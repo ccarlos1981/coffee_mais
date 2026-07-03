@@ -1433,6 +1433,25 @@ export default function InvestimentoPage() {
     }).format(value);
   };
 
+  const getPrecoAcaoStr = (action: AcaoInvestimento) => {
+    if (action.abrangencia === "SKU") {
+      if (action.skus_detalhes && action.skus_detalhes.length > 0) {
+        if (action.skus_detalhes.length === 1) {
+          return action.skus_detalhes[0].preco_acao ? formatCurrency(action.skus_detalhes[0].preco_acao) : '-';
+        }
+        return 'Múltiplos';
+      }
+      return '-';
+    } else if (action.familias_detalhes && action.familias_detalhes.length > 0) {
+      if (action.familias_detalhes.length === 1) {
+        return action.familias_detalhes[0].preco_acao ? formatCurrency(action.familias_detalhes[0].preco_acao) : '-';
+      }
+      return 'Múltiplos';
+    } else {
+      return action.preco_acao ? formatCurrency(action.preco_acao) : '-';
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "-";
     const [year, month, day] = dateStr.split("-");
@@ -2292,6 +2311,9 @@ export default function InvestimentoPage() {
                                             : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
                                         }`}>
                                           {action.tipo_acao}
+                                        </span>
+                                        <span className="text-[9px] font-medium text-foreground">
+                                          P.Ação: {getPrecoAcaoStr(action)}
                                         </span>
                                       </div>
                                     </div>

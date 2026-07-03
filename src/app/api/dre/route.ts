@@ -108,17 +108,17 @@ export async function GET(request: Request) {
 
     // Formatar linhas para a tabela comparativa
     const dreRows = [
-      { label: "Volume (Tons)", actual: actual.volume, budget: budget.volume, prevMonth: prevMonth.volume, prevYear: prevYear.volume },
-      { label: "Receita Bruta", actual: actual.receita_bruta, budget: budget.receita_bruta, prevMonth: prevMonth.receita_bruta, prevYear: prevYear.receita_bruta, isHighlight: true },
-      { label: "Impostos", actual: -actual.impostos, budget: -budget.impostos, prevMonth: -prevMonth.impostos, prevYear: -prevYear.impostos },
-      { label: "Invest. Comerciais", actual: -actual.investimento_comercial, budget: -budget.investimento_comercial, prevMonth: -prevMonth.investimento_comercial, prevYear: -prevYear.investimento_comercial },
-      { label: "Receita Líquida", actual: actual.receita_liquida, budget: budget.receita_liquida, prevMonth: prevMonth.receita_liquida, prevYear: prevYear.receita_liquida, isBold: true, isHighlight: true },
-      { label: "Custo de Produtos", actual: -actual.custo_produtos, budget: -budget.custo_produtos, prevMonth: -prevMonth.custo_produtos, prevYear: -prevYear.custo_produtos },
-      { label: "Fretes", actual: -actual.frete, budget: -budget.frete, prevMonth: -prevMonth.frete, prevYear: -prevYear.frete },
-      { label: "Mrg de Contribuição", actual: actual.margem_contribuicao, budget: budget.margem_contribuicao, prevMonth: prevMonth.margem_contribuicao, prevYear: prevYear.margem_contribuicao, isBold: true, isHighlight: true },
-      { label: "DGA", actual: -actual.dga, budget: -budget.dga, prevMonth: -prevMonth.dga, prevYear: -prevYear.dga },
-      { label: "Custo Rede", actual: -actual.custo_rede, budget: -budget.custo_rede, prevMonth: -prevMonth.custo_rede, prevYear: -prevYear.custo_rede },
-      { label: "EBITDA", actual: actual.ebitda, budget: budget.ebitda, prevMonth: prevMonth.ebitda, prevYear: prevYear.ebitda, isBold: true, isHighlight: true },
+      { label: "Volume (Tons)", actual: actual.volume, forecast: budget.volume, prevMonth: prevMonth.volume, prevYear: prevYear.volume },
+      { label: "Receita Bruta", actual: actual.receita_bruta, forecast: budget.receita_bruta, prevMonth: prevMonth.receita_bruta, prevYear: prevYear.receita_bruta, isHighlight: true },
+      { label: "Impostos", actual: -actual.impostos, forecast: -budget.impostos, prevMonth: -prevMonth.impostos, prevYear: -prevYear.impostos },
+      { label: "Invest. Comerciais", actual: -actual.investimento_comercial, forecast: -budget.investimento_comercial, prevMonth: -prevMonth.investimento_comercial, prevYear: -prevYear.investimento_comercial },
+      { label: "Receita Líquida", actual: actual.receita_liquida, forecast: budget.receita_liquida, prevMonth: prevMonth.receita_liquida, prevYear: prevYear.receita_liquida, isBold: true, isHighlight: true },
+      { label: "Custo de Produtos", actual: -actual.custo_produtos, forecast: -budget.custo_produtos, prevMonth: -prevMonth.custo_produtos, prevYear: -prevYear.custo_produtos },
+      { label: "Fretes", actual: -actual.frete, forecast: -budget.frete, prevMonth: -prevMonth.frete, prevYear: -prevYear.frete },
+      { label: "Mrg de Contribuição", actual: actual.margem_contribuicao, forecast: budget.margem_contribuicao, prevMonth: prevMonth.margem_contribuicao, prevYear: prevYear.margem_contribuicao, isBold: true, isHighlight: true },
+      { label: "DGA", actual: -actual.dga, forecast: -budget.dga, prevMonth: -prevMonth.dga, prevYear: -prevYear.dga },
+      { label: "Custo Rede", actual: -actual.custo_rede, forecast: -budget.custo_rede, prevMonth: -prevMonth.custo_rede, prevYear: -prevYear.custo_rede },
+      { label: "EBITDA", actual: actual.ebitda, forecast: budget.ebitda, prevMonth: prevMonth.ebitda, prevYear: prevYear.ebitda, isBold: true, isHighlight: true },
     ];
 
     // Formatar indicadores unitários
@@ -146,14 +146,14 @@ export async function GET(request: Request) {
     const prevYearU = calcUnit(prevYear);
 
     const unitRows = [
-      { label: "Preço/Kg", actual: actualU.preco_kg, budget: budgetU.preco_kg, prevMonth: prevMonthU.preco_kg, prevYear: prevYearU.preco_kg },
-      { label: "% Impostos", actual: actualU.pct_impostos, budget: budgetU.pct_impostos, prevMonth: prevMonthU.pct_impostos, prevYear: prevYearU.pct_impostos, isPercent: true },
-      { label: "% Investimentos", actual: actualU.pct_invest, budget: budgetU.pct_invest, prevMonth: prevMonthU.pct_invest, prevYear: prevYearU.pct_invest, isPercent: true },
-      { label: "Custo/Kg", actual: actualU.custo_kg, budget: budgetU.custo_kg, prevMonth: prevMonthU.custo_kg, prevYear: prevYearU.custo_kg },
-      { label: "Frete/Kg", actual: actualU.frete_kg, budget: budgetU.frete_kg, prevMonth: prevMonthU.frete_kg, prevYear: prevYearU.frete_kg },
-      { label: "MC/Kg", actual: actualU.mc_kg, budget: budgetU.mc_kg, prevMonth: prevMonthU.mc_kg, prevYear: prevYearU.mc_kg, isBold: true },
-      { label: "EBITDA/Kg", actual: actualU.ebitda_kg, budget: budgetU.ebitda_kg, prevMonth: prevMonthU.ebitda_kg, prevYear: prevYearU.ebitda_kg },
-      { label: "% EBITDA", actual: actualU.pct_ebitda, budget: budgetU.pct_ebitda, prevMonth: prevMonthU.pct_ebitda, prevYear: prevYearU.pct_ebitda, isPercent: true, isBold: true },
+      { label: "Preço/Kg", actual: actualU.preco_kg, forecast: budgetU.preco_kg, prevMonth: prevMonthU.preco_kg, prevYear: prevYearU.preco_kg },
+      { label: "% Impostos", actual: actualU.pct_impostos, forecast: budgetU.pct_impostos, prevMonth: prevMonthU.pct_impostos, prevYear: prevYearU.pct_impostos, isPercent: true },
+      { label: "% Investimentos", actual: actualU.pct_invest, forecast: budgetU.pct_invest, prevMonth: prevMonthU.pct_invest, prevYear: prevYearU.pct_invest, isPercent: true },
+      { label: "Custo/Kg", actual: actualU.custo_kg, forecast: budgetU.custo_kg, prevMonth: prevMonthU.custo_kg, prevYear: prevYearU.custo_kg },
+      { label: "Frete/Kg", actual: actualU.frete_kg, forecast: budgetU.frete_kg, prevMonth: prevMonthU.frete_kg, prevYear: prevYearU.frete_kg },
+      { label: "MC/Kg", actual: actualU.mc_kg, forecast: budgetU.mc_kg, prevMonth: prevMonthU.mc_kg, prevYear: prevYearU.mc_kg, isBold: true },
+      { label: "EBITDA/Kg", actual: actualU.ebitda_kg, forecast: budgetU.ebitda_kg, prevMonth: prevMonthU.ebitda_kg, prevYear: prevYearU.ebitda_kg },
+      { label: "% EBITDA", actual: actualU.pct_ebitda, forecast: budgetU.pct_ebitda, prevMonth: prevMonthU.pct_ebitda, prevYear: prevYearU.pct_ebitda, isPercent: true, isBold: true },
     ];
 
     // 2. Construir dados mensais do ano (12 meses)
