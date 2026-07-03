@@ -80,6 +80,53 @@ interface AcaoInvestimento {
   documento_url?: string | null;
   gerente_responsavel?: string | null;
   condicao_pagamento?: string | null;
+  date_mode?: "single" | "multiple" | null;
+  fase_atual?: number;
+  apuracao_preenchida_em?: string | null;
+}
+
+interface InvestmentPeriod {
+  start_date: string;
+  end_date: string;
+}
+
+export function calcularStatusItemInvestimento(
+  item: any,
+  fase_atual: number,
+  apuracao_preenchida_em?: string | null
+): "AGENDADA" | "EM_ANDAMENTO" | "ENCERRADA" | "ATRASADA" {
+  if ((fase_atual || 1) >= 4 || !!apuracao_preenchida_em) {
+    return "ENCERRADA";
+  }
+
+  let periods: InvestmentPeriod[] = [];
+  if (item.periods && Array.isArray(item.periods)) {
+    periods = item.periods;
+  } else if (item.start_date && item.end_date) {
+    periods = [{ start_date: item.start_date, end_date: item.end_date }];
+  }
+
+  if (periods.length === 0) {
+    return "AGENDADA";
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let isAtrasada = false;
+  let isEmAndamento = false;
+
+  for (const p of periods) {
+    if (!p.start_date || !p.end_date) continue;
+    if (todayStr > p.end_date) {
+      isAtrasada = true;
+    } else if (todayStr >= p.start_date && todayStr <= p.end_date) {
+      isEmAndamento = true;
+    }
+  }
+
+  if (isAtrasada) return "ATRASADA";
+  if (isEmAndamento) return "EM_ANDAMENTO";
+  return "AGENDADA";
 }
 
 const supabase = createClient();
@@ -1624,6 +1671,55 @@ export default function PlanejamentoInvestimentoPage() {
 
                     <span className="text-muted">Exp. Volume:</span>
                     <span className="font-semibold text-foreground text-right">{selectedAction.expectativa_volume || '-'}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Cronograma da Ação */}
+              {selectedAction.date_mode === "multiple" && (
+                <div className="space-y-3 mt-4">
+                  <h3 className="text-sm font-bold text-foreground border-b border-border pb-1.5">Cronograma da Ação</h3>
+                  <div className="space-y-2">
+                    {selectedAction.familias_detalhes && selectedAction.familias_detalhes.map((f: any, idx: number) => {
+                      const status = calcularStatusItemInvestimento(f, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
+                      const badgeColors = {
+                        AGENDADA: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                        EM_ANDAMENTO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                        ENCERRADA: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+                        ATRASADA: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+                      };
+                      return (
+                        <div key={`cron-fam-${idx}`} className="flex items-center justify-between bg-elevated border border-border p-2.5 rounded-lg text-xs">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-foreground">{f.familia_nome} (Família)</span>
+                            <span className="text-[10px] text-muted">{formatDate(f.start_date)} até {formatDate(f.end_date)}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeColors[status]}`}>
+                            {status.replace("_", " ")}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {selectedAction.skus_detalhes && selectedAction.skus_detalhes.map((s: any, idx: number) => {
+                      const status = calcularStatusItemInvestimento(s, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
+                      const badgeColors = {
+                        AGENDADA: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                        EM_ANDAMENTO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                        ENCERRADA: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+                        ATRASADA: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+                      };
+                      return (
+                        <div key={`cron-sku-${idx}`} className="flex items-center justify-between bg-elevated border border-border p-2.5 rounded-lg text-xs">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-foreground">{s.sku} (SKU)</span>
+                            <span className="text-[10px] text-muted">{formatDate(s.start_date)} até {formatDate(s.end_date)}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeColors[status]}`}>
+                            {status.replace("_", " ")}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -74,6 +74,10 @@ interface AcaoRow {
   financeiro_pago_em: string | null;
   expectativa_volume: number | null;
   data_fim: string | null;
+  date_mode: "single" | "multiple" | null;
+  apuracao_preenchida_em: string | null;
+  familias_detalhes?: any[] | null;
+  skus_detalhes?: any[] | null;
 }
 
 interface VinculoRow {
@@ -144,7 +148,7 @@ export default function InvestClientePage() {
       const { data: acoes, error: aErr } = await supabase
         .from("cm_acoes_investimento")
         .select(
-          "id, rede, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim"
+          "id, rede, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
         )
         .eq("is_planejamento", false)
         .is("financeiro_pago_em", null);
@@ -319,13 +323,25 @@ export default function InvestClientePage() {
         redeAgg[redeKey].naoProvisionado += valorReal;
       }
 
-      // Ações atrasadas: fase 3 + data_fim <= hoje-7
-      if (
-        a.fase_atual === 3 &&
-        a.data_fim &&
-        a.data_fim <= cutoffStr
-      ) {
-        redeAgg[redeKey].acoesAtrasadas += 1;
+      // Ações atrasadas: apuracao_preenchida_em is null + (fase_atual <= 3) + date vencida (end_date < cutoffStr)
+      if (!a.apuracao_preenchida_em && (a.fase_atual || 1) <= 3) {
+        if (a.date_mode === "multiple") {
+          let hasAtrasadoItem = false;
+          if (a.familias_detalhes && a.familias_detalhes.length > 0) {
+            hasAtrasadoItem = a.familias_detalhes.some((f: any) => f.end_date && f.end_date <= cutoffStr);
+          }
+          if (!hasAtrasadoItem && a.skus_detalhes && a.skus_detalhes.length > 0) {
+            hasAtrasadoItem = a.skus_detalhes.some((s: any) => s.end_date && s.end_date <= cutoffStr);
+          }
+          if (hasAtrasadoItem) {
+            redeAgg[redeKey].acoesAtrasadas += 1;
+          }
+        } else {
+          // single mode
+          if (a.data_fim && a.data_fim <= cutoffStr) {
+            redeAgg[redeKey].acoesAtrasadas += 1;
+          }
+        }
       }
     });
 
