@@ -29,10 +29,12 @@ export default function RankingUsuariosPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [usersMap, setUsersMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<"7d" | "30d" | "all">("30d");
+  const [period, setPeriod] = useState<"7d" | "30d" | "all" | null>("30d");
+  const [filterMonth, setFilterMonth] = useState<string>("");
 
   useEffect(() => {
     const supabase = createClient();
+    
     async function load() {
       setLoading(true);
       const { data } = await supabase
@@ -43,17 +45,44 @@ export default function RankingUsuariosPage() {
       setLogs(data || []);
       setLoading(false);
     }
+
+    async function logAccessAndLoad() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          await supabase.from("cm_audit_logs").insert({
+            user_id: user.id,
+            action: "Acesso",
+            table_name: "ranking_usuarios"
+          });
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        await load();
+      }
+    }
+
     async function loadEmails() {
       try {
         const res = await fetch("/api/users/emails");
         if (res.ok) setUsersMap(await res.json());
       } catch {}
     }
-    load();
+
+    logAccessAndLoad();
     loadEmails();
   }, []);
 
+  const availableMonths = useMemo(() => {
+    const months = logs.map(l => l.created_at.slice(0, 7)).filter(Boolean);
+    return Array.from(new Set(months)).sort((a, b) => b.localeCompare(a));
+  }, [logs]);
+
   const filtered = useMemo(() => {
+    if (filterMonth) {
+      return logs.filter(l => l.created_at.slice(0, 7) === filterMonth);
+    }
     const now = new Date();
     if (period === "7d") {
       const cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -64,7 +93,7 @@ export default function RankingUsuariosPage() {
       return logs.filter(l => new Date(l.created_at) >= cutoff);
     }
     return logs;
-  }, [logs, period]);
+  }, [logs, period, filterMonth]);
 
   const ranking: UserRank[] = useMemo(() => {
     const now = new Date();
@@ -122,9 +151,41 @@ export default function RankingUsuariosPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <select
+              value={filterMonth}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilterMonth(val);
+                if (val) {
+                  setPeriod(null);
+                } else {
+                  setPeriod("30d");
+                }
+              }}
+              className="bg-elevated border border-border text-foreground rounded-xl px-3 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500/50 cursor-pointer"
+            >
+              <option value="">Todos os Meses</option>
+              {availableMonths.map(m => {
+                const parts = m.split("-");
+                const months = [
+                  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+                  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+                ];
+                const label = `${months[parseInt(parts[1], 10) - 1]}/${parts[0]}`;
+                return (
+                  <option key={m} value={m}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+
             <div className="flex items-center gap-1 bg-elevated border border-border rounded-xl p-1">
               {(["7d", "30d", "all"] as const).map(p => (
-                <button key={p} onClick={() => setPeriod(p)}
+                <button key={p} onClick={() => {
+                  setPeriod(p);
+                  setFilterMonth("");
+                }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${period === p ? "bg-amber-500 text-white shadow-sm" : "text-muted hover:text-foreground"}`}>
                   {p === "7d" ? "7 dias" : p === "30d" ? "30 dias" : "Tudo"}
                 </button>
