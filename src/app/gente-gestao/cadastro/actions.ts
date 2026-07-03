@@ -30,7 +30,7 @@ export async function upsertEmployee(formData: FormData) {
         .from('cm_role_permissions')
         .select('has_access')
         .eq('role', role)
-        .eq('module_name', 'Gente e Gestão')
+        .eq('module_name', 'Cadastro Funcionários')
         .eq('has_access', true)
         .maybeSingle();
       if (permission) {
@@ -170,7 +170,7 @@ export async function deleteEmployee(id: string) {
         .from('cm_role_permissions')
         .select('has_access')
         .eq('role', role)
-        .eq('module_name', 'Gente e Gestão')
+        .eq('module_name', 'Cadastro Funcionários')
         .eq('has_access', true)
         .maybeSingle();
       if (permission) {
@@ -237,7 +237,7 @@ export async function importEmployeesInBulk(employees: ImportEmployeeInput[]) {
         .from('cm_role_permissions')
         .select('has_access')
         .eq('role', role)
-        .eq('module_name', 'Gente e Gestão')
+        .eq('module_name', 'Cadastro Funcionários')
         .eq('has_access', true)
         .maybeSingle();
       if (permission) {

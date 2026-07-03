@@ -31,12 +31,12 @@ export default async function GenteGestaoCadastroPage() {
   if (role === 'CEO') {
     hasAccess = true;
   } else if (role) {
-    // Buscar se o cargo tem permissão ativa para o módulo Gente e Gestão
+    // Buscar se o cargo tem permissão ativa para o módulo Cadastro Funcionários
     const { data: permission } = await supabase
       .from('cm_role_permissions')
       .select('has_access')
       .eq('role', role)
-      .eq('module_name', 'Gente e Gestão')
+      .eq('module_name', 'Cadastro Funcionários')
       .eq('has_access', true)
       .maybeSingle();
       
