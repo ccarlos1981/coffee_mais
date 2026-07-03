@@ -37,7 +37,8 @@ import {
   Eye,
   RotateCcw,
   Sparkles,
-  HelpCircle
+  HelpCircle,
+  Layers
 } from "lucide-react";
 import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento } from "./lancar/actions";
 import * as XLSX from "xlsx";
@@ -249,7 +250,12 @@ export default function InvestimentoPage() {
   const [filterFase, setFilterFase] = useState<number | null>(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false });
-  const [filterMes, setFilterMes] = useState("");
+  const [filterMes, setFilterMes] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    return `${y}-${m}`;
+  });
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [parsedAcoes, setParsedAcoes] = useState<any[]>([]);
   const [importFileName, setImportFileName] = useState("");
@@ -301,6 +307,7 @@ export default function InvestimentoPage() {
   const [actionResult, setActionResult] = useState("SUCESSO");
   const [postActionNotes, setPostActionNotes] = useState("");
   const [executionScore, setExecutionScore] = useState("");
+  const [showConsolidadoGerentes, setShowConsolidadoGerentes] = useState(false);
 
   useEffect(() => {
     if (selectedAction) {
@@ -627,69 +634,7 @@ export default function InvestimentoPage() {
     return matrizes;
   }, [matrizes, isRegionalManager, userEmail]);
 
-  const acoesNoMesCount = useCallback((m: any, mes: string) => {
-    return data.filter(action => 
-      (action.codigo_matriz === m.codigo || (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())) &&
-      action.mes_referencia === mes
-    ).length;
-  }, [data]);
 
-  const acoesPorGerente = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const mainManagers = ["Leandro", "Julliano", "Luiz"];
-    mainManagers.forEach(mgr => {
-      counts[mgr] = 0;
-    });
-
-    data.forEach(action => {
-      const rawG = action.gerente_responsavel;
-      if (rawG) {
-        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
-        if (matched) {
-          counts[matched]++;
-        } else {
-          counts[rawG] = (counts[rawG] || 0) + 1;
-        }
-      } else {
-        counts["Sem Gerente"] = (counts["Sem Gerente"] || 0) + 1;
-      }
-    });
-
-    return Object.entries(counts)
-      .map(([manager, count]) => ({ manager, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [data]);
-
-  const sortedMatrizesWithInvestimento = useMemo(() => {
-    return myMatrizes.map(m => {
-      const acoesCount = data.filter(action =>
-        action.codigo_matriz === m.codigo || 
-        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())
-      ).length;
-      const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
-      const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
-      return {
-        ...m,
-        acoesCount,
-        faturamentoTotal
-      };
-    }).sort((a, b) => {
-      if (b.acoesCount !== a.acoesCount) {
-        return b.acoesCount - a.acoesCount;
-      }
-      return b.faturamentoTotal - a.faturamentoTotal;
-    });
-  }, [myMatrizes, data, faturamentoTotalMap]);
-
-  const filteredMatrizesInView = useMemo(() => {
-    if (!matrizSearch) return sortedMatrizesWithInvestimento;
-    const searchLower = matrizSearch.toLowerCase();
-    return sortedMatrizesWithInvestimento.filter(m => 
-      (m.nome && m.nome.toLowerCase().includes(searchLower)) ||
-      (m.codigo && m.codigo.toLowerCase().includes(searchLower)) ||
-      (m.gerente && m.gerente.toLowerCase().includes(searchLower))
-    );
-  }, [sortedMatrizesWithInvestimento, matrizSearch]);
 
   // Auxiliares de parsing de data
   const parseDateString = (dateStr: any): string | null => {
@@ -1388,7 +1333,7 @@ export default function InvestimentoPage() {
 
   const filteredData = useMemo(() => {
     return managerFilteredAcoes.filter(r => {
-      if (filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
+      if (viewMode !== 'matrix' && viewMode !== 'calendar' && filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
       if (filterRede && r.rede !== filterRede) return false;
       if (filterFamilia) {
         const hasFamilia = r.familias_detalhes && r.familias_detalhes.length > 0
@@ -1401,7 +1346,122 @@ export default function InvestimentoPage() {
       if (filterMes && r.mes_referencia !== filterMes) return false;
       return true;
     });
-  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes]);
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode]);
+
+  const acoesPorGerente = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const mainManagers = ["Leandro", "Julliano", "Luiz"];
+    mainManagers.forEach(mgr => {
+      counts[mgr] = 0;
+    });
+
+    filteredData.forEach(action => {
+      const rawG = action.gerente_responsavel;
+      if (rawG) {
+        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
+        if (matched) {
+          counts[matched]++;
+        } else {
+          counts[rawG] = (counts[rawG] || 0) + 1;
+        }
+      } else {
+        counts["Sem Gerente"] = (counts["Sem Gerente"] || 0) + 1;
+      }
+    });
+
+    return Object.entries(counts)
+      .map(([manager, count]) => ({ manager, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredData]);
+
+  const consolidadoGerenteMes = useMemo(() => {
+    const mainManagers = ["Leandro", "Julliano", "Luiz"];
+    const counts: Record<string, Record<string, { networks: Set<string>; actionsCount: number }>> = {};
+
+    // Initialize counts for main managers
+    mainManagers.forEach(mgr => {
+      counts[mgr] = {};
+      MATRIX_MONTHS.forEach(m => {
+        counts[mgr][m.value] = { networks: new Set<string>(), actionsCount: 0 };
+      });
+    });
+
+    filteredData.forEach(action => {
+      let mgr = "Sem Gerente";
+      const rawG = action.gerente_responsavel;
+      if (rawG) {
+        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
+        mgr = matched || rawG;
+      }
+
+      if (!counts[mgr]) {
+        counts[mgr] = {};
+        MATRIX_MONTHS.forEach(m => {
+          counts[mgr][m.value] = { networks: new Set<string>(), actionsCount: 0 };
+        });
+      }
+
+      const mes = action.mes_referencia;
+      if (mes && counts[mgr][mes]) {
+        counts[mgr][mes].actionsCount++;
+        const netId = action.codigo_matriz || action.rede?.toUpperCase().trim() || "N/I";
+        counts[mgr][mes].networks.add(netId);
+      }
+    });
+
+    return Object.entries(counts).map(([manager, monthsData]) => {
+      const formattedMonths: Record<string, { networksCount: number; actionsCount: number }> = {};
+      Object.entries(monthsData).forEach(([month, val]) => {
+        formattedMonths[month] = {
+          networksCount: val.networks.size,
+          actionsCount: val.actionsCount
+        };
+      });
+      return {
+        manager,
+        months: formattedMonths,
+        totalActions: Object.values(formattedMonths).reduce((acc, curr) => acc + curr.actionsCount, 0)
+      };
+    }).sort((a, b) => b.totalActions - a.totalActions);
+  }, [filteredData]);
+
+  const acoesNoMesCount = useCallback((m: any, mes: string) => {
+    return data.filter(action => 
+      (action.codigo_matriz === m.codigo || (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())) &&
+      action.mes_referencia === mes
+    ).length;
+  }, [data]);
+
+  const sortedMatrizesWithInvestimento = useMemo(() => {
+    return myMatrizes.map(m => {
+      const acoesCount = data.filter(action =>
+        action.codigo_matriz === m.codigo || 
+        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())
+      ).length;
+      const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
+      const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
+      return {
+        ...m,
+        acoesCount,
+        faturamentoTotal
+      };
+    }).sort((a, b) => {
+      if (b.acoesCount !== a.acoesCount) {
+        return b.acoesCount - a.acoesCount;
+      }
+      return b.faturamentoTotal - a.faturamentoTotal;
+    });
+  }, [myMatrizes, data, faturamentoTotalMap]);
+
+  const filteredMatrizesInView = useMemo(() => {
+    if (!matrizSearch) return sortedMatrizesWithInvestimento;
+    const searchLower = matrizSearch.toLowerCase();
+    return sortedMatrizesWithInvestimento.filter(m => 
+      (m.nome && m.nome.toLowerCase().includes(searchLower)) ||
+      (m.codigo && m.codigo.toLowerCase().includes(searchLower)) ||
+      (m.gerente && m.gerente.toLowerCase().includes(searchLower))
+    );
+  }, [sortedMatrizesWithInvestimento, matrizSearch]);
 
   const faseCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
@@ -1968,10 +2028,12 @@ export default function InvestimentoPage() {
                 Limpar Filtros
               </button>
             </div>
-            <div className="flex items-center justify-between text-sm text-muted px-1">
-              <span>{filteredData.length} lançamento{filteredData.length !== 1 ? 's' : ''} encontrado{filteredData.length !== 1 ? 's' : ''}</span>
-              {filteredData.length > 0 && <span className="font-medium text-gold lg:hidden">Total: {formatCurrency(subtotal, false)}</span>}
-            </div>
+            {viewMode === "table" && (
+              <div className="flex items-center justify-between text-sm text-muted px-1">
+                <span>{filteredData.length} lançamento{filteredData.length !== 1 ? 's' : ''} encontrado{filteredData.length !== 1 ? 's' : ''}</span>
+                {filteredData.length > 0 && <span className="font-medium text-gold lg:hidden">Total: {formatCurrency(subtotal, false)}</span>}
+              </div>
+            )}
           </div>
 
           <div className="flex-1 bg-card md:border md:border-border md:rounded-2xl overflow-hidden flex flex-col shadow-sm relative">
@@ -2528,7 +2590,6 @@ export default function InvestimentoPage() {
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 border-b border-border bg-elevated/30 gap-4">
                   <div>
                     <h3 className="text-base font-bold text-foreground">Histórico de Investimentos por Rede</h3>
-                    <p className="text-xs text-muted mt-0.5">Status de investimentos mensal por Rede (Jun/2026+)</p>
                   </div>
                   <div className="flex items-center gap-3 w-full md:w-auto">
                     <input
@@ -2542,16 +2603,85 @@ export default function InvestimentoPage() {
                 </div>
 
                 {/* Consolidado por Gerente */}
-                <div className="bg-elevated/10 px-4 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs">
-                  <span className="font-bold text-muted uppercase tracking-wider text-[10px]">Ações por Gerente:</span>
-                  <div className="flex flex-wrap gap-2.5">
-                    {acoesPorGerente.slice(0, 3).map((item) => (
-                      <div key={item.manager} className="flex items-center gap-2 bg-elevated/40 border border-border/60 px-3 py-1 rounded-lg shadow-sm">
-                        <span className="font-semibold text-foreground">{item.manager}:</span>
-                        <span className="font-bold text-gold text-sm">{item.count}</span>
+                <div className="bg-elevated/10 px-4 py-3 border-b border-border flex flex-col gap-3 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                        <span className="font-bold text-muted uppercase tracking-wider text-[10px]">
+                          {filterMes ? `Ações por Gerente em ${formatMesReferencia(filterMes)}:` : "Ações do ano por gerente:"}
+                        </span>
+                        <div className="flex flex-wrap gap-2.5">
+                          {acoesPorGerente.slice(0, 3).map((item) => (
+                            <div key={item.manager} className="flex items-center gap-2 bg-elevated/40 border border-border/60 px-3 py-1 rounded-lg shadow-sm">
+                              <span className="font-semibold text-foreground">{item.manager}:</span>
+                              <span className="font-bold text-gold text-sm">{item.count}</span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
+                      <span className="text-[10px] text-muted/60 font-medium">
+                        * N.º de clientes com ações (N.º de ações)
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowConsolidadoGerentes(!showConsolidadoGerentes)}
+                      className="px-3 py-1.5 bg-elevated border border-border text-foreground font-semibold rounded-lg hover:bg-border transition-all flex items-center gap-1.5 self-end sm:self-auto shadow-sm cursor-pointer"
+                    >
+                      <Layers className="w-3.5 h-3.5 text-gold" />
+                      {showConsolidadoGerentes ? "Ocultar Consolidação Mensal" : "Exibir Consolidação Mensal"}
+                    </button>
                   </div>
+
+                  {showConsolidadoGerentes && (
+                    <div className="overflow-x-auto border border-border/60 rounded-xl bg-card shadow-sm mt-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
+                        <thead>
+                          <tr className="bg-elevated/30 border-b border-border">
+                            <th className="p-3 font-bold text-muted w-48 sticky left-0 bg-elevated/30 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Gerente</th>
+                            {MATRIX_MONTHS.map(m => (
+                              <th key={m.value} className="p-3 font-bold text-muted text-center w-28">{m.label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {consolidadoGerenteMes.map(item => (
+                            <tr key={item.manager} className="hover:bg-elevated/10 transition-colors">
+                              <td className="p-3 font-semibold text-foreground sticky left-0 bg-card z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">{item.manager}</td>
+                              {MATRIX_MONTHS.map((month, idx) => {
+                                const mData = item.months[month.value] || { networksCount: 0, actionsCount: 0 };
+                                const hasData = mData.networksCount > 0 || mData.actionsCount > 0;
+                                
+                                const prevMonthVal = idx > 0 ? MATRIX_MONTHS[idx - 1].value : null;
+                                const prevMData = prevMonthVal ? (item.months[prevMonthVal] || { networksCount: 0, actionsCount: 0 }) : { networksCount: 0, actionsCount: 0 };
+                                const isGreater = mData.actionsCount > prevMData.actionsCount;
+
+                                return (
+                                  <td key={month.value} className="p-3 text-center">
+                                    {hasData ? (
+                                      isGreater ? (
+                                        <span className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-[#10b981] text-white font-bold text-xs shadow-sm">
+                                          {mData.networksCount}
+                                          <span className="text-[10px] text-emerald-100 ml-1 font-semibold">({mData.actionsCount})</span>
+                                        </span>
+                                      ) : (
+                                        <span className="font-semibold text-foreground text-sm">
+                                          {mData.networksCount}{' '}
+                                          <span className="text-xs text-muted">({mData.actionsCount})</span>
+                                        </span>
+                                      )
+                                    ) : (
+                                      <span className="text-muted/20 font-bold text-xs">0</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 {/* Matrix view body */}
@@ -2896,19 +3026,19 @@ export default function InvestimentoPage() {
                 {selectedAction.cancel_reason && (
                   <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-1">
                     <span className="font-bold block">❌ Ação Cancelada / Não Aconteceu:</span>
-                    <p className="italic">"{selectedAction.cancel_reason}"</p>
+                    <p className="italic">&quot;{selectedAction.cancel_reason}&quot;</p>
                   </div>
                 )}
                 {selectedAction.rejection_reason && (
                   <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-1">
                     <span className="font-bold block">⚠️ Devolvida pelo Financeiro:</span>
-                    <p className="italic">"{selectedAction.rejection_reason}"</p>
+                    <p className="italic">&quot;{selectedAction.rejection_reason}&quot;</p>
                   </div>
                 )}
                 {selectedAction.is_reopened && selectedAction.reopened_reason && (
                   <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl text-xs space-y-1">
                     <span className="font-bold block">🔓 Ação Reaberta:</span>
-                    <p className="italic">"{selectedAction.reopened_reason}"</p>
+                    <p className="italic">&quot;{selectedAction.reopened_reason}&quot;</p>
                   </div>
                 )}
                 {selectedAction.alertas_preventivos && Array.isArray(selectedAction.alertas_preventivos) && selectedAction.alertas_preventivos.length > 0 && (
@@ -3884,7 +4014,7 @@ export default function InvestimentoPage() {
                             {selectedAction.post_action_notes && (
                               <div className="p-2.5 bg-background border border-border rounded-lg text-xs">
                                 <span className="text-muted font-medium block mb-0.5">Notas Operacionais:</span>
-                                <p className="text-foreground/80 italic">"{selectedAction.post_action_notes}"</p>
+                                <p className="text-foreground/80 italic">&quot;{selectedAction.post_action_notes}&quot;</p>
                               </div>
                             )}
                           </div>
