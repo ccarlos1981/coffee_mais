@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, BarChart3, ArrowLeft, Loader2 } from "lucide-react";
+import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, BarChart3, ArrowLeft, Loader2, Home } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { importarExcelDRE } from "@/app/dre/historico/lancar/actions";
 
@@ -198,7 +198,11 @@ export default function DREUploadPage() {
       {/* Navbar */}
       <nav className="cm-navbar px-6 py-4 flex items-center justify-between border-b border-border bg-elevated/50">
         <div className="flex items-center gap-3">
-          <Link href="/dre" className="text-muted hover:text-foreground">
+          <Link href="/" className="text-muted hover:text-foreground mr-1" title="Menu Principal">
+            <Home className="w-5 h-5 text-gold" />
+          </Link>
+          <span style={{ color: "var(--border)" }}>|</span>
+          <Link href="/dre" className="text-muted hover:text-foreground" title="Voltar ao DRE">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <span className="font-bold text-lg text-foreground flex items-center gap-2">
