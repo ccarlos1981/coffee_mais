@@ -137,8 +137,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
     return init;
   });
 
-  // Override confirmation dialog state
-  const [overrideConfirm, setOverrideConfirm] = useState<{ key: string; field: string; value: string; type: 'familia' | 'sku' } | null>(null);
+
 
   // Auto-compute investimento = preco_flat - preco_acao when locked
   const computeInvestimento = (flat: string, acao: string) => {
@@ -209,12 +208,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
     const lockKey = `fam_${familia}`;
     const isOverridden = overrideLocks[lockKey];
 
-    // If flat or acao changes and there's an active override, show confirmation
-    if ((field === "preco_flat" || field === "preco_acao") && isOverridden) {
-      setOverrideConfirm({ key: lockKey, field, value, type: 'familia' });
-      return;
-    }
-
     let finalValue = value;
     if (isNumericText) {
       finalValue = value.replace(/[^0-9,]/g, "");
@@ -228,6 +221,10 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
     }
 
+    if (field === "investimento") {
+      setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
+    }
+
     setFamiliaDetails(prev => {
       const updated = { ...prev, [familia]: { ...(prev[familia] || {}), [field]: finalValue } };
       // Auto-calc investimento when locked (not overridden)
@@ -238,29 +235,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
       return updated;
     });
-  };
-
-  const applyFamiliaChangeAfterConfirm = (recalc: boolean) => {
-    if (!overrideConfirm || overrideConfirm.type !== 'familia') return;
-    const { key, field, value } = overrideConfirm;
-    const familia = key.replace('fam_', '');
-
-    const v = value.replace(/\D/g, "");
-    const finalValue = v ? "R$ " + (parseInt(v, 10) / 100).toFixed(2).replace(".", ",").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.") : "";
-
-    if (recalc) {
-      setOverrideLocks(prev => ({ ...prev, [key]: false }));
-      setFamiliaDetails(prev => {
-        const updated = { ...prev, [familia]: { ...(prev[familia] || {}), [field]: finalValue, investimento_justificativa: "" } };
-        const flat = field === "preco_flat" ? finalValue : (updated[familia]?.preco_flat || "");
-        const acao = field === "preco_acao" ? finalValue : (updated[familia]?.preco_acao || "");
-        updated[familia].investimento = computeInvestimento(flat, acao);
-        return updated;
-      });
-    } else {
-      setFamiliaDetails(prev => ({ ...prev, [familia]: { ...(prev[familia] || {}), [field]: finalValue } }));
-    }
-    setOverrideConfirm(null);
   };
 
   // Toggles and SKU states
@@ -307,11 +281,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
     const lockKey = `sku_${sku}`;
     const isOverridden = overrideLocks[lockKey];
 
-    if ((field === "preco_flat" || field === "preco_acao") && isOverridden) {
-      setOverrideConfirm({ key: lockKey, field, value, type: 'sku' });
-      return;
-    }
-
     let finalValue = value;
     if (isNumericText) {
       finalValue = value.replace(/[^0-9,]/g, "");
@@ -325,6 +294,10 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
     }
 
+    if (field === "investimento") {
+      setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
+    }
+
     setSkuDetails(prev => {
       const updated = { ...prev, [sku]: { ...(prev[sku] || {}), [field]: finalValue } };
       if (!isOverridden && (field === "preco_flat" || field === "preco_acao")) {
@@ -334,29 +307,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
       return updated;
     });
-  };
-
-  const applySkuChangeAfterConfirm = (recalc: boolean) => {
-    if (!overrideConfirm || overrideConfirm.type !== 'sku') return;
-    const { key, field, value } = overrideConfirm;
-    const sku = key.replace('sku_', '');
-
-    const v = value.replace(/\D/g, "");
-    const finalValue = v ? "R$ " + (parseInt(v, 10) / 100).toFixed(2).replace(".", ",").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1.") : "";
-
-    if (recalc) {
-      setOverrideLocks(prev => ({ ...prev, [key]: false }));
-      setSkuDetails(prev => {
-        const updated = { ...prev, [sku]: { ...(prev[sku] || {}), [field]: finalValue, investimento_justificativa: "" } };
-        const flat = field === "preco_flat" ? finalValue : (updated[sku]?.preco_flat || "");
-        const acao = field === "preco_acao" ? finalValue : (updated[sku]?.preco_acao || "");
-        updated[sku].investimento = computeInvestimento(flat, acao);
-        return updated;
-      });
-    } else {
-      setSkuDetails(prev => ({ ...prev, [sku]: { ...(prev[sku] || {}), [field]: finalValue } }));
-    }
-    setOverrideConfirm(null);
   };
 
   const handleDateModeChange = (newMode: "single" | "multiple") => {
@@ -446,10 +396,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         setError(`${item.name}: ${err}`);
         return;
       }
-      if (overrideLocks[item.lockKey] && !(item.details?.investimento_justificativa?.trim())) {
-        setError(`${item.name}: Justificativa obrigatória para override de investimento.`);
-        return;
-      }
+
     }
 
     let calculatedStart = globalStart;
@@ -983,7 +930,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                                   }
                                 }}
                                 className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                                title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
+                                title={isOverridden ? "Voltar para cálculo automático (Preço Flat - Preço Ação)" : "Definido como automático (clique para fixar valor manual)"}
                               >
                                 {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                               </button>
@@ -995,8 +942,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                                 value={familiaDetails[familia]?.investimento || ""}
                                 onChange={(e) => handleFamiliaChange(familia, "investimento", e.target.value)}
                                 placeholder="R$ 0,00"
-                                readOnly={!isOverridden}
-                                className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all focus:border-gold focus:ring-1 focus:ring-gold"
                               />
                               {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
                             </div>
@@ -1014,18 +960,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                               />
                             </div>
                           </div>
-                          {isOverridden && (
-                            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
-                              <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
-                              <input
-                                type="text"
-                                value={familiaDetails[familia]?.investimento_justificativa || ""}
-                                onChange={(e) => handleFamiliaChange(familia, "investimento_justificativa", e.target.value)}
-                                placeholder="Ex: Negociação especial com a rede"
-                                className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
-                              />
-                            </div>
-                          )}
                           {dateMode === "multiple" && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
                               <div className="space-y-2">
@@ -1153,7 +1087,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                                   }
                                 }}
                                 className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                                title={isOverridden ? "Destravar (recalcular automático)" : "Destravar para edição manual"}
+                                title={isOverridden ? "Voltar para cálculo automático (Preço Flat - Preço Ação)" : "Definido como automático (clique para fixar valor manual)"}
                               >
                                 {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                               </button>
@@ -1165,8 +1099,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                                 value={skuDetails[sku]?.investimento || ""}
                                 onChange={(e) => handleSkuChange(sku, "investimento", e.target.value)}
                                 placeholder="R$ 0,00"
-                                readOnly={!isOverridden}
-                                className={`w-full border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all ${isOverridden ? 'bg-elevated border-amber-500/30 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50' : 'bg-elevated/50 border-border text-foreground/70 cursor-not-allowed'}`}
+                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all focus:border-gold focus:ring-1 focus:ring-gold"
                               />
                               {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
                             </div>
@@ -1184,18 +1117,6 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                               />
                             </div>
                           </div>
-                          {isOverridden && (
-                            <div className="col-span-1 sm:col-span-2 lg:col-span-4">
-                              <label className="block text-xs font-medium text-amber-400 mb-1">Justificativa do override *</label>
-                              <input
-                                type="text"
-                                value={skuDetails[sku]?.investimento_justificativa || ""}
-                                onChange={(e) => handleSkuChange(sku, "investimento_justificativa", e.target.value)}
-                                placeholder="Ex: Preço negociado diretamente"
-                                className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
-                              />
-                            </div>
-                          )}
                           {dateMode === "multiple" && (
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
                               <div className="space-y-2">
@@ -1259,48 +1180,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           )}
         </div>
 
-        {/* Override Confirmation Dialog */}
-        {overrideConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="bg-elevated border border-border rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-foreground">Override Manual Ativo</h3>
-                  <p className="text-xs text-muted">O investimento foi definido manualmente</p>
-                </div>
-              </div>
-              <p className="text-sm text-foreground/80">
-                Você alterou um preço que impacta o cálculo de investimento. Deseja:
-              </p>
-              <div className="flex flex-col gap-2">
-                <button
-                  type="button"
-                  onClick={() => overrideConfirm.type === 'familia' ? applyFamiliaChangeAfterConfirm(true) : applySkuChangeAfterConfirm(true)}
-                  className="w-full px-4 py-2.5 bg-gold text-black font-bold rounded-xl hover:opacity-90 transition-all text-sm"
-                >
-                  Recalcular investimento automaticamente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => overrideConfirm.type === 'familia' ? applyFamiliaChangeAfterConfirm(false) : applySkuChangeAfterConfirm(false)}
-                  className="w-full px-4 py-2.5 bg-elevated border border-border text-foreground font-medium rounded-xl hover:bg-border transition-all text-sm"
-                >
-                  Manter override manual anterior
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOverrideConfirm(null)}
-                  className="w-full px-4 py-2.5 text-muted text-sm hover:text-foreground transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         </fieldset>
 

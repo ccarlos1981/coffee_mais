@@ -268,9 +268,6 @@ export async function criarAcaoInvestimento(formData: FormData) {
       if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
         throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
       }
-      if (f.investimento_manual && !f.investimento_justificativa?.trim()) {
-        throw new Error(`Família ${f.familia_nome}: Justificativa obrigatória para override manual de investimento.`);
-      }
       if (f.investimento_manual) {
         const { data: { user } } = await supabase.auth.getUser();
         f.investimento_override_by = user?.id || null;
@@ -283,9 +280,6 @@ export async function criarAcaoInvestimento(formData: FormData) {
     for (const s of skus_detalhes) {
       if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
         throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
-      }
-      if (s.investimento_manual && !s.investimento_justificativa?.trim()) {
-        throw new Error(`SKU ${s.sku}: Justificativa obrigatória para override manual de investimento.`);
       }
       if (s.investimento_manual) {
         const { data: { user } } = await supabase.auth.getUser();
@@ -479,9 +473,6 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
       if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
         throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
       }
-      if (f.investimento_manual && !f.investimento_justificativa?.trim()) {
-        throw new Error(`Família ${f.familia_nome}: Justificativa obrigatória para override manual de investimento.`);
-      }
       if (f.investimento_manual) {
         const { data: { user } } = await supabase.auth.getUser();
         f.investimento_override_by = user?.id || null;
@@ -494,9 +485,6 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     for (const s of skus_detalhes) {
       if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
         throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
-      }
-      if (s.investimento_manual && !s.investimento_justificativa?.trim()) {
-        throw new Error(`SKU ${s.sku}: Justificativa obrigatória para override manual de investimento.`);
       }
       if (s.investimento_manual) {
         const { data: { user } } = await supabase.auth.getUser();
