@@ -14,15 +14,65 @@ const CC_ALWAYS = ["trade@coffeemais.com", "cristiano.santos@coffeemais.com"];
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function dateBr(iso: string) {
+  if (!iso) return "-";
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
 }
 
-function diasAtraso(dataFim: string): number {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  const fim = new Date(dataFim + "T00:00:00");
-  return Math.floor((hoje.getTime() - fim.getTime()) / 86_400_000);
+interface InvestmentPeriod {
+  start_date: string;
+  end_date: string;
+}
+
+function calcularStatusItemInvestimento(
+  item: any,
+  fase_atual: number,
+  apuracao_preenchida_em?: string | null
+): "AGENDADA" | "EM_ANDAMENTO" | "ENCERRADA" | "ATRASADA" {
+  if ((fase_atual || 1) >= 4 || !!apuracao_preenchida_em) {
+    return "ENCERRADA";
+  }
+
+  let periods: InvestmentPeriod[] = [];
+  if (item.periods && Array.isArray(item.periods)) {
+    periods = item.periods;
+  } else if (item.start_date && item.end_date) {
+    periods = [{ start_date: item.start_date, end_date: item.end_date }];
+  }
+
+  if (periods.length === 0) {
+    return "AGENDADA";
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let isAtrasada = false;
+  let isEmAndamento = false;
+
+  for (const p of periods) {
+    if (!p.start_date || !p.end_date) continue;
+    if (todayStr > p.end_date) {
+      isAtrasada = true;
+    } else if (todayStr >= p.start_date && todayStr <= p.end_date) {
+      isEmAndamento = true;
+    }
+  }
+
+  if (isAtrasada) return "ATRASADA";
+  if (isEmAndamento) return "EM_ANDAMENTO";
+  return "AGENDADA";
+}
+
+interface NotificationItem {
+  acao_id: string;
+  codigo: number;
+  rede: string;
+  gerente: string;
+  item_type: 'familia' | 'sku';
+  item_key: string;
+  item_name: string;
+  start_date: string;
+  end_date: string;
 }
 
 // ─── handler ─────────────────────────────────────────────────────────────────
@@ -48,44 +98,99 @@ export async function GET(request: Request) {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // ── 1. Calcular janela de datas ───────────────────────────────────────────
-    // Atraso a partir de 7 dias após data_fim, até 14 dias (janela de 7 dias de reenvio)
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
 
-    const cutoffMax = new Date(hoje); // hoje - 7 dias
-    cutoffMax.setDate(cutoffMax.getDate() - 7);
-    const cutoffMin = new Date(hoje); // hoje - 14 dias
-    cutoffMin.setDate(cutoffMin.getDate() - 14);
-
-    const cutoffMaxStr = cutoffMax.toISOString().slice(0, 10);
-    const cutoffMinStr = cutoffMin.toISOString().slice(0, 10);
-
-    // ── 2. Buscar ações atrasadas via view com gerente ────────────────────────
+    // 1. Buscar todas as ações ativas pendentes de apuração
     const { data: acoes, error: acoesError } = await supabase
       .from("v_acoes_investimento_com_gerente")
       .select(
-        "id, codigo, rede, tipo_acao, data_inicio, data_fim, fase_atual, gerente_responsavel"
+        "id, codigo, rede, tipo_acao, data_inicio, data_fim, fase_atual, gerente_responsavel, date_mode, familias_detalhes, skus_detalhes, familia_produto, apuracao_preenchida_em"
       )
-      .eq("fase_atual", 3)
-      .gte("data_fim", cutoffMinStr) // não mais que 9 dias de atraso
-      .lte("data_fim", cutoffMaxStr) // pelo menos 2 dias de atraso
-      .order("data_fim", { ascending: true });
+      .in("fase_atual", [1, 2, 3])
+      .eq("is_planejamento", false)
+      .is("apuracao_preenchida_em", null);
 
     if (acoesError) throw acoesError;
 
     if (!acoes || acoes.length === 0) {
-      console.log("[acoes-atrasadas] Nenhuma ação atrasada encontrada.");
+      console.log("[acoes-atrasadas] Nenhuma ação ativa e pendente de apuração encontrada.");
       return NextResponse.json({
         success: true,
-        message: "Nenhuma ação atrasada encontrada.",
+        message: "Nenhuma ação ativa e pendente encontrada.",
         enviados: 0,
       });
     }
 
-    console.log(`[acoes-atrasadas] ${acoes.length} ação(ões) atrasada(s).`);
+    // 2. Buscar registros do email tracking para evitar envios duplicados
+    const { data: trackingRows, error: trackingError } = await supabase
+      .from("cm_acoes_email_tracking")
+      .select("acao_id, item_type, item_key, alert_type");
 
-    // ── 3. Buscar emails dos gerentes ─────────────────────────────────────────
+    if (trackingError) throw trackingError;
+
+    const trackingSet = new Set(
+      (trackingRows || []).map(
+        (r) => `${r.acao_id}|${r.item_type}|${r.item_key}|${r.alert_type}`
+      )
+    );
+
+    // 3. Montar lista unificada de itens para verificação
+    const notificationItems: NotificationItem[] = [];
+    for (const action of acoes) {
+      const gerente = action.gerente_responsavel || "Sem Gerente";
+
+      const hasFam = action.familias_detalhes && action.familias_detalhes.length > 0;
+      const hasSku = action.skus_detalhes && action.skus_detalhes.length > 0;
+
+      if (hasFam) {
+        action.familias_detalhes.forEach((f: any) => {
+          notificationItems.push({
+            acao_id: action.id,
+            codigo: action.codigo,
+            rede: action.rede,
+            gerente,
+            item_type: 'familia',
+            item_key: f.familia_nome,
+            item_name: `Família: ${f.familia_nome}`,
+            start_date: f.start_date || action.data_inicio,
+            end_date: f.end_date || action.data_fim,
+          });
+        });
+      }
+
+      if (hasSku) {
+        action.skus_detalhes.forEach((s: any) => {
+          notificationItems.push({
+            acao_id: action.id,
+            codigo: action.codigo,
+            rede: action.rede,
+            gerente,
+            item_type: 'sku',
+            item_key: s.sku,
+            item_name: `SKU: ${s.sku}`,
+            start_date: s.start_date || action.data_inicio,
+            end_date: s.end_date || action.data_fim,
+          });
+        });
+      }
+
+      if (!hasFam && !hasSku) {
+        notificationItems.push({
+          acao_id: action.id,
+          codigo: action.codigo,
+          rede: action.rede,
+          gerente,
+          item_type: 'familia',
+          item_key: action.familia_produto || 'Geral',
+          item_name: action.familia_produto || 'Ação Geral',
+          start_date: action.data_inicio,
+          end_date: action.data_fim,
+        });
+      }
+    }
+
+    // 4. Buscar e mapear os e-mails dos gerentes
     const { data: perfis, error: perfisError } = await supabase
       .from("cm_user_profiles")
       .select("manager_name, id")
@@ -93,9 +198,7 @@ export async function GET(request: Request) {
 
     if (perfisError) throw perfisError;
 
-    // Buscar emails via auth.users (precisa de service role key)
     const gerenteEmailMap: Record<string, string> = {};
-
     if (perfis && perfis.length > 0) {
       for (const p of perfis) {
         if (!p.manager_name) continue;
@@ -106,33 +209,54 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log("[acoes-atrasadas] Emails dos gerentes:", gerenteEmailMap);
-
-    // ── 4. Agrupar ações por gerente ──────────────────────────────────────────
+    // 5. Agrupar alertas e lembretes por gerente
     const porGerente: Record<
       string,
       {
         email: string;
-        acoes: typeof acoes;
+        reminders: NotificationItem[];
+        overdues: NotificationItem[];
       }
     > = {};
 
-    for (const acao of acoes) {
-      const gerente = acao.gerente_responsavel || "Sem Gerente";
-      const email = gerenteEmailMap[gerente];
+    const todayMs = hoje.getTime();
 
+    for (const item of notificationItems) {
+      const email = gerenteEmailMap[item.gerente];
       if (!email) {
-        console.warn(`[acoes-atrasadas] Sem email para gerente: ${gerente}`);
+        console.warn(`[acoes-atrasadas] Sem email mapeado para o gerente: ${item.gerente}`);
         continue;
       }
 
-      if (!porGerente[gerente]) {
-        porGerente[gerente] = { email, acoes: [] };
+      if (!porGerente[item.gerente]) {
+        porGerente[item.gerente] = { email, reminders: [], overdues: [] };
       }
-      porGerente[gerente].acoes.push(acao);
+
+      // Lembrete de início: hoje <= start_date <= hoje + 2d
+      if (item.start_date) {
+        const startMs = new Date(item.start_date + "T00:00:00").getTime();
+        const diffDays = Math.floor((startMs - todayMs) / 86_400_000);
+        const shouldRemind = diffDays >= 0 && diffDays <= 2;
+        const reminderKey = `${item.acao_id}|${item.item_type}|${item.item_key}|start_reminder`;
+
+        if (shouldRemind && !trackingSet.has(reminderKey)) {
+          porGerente[item.gerente].reminders.push(item);
+        }
+      }
+
+      // Alerta de atraso: hoje > end_date
+      if (item.end_date) {
+        const endMs = new Date(item.end_date + "T00:00:00").getTime();
+        const isOverdue = todayMs > endMs;
+        const overdueKey = `${item.acao_id}|${item.item_type}|${item.item_key}|overdue_alert`;
+
+        if (isOverdue && !trackingSet.has(overdueKey)) {
+          porGerente[item.gerente].overdues.push(item);
+        }
+      }
     }
 
-    // ── 5. Configurar transporter SMTP ────────────────────────────────────────
+    // 6. Configurar SMTP Transporter
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -144,84 +268,113 @@ export async function GET(request: Request) {
       tls: { rejectUnauthorized: false },
     });
 
-    // ── 6. Enviar um email por gerente ────────────────────────────────────────
-    const resultados: Array<{ gerente: string; email: string; qtd: number; status: string }> = [];
+    const resultados: Array<{ gerente: string; email: string; remindersCount: number; overduesCount: number; status: string }> = [];
+    const trackingToInsert: Array<{ acao_id: string; item_type: string; item_key: string; alert_type: string }> = [];
 
+    // 7. Enviar e-mails consolidados
     for (const [gerente, dados] of Object.entries(porGerente)) {
-      const linhasTabela = dados.acoes
-        .map((a) => {
-          const atraso = diasAtraso(a.data_fim);
-          return `
-            <tr>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">#${a.codigo}</td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${a.rede}</td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${a.tipo_acao || "-"}</td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${dateBr(a.data_inicio)} → ${dateBr(a.data_fim)}</td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0; color: #dc2626; font-weight: 600;">${atraso} dia${atraso > 1 ? "s" : ""}</td>
-            </tr>
-          `;
-        })
-        .join("");
+      if (dados.reminders.length === 0 && dados.overdues.length === 0) continue;
 
-      const html = `
+      let emailHtml = `
         <!DOCTYPE html>
         <html lang="pt-BR">
         <head><meta charset="UTF-8"></head>
         <body style="font-family: 'Segoe UI', Arial, sans-serif; background: #f9fafb; margin: 0; padding: 0;">
           <div style="max-width: 680px; margin: 24px auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-
+            
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #d97706, #b45309); padding: 24px 32px;">
               <h1 style="margin: 0; color: #fff; font-size: 22px; font-weight: 700;">Coffee++ Mais</h1>
-              <p style="margin: 6px 0 0; color: rgba(255,255,255,0.85); font-size: 14px;">Gestão de Investimentos</p>
+              <p style="margin: 6px 0 0; color: rgba(255,255,255,0.85); font-size: 14px;">Gestão de Investimentos — Alertas de Datas</p>
             </div>
-
-            <!-- Alerta -->
+            
             <div style="padding: 24px 32px 0;">
-              <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
-                <p style="margin: 0; font-size: 15px; color: #991b1b;">
-                  ⚠️ <strong>Atenção, ${gerente}!</strong>
-                  Você tem <strong>${dados.acoes.length} ação${dados.acoes.length > 1 ? "ões" : ""} de investimento</strong> com apuração em atraso.
-                </p>
-                <p style="margin: 8px 0 0; font-size: 13px; color: #b91c1c;">
-                  Essas ações encerraram o período mas ainda estão na fase <strong>Apur. GRV</strong>.
-                  Por favor, acesse o sistema e avance-as para a próxima etapa.
-                </p>
-              </div>
+              <p style="font-size: 15px; color: #374151;">Olá, Regional <strong>${gerente}</strong>,</p>
+              <p style="font-size: 14px; color: #4b5563; line-height: 1.5;">Seguem as atualizações e alertas sobre prazos de ações e apurações sob sua gestão:</p>
+      `;
 
-              <!-- Tabela de ações -->
-              <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      if (dados.reminders.length > 0) {
+        const rows = dados.reminders.map(item => `
+          <tr>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">#${item.codigo}</td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${item.rede}</td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${item.item_name}</td>
+            <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0; color: #2563eb; font-weight: 600;">Início: ${dateBr(item.start_date)}</td>
+          </tr>
+        `).join("");
+
+        emailHtml += `
+          <div style="margin-top: 24px; border: 1px solid #bfdbfe; border-radius: 8px; overflow: hidden;">
+            <div style="background: #eff6ff; padding: 12px 16px; border-bottom: 1px solid #bfdbfe;">
+              <h3 style="margin: 0; color: #1e40af; font-size: 14px;">📅 Lembrete de Início (Próximos 2 dias)</h3>
+            </div>
+            <div style="padding: 12px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
                 <thead>
-                  <tr style="background: #f3f4f6;">
-                    <th style="padding: 10px 12px; text-align: left; color: #374151; font-weight: 600; border-bottom: 2px solid #e5e7eb;">Cód.</th>
-                    <th style="padding: 10px 12px; text-align: left; color: #374151; font-weight: 600; border-bottom: 2px solid #e5e7eb;">Rede</th>
-                    <th style="padding: 10px 12px; text-align: left; color: #374151; font-weight: 600; border-bottom: 2px solid #e5e7eb;">Tipo</th>
-                    <th style="padding: 10px 12px; text-align: left; color: #374151; font-weight: 600; border-bottom: 2px solid #e5e7eb;">Período</th>
-                    <th style="padding: 10px 12px; text-align: left; color: #374151; font-weight: 600; border-bottom: 2px solid #e5e7eb;">Atraso</th>
+                  <tr style="background: #f8fafc;">
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Cód.</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Rede</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Item / Família</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Previsão</th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${linhasTabela}
+                  ${rows}
                 </tbody>
               </table>
             </div>
+          </div>
+        `;
+      }
 
+      if (dados.overdues.length > 0) {
+        const rows = dados.overdues.map(item => {
+          const dias = Math.floor((hoje.getTime() - new Date(item.end_date + "T00:00:00").getTime()) / 86_400_000);
+          return `
+            <tr>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">#${item.codigo}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${item.rede}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">${item.item_name}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0;">Fim: ${dateBr(item.end_date)}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #f0f0f0; color: #dc2626; font-weight: 600;">${dias} dia${dias > 1 ? "s" : ""} de atraso</td>
+            </tr>
+          `;
+        }).join("");
+
+        emailHtml += `
+          <div style="margin-top: 24px; border: 1px solid #fca5a5; border-radius: 8px; overflow: hidden;">
+            <div style="background: #fef2f2; padding: 12px 16px; border-bottom: 1px solid #fca5a5;">
+              <h3 style="margin: 0; color: #991b1b; font-size: 14px;">⚠️ Alerta: Apurações em Atraso (Sem Apuração preenchida)</h3>
+            </div>
+            <div style="padding: 12px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+                <thead>
+                  <tr style="background: #f8fafc;">
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Cód.</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Rede</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Item / Família</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Fim do Período</th>
+                    <th style="padding: 6px 12px; text-align: left; border-bottom: 1px solid #e2e8f0;">Atraso</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      }
+
+      emailHtml += `
+            </div>
             <!-- CTA -->
             <div style="padding: 24px 32px;">
-              <a
-                href="${process.env.NEXT_PUBLIC_APP_URL || "https://coffeemais.vercel.app"}/investimento"
-                style="display: inline-block; background: #d97706; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;"
-              >
-                Acessar Painel de Investimentos →
-              </a>
+              <a href="${process.env.NEXT_PUBLIC_APP_URL || "https://coffeemais.vercel.app"}/investimento" style="display: inline-block; background: #d97706; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600;">Acessar Painel de Investimentos →</a>
             </div>
-
             <!-- Footer -->
             <div style="background: #f9fafb; border-top: 1px solid #e5e7eb; padding: 16px 32px;">
-              <p style="margin: 0; font-size: 11px; color: #9ca3af;">
-                Este e-mail é gerado automaticamente todos os dias enquanto houver ações em atraso (por até 7 dias após o início do atraso).<br>
-                Não é necessário responder.
-              </p>
+              <p style="margin: 0; font-size: 11px; color: #9ca3af;">Este e-mail é gerado automaticamente todos os dias. Por favor, regularize suas apurações pendentes no sistema.</p>
             </div>
           </div>
         </body>
@@ -229,25 +382,71 @@ export async function GET(request: Request) {
       `;
 
       try {
+        const subject = dados.overdues.length > 0 
+          ? `⚠️ Prazos de Investimentos em Atraso — ${gerente}` 
+          : `📅 Lembrete: Novos Investimentos Iniciando — ${gerente}`;
+
         await transporter.sendMail({
           from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
           to: dados.email,
           cc: CC_ALWAYS.join(", "),
-          subject: `⚠️ ${dados.acoes.length} ação${dados.acoes.length > 1 ? "ões" : ""} com apuração em atraso — ${gerente}`,
-          html,
+          subject,
+          html: emailHtml,
         });
 
         console.log(`[acoes-atrasadas] Email enviado para ${gerente} (${dados.email})`);
-        resultados.push({ gerente, email: dados.email, qtd: dados.acoes.length, status: "enviado" });
+        resultados.push({ 
+          gerente, 
+          email: dados.email, 
+          remindersCount: dados.reminders.length, 
+          overduesCount: dados.overdues.length, 
+          status: "enviado" 
+        });
+
+        // Gravar no log de controle
+        dados.reminders.forEach(item => {
+          trackingToInsert.push({
+            acao_id: item.acao_id,
+            item_type: item.item_type,
+            item_key: item.item_key,
+            alert_type: "start_reminder"
+          });
+        });
+        dados.overdues.forEach(item => {
+          trackingToInsert.push({
+            acao_id: item.acao_id,
+            item_type: item.item_type,
+            item_key: item.item_key,
+            alert_type: "overdue_alert"
+          });
+        });
       } catch (emailError) {
         console.error(`[acoes-atrasadas] Erro ao enviar para ${gerente}:`, emailError);
-        resultados.push({ gerente, email: dados.email, qtd: dados.acoes.length, status: "erro" });
+        resultados.push({ 
+          gerente, 
+          email: dados.email, 
+          remindersCount: dados.reminders.length, 
+          overduesCount: dados.overdues.length, 
+          status: "erro" 
+        });
+      }
+    }
+
+    // 8. Gravar registros na tabela de tracking para impedir reenvios
+    if (trackingToInsert.length > 0) {
+      const { error: trackingInsertError } = await supabase
+        .from("cm_acoes_email_tracking")
+        .insert(trackingToInsert);
+      
+      if (trackingInsertError) {
+        console.error("[acoes-atrasadas] Erro ao salvar tracking de e-mails:", trackingInsertError);
       }
     }
 
     return NextResponse.json({
       success: true,
-      acoesAtrasadas: acoes.length,
+      remindersProcessed: trackingToInsert.filter(x => x.alert_type === "start_reminder").length,
+      overduesProcessed: trackingToInsert.filter(x => x.alert_type === "overdue_alert").length,
       emailsEnviados: resultados.filter((r) => r.status === "enviado").length,
       detalhes: resultados,
     });

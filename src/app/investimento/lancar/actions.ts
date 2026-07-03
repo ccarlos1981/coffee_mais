@@ -174,6 +174,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const data_fim = formData.get("data_fim") as string;
   const tipo_acao = formData.get("tipo_acao") as string;
   const mes_referencia = formData.get("mes_referencia") as string;
+  const date_mode = (formData.get("date_mode") as string) || "single";
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
@@ -207,12 +208,58 @@ export async function criarAcaoInvestimento(formData: FormData) {
     }
   }
 
-  if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
+  if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
   if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
     throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
+  }
+
+  let calculated_data_inicio = data_inicio;
+  let calculated_data_fim = data_fim;
+
+  if (date_mode === "multiple") {
+    const dates: string[] = [];
+    if (familias_detalhes && familias_detalhes.length > 0) {
+      for (const f of familias_detalhes) {
+        if (!f.start_date || !f.end_date) {
+          throw new Error(`A família ${f.familia_nome} precisa ter Data Início e Data Fim definidas.`);
+        }
+        dates.push(f.start_date, f.end_date);
+      }
+    }
+    if (skus_detalhes && skus_detalhes.length > 0) {
+      for (const s of skus_detalhes) {
+        if (!s.start_date || !s.end_date) {
+          throw new Error(`O SKU ${s.sku} precisa ter Data Início e Data Fim definidas.`);
+        }
+        dates.push(s.start_date, s.end_date);
+      }
+    }
+    if (dates.length > 0) {
+      const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
+      calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
+      calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+    } else {
+      throw new Error("Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
+    }
+  } else {
+    // Replicate global dates to details JSONB
+    if (familias_detalhes && familias_detalhes.length > 0) {
+      familias_detalhes = familias_detalhes.map((f: any) => ({
+        ...f,
+        start_date: data_inicio,
+        end_date: data_fim
+      }));
+    }
+    if (skus_detalhes && skus_detalhes.length > 0) {
+      skus_detalhes = skus_detalhes.map((s: any) => ({
+        ...s,
+        start_date: data_inicio,
+        end_date: data_fim
+      }));
+    }
   }
 
   // Financial validations for families
@@ -300,8 +347,9 @@ export async function criarAcaoInvestimento(formData: FormData) {
     {
       rede,
       codigo_matriz: codigo_matriz || null,
-      data_inicio,
-      data_fim,
+      data_inicio: calculated_data_inicio,
+      data_fim: calculated_data_fim,
+      date_mode,
       tipo_acao,
       familia_produto,
       familias_detalhes,
@@ -338,6 +386,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const data_fim = formData.get("data_fim") as string;
   const tipo_acao = formData.get("tipo_acao") as string;
   const mes_referencia = formData.get("mes_referencia") as string;
+  const date_mode = (formData.get("date_mode") as string) || "single";
   
   const abrangencia = formData.get("abrangencia") as string || "Família";
   const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
@@ -370,12 +419,58 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     }
   }
 
-  if (!rede || !data_inicio || !data_fim || !tipo_acao || !mes_referencia) {
+  if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
   }
 
   if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
     throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
+  }
+
+  let calculated_data_inicio = data_inicio;
+  let calculated_data_fim = data_fim;
+
+  if (date_mode === "multiple") {
+    const dates: string[] = [];
+    if (familias_detalhes && familias_detalhes.length > 0) {
+      for (const f of familias_detalhes) {
+        if (!f.start_date || !f.end_date) {
+          throw new Error("Cada família selecionada no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+        }
+        dates.push(f.start_date, f.end_date);
+      }
+    }
+    if (skus_detalhes && skus_detalhes.length > 0) {
+      for (const s of skus_detalhes) {
+        if (!s.start_date || !s.end_date) {
+          throw new Error("Cada SKU selecionado no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+        }
+        dates.push(s.start_date, s.end_date);
+      }
+    }
+    if (dates.length > 0) {
+      const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
+      calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
+      calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+    } else {
+      throw new Error("Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
+    }
+  } else {
+    // Replicate global dates to details JSONB
+    if (familias_detalhes && familias_detalhes.length > 0) {
+      familias_detalhes = familias_detalhes.map((f: any) => ({
+        ...f,
+        start_date: data_inicio,
+        end_date: data_fim
+      }));
+    }
+    if (skus_detalhes && skus_detalhes.length > 0) {
+      skus_detalhes = skus_detalhes.map((s: any) => ({
+        ...s,
+        start_date: data_inicio,
+        end_date: data_fim
+      }));
+    }
   }
 
   // Financial validations for families
@@ -485,8 +580,9 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     .update({
       rede,
       codigo_matriz: codigo_matriz || null,
-      data_inicio,
-      data_fim,
+      data_inicio: calculated_data_inicio,
+      data_fim: calculated_data_fim,
+      date_mode,
       tipo_acao,
       familia_produto,
       familias_detalhes,

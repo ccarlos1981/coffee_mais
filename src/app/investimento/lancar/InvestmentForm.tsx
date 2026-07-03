@@ -36,6 +36,9 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   const [isRedeOpen, setIsRedeOpen] = useState(false);
   const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(initRedeObj || null);
   const [paymentDisabled, setPaymentDisabled] = useState(false);
+  const [globalStart, setGlobalStart] = useState<string>(initialData?.data_inicio || "");
+  const [globalEnd, setGlobalEnd] = useState<string>(initialData?.data_fim || "");
+  const [dateMode, setDateMode] = useState<"single" | "multiple">(initialData?.date_mode || "single");
 
   useEffect(() => {
     if (!selectedRede) {
@@ -183,7 +186,9 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           preco_acao: f.preco_acao ? formatCurrencyValue(f.preco_acao) : "",
           investimento: f.investimento ? formatCurrencyValue(f.investimento) : "",
           expectativa_volume: f.expectativa_volume ? f.expectativa_volume.toString().replace(".", ",") : "",
-          investimento_justificativa: f.investimento_justificativa || ""
+          investimento_justificativa: f.investimento_justificativa || "",
+          start_date: f.start_date || "",
+          end_date: f.end_date || ""
         };
       });
     } else if (initialData?.familia_produto) {
@@ -192,7 +197,9 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         preco_acao: initialData.preco_acao ? formatCurrencyValue(initialData.preco_acao) : "",
         investimento: initialData.valor_investimento ? formatCurrencyValue(initialData.valor_investimento) : "",
         expectativa_volume: initialData.expectativa_volume ? initialData.expectativa_volume.toString().replace(".", ",") : "",
-        investimento_justificativa: ""
+        investimento_justificativa: "",
+        start_date: initialData.data_inicio || "",
+        end_date: initialData.data_fim || ""
       };
     }
     return init;
@@ -213,7 +220,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       finalValue = value.replace(/[^0-9,]/g, "");
       const parts = finalValue.split(",");
       if (parts.length > 2) finalValue = parts[0] + "," + parts.slice(1).join("");
-    } else if (field !== "investimento_justificativa") {
+    } else if (field !== "investimento_justificativa" && field !== "start_date" && field !== "end_date") {
       const v = value.replace(/\D/g, "");
       if (!v) { finalValue = ""; } else {
         const numValue = (parseInt(v, 10) / 100).toFixed(2);
@@ -287,7 +294,9 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           preco_acao: s.preco_acao ? formatCurrencyValue(s.preco_acao) : "",
           investimento: s.investimento ? formatCurrencyValue(s.investimento) : "",
           expectativa_volume: s.expectativa_volume ? s.expectativa_volume.toString().replace(".", ",") : "",
-          investimento_justificativa: s.investimento_justificativa || ""
+          investimento_justificativa: s.investimento_justificativa || "",
+          start_date: s.start_date || "",
+          end_date: s.end_date || ""
         };
       });
     }
@@ -308,7 +317,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       finalValue = value.replace(/[^0-9,]/g, "");
       const parts = finalValue.split(",");
       if (parts.length > 2) finalValue = parts[0] + "," + parts.slice(1).join("");
-    } else if (field !== "investimento_justificativa") {
+    } else if (field !== "investimento_justificativa" && field !== "start_date" && field !== "end_date") {
       const v = value.replace(/\D/g, "");
       if (!v) { finalValue = ""; } else {
         const numValue = (parseInt(v, 10) / 100).toFixed(2);
@@ -348,6 +357,44 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       setSkuDetails(prev => ({ ...prev, [sku]: { ...(prev[sku] || {}), [field]: finalValue } }));
     }
     setOverrideConfirm(null);
+  };
+
+  const handleDateModeChange = (newMode: "single" | "multiple") => {
+    if (newMode === "multiple") {
+      // Replicate global dates to all selected families and SKUs
+      setFamiliaDetails(prev => {
+        const updated = { ...prev };
+        selectedFamilias.forEach(fam => {
+          if (!updated[fam]) updated[fam] = {};
+          updated[fam] = {
+            ...updated[fam],
+            start_date: updated[fam].start_date || globalStart,
+            end_date: updated[fam].end_date || globalEnd
+          };
+        });
+        return updated;
+      });
+      setSkuDetails(prev => {
+        const updated = { ...prev };
+        selectedSkus.forEach(sku => {
+          if (!updated[sku]) updated[sku] = {};
+          updated[sku] = {
+            ...updated[sku],
+            start_date: updated[sku].start_date || globalStart,
+            end_date: updated[sku].end_date || globalEnd
+          };
+        });
+        return updated;
+      });
+      setDateMode("multiple");
+    } else {
+      const confirmTransition = window.confirm(
+        "Alterar para Data Única irá sobrescrever as datas individuais de todos os itens pelas datas globais da ação. Deseja continuar?"
+      );
+      if (confirmTransition) {
+        setDateMode("single");
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -405,6 +452,32 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
       }
     }
 
+    let calculatedStart = globalStart;
+    let calculatedEnd = globalEnd;
+
+    if (dateMode === "multiple") {
+      const dates: string[] = [];
+      if (showFamilias) {
+        selectedFamilias.forEach(fam => {
+          const d = familiaDetails[fam] || {};
+          if (d.start_date) dates.push(d.start_date);
+          if (d.end_date) dates.push(d.end_date);
+        });
+      }
+      if (showSkus) {
+        selectedSkus.forEach(sku => {
+          const d = skuDetails[sku] || {};
+          if (d.start_date) dates.push(d.start_date);
+          if (d.end_date) dates.push(d.end_date);
+        });
+      }
+      if (dates.length > 0) {
+        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
+        calculatedStart = sorted[0].toISOString().slice(0, 10);
+        calculatedEnd = sorted[sorted.length - 1].toISOString().slice(0, 10);
+      }
+    }
+
     const calculatedAbrangencia = (showFamilias && showSkus) ? "Misto" : showFamilias ? "Família" : "SKU";
 
     const formData = new FormData(e.currentTarget);
@@ -413,6 +486,9 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
     formData.append("tipo_pagamento", tipoPagamento);
     formData.append("tipo_acao_detalhe", tipoAcaoDetalhe);
     formData.append("abrangencia", calculatedAbrangencia);
+    formData.set("data_inicio", calculatedStart);
+    formData.set("data_fim", calculatedEnd);
+    formData.append("date_mode", dateMode);
 
     const parseVal = (str: string) => {
       if (!str) return null;
@@ -435,6 +511,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           preco_acao: parseVal(d.preco_acao),
           investimento: parseVal(d.investimento),
           expectativa_volume: parseVal(d.expectativa_volume),
+          start_date: dateMode === 'multiple' ? (d.start_date || null) : globalStart,
+          end_date: dateMode === 'multiple' ? (d.end_date || null) : globalEnd,
           ...(isManual ? {
             investimento_manual: true,
             investimento_justificativa: d.investimento_justificativa || "",
@@ -461,6 +539,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
           preco_acao: parseVal(d.preco_acao),
           investimento: parseVal(d.investimento),
           expectativa_volume: parseVal(d.expectativa_volume),
+          start_date: dateMode === 'multiple' ? (d.start_date || null) : globalStart,
+          end_date: dateMode === 'multiple' ? (d.end_date || null) : globalEnd,
           ...(isManual ? {
             investimento_manual: true,
             investimento_justificativa: d.investimento_justificativa || "",
@@ -666,39 +746,90 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         </div>
 
         {/* BLOCK 2: Datas e Mês de Referência */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-border">
+        <div className="space-y-4 pt-4 border-t border-border">
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Mês de Referência</label>
-            <input 
-              type="month"
-              name="mes_referencia"
-              required
-              defaultValue={initialData?.mes_referencia || ""}
-              onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-            />
+            <label className="block text-sm font-medium text-muted">Modo de Datas</label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                dateMode === "single" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input 
+                  type="radio" 
+                  name="date_mode_select" 
+                  disabled={isLocked}
+                  className="sr-only" 
+                  checked={dateMode === "single"}
+                  onChange={() => handleDateModeChange("single")}
+                />
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  dateMode === "single" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                }`}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: dateMode === "single" ? 1 : 0 }} />
+                </div>
+                <span className="text-sm font-medium">Data Única</span>
+              </label>
+
+              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                dateMode === "multiple" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input 
+                  type="radio" 
+                  name="date_mode_select" 
+                  disabled={isLocked}
+                  className="sr-only" 
+                  checked={dateMode === "multiple"}
+                  onChange={() => handleDateModeChange("multiple")}
+                />
+                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                  dateMode === "multiple" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                }`}>
+                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: dateMode === "multiple" ? 1 : 0 }} />
+                </div>
+                <span className="text-sm font-medium">Múltiplas Datas</span>
+              </label>
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Data Início da Ação</label>
-            <input 
-              type="date"
-              name="data_inicio"
-              required
-              defaultValue={initialData?.data_inicio}
-              onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Data Fim da Ação</label>
-            <input 
-              type="date"
-              name="data_fim"
-              required
-              defaultValue={initialData?.data_fim}
-              onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-              className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-            />
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-muted">Mês de Referência</label>
+              <input 
+                type="month"
+                name="mes_referencia"
+                required
+                defaultValue={initialData?.mes_referencia || ""}
+                onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+              />
+            </div>
+            {dateMode === "single" && (
+              <>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-muted">Data Início da Ação</label>
+                  <input 
+                    type="date"
+                    name="data_inicio"
+                    required={dateMode === "single"}
+                    value={globalStart}
+                    onChange={(e) => setGlobalStart(e.target.value)}
+                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-muted">Data Fim da Ação</label>
+                  <input 
+                    type="date"
+                    name="data_fim"
+                    required={dateMode === "single"}
+                    value={globalEnd}
+                    onChange={(e) => setGlobalEnd(e.target.value)}
+                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                  />
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -895,6 +1026,32 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                               />
                             </div>
                           )}
+                          {dateMode === "multiple" && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
+                              <div className="space-y-2">
+                                <label className="block text-xs font-medium text-muted">Data Início</label>
+                                <input
+                                  type="date"
+                                  required={dateMode === "multiple"}
+                                  value={familiaDetails[familia]?.start_date || ""}
+                                  onChange={(e) => handleFamiliaChange(familia, "start_date", e.target.value)}
+                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="block text-xs font-medium text-muted">Data Fim</label>
+                                <input
+                                  type="date"
+                                  required={dateMode === "multiple"}
+                                  value={familiaDetails[familia]?.end_date || ""}
+                                  onChange={(e) => handleFamiliaChange(familia, "end_date", e.target.value)}
+                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                />
+                              </div>
+                            </div>
+                          )}
                           <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
                             <span className="text-xs font-bold text-gold">Custo Estimado ({familia})</span>
                             <span className="text-sm font-black text-gold">
@@ -1037,6 +1194,32 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                                 placeholder="Ex: Preço negociado diretamente"
                                 className="w-full bg-elevated border border-amber-500/30 rounded-lg py-2 px-3 text-foreground text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500/50 transition-all"
                               />
+                            </div>
+                          )}
+                          {dateMode === "multiple" && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
+                              <div className="space-y-2">
+                                <label className="block text-xs font-medium text-muted">Data Início</label>
+                                <input
+                                  type="date"
+                                  required={dateMode === "multiple"}
+                                  value={skuDetails[sku]?.start_date || ""}
+                                  onChange={(e) => handleSkuChange(sku, "start_date", e.target.value)}
+                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <label className="block text-xs font-medium text-muted">Data Fim</label>
+                                <input
+                                  type="date"
+                                  required={dateMode === "multiple"}
+                                  value={skuDetails[sku]?.end_date || ""}
+                                  onChange={(e) => handleSkuChange(sku, "end_date", e.target.value)}
+                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                />
+                              </div>
                             </div>
                           )}
                           <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">

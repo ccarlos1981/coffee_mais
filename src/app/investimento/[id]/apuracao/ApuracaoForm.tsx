@@ -119,8 +119,11 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
         </div>
         <div>
           <span className="text-xs text-muted block">Período</span>
-          <span className="font-medium text-foreground">
+          <span className="font-medium text-foreground flex items-center gap-1.5">
             {new Date(investment.data_inicio + 'T12:00:00').toLocaleDateString('pt-BR')} — {new Date(investment.data_fim + 'T12:00:00').toLocaleDateString('pt-BR')}
+            {investment.date_mode === 'multiple' && (
+              <span className="text-[9px] bg-gold/10 text-gold px-1.5 py-0.5 rounded font-bold border border-gold/20">Múltiplas</span>
+            )}
           </span>
         </div>
         <div>

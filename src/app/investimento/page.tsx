@@ -150,6 +150,51 @@ interface AcaoInvestimento {
   action_result?: string | null;
   post_action_notes?: string | null;
   execution_score?: number | null;
+  date_mode?: "single" | "multiple" | null;
+}
+
+interface InvestmentPeriod {
+  start_date: string;
+  end_date: string;
+}
+
+export function calcularStatusItemInvestimento(
+  item: any,
+  fase_atual: number,
+  apuracao_preenchida_em?: string | null
+): "AGENDADA" | "EM_ANDAMENTO" | "ENCERRADA" | "ATRASADA" {
+  if ((fase_atual || 1) >= 4 || !!apuracao_preenchida_em) {
+    return "ENCERRADA";
+  }
+
+  let periods: InvestmentPeriod[] = [];
+  if (item.periods && Array.isArray(item.periods)) {
+    periods = item.periods;
+  } else if (item.start_date && item.end_date) {
+    periods = [{ start_date: item.start_date, end_date: item.end_date }];
+  }
+
+  if (periods.length === 0) {
+    return "AGENDADA";
+  }
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  let isAtrasada = false;
+  let isEmAndamento = false;
+
+  for (const p of periods) {
+    if (!p.start_date || !p.end_date) continue;
+    if (todayStr > p.end_date) {
+      isAtrasada = true;
+    } else if (todayStr >= p.start_date && todayStr <= p.end_date) {
+      isEmAndamento = true;
+    }
+  }
+
+  if (isAtrasada) return "ATRASADA";
+  if (isEmAndamento) return "EM_ANDAMENTO";
+  return "AGENDADA";
 }
 
 const FASE_CONFIG: Record<number, { label: string; sublabel: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
@@ -1868,7 +1913,12 @@ export default function InvestimentoPage() {
                         </td>
                         <td className="px-3 xl:px-4 py-3 text-foreground/80">
                           <div className="flex flex-col gap-0.5 text-xs font-medium">
-                            <span>{formatDate(row.data_inicio)}</span>
+                            <span className="flex items-center gap-1">
+                              {formatDate(row.data_inicio)}
+                              {row.date_mode === 'multiple' && (
+                                <span className="text-[9px] bg-gold/10 text-gold px-1 rounded font-bold border border-gold/20" title="Múltiplas datas por item">Múlt.</span>
+                              )}
+                            </span>
                             <span className="text-muted">{formatDate(row.data_fim)}</span>
                           </div>
                         </td>
@@ -2036,7 +2086,12 @@ export default function InvestimentoPage() {
 
                     <div className="flex items-center gap-2 text-sm text-muted bg-background p-2 rounded-lg border border-border/50">
                       <CalendarIcon className="w-4 h-4 text-gold flex-shrink-0" />
-                      <span className="font-medium">{formatDate(row.data_inicio)} até {formatDate(row.data_fim)}</span>
+                      <span className="font-medium">
+                        {formatDate(row.data_inicio)} até {formatDate(row.data_fim)}
+                        {row.date_mode === 'multiple' && (
+                          <span className="ml-1.5 text-[9px] bg-gold/10 text-gold px-1.5 py-0.5 rounded font-bold border border-gold/20">Múltiplas</span>
+                        )}
+                      </span>
                     </div>
 
                     <div className="flex items-center justify-between mt-1 pt-3 border-t border-border">
@@ -2858,6 +2913,53 @@ export default function InvestimentoPage() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+                    )}
+                    {selectedAction.date_mode === "multiple" && (
+                      <div className="col-span-2 space-y-3 mt-3 border-t border-border/50 pt-3">
+                        <span className="text-xs text-muted block font-bold">Cronograma da Ação</span>
+                        <div className="space-y-2">
+                          {selectedAction.familias_detalhes && selectedAction.familias_detalhes.map((f: any, idx: number) => {
+                            const status = calcularStatusItemInvestimento(f, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
+                            const badgeColors = {
+                              AGENDADA: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                              EM_ANDAMENTO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                              ENCERRADA: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+                              ATRASADA: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+                            };
+                            return (
+                              <div key={`cron-fam-${idx}`} className="flex items-center justify-between bg-elevated border border-border p-2.5 rounded-lg text-xs">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-foreground">{f.familia_nome} (Família)</span>
+                                  <span className="text-[10px] text-muted">{formatDate(f.start_date)} até {formatDate(f.end_date)}</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeColors[status]}`}>
+                                  {status.replace("_", " ")}
+                                </span>
+                              </div>
+                            );
+                          })}
+                          {selectedAction.skus_detalhes && selectedAction.skus_detalhes.map((s: any, idx: number) => {
+                            const status = calcularStatusItemInvestimento(s, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
+                            const badgeColors = {
+                              AGENDADA: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+                              EM_ANDAMENTO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                              ENCERRADA: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+                              ATRASADA: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+                            };
+                            return (
+                              <div key={`cron-sku-${idx}`} className="flex items-center justify-between bg-elevated border border-border p-2.5 rounded-lg text-xs">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-foreground">{s.sku} (SKU)</span>
+                                  <span className="text-[10px] text-muted">{formatDate(s.start_date)} até {formatDate(s.end_date)}</span>
+                                </div>
+                                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeColors[status]}`}>
+                                  {status.replace("_", " ")}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
