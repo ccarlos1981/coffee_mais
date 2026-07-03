@@ -627,23 +627,51 @@ export default function InvestimentoPage() {
     return matrizes;
   }, [matrizes, isRegionalManager, userEmail]);
 
-  const temInvestimentoNoMes = useCallback((m: any, mes: string) => {
-    return data.some(action => 
+  const acoesNoMesCount = useCallback((m: any, mes: string) => {
+    return data.filter(action => 
       (action.codigo_matriz === m.codigo || (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())) &&
       action.mes_referencia === mes
-    );
+    ).length;
+  }, [data]);
+
+  const acoesPorGerente = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const mainManagers = ["Leandro", "Julliano", "Luiz"];
+    mainManagers.forEach(mgr => {
+      counts[mgr] = 0;
+    });
+
+    data.forEach(action => {
+      const rawG = action.gerente_responsavel;
+      if (rawG) {
+        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
+        if (matched) {
+          counts[matched]++;
+        } else {
+          counts[rawG] = (counts[rawG] || 0) + 1;
+        }
+      } else {
+        counts["Sem Gerente"] = (counts["Sem Gerente"] || 0) + 1;
+      }
+    });
+
+    return Object.entries(counts)
+      .map(([manager, count]) => ({ manager, count }))
+      .sort((a, b) => b.count - a.count);
   }, [data]);
 
   const sortedMatrizesWithInvestimento = useMemo(() => {
     return myMatrizes.map(m => {
-      const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
-      const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
+      const acoesCount = data.filter(action =>
+        action.codigo_matriz === m.codigo || 
+        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())
+      ).length;
       return {
         ...m,
-        faturamentoTotal
+        acoesCount
       };
-    }).sort((a, b) => b.faturamentoTotal - a.faturamentoTotal);
-  }, [myMatrizes, faturamentoTotalMap]);
+    }).sort((a, b) => b.acoesCount - a.acoesCount);
+  }, [myMatrizes, data]);
 
   const filteredMatrizesInView = useMemo(() => {
     if (!matrizSearch) return sortedMatrizesWithInvestimento;
@@ -2406,6 +2434,19 @@ export default function InvestimentoPage() {
                   </div>
                 </div>
 
+                {/* Consolidado por Gerente */}
+                <div className="bg-elevated/10 px-4 py-3 border-b border-border flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs">
+                  <span className="font-bold text-muted uppercase tracking-wider text-[10px]">Ações por Gerente:</span>
+                  <div className="flex flex-wrap gap-2.5">
+                    {acoesPorGerente.slice(0, 3).map((item) => (
+                      <div key={item.manager} className="flex items-center gap-2 bg-elevated/40 border border-border/60 px-3 py-1 rounded-lg shadow-sm">
+                        <span className="font-semibold text-foreground">{item.manager}:</span>
+                        <span className="font-bold text-gold text-sm">{item.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Matrix view body */}
                 <div className="flex-1 overflow-auto">
                   <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
@@ -2427,17 +2468,21 @@ export default function InvestimentoPage() {
                                   <span className="font-mono text-[10px] text-gold bg-gold/10 px-1 py-0.5 rounded font-bold">{m.codigo}</span>
                                   <span className="font-bold text-foreground text-sm">{m.nome}</span>
                                 </div>
-                                <span className="text-[10px] text-muted mt-1">Gerente: <span className="text-foreground/80 font-medium">{m.gerente || 'Não definido'}</span></span>
+                                <span className="text-[10px] text-muted mt-1">
+                                  Gerente: <span className="text-foreground/80 font-medium">{m.gerente || 'Não definido'}</span>
+                                  {" • "}
+                                  Ações: <span className="text-gold font-bold">{m.acoesCount}</span>
+                                </span>
                               </div>
                             </td>
                             {MATRIX_MONTHS.map(month => {
-                              const hasInv = temInvestimentoNoMes(m, month.value);
+                              const count = acoesNoMesCount(m, month.value);
                               return (
                                 <td key={month.value} className="p-2 text-center">
                                   <div className="flex items-center justify-center">
-                                    {hasInv ? (
+                                    {count > 0 ? (
                                       <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[#10b981]/15 text-[#10b981] font-bold text-sm">
-                                        ✓
+                                        {count}
                                       </span>
                                     ) : (
                                       <span className="text-muted/30 font-bold text-sm">
