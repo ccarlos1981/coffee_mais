@@ -134,3 +134,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 [02/07/2026 08:23] ✅ Alterações enviadas com sucesso para o GitHub.
 [02/07/2026 11:23] Nenhuma alteração encontrada. Nada a enviar.
 [02/07/2026 16:32] Nenhuma alteração encontrada. Nada a enviar.
+[main 151a869] auto-save: 03/07/2026 05:15
+ 11 files changed, 9014 insertions(+), 719 deletions(-)
+ create mode 100644 src/app/dre/consolidado/page.tsx
+ create mode 100644 src/app/dre/historico/auditoria/page.tsx
+ create mode 100644 src/app/dre/rede/page.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   3b388a5..151a869  main -> main
+[03/07/2026 05:15] ✅ Alterações enviadas com sucesso para o GitHub.

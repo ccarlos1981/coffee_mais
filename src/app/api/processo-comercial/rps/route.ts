@@ -157,13 +157,20 @@ export async function GET(request: Request) {
       WHERE year = ${year} AND month = ${month}
     `;
 
+    const sqlPrevWeeklyProjections = `
+      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value
+      FROM cm_weekly_projections
+      WHERE year = ${prevMonthYear} AND month = ${prevMonthVal}
+    `;
+
     // Executar consultas via RPC
-    const [resMgrHist, resCliHist, resMgrTargets, resInvestHist, resProj] = await Promise.all([
+    const [resMgrHist, resCliHist, resMgrTargets, resInvestHist, resProj, resPrevProj] = await Promise.all([
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlClientHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerTargets }),
       supabase.rpc('execute_readonly_query', { query_text: sqlInvestmentsHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlWeeklyProjections }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlPrevWeeklyProjections }),
     ]);
 
     if (resMgrHist.error) throw new Error("Erro buscar histórico gerentes: " + resMgrHist.error.message);
@@ -171,12 +178,14 @@ export async function GET(request: Request) {
     if (resMgrTargets.error) throw new Error("Erro buscar metas: " + resMgrTargets.error.message);
     if (resInvestHist.error) throw new Error("Erro buscar investimento histórico: " + resInvestHist.error.message);
     if (resProj.error) throw new Error("Erro buscar projeções: " + resProj.error.message);
+    if (resPrevProj.error) throw new Error("Erro buscar projeções do mês anterior: " + resPrevProj.error.message);
 
     const mgrHist = (resMgrHist.data || []) as any[];
     const cliHist = (resCliHist.data || []) as any[];
     const mgrTargets = (resMgrTargets.data || []) as any[];
     const investHist = (resInvestHist.data || []) as any[];
     const dbProjections = (resProj.data || []) as any[];
+    const dbPrevProjections = (resPrevProj.data || []) as any[];
 
     // Estruturar dados consolidados dos gerentes (filtrados por acesso)
     const managersData = activeManagers.map(mName => {
@@ -205,6 +214,35 @@ export async function GET(request: Request) {
       const pmInvestPct = pmFatVal > 0 ? (pmInvestVal / pmFatVal) * 100 : 0;
       const pyInvestPct = pyFatVal > 0 ? (pyInvestVal / pyFatVal) * 100 : 10.0; // Fallback para 10%
 
+      // --- CÁLCULO DAS PROJEÇÕES DO MÊS ANTERIOR (DISPERSÃO) ---
+      const prevMondays = getMondaysOfMonth(prevMonthYear, prevMonthVal);
+      const prevManagerProjs = dbPrevProjections.filter((p: any) => p.manager === mName);
+
+      // Volume (VOL) do mês anterior
+      const prevVolWeekly = prevMondays.map(date => {
+        const p = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'VOL');
+        return p ? Number(p.projection_value) : 0;
+      });
+      const prevVolProj = prevVolWeekly.reduce((acc, val) => acc + val, 0);
+
+      // Investimento (INVEST) do mês anterior
+      const prevInvestWeekly = prevMondays.map(date => {
+        const p = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'INVEST');
+        return p ? Number(p.projection_value) : 0;
+      });
+      const prevInvestProj = prevInvestWeekly.length > 0 ? (prevInvestWeekly.slice().reverse().find(v => v !== 0) || prevInvestWeekly[prevInvestWeekly.length - 1] || 0) : 0;
+
+      // Faturamento (FAT) do mês anterior (Soma dos clientes ou total consolidado se houver)
+      const prevFatWeekly = prevMondays.map(date => {
+        const totalP = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'FAT');
+        if (totalP) return Number(totalP.projection_value);
+
+        return prevManagerProjs
+          .filter((p: any) => p.client_matrix !== '_TOTAL_' && p.week_start_date === date && p.kpi === 'FAT')
+          .reduce((acc, p) => acc + Number(p.projection_value), 0);
+      });
+      const prevFatProj = prevFatWeekly.reduce((acc, val) => acc + val, 0);
+
       // Projeções gravadas para este gerente
       const managerProjs = dbProjections.filter((p: any) => p.manager === mName && p.client_matrix === '_TOTAL_');
 
@@ -214,6 +252,7 @@ export async function GET(request: Request) {
           ano_a: Number(pyHist?.qty || 0),
           mes_a: Number(pmHist?.qty || 0),
           desafio: targetVol,
+          prev_month_projection: prevVolProj,
           projections: mondays.map(date => {
             if (date > todayStr) return 0;
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'VOL');
@@ -224,12 +263,14 @@ export async function GET(request: Request) {
           ano_a: pyFatVal,
           mes_a: pmFatVal,
           desafio: targetFat,
+          prev_month_projection: prevFatProj,
           projections: mondays.map(() => 0) // Será calculado como a soma das projeções dos clientes
         },
         INVEST: {
           ano_a: pyInvestPct,
           mes_a: pmInvestPct,
           desafio: targetInvest,
+          prev_month_projection: prevInvestProj,
           projections: mondays.map(date => {
             if (date > todayStr) return 0;
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'INVEST');
@@ -282,11 +323,20 @@ export async function GET(request: Request) {
         const defaultMeta = targetFat > 0 ? (cli.fatPm / pmFatVal) * targetFat : 0;
         const metaValue = metaProj ? Number(metaProj.projection_value) : (cli.fatPm > 0 ? cli.fatPm : defaultMeta);
 
+        // Projeção do mês anterior para este cliente
+        const clientPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === cli.clientName && p.kpi === 'FAT');
+        const prevCliFatWeekly = prevMondays.map(date => {
+          const p = clientPrevProjs.find((p: any) => p.week_start_date === date);
+          return p ? Number(p.projection_value) : 0;
+        });
+        const prevCliFatProj = prevCliFatWeekly.reduce((acc, val) => acc + val, 0);
+
         return {
           client: cli.clientName,
           ano_a: cli.fatPy,
           mes_a: cli.fatPm,
           meta: metaValue,
+          prev_month_projection: prevCliFatProj,
           projections: mondays.map(date => {
             if (date > todayStr) return 0;
             const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
@@ -306,11 +356,20 @@ export async function GET(request: Request) {
         const defaultMeta = Math.max(0, targetFat - clientsList.reduce((acc, c) => acc + c.meta, 0));
         const metaValue = metaProj ? Number(metaProj.projection_value) : defaultMeta;
 
+        // Projeção do mês anterior para "OUTROS"
+        const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
+        const prevOtherFatWeekly = prevMondays.map(date => {
+          const p = otherPrevProjs.find((p: any) => p.week_start_date === date);
+          return p ? Number(p.projection_value) : 0;
+        });
+        const prevOtherFatProj = prevOtherFatWeekly.reduce((acc, val) => acc + val, 0);
+
         clientsList.push({
           client: "OUTROS",
           ano_a: sumAnoA,
           mes_a: sumMesA,
           meta: metaValue,
+          prev_month_projection: prevOtherFatProj,
           projections: mondays.map(date => {
             if (date > todayStr) return 0;
             const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
@@ -323,11 +382,20 @@ export async function GET(request: Request) {
         const metaProj = cProj.find((p: any) => p.kpi === 'META');
         const metaValue = metaProj ? Number(metaProj.projection_value) : 0;
 
+        // Projeção do mês anterior para "OUTROS"
+        const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
+        const prevOtherFatWeekly = prevMondays.map(date => {
+          const p = otherPrevProjs.find((p: any) => p.week_start_date === date);
+          return p ? Number(p.projection_value) : 0;
+        });
+        const prevOtherFatProj = prevOtherFatWeekly.reduce((acc, val) => acc + val, 0);
+
         clientsList.push({
           client: "OUTROS",
           ano_a: 0,
           mes_a: 0,
           meta: metaValue,
+          prev_month_projection: prevOtherFatProj,
           projections: mondays.map(date => {
             if (date > todayStr) return 0;
             const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');

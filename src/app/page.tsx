@@ -136,6 +136,7 @@ const allModules: NavigationGroup[] = [
     items: [
       { title: "Cadastro", permission: "Gente e Gestão", description: "Cadastro de funcionários", href: "/gente-gestao/cadastro", icon: Users, color: "from-teal-600 to-teal-800", ready: true },
       { title: "Remuneração Promotores", permission: "Gente e Gestão", description: "Cálculo e auditoria", href: "/gente-gestao/remuneracao-promotor", icon: DollarSign, color: "from-amber-500 to-amber-700", ready: true },
+      { title: "Férias", permission: "Gente e Gestão", description: "Calendário de Férias", href: "/gente-gestao/ferias", icon: CalendarDays, color: "from-emerald-600 to-emerald-800", ready: true },
       { title: "Central de Treinamento", description: "Manuais e Onboarding", href: "/treinamento", icon: BookOpen, color: "from-emerald-600 to-emerald-800", ready: true },
       { title: "Processos Coffee ++", permission: "Gente e Gestão", description: "Fluxos e Procedimentos", href: "/processos", icon: Layers, color: "from-purple-600 to-purple-800", ready: true },
     ],

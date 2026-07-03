@@ -7,9 +7,10 @@ export const dynamic = 'force-dynamic';
 
 // Admin client sem cookies (para queries sem RLS restritiva)
 function getAdminClient() {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
   return createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    key,
     { global: { fetch: (url, opts) => fetch(url, { ...opts, cache: 'no-store' }) } }
   );
 }
@@ -122,7 +123,7 @@ export async function GET(request: Request) {
         .order('week_start_date', { ascending: false }),
 
       // 4. Comentários dos slides deste gerente/mês
-      supabase
+      supabaseServer
         .from('cm_rdm_comments')
         .select('slide_key, comment, updated_at')
         .eq('year', year)
@@ -484,7 +485,14 @@ export async function GET(request: Request) {
       prevYear,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    let message = "Erro desconhecido";
+    if (err instanceof Error) {
+      message = err.message;
+    } else if (err && typeof err === 'object') {
+      message = (err as any).message || (err as any).error_description || JSON.stringify(err);
+    } else {
+      message = String(err);
+    }
     console.error('[RDM API GET]', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
@@ -506,8 +514,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos." }, { status: 400 });
     }
 
-    const supabase = getAdminClient();
-    const { error } = await supabase
+    const { error } = await supabaseServer
       .from('cm_rdm_comments')
       .upsert(
         { manager, year, month, slide_key, comment: comment ?? '', updated_at: new Date().toISOString(), updated_by: user.id },
@@ -518,7 +525,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
+    let message = "Erro desconhecido";
+    if (err instanceof Error) {
+      message = err.message;
+    } else if (err && typeof err === 'object') {
+      message = (err as any).message || (err as any).error_description || JSON.stringify(err);
+    } else {
+      message = String(err);
+    }
     console.error('[RDM API POST]', message);
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
