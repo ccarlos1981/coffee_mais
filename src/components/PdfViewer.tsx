@@ -192,7 +192,27 @@ export default function PdfViewer({ url, allowDownload, isEditor, onReadComplete
     renderPages();
   }, [pdf, numPages, zoom, useIframeFallback]);
 
-  // 5. Detector de Scroll para Compliance (Leitura 90% ou última página)
+  // 5. Auto-completa leitura se o PDF não for rolável ou for de 1 página
+  useEffect(() => {
+    if (loading || numPages === 0 || useIframeFallback || !pdf) return;
+
+    const timer = setTimeout(() => {
+      const container = containerRef.current;
+      if (container) {
+        const isScrollable = container.scrollHeight > container.clientHeight;
+        if (numPages === 1 || !isScrollable) {
+          console.log("PdfViewer: PDF não rolável ou possui 1 página. Liberando confirmação...");
+          if (onReadCompleteRef.current) {
+            onReadCompleteRef.current();
+          }
+        }
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [pdf, numPages, loading, useIframeFallback]);
+
+  // 6. Detector de Scroll para Compliance (Leitura 90% ou última página)
   const handleScroll = () => {
     if (!containerRef.current || numPages === 0 || useIframeFallback) return;
 

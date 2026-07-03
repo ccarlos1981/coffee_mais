@@ -628,7 +628,11 @@ export default function ProcessDetailsPage() {
                 <button
                   onClick={handleConfirmRead}
                   disabled={confirmingRead || editMode || (data.render_mode === "PDF_VIEWER" && data.mandatory_read && !pdfReadComplete)}
-                  className="w-full py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-neutral-950 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50 cursor-pointer"
+                  className={`w-full py-2 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 transition border ${
+                    (confirmingRead || editMode || (data.render_mode === "PDF_VIEWER" && data.mandatory_read && !pdfReadComplete))
+                      ? "bg-neutral-800 text-neutral-500 border-neutral-800/80 cursor-not-allowed opacity-60"
+                      : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-neutral-950 border-transparent cursor-pointer"
+                  }`}
                 >
                   {confirmingRead ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
                   Confirmar Leitura

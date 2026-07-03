@@ -1812,7 +1812,8 @@ function SlideProjecao({
   year,
   manager,
   farol,
-  comment,
+  projComment,
+  projValuesJson,
   onCommentChange,
   onCommentSave,
   saving,
@@ -1822,7 +1823,8 @@ function SlideProjecao({
   year: number;
   manager: string;
   farol: FarolData;
-  comment: string;
+  projComment: string;
+  projValuesJson: string;
   onCommentChange: (v: string) => void;
   onCommentSave: () => void;
   saving: boolean;
@@ -1897,17 +1899,17 @@ function SlideProjecao({
     });
   }, [baseRows]);
 
-  // Load saved proj from comment prop
+  // Load saved proj from projValuesJson prop
   useEffect(() => {
-    if (projLoaded || !comment) return;
+    if (projLoaded || !projValuesJson) return;
     try {
-      const parsed = JSON.parse(comment);
+      const parsed = JSON.parse(projValuesJson);
       if (parsed && typeof parsed === 'object') {
         setProjValues(prev => ({ ...prev, ...parsed }));
         setProjLoaded(true);
       }
     } catch { /* not json, ignore */ }
-  }, [comment, projLoaded]);
+  }, [projValuesJson, projLoaded]);
 
   const handleProjChange = (label: string, val: string) => {
     setProjValues(prev => ({ ...prev, [label]: val.replace(/[^\d]/g, '') }));
@@ -2164,7 +2166,7 @@ function SlideProjecao({
             </button>
           </div>
           <textarea
-            value={comment}
+            value={projComment}
             onChange={e => onCommentChange(e.target.value)}
             placeholder="Escreva aqui as observações sobre a projeção de vendas..."
             style={{
@@ -3394,14 +3396,21 @@ export default function RdmPage() {
   // ── Save comment ──
   const saveComment = async (slideKey: string) => {
     setSavingKey(slideKey);
+    setError(null);
     try {
-      await fetch('/api/processo-comercial/rdm', {
+      const res = await fetch('/api/processo-comercial/rdm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ year, month, manager, slide_key: slideKey, comment: comments[slideKey] ?? '' }),
       });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || "Erro ao salvar o comentário.");
+      }
       setSavedKey(slideKey);
       setTimeout(() => setSavedKey(null), 2000);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Erro ao salvar comentário");
     } finally {
       setSavingKey(null);
     }
@@ -3680,7 +3689,8 @@ export default function RdmPage() {
           year={data.year}
           manager={manager}
           farol={data.farol}
-          comment={comments['projecao_proj'] ?? ''}
+          projComment={comments['projecao_vendas'] ?? ''}
+          projValuesJson={comments['projecao_proj'] ?? ''}
           onCommentChange={v => setComments(prev => ({ ...prev, projecao_vendas: v }))}
           onCommentSave={() => saveComment('projecao_vendas')}
           saving={savingKey === 'projecao_vendas'}

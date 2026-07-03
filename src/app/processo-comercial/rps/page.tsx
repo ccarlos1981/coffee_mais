@@ -32,6 +32,7 @@ interface ClientRow {
   ano_a: number;
   mes_a: number;
   meta: number;
+  prev_month_projection?: number;
   projections: number[];
 }
 
@@ -39,6 +40,7 @@ interface ManagerKPI {
   ano_a: number;
   mes_a: number;
   desafio: number;
+  prev_month_projection?: number;
   projections: number[];
 }
 
@@ -348,9 +350,9 @@ export default function RpsPage() {
     if (managers.length === 0) return null;
 
     const kpis = {
-      VOL: { ano_a: 0, mes_a: 0, desafio: 0, projections: mondays.map(() => 0) },
-      FAT: { ano_a: 0, mes_a: 0, desafio: 0, projections: mondays.map(() => 0) },
-      INVEST: { ano_a: 0, mes_a: 0, desafio: 0, projections: mondays.map(() => 0) }
+      VOL: { ano_a: 0, mes_a: 0, desafio: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
+      FAT: { ano_a: 0, mes_a: 0, desafio: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
+      INVEST: { ano_a: 0, mes_a: 0, desafio: 0, prev_month_projection: 0, projections: mondays.map(() => 0) }
     };
 
     // Somar VOL e FAT
@@ -358,6 +360,7 @@ export default function RpsPage() {
       kpis.VOL.ano_a += m.kpis.VOL.ano_a;
       kpis.VOL.mes_a += m.kpis.VOL.mes_a;
       kpis.VOL.desafio += m.kpis.VOL.desafio;
+      kpis.VOL.prev_month_projection += m.kpis.VOL.prev_month_projection || 0;
       mondays.forEach((_, idx) => {
         kpis.VOL.projections[idx] += m.kpis.VOL.projections[idx];
       });
@@ -365,6 +368,7 @@ export default function RpsPage() {
       kpis.FAT.ano_a += m.kpis.FAT.ano_a;
       kpis.FAT.mes_a += m.kpis.FAT.mes_a;
       kpis.FAT.desafio += m.kpis.FAT.desafio;
+      kpis.FAT.prev_month_projection += m.kpis.FAT.prev_month_projection || 0;
       mondays.forEach((_, idx) => {
         kpis.FAT.projections[idx] += m.kpis.FAT.projections[idx];
       });
@@ -382,6 +386,10 @@ export default function RpsPage() {
     const totalInvestMesA = managers.reduce((acc, m) => acc + (m.kpis.FAT.mes_a * (m.kpis.INVEST.mes_a / 100)), 0);
     kpis.INVEST.mes_a = kpis.FAT.mes_a > 0 ? (totalInvestMesA / kpis.FAT.mes_a) * 100 : 10.0;
 
+    // Para o MÊS ANTERIOR (PROJEÇÃO)
+    const totalInvestPrevMonth = managers.reduce((acc, m) => acc + (m.kpis.FAT.mes_a * ((m.kpis.INVEST.prev_month_projection || 0) / 100)), 0);
+    kpis.INVEST.prev_month_projection = kpis.FAT.mes_a > 0 ? (totalInvestPrevMonth / kpis.FAT.mes_a) * 100 : 10.0;
+
     // Para cada semana de projeção
     mondays.forEach((m, idx) => {
       const isFuture = m > todayStr;
@@ -398,7 +406,7 @@ export default function RpsPage() {
       manager: "TOTAL BRASIL CRISTIANO",
       kpis
     };
-  }, [managers, mondays]);
+  }, [managers, mondays, todayStr]);
 
   // Helper para obter a última projeção disponível
   const getLatestProjection = (projections: number[]) => {
@@ -421,8 +429,22 @@ export default function RpsPage() {
     return ((current - historical) / historical) * 100;
   };
 
+  // Helper de cálculo de dispersão (% Disp)
+  const calcDispersionPct = (closed: number, projected: number) => {
+    if (projected <= 0) return 0;
+    return ((closed - projected) / projected) * 100;
+  };
+
   // Estilo de cor para células de porcentagem baseadas nas premissas
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
+    if (kpi === "DISPERSAO") {
+      if (pctVal >= 0) {
+        return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
+      } else {
+        return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
+      }
+    }
+
     if (compareVal <= 0) return { color: "var(--foreground-dim)" };
 
     if (kpi === "INVEST") {
@@ -622,7 +644,7 @@ export default function RpsPage() {
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
                         </th>
-                        <th colSpan={3} className="col-divider" style={{ borderBottom: "2px solid var(--border-light)" }}>ANÁLISE</th>
+                        <th colSpan={4} className="col-divider" style={{ borderBottom: "2px solid var(--border-light)" }}>ANÁLISE</th>
                       </tr>
                       <tr>
                         {mondays.map((m, idx) => (
@@ -630,7 +652,8 @@ export default function RpsPage() {
                             {formatDateLabel(m)}
                           </th>
                         ))}
-                        <th className="col-divider" style={{ width: 70 }}>% DESAFIO</th>
+                        <th className="col-divider" style={{ width: 70 }}>% Disp</th>
+                        <th style={{ width: 70 }}>% DESAFIO</th>
                         <th style={{ width: 70 }}>%AA</th>
                         <th style={{ width: 70 }}>%MA</th>
                       </tr>
@@ -646,14 +669,17 @@ export default function RpsPage() {
                         const pVolDesafio = calcRatioPct(latestVol, row.kpis.VOL.desafio);
                         const pVolAA = calcRatioPct(latestVol, row.kpis.VOL.ano_a);
                         const pVolMA = calcRatioPct(latestVol, row.kpis.VOL.mes_a);
+                        const pVolDisp = calcDispersionPct(row.kpis.VOL.mes_a, row.kpis.VOL.prev_month_projection || 0);
 
                         const pFatDesafio = calcRatioPct(latestFat, row.kpis.FAT.desafio);
                         const pFatAA = calcRatioPct(latestFat, row.kpis.FAT.ano_a);
                         const pFatMA = calcRatioPct(latestFat, row.kpis.FAT.mes_a);
+                        const pFatDisp = calcDispersionPct(row.kpis.FAT.mes_a, row.kpis.FAT.prev_month_projection || 0);
 
                         const pInvestDesafio = calcRatioPct(latestInvest, row.kpis.INVEST.desafio);
                         const pInvestAA = calcRatioPct(latestInvest, row.kpis.INVEST.ano_a);
                         const pInvestMA = calcRatioPct(latestInvest, row.kpis.INVEST.mes_a);
+                        const pInvestDisp = calcDispersionPct(row.kpis.INVEST.mes_a, row.kpis.INVEST.prev_month_projection || 0);
 
                         return (
                           <tbody key={row.manager}>
@@ -695,7 +721,10 @@ export default function RpsPage() {
                                   </td>
                                 );
                               })}
-                              <td className="pct-cell col-divider" style={getPctCellStyle("DESAFIO", pVolDesafio, row.kpis.VOL.desafio)}>{row.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
+                              <td className="pct-cell col-divider" style={row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, row.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                {row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
+                              </td>
+                              <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, row.kpis.VOL.desafio)}>{row.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, row.kpis.VOL.ano_a)}>{row.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("MA", pVolMA, row.kpis.VOL.mes_a)}>{row.kpis.VOL.mes_a > 0 ? formatNumber(pVolMA, 0) + "%" : "-"}</td>
                             </tr>
@@ -714,7 +743,10 @@ export default function RpsPage() {
                                   </td>
                                 );
                               })}
-                              <td className="pct-cell col-divider" style={getPctCellStyle("DESAFIO", pFatDesafio, row.kpis.FAT.desafio)}>{row.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
+                              <td className="pct-cell col-divider" style={row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, row.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                {row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
+                              </td>
+                              <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, row.kpis.FAT.desafio)}>{row.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, row.kpis.FAT.ano_a)}>{row.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("MA", pFatMA, row.kpis.FAT.mes_a)}>{row.kpis.FAT.mes_a > 0 ? formatNumber(pFatMA, 0) + "%" : "-"}</td>
                             </tr>
@@ -749,7 +781,10 @@ export default function RpsPage() {
                                   </td>
                                 );
                               })}
-                              <td className="pct-cell col-divider" style={getPctCellStyle("INVEST", pInvestDesafio, row.kpis.INVEST.desafio)}>{row.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
+                              <td className="pct-cell col-divider" style={row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, row.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                {row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
+                              </td>
+                              <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, row.kpis.INVEST.desafio)}>{row.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, row.kpis.INVEST.ano_a)}>{row.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestMA, row.kpis.INVEST.mes_a)}>{row.kpis.INVEST.mes_a > 0 ? formatNumber(pInvestMA, 0) + "%" : "-"}</td>
                             </tr>
@@ -822,9 +857,19 @@ export default function RpsPage() {
                                   })}
                                   
                                   {/* ANÁLISES */}
-                                  <td className="pct-cell col-divider" style={getPctCellStyle("META", pCliMeta, cli.meta, true)}>{cli.meta > 0 ? formatNumber(pCliMeta, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("AA", pCliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? (pCliAA >= 0 ? "+" : "") + formatNumber(pCliAA, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("MA", pCliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? (pCliMA >= 0 ? "+" : "") + formatNumber(pCliMA, 0) + "%" : "-"}</td>
+                                  {(() => {
+                                    const pCliDisp = calcDispersionPct(cli.mes_a, cli.prev_month_projection || 0);
+                                    return (
+                                      <>
+                                        <td className="pct-cell col-divider" style={cli.prev_month_projection && cli.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pCliDisp, cli.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                          {cli.prev_month_projection && cli.prev_month_projection > 0 ? (pCliDisp > 0 ? "+" : "") + formatNumber(pCliDisp, 0) + "%" : "-"}
+                                        </td>
+                                        <td className="pct-cell" style={getPctCellStyle("META", pCliMeta, cli.meta, true)}>{cli.meta > 0 ? formatNumber(pCliMeta, 0) + "%" : "-"}</td>
+                                        <td className="pct-cell" style={getPctCellStyle("AA", pCliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? (pCliAA >= 0 ? "+" : "") + formatNumber(pCliAA, 0) + "%" : "-"}</td>
+                                        <td className="pct-cell" style={getPctCellStyle("MA", pCliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? (pCliMA >= 0 ? "+" : "") + formatNumber(pCliMA, 0) + "%" : "-"}</td>
+                                      </>
+                                    );
+                                  })()}
                                 </tr>
                               );
                             })}
@@ -850,14 +895,18 @@ export default function RpsPage() {
                                 {formatNumber(totalsRow.kpis.VOL.projections[idx], 0)}
                               </td>
                             ))}
-                            {(() => {
+                             {(() => {
                               const latestVol = getLatestProjection(totalsRow.kpis.VOL.projections);
                               const pVolDesafio = calcRatioPct(latestVol, totalsRow.kpis.VOL.desafio);
                               const pVolAA = calcRatioPct(latestVol, totalsRow.kpis.VOL.ano_a);
                               const pVolMA = calcRatioPct(latestVol, totalsRow.kpis.VOL.mes_a);
+                              const pVolDisp = calcDispersionPct(totalsRow.kpis.VOL.mes_a, totalsRow.kpis.VOL.prev_month_projection || 0);
                               return (
                                 <>
-                                  <td className="pct-cell col-divider" style={getPctCellStyle("DESAFIO", pVolDesafio, totalsRow.kpis.VOL.desafio)}>{totalsRow.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
+                                  <td className="pct-cell col-divider" style={totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, totalsRow.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                    {totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
+                                  </td>
+                                  <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, totalsRow.kpis.VOL.desafio)}>{totalsRow.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, totalsRow.kpis.VOL.ano_a)}>{totalsRow.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("MA", pVolMA, totalsRow.kpis.VOL.mes_a)}>{totalsRow.kpis.VOL.mes_a > 0 ? formatNumber(pVolMA, 0) + "%" : "-"}</td>
                                 </>
@@ -881,9 +930,13 @@ export default function RpsPage() {
                               const pFatDesafio = calcRatioPct(latestFat, totalsRow.kpis.FAT.desafio);
                               const pFatAA = calcRatioPct(latestFat, totalsRow.kpis.FAT.ano_a);
                               const pFatMA = calcRatioPct(latestFat, totalsRow.kpis.FAT.mes_a);
+                              const pFatDisp = calcDispersionPct(totalsRow.kpis.FAT.mes_a, totalsRow.kpis.FAT.prev_month_projection || 0);
                               return (
                                 <>
-                                  <td className="pct-cell col-divider" style={getPctCellStyle("DESAFIO", pFatDesafio, totalsRow.kpis.FAT.desafio)}>{totalsRow.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
+                                  <td className="pct-cell col-divider" style={totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, totalsRow.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                    {totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
+                                  </td>
+                                  <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, totalsRow.kpis.FAT.desafio)}>{totalsRow.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, totalsRow.kpis.FAT.ano_a)}>{totalsRow.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("MA", pFatMA, totalsRow.kpis.FAT.mes_a)}>{totalsRow.kpis.FAT.mes_a > 0 ? formatNumber(pFatMA, 0) + "%" : "-"}</td>
                                 </>
@@ -907,9 +960,13 @@ export default function RpsPage() {
                               const pInvestDesafio = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.desafio);
                               const pInvestAA = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.ano_a);
                               const pInvestMA = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.mes_a);
+                              const pInvestDisp = calcDispersionPct(totalsRow.kpis.INVEST.mes_a, totalsRow.kpis.INVEST.prev_month_projection || 0);
                               return (
                                 <>
-                                  <td className="pct-cell col-divider" style={getPctCellStyle("INVEST", pInvestDesafio, totalsRow.kpis.INVEST.desafio)}>{totalsRow.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
+                                  <td className="pct-cell col-divider" style={totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, totalsRow.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
+                                    {totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
+                                  </td>
+                                  <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, totalsRow.kpis.INVEST.desafio)}>{totalsRow.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, totalsRow.kpis.INVEST.ano_a)}>{totalsRow.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestMA, totalsRow.kpis.INVEST.mes_a)}>{totalsRow.kpis.INVEST.mes_a > 0 ? formatNumber(pInvestMA, 0) + "%" : "-"}</td>
                                 </>
@@ -922,12 +979,30 @@ export default function RpsPage() {
                 </div>
               </div>
 
-              {/* Botão de salvar no final do grid */}
-              <div className="flex justify-end p-4 bg-background-card border border-border rounded-xl shadow-sm">
+              {/* Botão de salvar e legenda no final do grid */}
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-4 bg-background-card border border-border rounded-xl shadow-sm">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-[10px] text-foreground-muted max-w-2xl leading-relaxed">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-accent-gold uppercase tracking-wider">% Disp:</span>
+                    <span>Dispersão (Realizado vs Projeção do Mês Anterior)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-accent-gold uppercase tracking-wider">% Desafio:</span>
+                    <span>Projeção vs Desafio (Mês Atual)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-accent-gold uppercase tracking-wider">%AA:</span>
+                    <span>Comparativo vs Ano Anterior</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-accent-gold uppercase tracking-wider">%MA:</span>
+                    <span>Comparativo vs Mês Anterior</span>
+                  </div>
+                </div>
                 <button
                   disabled={saving || loading || managers.length === 0 || !isTodayMonday}
                   onClick={handleSaveProjections}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white font-bold uppercase tracking-wider text-xs transition-all shadow-lg disabled:opacity-50 cursor-pointer"
+                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white font-bold uppercase tracking-wider text-xs transition-all shadow-lg disabled:opacity-50 cursor-pointer whitespace-nowrap"
                 >
                   {saving ? (
                     <>
