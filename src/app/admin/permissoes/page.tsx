@@ -43,7 +43,8 @@ const CATEGORIZED_MODULES = [
       "Preço",
       "Dia",
       "MaCo",
-      "DRE"
+      "DRE",
+      "DRE Hist."
     ]
   },
   {
@@ -113,8 +114,11 @@ const CATEGORIZED_MODULES = [
   {
     category: "Gente e Gestão",
     modules: [
-      "Gente e Gestão",
-      "Central de Treinamento"
+      "Cadastro Funcionários",
+      "Remuneração Promotores",
+      "Férias",
+      "Central de Treinamento",
+      "Processos Coffee ++"
     ]
   },
   {
@@ -131,7 +135,7 @@ const CATEGORIZED_MODULES = [
     ]
   },
   {
-    category: "Administração",
+    category: "Configuração",
     modules: [
       "Usuários",
       "Logs"
@@ -146,7 +150,17 @@ const MODULE_DISPLAY_NAMES: Record<string, string> = {
   "Hist. Matriz": "Hist. Rede",
   "Hist. p/ Matriz": "Hist. p/ Rede",
   "Posit. Matriz": "Posit. Rede",
-  "Metas": "Metas por área"
+  "Metas": "Metas por área",
+  "DRE Hist.": "DRE Histórico",
+  "Invest. por mês": "Invest. por Mês",
+  "Calendário de invest.": "Calendário de Investimento",
+  "Planej. de Invest.": "Planejamento de Investimento",
+  "Invest. oficial": "Investimento Oficial",
+  "Cadastro Funcionários": "Cadastro (Funcionários)",
+  "Remuneração Promotores": "Remuneração Promotores",
+  "Férias": "Férias",
+  "Processos Coffee ++": "Processos Coffee ++",
+  "Cadastro": "Cadastro (Config Financeiro)"
 };
 
 
