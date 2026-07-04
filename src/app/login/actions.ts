@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function login(formData: FormData) {
   const cookieStore = await cookies();
@@ -50,7 +51,8 @@ export async function login(formData: FormData) {
 
   try {
     if (data?.user) {
-      await supabase.from("cm_audit_logs").insert({
+      const adminClient = createAdminClient();
+      await adminClient.from("cm_audit_logs").insert({
         user_id: data.user.id,
         action: "Login",
         table_name: "auth"
