@@ -150,3 +150,4 @@ To https://github.com/ccarlos1981/coffee_mais.git
  create mode 100644 supabase/migrations/20260703_create_ferias.sql
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [03/07/2026 11:48] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[03/07/2026 22:21] Nenhuma alteração encontrada. Nada a enviar.
