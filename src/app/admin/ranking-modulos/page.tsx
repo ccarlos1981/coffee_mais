@@ -16,22 +16,54 @@ interface AuditLog {
 
 // Mapa de tabelas para nomes de módulos legíveis
 const TABLE_TO_MODULE: Record<string, { name: string; emoji: string; color: string }> = {
-  cm_investimentos:    { name: "Investimento / Trade",    emoji: "📈", color: "from-blue-500 to-blue-700" },
-  cm_boletos:          { name: "Financeiro – Boletos",    emoji: "💳", color: "from-green-500 to-green-700" },
-  cm_metas:            { name: "Metas",                   emoji: "🎯", color: "from-purple-500 to-purple-700" },
-  cm_clientes:         { name: "Config. Financeiro",      emoji: "🏢", color: "from-amber-500 to-amber-700" },
-  cm_audit_logs:       { name: "Logs do Sistema",         emoji: "🔍", color: "from-slate-500 to-slate-700" },
-  cm_usuarios:         { name: "Usuários",                emoji: "👥", color: "from-teal-500 to-teal-700" },
-  cm_promotores:       { name: "Promotor",                emoji: "🚀", color: "from-orange-500 to-orange-700" },
-  cm_permissoes:       { name: "Configurar Acesso",       emoji: "🔒", color: "from-red-500 to-red-700" },
-  cm_products:         { name: "Produtos / SKU",          emoji: "📦", color: "from-indigo-500 to-indigo-700" },
-  cm_employees:        { name: "Gente & Gestão",          emoji: "👤", color: "from-pink-500 to-pink-700" },
-  cm_networks:         { name: "Redes / Matriz",          emoji: "🏪", color: "from-cyan-500 to-cyan-700" },
-  cm_matriz:           { name: "Gestão de Matriz",        emoji: "🗺️", color: "from-violet-500 to-violet-700" },
+  // Investimento
+  cm_investimentos:          { name: "Investimentos",           emoji: "📈", color: "from-blue-500 to-blue-700" },
+  cm_acoes_investimento:     { name: "Ações de Investimento",   emoji: "🏷️", color: "from-blue-500 to-blue-700" },
+  cm_planejamento_invest:    { name: "Planej. Investimento",    emoji: "📋", color: "from-sky-500 to-sky-700" },
+  // Financeiro
+  cm_boletos:                { name: "Financeiro – Boletos",    emoji: "💳", color: "from-green-500 to-green-700" },
+  cm_dre:                    { name: "DRE",                     emoji: "📊", color: "from-emerald-500 to-emerald-700" },
+  // Metas
+  cm_metas:                  { name: "Metas",                   emoji: "🎯", color: "from-purple-500 to-purple-700" },
+  cm_metas_promotor:         { name: "Metas Promotor",          emoji: "🎯", color: "from-violet-500 to-violet-700" },
+  // Admin / Acesso
+  cm_user_profiles:          { name: "Perfis de Usuário",       emoji: "👤", color: "from-teal-500 to-teal-700" },
+  cm_role_permissions:       { name: "Permissões",              emoji: "🔒", color: "from-red-500 to-red-700" },
+  cm_audit_logs:             { name: "Logs do Sistema",         emoji: "🔍", color: "from-slate-500 to-slate-700" },
+  // Clientes / Redes
+  cm_clientes:               { name: "Config. Financeiro",      emoji: "🏢", color: "from-amber-500 to-amber-700" },
+  cm_networks:               { name: "Redes / Matriz",          emoji: "🏪", color: "from-cyan-500 to-cyan-700" },
+  cm_matriz:                 { name: "Gestão de Matriz",        emoji: "🗺️", color: "from-violet-500 to-violet-700" },
+  // Promotor / Trade
+  cm_promotores:             { name: "Promotores",              emoji: "🚀", color: "from-orange-500 to-orange-700" },
+  cm_visitas:                { name: "Visitas Promotor",        emoji: "📍", color: "from-orange-400 to-orange-600" },
+  cm_ponto:                  { name: "Ponto Promotor",          emoji: "⏱️", color: "from-amber-500 to-amber-700" },
+  cm_rotas:                  { name: "Rotas e SLAs",            emoji: "🗺️", color: "from-amber-600 to-amber-800" },
+  // Gente e Gestão
+  cm_employees:              { name: "Gente & Gestão",          emoji: "👥", color: "from-pink-500 to-pink-700" },
+  cm_ferias:                 { name: "Férias",                  emoji: "🏖️", color: "from-emerald-400 to-emerald-600" },
+  // Processo Comercial
+  cm_processos:              { name: "Processos Coffee++",      emoji: "📄", color: "from-indigo-500 to-indigo-700" },
+  cm_processo_rdm:           { name: "RDM",                     emoji: "📅", color: "from-violet-500 to-violet-700" },
+  cm_agenda:                 { name: "Agenda Comercial",        emoji: "📆", color: "from-green-500 to-green-700" },
+  // Outros
+  cm_products:               { name: "Produtos / SKU",          emoji: "📦", color: "from-indigo-500 to-indigo-700" },
+  cm_alertas:                { name: "Alertas",                 emoji: "🚨", color: "from-red-500 to-red-700" },
+  cm_treinamento:            { name: "Treinamento",             emoji: "📚", color: "from-teal-500 to-teal-700" },
+  // Acessos / Login (novos)
+  dashboard:                 { name: "Dashboard Principal",     emoji: "🏠", color: "from-gold/80 to-amber-600" },
+  ranking_usuarios:          { name: "Ranking de Usuários",     emoji: "🏆", color: "from-amber-500 to-orange-600" },
+  auth:                      { name: "Login",                   emoji: "🔑", color: "from-slate-500 to-slate-700" },
 };
 
 function getModule(tableName: string) {
-  return TABLE_TO_MODULE[tableName] || { name: tableName, emoji: "⚙️", color: "from-gray-500 to-gray-700" };
+  if (TABLE_TO_MODULE[tableName]) return TABLE_TO_MODULE[tableName];
+  // Fallback: remove prefixo "cm_", substitui "_" por espaço, Title Case
+  const clean = tableName
+    .replace(/^cm_/, "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, c => c.toUpperCase());
+  return { name: clean, emoji: "⚙️", color: "from-gray-500 to-gray-700" };
 }
 
 interface ModuleRank {
