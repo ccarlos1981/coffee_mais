@@ -48,14 +48,11 @@ export default function RankingUsuariosPage() {
 
     async function logAccessAndLoad() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from("cm_audit_logs").insert({
-            user_id: user.id,
-            action: "Acesso",
-            table_name: "ranking_usuarios"
-          });
-        }
+        await fetch("/api/audit/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "Acesso", table_name: "ranking_usuarios" })
+        });
       } catch (err) {
         console.error(err);
       } finally {
