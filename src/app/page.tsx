@@ -34,6 +34,7 @@ import {
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 interface NavigationItem {
   title: string;
@@ -166,10 +167,11 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  // Registrar log de acesso do usuário de forma silenciosa
+  // Registrar log de acesso do usuário usando service role (contorna RLS)
   try {
-    await supabase.from("cm_audit_logs").insert({
-      user_id: user.id,
+    const adminClient = createAdminClient();
+    await adminClient.from("cm_audit_logs").insert({
+      user_id: user!.id,
       action: "Acesso",
       table_name: "dashboard"
     });
