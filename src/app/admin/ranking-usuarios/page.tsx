@@ -105,9 +105,15 @@ export default function RankingUsuariosPage() {
       if (!byUser[uid]) byUser[uid] = [];
       byUser[uid].push(log);
     }
-    return Object.entries(byUser)
-      .filter(([uid]) => uid !== "sistema")
-      .map(([userId, userLogs]) => {
+    
+    const allUserIds = Array.from(new Set([
+      ...Object.keys(usersMap),
+      ...Object.keys(byUser)
+    ])).filter(uid => uid !== "sistema");
+
+    return allUserIds
+      .map((userId) => {
+        const userLogs = byUser[userId] || [];
         const email = usersMap[userId] || userId;
         const rawName = email.includes("@") ? email.split("@")[0] : email;
         const name = rawName.charAt(0).toUpperCase() + rawName.slice(1);
