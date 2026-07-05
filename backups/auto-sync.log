@@ -167,3 +167,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    6731271..05a40c4  main -> main
 [04/07/2026 07:36] ✅ Alterações enviadas com sucesso para o GitHub.
+[main bb309bf] auto-save: 04/07/2026 18:16
+ 4 files changed, 121 insertions(+)
+ create mode 100644 scratch/check_rls.js
+ create mode 100644 scratch/inspect_users.js
+ create mode 100644 scratch/test_admin_insert.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   bd563c9..bb309bf  main -> main
+[04/07/2026 18:16] ✅ Alterações enviadas com sucesso para o GitHub.
