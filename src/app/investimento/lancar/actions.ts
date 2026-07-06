@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import nodemailer from "nodemailer";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } from "@/lib/utils/excel-import";
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
@@ -2090,21 +2091,399 @@ export async function obterRedesMatrizes() {
   return allRedes;
 }
 
-export async function importarInvestimentosEmLote(acoes: any[]) {
+export async function importarInvestimentosEmLote(
+  acoes: any[],
+  fileName?: string,
+  fileHash?: string,
+  totalInvestment?: number
+) {
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const { error } = await supabase
-    .from("cm_acoes_investimento")
-    .insert(acoes);
+  // Se não foram enviados os metadados de job (retrocompatibilidade legada), faz o insert simples
+  if (!fileName || !fileHash) {
+    const { error } = await supabase
+      .from("cm_acoes_investimento")
+      .insert(acoes);
 
-  if (error) {
-    console.error("Erro ao importar investimentos em lote:", error);
-    throw new Error(`Erro ao importar registros: ${error.message}`);
+    if (error) {
+      console.error("Erro ao importar investimentos em lote (legado):", error);
+      throw new Error(`Erro ao importar registros: ${error.message}`);
+    }
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+    return { success: true, count: acoes.length };
+  }
+
+  // 1. Prevenir duplicidades verificando se o hash do arquivo já foi importado
+  const { data: existingJob, error: checkError } = await supabase
+    .from("cm_import_jobs")
+    .select("id")
+    .eq("file_hash", fileHash)
+    .single();
+
+  if (existingJob) {
+    throw new Error("Este arquivo já foi importado anteriormente.");
+  }
+
+  // 2. Chamar RPC transacional do PostgreSQL
+  const jobPayload = {
+    nome_arquivo: fileName,
+    file_hash: fileHash,
+    registros_count: acoes.length,
+    investimento_total: totalInvestment || 0,
+    created_by: user?.id || null,
+    ip_address: null
+  };
+
+  const { data: jobId, error: rpcError } = await supabase.rpc(
+    "importar_lote_investimentos",
+    {
+      job_data: jobPayload,
+      acoes_data: acoes
+    }
+  );
+
+  if (rpcError) {
+    console.error("Erro ao importar lote via RPC transacional:", rpcError);
+    throw new Error(`Erro ao salvar importação transacional: ${rpcError.message}`);
   }
 
   revalidatePath("/investimento");
   revalidatePath("/investimento/planejamento");
-  return { success: true, count: acoes.length };
+  return { success: true, count: acoes.length, batchId: jobId };
+}
+
+export async function simularImportacaoInvestimentos(rawRows: any[][]) {
+  if (!rawRows || rawRows.length <= 1) {
+    throw new Error("A planilha enviada está vazia.");
+  }
+
+  const supabase = await createClient();
+
+  // 1. Carregar dados cadastrais em paralelo
+  const [
+    { data: matrizes, error: mError },
+    { data: dbFilters }
+  ] = await Promise.all([
+    supabase.from("v_redes_matrizes_detalhes").select("codigo, nome, canal, uf, gerente"),
+    supabase.rpc("get_dashboard_filters_rpc")
+  ]);
+
+  if (mError) {
+    throw new Error(`Erro ao carregar redes matrizes: ${mError.message}`);
+  }
+
+  const validMatrizes = matrizes || [];
+  const validSkus = dbFilters?.produtos || [];
+  const validFams = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
+
+  // 2. Mapear cabeçalhos de colunas
+  const headers = rawRows[0].map(h => String(h || "").trim().toLowerCase());
+  
+  const colIndices = {
+    codigo_matriz: headers.findIndex(h => h.includes("código") || h.includes("codigo") || h.includes("matriz")),
+    rede: headers.findIndex(h => h.includes("rede")),
+    uf: headers.findIndex(h => h.includes("uf") || h.includes("estado")),
+    gerente: headers.findIndex(h => h.includes("gerente") || h.includes("responsavel")),
+    canal: headers.findIndex(h => h.includes("canal")),
+    tipo: headers.findIndex(h => h.includes("tipo")),
+    pagamento: headers.findIndex(h => h.includes("pagamento")),
+    mes: headers.findIndex(h => h.includes("mês") || h.includes("mes") || h.includes("ref")),
+    inicio: headers.findIndex(h => h.includes("início") || h.includes("inicio")),
+    fim: headers.findIndex(h => h.includes("fim") || h.includes("final")),
+    abrangencia: headers.findIndex(h => h === "família ou sku" || h === "familia ou sku" || h.includes("abrangência") || h.includes("abrangencia")),
+    familia: headers.findIndex(h => (h.includes("família") || h.includes("familia")) && !h.includes("ou sku")),
+    sku: headers.findIndex(h => h.includes("sku") && !h.includes("ou sku")),
+    flat: headers.findIndex(h => h.includes("flat")),
+    acao: headers.findIndex(h => (h.includes("preço") || h.includes("preco")) && (h.includes("ação") || h.includes("acao"))),
+    investimento: headers.findIndex(h => h.includes("investimento") || h.includes("inv")),
+    volume: headers.findIndex(h => h.includes("volume") || h.includes("vol"))
+  };
+
+  // Validar se cabeçalhos mínimos essenciais existem
+  const mandatoryCols = ["codigo_matriz", "tipo", "pagamento", "mes", "inicio", "fim", "abrangencia"];
+  const missingCols = mandatoryCols.filter(c => colIndices[c as keyof typeof colIndices] === -1);
+  if (missingCols.length > 0) {
+    throw new Error(`Cabeçalhos obrigatórios não encontrados na planilha.`);
+  }
+
+  const parsedLines: any[] = [];
+  const errors: { line: number; column: string; value: any; message: string }[] = [];
+
+  // 3. Processamento e validação de linhas
+  for (let i = 1; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.length === 0 || row.every(cell => cell === null || cell === undefined || cell === "")) {
+      continue;
+    }
+
+    const rowErrors: string[] = [];
+    
+    const rawCodigoMatriz = colIndices.codigo_matriz !== -1 ? row[colIndices.codigo_matriz] : "";
+    const rawRede = colIndices.rede !== -1 ? row[colIndices.rede] : "";
+    const rawUf = colIndices.uf !== -1 ? row[colIndices.uf] : "";
+    const rawGerente = colIndices.gerente !== -1 ? row[colIndices.gerente] : "";
+    const rawCanal = colIndices.canal !== -1 ? row[colIndices.canal] : "";
+    const rawTipo = colIndices.tipo !== -1 ? row[colIndices.tipo] : "";
+    const rawPagamento = colIndices.pagamento !== -1 ? row[colIndices.pagamento] : "";
+    const rawMes = colIndices.mes !== -1 ? row[colIndices.mes] : "";
+    const rawInicio = colIndices.inicio !== -1 ? row[colIndices.inicio] : "";
+    const rawFim = colIndices.fim !== -1 ? row[colIndices.fim] : "";
+    const rawAbrangencia = colIndices.abrangencia !== -1 ? row[colIndices.abrangencia] : "";
+    const rawFamilia = colIndices.familia !== -1 ? row[colIndices.familia] : "";
+    const rawSku = colIndices.sku !== -1 ? row[colIndices.sku] : "";
+    const rawFlat = colIndices.flat !== -1 ? row[colIndices.flat] : "";
+    const rawAcao = colIndices.acao !== -1 ? row[colIndices.acao] : "";
+    const rawInvestimento = colIndices.investimento !== -1 ? row[colIndices.investimento] : "";
+    const rawVolume = colIndices.volume !== -1 ? row[colIndices.volume] : "";
+
+    // Se todos os campos comerciais estiverem vazios, ignorar a linha sem gerar erro
+    const isCommercialEmpty = (val: any) => val === undefined || val === null || String(val).trim() === "";
+    if (
+      isCommercialEmpty(rawTipo) &&
+      isCommercialEmpty(rawPagamento) &&
+      isCommercialEmpty(rawMes) &&
+      isCommercialEmpty(rawInicio) &&
+      isCommercialEmpty(rawFim) &&
+      isCommercialEmpty(rawAbrangencia) &&
+      isCommercialEmpty(rawFamilia) &&
+      isCommercialEmpty(rawSku) &&
+      isCommercialEmpty(rawFlat) &&
+      isCommercialEmpty(rawAcao) &&
+      isCommercialEmpty(rawInvestimento) &&
+      isCommercialEmpty(rawVolume)
+    ) {
+      continue;
+    }
+
+    // Código da Matriz
+    let codigoMatrizVal = cleanMatrixCode(rawCodigoMatriz);
+    let redeVal = String(rawRede).trim();
+    let ufVal = rawUf ? String(rawUf).trim() : "";
+    let gerenteVal = rawGerente ? String(rawGerente).trim() : "";
+    let canalVal = rawCanal ? String(rawCanal).trim() : "";
+
+    if (!codigoMatrizVal) {
+      rowErrors.push("Código da Matriz é obrigatório.");
+      errors.push({ line: i + 1, column: "Código da Matriz", value: rawCodigoMatriz, message: "Código da Matriz é obrigatório." });
+    } else {
+      const cleanCode = (c: string) => c.trim().replace(/\.0$/, "");
+      const matched = validMatrizes.find(m => cleanCode(m.codigo) === cleanCode(codigoMatrizVal));
+      if (matched) {
+        codigoMatrizVal = matched.codigo;
+        redeVal = matched.nome; // Auto-preencher rede correta do banco
+        ufVal = (matched as any).uf || "";
+        gerenteVal = (matched as any).gerente || "";
+        canalVal = (matched as any).canal || "";
+      } else {
+        rowErrors.push(`Código de Matriz "${codigoMatrizVal}" não encontrado.`);
+        errors.push({ line: i + 1, column: "Código da Matriz", value: rawCodigoMatriz, message: `Código de Matriz "${codigoMatrizVal}" não encontrado.` });
+      }
+    }
+
+    // Tipo de Ação
+    let tipoVal = String(rawTipo).trim();
+    if (!tipoVal) {
+      rowErrors.push("Tipo de Ação é obrigatório.");
+      errors.push({ line: i + 1, column: "Tipo de Ação", value: rawTipo, message: "Tipo de Ação é obrigatório." });
+    } else {
+      const tLower = tipoVal.toLowerCase();
+      if (tLower.includes("out")) tipoVal = "Sell Out";
+      else if (tLower.includes("in")) tipoVal = "Sell In";
+      else {
+        rowErrors.push("Tipo de Ação deve ser 'Sell Out' ou 'Sell In'.");
+        errors.push({ line: i + 1, column: "Tipo de Ação", value: rawTipo, message: "Tipo de Ação inválido." });
+      }
+    }
+
+    // Pagamento
+    let pagamentoVal = String(rawPagamento).trim();
+    if (!pagamentoVal) {
+      rowErrors.push("Pagamento é obrigatório.");
+      errors.push({ line: i + 1, column: "Pagamento", value: rawPagamento, message: "Pagamento é obrigatório." });
+    } else {
+      const pLower = pagamentoVal.toLowerCase();
+      if (pLower.includes("abat") || pLower.includes("bole")) pagamentoVal = "Boleto";
+      else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transf. Bancária";
+      else if (pLower.includes("boni")) pagamentoVal = "Bonificação";
+      else {
+        rowErrors.push("Pagamento deve ser 'Boleto', 'Transf. Bancária' ou 'Bonificação'.");
+        errors.push({ line: i + 1, column: "Pagamento", value: rawPagamento, message: "Pagamento inválido." });
+      }
+    }
+
+    // Mês de Referência
+    let mesVal: string | null = null;
+    if (!rawMes) {
+      rowErrors.push("Mês de referência é obrigatório.");
+      errors.push({ line: i + 1, column: "Mês de Referência", value: rawMes, message: "Mês de referência é obrigatório." });
+    } else {
+      if (typeof rawMes === "number") {
+        const d = excelSerialToDate(rawMes);
+        if (d) mesVal = d.slice(0, 7);
+      } else {
+        const str = String(rawMes).trim();
+        const parts = str.split("/");
+        if (parts.length === 2) {
+          const m = parts[0].padStart(2, '0');
+          const y = parts[1];
+          if (y.length === 4 && !isNaN(Number(m)) && !isNaN(Number(y))) {
+            mesVal = `${y}-${m}`;
+          }
+        } else if (str.split("-").length === 2) {
+          mesVal = str;
+        }
+      }
+      if (!mesVal) {
+        rowErrors.push("Mês de referência inválido.");
+        errors.push({ line: i + 1, column: "Mês de Referência", value: rawMes, message: "Mês de referência inválido (use MM/AAAA)." });
+      }
+    }
+
+    // Datas
+    const inicioVal = typeof rawInicio === "number" ? excelSerialToDate(rawInicio) : parseDateString(rawInicio);
+    const fimVal = typeof rawFim === "number" ? excelSerialToDate(rawFim) : parseDateString(rawFim);
+
+    if (!inicioVal) {
+      rowErrors.push("Data início inválida.");
+      errors.push({ line: i + 1, column: "Data Início", value: rawInicio, message: "Data início inválida." });
+    }
+    if (!fimVal) {
+      rowErrors.push("Data fim inválida.");
+      errors.push({ line: i + 1, column: "Data Fim", value: rawFim, message: "Data fim inválida." });
+    }
+
+    if (inicioVal && fimVal && inicioVal > fimVal) {
+      rowErrors.push("Data início posterior à data fim.");
+      errors.push({ line: i + 1, column: "Período", value: `${inicioVal} a ${fimVal}`, message: "Data início não pode ser posterior à data fim." });
+    }
+
+    // Abrangência
+    let abrangenciaVal = String(rawAbrangencia).trim();
+    if (!abrangenciaVal) {
+      rowErrors.push("Abrangência é obrigatória.");
+      errors.push({ line: i + 1, column: "Família ou SKU", value: rawAbrangencia, message: "Abrangência é obrigatória." });
+    } else {
+      const aLower = abrangenciaVal.toLowerCase();
+      if (aLower.includes("fam")) abrangenciaVal = "Família";
+      else if (aLower.includes("sku")) abrangenciaVal = "SKU";
+      else {
+        rowErrors.push("Abrangência inválida.");
+        errors.push({ line: i + 1, column: "Família ou SKU", value: rawAbrangencia, message: "Abrangência deve ser 'Família' ou 'SKU'." });
+      }
+    }
+
+    let familiaVal: string | null = null;
+    let skuVal = "";
+
+    const flatVal = parseExcelNum(rawFlat);
+    const acaoVal = parseExcelNum(rawAcao);
+    const investVal = parseExcelNum(rawInvestimento);
+    const volVal = parseExcelNum(rawVolume);
+
+    if (flatVal !== null && flatVal < 0) {
+      rowErrors.push("Preço Flat não pode ser negativo.");
+      errors.push({ line: i + 1, column: "Preço Flat", value: rawFlat, message: "Preço Flat não pode ser negativo." });
+    }
+    if (acaoVal !== null && acaoVal < 0) {
+      rowErrors.push("Preço da Ação não pode ser negativo.");
+      errors.push({ line: i + 1, column: "Preço da Ação", value: rawAcao, message: "Preço da Ação não pode ser negativo." });
+    }
+    if (flatVal !== null && acaoVal !== null && acaoVal > flatVal) {
+      rowErrors.push("Preço da Ação não pode ser maior que Preço Flat.");
+      errors.push({ line: i + 1, column: "Valores", value: `Flat: ${flatVal}, Ação: ${acaoVal}`, message: "Preço da Ação maior que Flat." });
+    }
+
+    if (abrangenciaVal === "Família") {
+      familiaVal = String(rawFamilia).trim();
+      if (!familiaVal) {
+        rowErrors.push("Família é obrigatória.");
+        errors.push({ line: i + 1, column: "Família de Produto", value: rawFamilia, message: "Família é obrigatória." });
+      } else {
+        const match = validFams.find(vf => vf.toLowerCase() === familiaVal!.toLowerCase());
+        if (match) {
+          familiaVal = match;
+        } else {
+          rowErrors.push(`Família "${familiaVal}" inválida.`);
+          errors.push({ line: i + 1, column: "Família de Produto", value: rawFamilia, message: `Família "${familiaVal}" inválida (valores aceitos: Grão, Moído, Drip, Capsula, 1KG).` });
+        }
+      }
+      if (investVal === null || investVal <= 0) {
+        rowErrors.push("Investimento é obrigatório.");
+        errors.push({ line: i + 1, column: "Investimento", value: rawInvestimento, message: "Investimento deve ser maior que zero." });
+      }
+      if (volVal === null || volVal <= 0) {
+        rowErrors.push("Volume é obrigatório.");
+        errors.push({ line: i + 1, column: "Expectativa de Volume", value: rawVolume, message: "Volume deve ser maior que zero." });
+      }
+    } else if (abrangenciaVal === "SKU") {
+      skuVal = String(rawSku).trim();
+      if (!skuVal) {
+        rowErrors.push("SKU é obrigatório.");
+        errors.push({ line: i + 1, column: "SKU", value: rawSku, message: "SKU é obrigatório." });
+      } else {
+        const match = validSkus.find((vs: any) => vs.toLowerCase() === skuVal.toLowerCase());
+        if (match) {
+          skuVal = match;
+        } else {
+          rowErrors.push(`SKU "${skuVal}" não cadastrado.`);
+          errors.push({ line: i + 1, column: "SKU", value: rawSku, message: `SKU "${skuVal}" não cadastrado.` });
+        }
+      }
+      if (investVal === null || investVal <= 0) {
+        rowErrors.push("Investimento é obrigatório.");
+        errors.push({ line: i + 1, column: "Investimento", value: rawInvestimento, message: "Investimento deve ser maior que zero." });
+      }
+      if (volVal === null || volVal <= 0) {
+        rowErrors.push("Volume é obrigatório.");
+        errors.push({ line: i + 1, column: "Expectativa de Volume", value: rawVolume, message: "Volume deve ser maior que zero." });
+      }
+    }
+
+    parsedLines.push({
+      lineIndex: i + 1,
+      data: {
+        rede: redeVal,
+        codigo_matriz: codigoMatrizVal,
+        uf: ufVal,
+        gerente: gerenteVal,
+        canal: canalVal,
+        tipo_acao: tipoVal,
+        tipo_pagamento: pagamentoVal,
+        mes_referencia: mesVal || "",
+        data_inicio: inicioVal || "",
+        data_fim: fimVal || "",
+        abrangencia: abrangenciaVal,
+        familia_produto: familiaVal,
+        sku: skuVal,
+        preco_flat: flatVal,
+        preco_acao: acaoVal,
+        valor_investimento: investVal,
+        expectativa_volume: volVal
+      },
+      valid: rowErrors.length === 0,
+      errors: rowErrors
+    });
+  }
+
+  const totalRows = parsedLines.length;
+  const validLines = parsedLines.filter(l => l.valid);
+  const totalInvestment = validLines.reduce((acc, curr) => acc + (curr.data.valor_investimento || 0), 0);
+  const totalVolume = validLines.reduce((acc, curr) => acc + (curr.data.expectativa_volume || 0), 0);
+
+  return {
+    success: errors.length === 0,
+    errors,
+    summary: {
+      totalRows,
+      validRows: validLines.length,
+      invalidRows: errors.length,
+      totalInvestment,
+      totalVolume
+    },
+    parsedLines
+  };
 }
 
 export async function promoverPlanejamento(id: string) {
@@ -2414,4 +2793,190 @@ export async function fecharAcaoInvestimento(
 
   revalidatePath("/investimento");
   return { success: true };
+}
+
+export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filterRede?: string) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // 1. Obter perfil e papel do usuário
+    const { data: profile } = await supabase
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user?.id || "")
+      .single();
+
+    const userRole = profile?.role || null;
+    const userEmail = user?.email || null;
+
+    // 2. Buscar matrizes
+    const { data: matrizes, error: mError } = await supabase
+      .from("v_redes_matrizes_detalhes")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (mError) throw mError;
+
+    // 3. Buscar SKUs (produtos)
+    const { data: dbFilters } = await supabase.rpc("get_dashboard_filters_rpc");
+    const activeSkus = dbFilters?.produtos || [];
+
+    // 4. Filtrar matrizes conforme o perfil
+    let targetMatrizes = [...(matrizes || [])];
+
+    if ((userRole === "Gerente Regional" || userRole === "Gerente Nacional") && userEmail) {
+      const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+      targetMatrizes = targetMatrizes.filter(m => {
+        if (!m.gerente) return false;
+        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
+      });
+    }
+
+    // Filtrar por Rede caso o filtro de tela esteja ativo
+    if (filterRede) {
+      targetMatrizes = targetMatrizes.filter(m => m.nome?.toLowerCase() === filterRede.toLowerCase());
+    }
+
+    // 5. Instanciar ExcelJS Workbook
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const mainSheet = workbook.addWorksheet(isPlanejamento ? "Modelo Planejamento" : "Modelo Investimentos");
+    const listsSheet = workbook.addWorksheet("Listas_Validação");
+    listsSheet.state = "veryHidden";
+
+    // 6. Preencher dados da aba auxiliar (oculta)
+    // Coluna A: Mês de Referência (próximos 12 meses)
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      months.push(`${mm}/${yyyy}`);
+    }
+    months.forEach((val, idx) => {
+      listsSheet.getCell(`A${idx + 1}`).value = val;
+    });
+
+    // Coluna B: SKUs ativos do banco
+    activeSkus.forEach((val: string, idx: number) => {
+      listsSheet.getCell(`B${idx + 1}`).value = val;
+    });
+
+    // Coluna C: Família de Produto
+    const familias = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
+    familias.forEach((val, idx) => {
+      listsSheet.getCell(`C${idx + 1}`).value = val;
+    });
+
+    // Coluna D: Tipo de Ação
+    const tipos = ["Sell Out", "Sell In"];
+    tipos.forEach((val, idx) => {
+      listsSheet.getCell(`D${idx + 1}`).value = val;
+    });
+
+    // Coluna E: Pagamento
+    const pagamentos = ["Boleto", "Transf. Bancária", "Bonificação"];
+    pagamentos.forEach((val, idx) => {
+      listsSheet.getCell(`E${idx + 1}`).value = val;
+    });
+
+    // Coluna F: Família ou SKU
+    const abrangencias = ["Família", "SKU"];
+    abrangencias.forEach((val, idx) => {
+      listsSheet.getCell(`F${idx + 1}`).value = val;
+    });
+
+    // 7. Definir cabeçalhos e largura das colunas
+    mainSheet.columns = [
+      { header: "Código da Matriz", key: "codigo", width: 18 },
+      { header: "Rede", key: "rede", width: 20 },
+      { header: "UF", key: "uf", width: 8 },
+      { header: "Gerente", key: "gerente", width: 15 },
+      { header: "Canal", key: "canal", width: 12 },
+      { header: "Tipo de Ação", key: "tipo", width: 15 },
+      { header: "Pagamento", key: "pagamento", width: 15 },
+      { header: "Mês de Referência", key: "mes", width: 18 },
+      { header: "Data Início", key: "inicio", width: 15 },
+      { header: "Data Fim", key: "fim", width: 15 },
+      { header: "Família ou SKU", key: "abrangencia", width: 15 },
+      { header: "Família de Produto", key: "familia", width: 18 },
+      { header: "SKU", key: "sku", width: 25 },
+      { header: "Preço Flat", key: "flat", width: 12 },
+      { header: "Preço da Ação", key: "acao", width: 12 },
+      { header: "Investimento", key: "investimento", width: 12 },
+      { header: "Expectativa de Volume", key: "volume", width: 20 }
+    ];
+
+    // 8. Inserir linhas das matrizes autorizadas
+    if (targetMatrizes.length > 0) {
+      targetMatrizes.forEach(m => {
+        mainSheet.addRow([
+          m.codigo,
+          m.nome || "",
+          m.uf || "",
+          m.gerente || "",
+          m.canal || ""
+        ]);
+      });
+    } else {
+      mainSheet.addRow(["146775.0", "BISTEK", "SC", "Leandro", "KA"]);
+    }
+
+    const rowCount = Math.max(targetMatrizes.length + 1, 100);
+
+    // 9. Aplicar as Data Validations de colunas F a M
+    for (let r = 2; r <= rowCount; r++) {
+      // Column F (Tipo de Ação) -> ListsSheet D
+      mainSheet.getCell(`F${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ["Listas_Validação!$D$1:$D$2"]
+      };
+      // Column G (Pagamento) -> ListsSheet E
+      mainSheet.getCell(`G${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ["Listas_Validação!$E$1:$E$3"]
+      };
+      // Column H (Mês de Referência) -> ListsSheet A
+      mainSheet.getCell(`H${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ["Listas_Validação!$A$1:$A$12"]
+      };
+      // Column K (Família ou SKU) -> ListsSheet F
+      mainSheet.getCell(`K${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ["Listas_Validação!$F$1:$F$2"]
+      };
+      // Column L (Família de Produto) -> ListsSheet C
+      mainSheet.getCell(`L${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: ["Listas_Validação!$C$1:$C$5"]
+      };
+      // Column M (SKU) -> ListsSheet B
+      mainSheet.getCell(`M${r}`).dataValidation = {
+        type: "list",
+        allowBlank: true,
+        formulae: [`Listas_Validação!$B$1:$B$${activeSkus.length || 1}`]
+      };
+    }
+
+    // 10. Converter para Buffer e retornar base64
+    const buffer = await workbook.xlsx.writeBuffer();
+    return {
+      success: true,
+      data: Buffer.from(buffer).toString("base64"),
+      fileName: isPlanejamento ? "modelo_planejamento_investimentos.xlsx" : "modelo_lancamento_investimentos.xlsx"
+    };
+
+  } catch (err: any) {
+    console.error("Erro ao gerar planilha inteligente:", err);
+    return { success: false, error: err.message };
+  }
 }
