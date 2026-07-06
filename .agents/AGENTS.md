@@ -1,16 +1,23 @@
 # Project-Scoped Rules: Coffee Mais Hub de Importação
 
 ## Modo de Estabilização Ativo
-A partir de 06/07/2026, o Hub de Importação de Dados entrou oficialmente em fase de estabilização.
+A partir de 06/07/2026, o Hub de Importação de Dados e todo o ecossistema do Coffee++ entraram oficialmente em fase de estabilização.
 
-### Regras Mandatórias:
-1. **Sem Novas Funcionalidades:** Não adicione novas funcionalidades ao Hub. Registre novas ideias ou solicitações de features no backlog para sprints futuras.
-2. **Foco em Qualidade:** Toda modificação deve se concentrar em:
-   * Correção de bugs cadastrais ou lógicos.
-   * Otimização de performance de consulta e escrita (limitação de lotes, índices, concorrência).
-   * Redução de pegada de memória (garbage collection, stream processing de buffers).
-   * Aperfeiçoamento do design e experiência do usuário (feedback visual, legibilidade).
-3. **Simplicidade:** Não aumente a complexidade arquitetural do código Mantenha soluções diretas, modulares e transacionais.
+### Regras Mandatórias de Estabilização:
+1. **Não refatorar código que já funciona**: Evitar qualquer refatoração de código que esteja operacional.
+2. **Preservar a arquitetura existente**: Não alterar a arquitetura ou infraestrutura atual.
+3. **Não substituir componentes sem necessidade**: Evitar substituições de componentes visuais ou lógicos estáveis.
+4. **Preservar regras de negócio homologadas**: Não alterar regras de domínio já validadas e em produção.
+5. **Sem melhorias estéticas não solicitadas**: Não realizar ajustes de estilo ou layout sem solicitação expressa.
+6. **Não alterar APIs públicas**: Preservar contratos de rotas e serviços existentes para evitar quebras.
+7. **Abordagem Incremental**: Toda alteração deve ser uma extensão incremental e retrocompatível.
+8. **Verificação Prévia**: Verificar se uma lógica ou serviço (ex: `ProdutoConversaoService`) já existe antes de codificar. Reutilizar sempre para evitar duplicação.
+9. **Minimização de Impacto**: Havendo múltiplas abordagens de implementação, adotar a que cause menor atrito e impacto no sistema global.
+
+### Lista de Verificação Obrigatória (Fim de Sprint):
+* Executar `npx tsc --noEmit` para garantir ausência de erros de tipagem.
+* Executar `npm run build` para garantir que o pacote Next.js compila perfeitamente.
+* Validar lints, migrações SQL, integridade de RLS e garantir ausência total de regressões.
 
 ---
 
