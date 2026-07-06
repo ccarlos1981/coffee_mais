@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import nodemailer from "nodemailer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } from "@/lib/utils/excel-import";
+import { calcularCamposConsolidadosInvestimento } from "@/lib/investimento/consolidacao";
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
@@ -198,16 +199,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
     } catch(e) {}
   }
 
-  // Backward compat: familia_produto as comma-separated string
-  let familia_produto = formData.get("familia_produto") as string || "";
-  if (!familia_produto) {
-    const famNames = (familias_detalhes || []).map((f: any) => f.familia_nome);
-    if (famNames.length > 0) {
-      familia_produto = famNames.join(", ");
-    } else {
-      familia_produto = "Múltiplos SKUs";
-    }
-  }
+
 
   if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
@@ -289,42 +281,18 @@ export async function criarAcaoInvestimento(formData: FormData) {
     }
   }
 
-  // Calculate weighted averages across both Families and SKUs for database columns
-  let total_volume = 0;
-  let total_investimento = 0;
-  let total_flat_weighted = 0;
-  let total_acao_weighted = 0;
-
-  if (familias_detalhes && familias_detalhes.length > 0) {
-    for (const f of familias_detalhes) {
-      const vol = Number(f.expectativa_volume) || 0;
-      const inv = Number(f.investimento) || 0;
-      const flat = Number(f.preco_flat) || 0;
-      const acao = Number(f.preco_acao) || 0;
-      total_volume += vol;
-      total_investimento += inv * vol;
-      total_flat_weighted += flat * vol;
-      total_acao_weighted += acao * vol;
-    }
-  }
-
-  if (skus_detalhes && skus_detalhes.length > 0) {
-    for (const s of skus_detalhes) {
-      const vol = Number(s.expectativa_volume) || 0;
-      const inv = Number(s.investimento) || 0;
-      const flat = Number(s.preco_flat) || 0;
-      const acao = Number(s.preco_acao) || 0;
-      total_volume += vol;
-      total_investimento += inv * vol;
-      total_flat_weighted += flat * vol;
-      total_acao_weighted += acao * vol;
-    }
-  }
-
-  const valor_investimento = total_volume > 0 ? (total_investimento / total_volume) : 0;
-  const preco_flat = total_volume > 0 ? (total_flat_weighted / total_volume) : 0;
-  const preco_acao = total_volume > 0 ? (total_acao_weighted / total_volume) : 0;
-  const expectativa_volume = total_volume;
+  // Calculate consolidated fields using shared helper
+  const {
+    familia_produto,
+    preco_flat,
+    preco_acao,
+    valor_investimento,
+    expectativa_volume
+  } = calcularCamposConsolidadosInvestimento(
+    familias_detalhes,
+    skus_detalhes,
+    formData.get("familia_produto") as string
+  );
 
   const is_planejamento = formData.get("is_planejamento") === "true";
 
@@ -404,15 +372,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     } catch(e) {}
   }
 
-  let familia_produto = formData.get("familia_produto") as string || "";
-  if (!familia_produto) {
-    const famNames = (familias_detalhes || []).map((f: any) => f.familia_nome);
-    if (famNames.length > 0) {
-      familia_produto = famNames.join(", ");
-    } else {
-      familia_produto = "Múltiplos SKUs";
-    }
-  }
+
 
   if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
     throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
@@ -517,42 +477,18 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
     }
   }
 
-  // Calculate weighted averages across both Families and SKUs for database columns
-  let total_volume = 0;
-  let total_investimento = 0;
-  let total_flat_weighted = 0;
-  let total_acao_weighted = 0;
-
-  if (familias_detalhes && familias_detalhes.length > 0) {
-    for (const f of familias_detalhes) {
-      const vol = Number(f.expectativa_volume) || 0;
-      const inv = Number(f.investimento) || 0;
-      const flat = Number(f.preco_flat) || 0;
-      const acao = Number(f.preco_acao) || 0;
-      total_volume += vol;
-      total_investimento += inv * vol;
-      total_flat_weighted += flat * vol;
-      total_acao_weighted += acao * vol;
-    }
-  }
-
-  if (skus_detalhes && skus_detalhes.length > 0) {
-    for (const s of skus_detalhes) {
-      const vol = Number(s.expectativa_volume) || 0;
-      const inv = Number(s.investimento) || 0;
-      const flat = Number(s.preco_flat) || 0;
-      const acao = Number(s.preco_acao) || 0;
-      total_volume += vol;
-      total_investimento += inv * vol;
-      total_flat_weighted += flat * vol;
-      total_acao_weighted += acao * vol;
-    }
-  }
-
-  const valor_investimento = total_volume > 0 ? (total_investimento / total_volume) : 0;
-  const preco_flat = total_volume > 0 ? (total_flat_weighted / total_volume) : 0;
-  const preco_acao = total_volume > 0 ? (total_acao_weighted / total_volume) : 0;
-  const expectativa_volume = total_volume;
+  // Calculate consolidated fields using shared helper
+  const {
+    familia_produto,
+    preco_flat,
+    preco_acao,
+    valor_investimento,
+    expectativa_volume
+  } = calcularCamposConsolidadosInvestimento(
+    familias_detalhes,
+    skus_detalhes,
+    formData.get("familia_produto") as string
+  );
 
   // Evaluate alerts
   const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
@@ -2100,11 +2036,24 @@ export async function importarInvestimentosEmLote(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  // Consolida os campos usando a regra unificada de negócio antes de salvar no banco
+  const processedAcoes = acoes.map(acaoItem => {
+    const consolidados = calcularCamposConsolidadosInvestimento(
+      acaoItem.familias_detalhes,
+      acaoItem.skus_detalhes,
+      acaoItem.familia_produto
+    );
+    return {
+      ...acaoItem,
+      ...consolidados
+    };
+  });
+
   // Se não foram enviados os metadados de job (retrocompatibilidade legada), faz o insert simples
   if (!fileName || !fileHash) {
     const { error } = await supabase
       .from("cm_acoes_investimento")
-      .insert(acoes);
+      .insert(processedAcoes);
 
     if (error) {
       console.error("Erro ao importar investimentos em lote (legado):", error);
@@ -2112,7 +2061,7 @@ export async function importarInvestimentosEmLote(
     }
     revalidatePath("/investimento");
     revalidatePath("/investimento/planejamento");
-    return { success: true, count: acoes.length };
+    return { success: true, count: processedAcoes.length };
   }
 
   // 1. Prevenir duplicidades verificando se o hash do arquivo já foi importado
@@ -2130,7 +2079,7 @@ export async function importarInvestimentosEmLote(
   const jobPayload = {
     nome_arquivo: fileName,
     file_hash: fileHash,
-    registros_count: acoes.length,
+    registros_count: processedAcoes.length,
     investimento_total: totalInvestment || 0,
     created_by: user?.id || null,
     ip_address: null
@@ -2140,7 +2089,7 @@ export async function importarInvestimentosEmLote(
     "importar_lote_investimentos",
     {
       job_data: jobPayload,
-      acoes_data: acoes
+      acoes_data: processedAcoes
     }
   );
 
@@ -2151,7 +2100,7 @@ export async function importarInvestimentosEmLote(
 
   revalidatePath("/investimento");
   revalidatePath("/investimento/planejamento");
-  return { success: true, count: acoes.length, batchId: jobId };
+  return { success: true, count: processedAcoes.length, batchId: jobId };
 }
 
 export async function simularImportacaoInvestimentos(rawRows: any[][]) {

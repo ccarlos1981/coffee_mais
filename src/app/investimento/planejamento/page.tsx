@@ -1840,7 +1840,7 @@ export default function PlanejamentoInvestimentoPage() {
                     </div>
                     <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center shadow-sm">
                       <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Volume Planejado</p>
-                      <p className="text-lg font-black text-emerald-400 mt-0.5">{importSummary.totalVolume} SKU/un</p>
+                      <p className="text-lg font-black text-emerald-400 mt-0.5">{importSummary.totalVolume} Unid.</p>
                     </div>
                   </div>
 
