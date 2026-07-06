@@ -40,7 +40,7 @@ import {
   HelpCircle,
   Layers
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -260,6 +260,11 @@ export default function InvestimentoPage() {
   const [parsedAcoes, setParsedAcoes] = useState<any[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importErrors, setImportErrors] = useState<any[]>([]);
+  const [importSummary, setImportSummary] = useState<any>(null);
+  const [fileHash, setFileHash] = useState("");
+  const [rawExcelRows, setRawExcelRows] = useState<any[][]>([]);
+  const [isSimulating, setIsSimulating] = useState(false);
   const [isImportPending, startImportTransition] = useTransition();
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "", condicao_pagamento: "" });
@@ -676,486 +681,312 @@ export default function InvestimentoPage() {
     }
   };
 
-  // Download do modelo Excel de investimentos
-  const downloadModelExcel = () => {
+  // Download do modelo Excel inteligente de investimentos
+  const downloadModelExcel = async () => {
     try {
-      const headers = [
-        ["Código da Matriz", "Rede", "UF", "Gerente", "Canal", "Tipo de Ação", "Pagamento", "Mês de Referência", "Data Início", "Data Fim", "Família ou SKU", "Família de Produto", "SKU", "Preço Flat", "Preço da Ação", "Investimento", "Expectativa de Volume"]
-      ];
+      setFeedback({ type: "success", msg: "Gerando planilha inteligente..." });
+      const result = await obterPlanilhaModelo(false, filterRede);
 
-      let rows: any[][] = [];
-
-      if (userRole === "Gerente Regional" && userEmail) {
-        // Filter matrices assigned to this manager
-        const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-        const myMatrizes = matrizes.filter(m => {
-          if (!m.gerente) return false;
-          const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
-          return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
-        });
-
-        if (myMatrizes.length > 0) {
-          rows = myMatrizes.map(m => [
-            m.codigo,          // Código da Matriz
-            m.nome,            // Rede
-            m.uf || "",        // UF
-            m.gerente || "",   // Gerente
-            m.canal || "",     // Canal
-            "", "", "", "", "", "", "", "", "", "", "", "" // Empty blanks for action info
-          ]);
-        }
+      if (!result.success || !result.data) {
+        throw new Error(result.error || "Erro desconhecido na geração");
       }
 
-      if (rows.length === 0) {
-        rows = [
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "Família", "Grão", "", "129,90", "129,90", "10,00", "300"],
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Tradicional 250g", "24,99", "24,99", "2,50", "1000"],
-          ["146775.0", "BISTEK", "SC", "Leandro", "KA", "Sell Out", "Boleto", "06/2026", "26/06/2026", "01/07/2026", "SKU", "", "Café Extra Forte 250g", "24,99", "24,99", "2,50", "1000"]
-        ];
-      }
+      // Converte o base64 de volta para blob
+      const blob = new Blob(
+        [Uint8Array.from(atob(result.data), c => c.charCodeAt(0))],
+        { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+      );
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", result.fileName || "modelo_lancamento_investimentos.xlsx");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-      const dataExcel = [...headers, ...rows];
-      const worksheet = XLSX.utils.aoa_to_sheet(dataExcel);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Modelo Investimentos");
-      
-      worksheet['!cols'] = [
-        { wch: 18 }, // Código da Matriz
-        { wch: 20 }, // Rede
-        { wch: 8 },  // UF
-        { wch: 15 }, // Gerente
-        { wch: 12 }, // Canal
-        { wch: 15 }, // Tipo de Ação
-        { wch: 15 }, // Pagamento
-        { wch: 18 }, // Mês de Referência
-        { wch: 15 }, // Data Início
-        { wch: 15 }, // Data Fim
-        { wch: 15 }, // Abrangência
-        { wch: 18 }, // Família de Produto
-        { wch: 25 }, // SKU
-        { wch: 12 }, // Preço Flat
-        { wch: 12 }, // Preço da Ação
-        { wch: 12 }, // Investimento
-        { wch: 20 }  // Expectativa de Volume
-      ];
-
-      XLSX.writeFile(workbook, "modelo_lancamento_investimentos.xlsx");
-      setFeedback({ type: "success", msg: "Modelo de planilha baixado com sucesso!" });
+      setFeedback({ type: "success", msg: "Modelo inteligente baixado com sucesso!" });
       setTimeout(() => setFeedback(null), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setFeedback({ type: "error", msg: "Erro ao gerar modelo de planilha." });
-      setTimeout(() => setFeedback(null), 3000);
+      setFeedback({ type: "error", msg: `Erro ao baixar modelo: ${error.message}` });
+      setTimeout(() => setFeedback(null), 4000);
     }
   };
 
-  // Importação em lote
-  const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Gerar e baixar planilha contendo apenas linhas que falharam nas validações
+  const downloadErrorsExcel = (originalRows: any[][], errorsList: any[]) => {
+    try {
+      const newHeaders = [...originalRows[0], "Erro(s) Encontrado(s)"];
+      const rows = [newHeaders];
+
+      originalRows.slice(1).forEach((row, index) => {
+        const lineNum = index + 2;
+        const rowErrors = errorsList.filter(e => e.line === lineNum);
+        if (rowErrors.length > 0) {
+          const errorMsg = rowErrors.map(e => `[${e.column}]: ${e.message}`).join("; ");
+          rows.push([...row, errorMsg]);
+        }
+      });
+
+      const worksheet = XLSX.utils.aoa_to_sheet(rows);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Erros de Importação");
+      XLSX.writeFile(workbook, "planilha_corrigir_erros.xlsx");
+      setFeedback({ type: "success", msg: "Planilha de erros gerada para download!" });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err) {
+      console.error("Erro ao gerar planilha de erros:", err);
+      setFeedback({ type: "error", msg: "Erro ao exportar planilha de erros." });
+    }
+  };
+
+  // Importação em lote integrada à Server Action de Simulação
+  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setImportFileName(file.name);
-    const reader = new FileReader();
+    setImportErrors([]);
+    setImportSummary(null);
+    setParsedAcoes([]);
+    setIsSimulating(true);
+    setFeedback(null);
 
-    reader.onload = (evt) => {
-      try {
-        const bstr = evt.target?.result;
-        const wb = XLSX.read(bstr, { type: "binary" });
-        const wsname = wb.SheetNames[0];
-        const ws = wb.Sheets[wsname];
-        
-        const rawRows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
-        if (rawRows.length === 0) {
-          setFeedback({ type: "error", msg: "A planilha está vazia." });
-          setTimeout(() => setFeedback(null), 3000);
-          return;
-        }
+    try {
+      // 1. Calcular o SHA-256 do arquivo (client-side) para prevenir uploads duplicados
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      setFileHash(hashHex);
 
-        const headers = rawRows[0].map(h => String(h || "").trim().toLowerCase());
-        
-        const colIndices = {
-          codigo_matriz: headers.findIndex(h => h.includes("código") || h.includes("codigo") || h.includes("matriz")),
-          rede: headers.findIndex(h => h.includes("rede")),
-          uf: headers.findIndex(h => h.includes("uf") || h.includes("estado")),
-          gerente: headers.findIndex(h => h.includes("gerente") || h.includes("responsavel")),
-          canal: headers.findIndex(h => h.includes("canal")),
-          tipo: headers.findIndex(h => h.includes("tipo")),
-          pagamento: headers.findIndex(h => h.includes("pagamento")),
-          mes: headers.findIndex(h => h.includes("mês") || h.includes("mes") || h.includes("ref")),
-          inicio: headers.findIndex(h => h.includes("início") || h.includes("inicio")),
-          fim: headers.findIndex(h => h.includes("fim") || h.includes("final")),
-          abrangencia: headers.findIndex(h => h.includes("abrangência") || h.includes("abrangencia") || h.includes("família ou sku") || h.includes("familia ou sku")),
-          familia: headers.findIndex(h => h.includes("família") || h.includes("familia")),
-          sku: headers.findIndex(h => h.includes("sku")),
-          flat: headers.findIndex(h => h.includes("flat")),
-          acao: headers.findIndex(h => (h.includes("preço") || h.includes("preco")) && (h.includes("ação") || h.includes("acao"))),
-          investimento: headers.findIndex(h => h.includes("investimento") || h.includes("inv")),
-          volume: headers.findIndex(h => h.includes("volume") || h.includes("vol"))
-        };
-
-        if (colIndices.codigo_matriz === -1 || colIndices.tipo === -1 || colIndices.pagamento === -1 || colIndices.mes === -1 || colIndices.inicio === -1 || colIndices.fim === -1 || colIndices.abrangencia === -1) {
-          setFeedback({ type: "error", msg: "Cabeçalhos obrigatórios (Código da Matriz, Tipo, Pagamento, Mês, Datas, Família ou SKU) não encontrados." });
-          setTimeout(() => setFeedback(null), 3000);
-          return;
-        }
-
-        const parsedLines: any[] = [];
-
-        for (let i = 1; i < rawRows.length; i++) {
-          const row = rawRows[i];
-          if (!row || row.length === 0 || row.every(cell => cell === null || cell === undefined || cell === "")) {
-            continue;
-          }
-
-          const errors: string[] = [];
+      // 2. Ler as linhas cruas da planilha
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const bstr = evt.target?.result;
+          const wb = XLSX.read(bstr, { type: "binary" });
+          const wsname = wb.SheetNames[0];
+          const ws = wb.Sheets[wsname];
+          const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
           
-          const rawCodigoMatriz = colIndices.codigo_matriz !== -1 ? row[colIndices.codigo_matriz] : "";
-          const rawRede = colIndices.rede !== -1 ? row[colIndices.rede] : "";
-          const rawUf = colIndices.uf !== -1 ? row[colIndices.uf] : "";
-          const rawGerente = colIndices.gerente !== -1 ? row[colIndices.gerente] : "";
-          const rawCanal = colIndices.canal !== -1 ? row[colIndices.canal] : "";
-          const rawTipo = colIndices.tipo !== -1 ? row[colIndices.tipo] : "";
-          const rawPagamento = colIndices.pagamento !== -1 ? row[colIndices.pagamento] : "";
-          const rawMes = colIndices.mes !== -1 ? row[colIndices.mes] : "";
-          const rawInicio = colIndices.inicio !== -1 ? row[colIndices.inicio] : "";
-          const rawFim = colIndices.fim !== -1 ? row[colIndices.fim] : "";
-          const rawAbrangencia = colIndices.abrangencia !== -1 ? row[colIndices.abrangencia] : "";
-          const rawFamilia = colIndices.familia !== -1 ? row[colIndices.familia] : "";
-          const rawSku = colIndices.sku !== -1 ? row[colIndices.sku] : "";
-          const rawFlat = colIndices.flat !== -1 ? row[colIndices.flat] : "";
-          const rawAcao = colIndices.acao !== -1 ? row[colIndices.acao] : "";
-          const rawInvestimento = colIndices.investimento !== -1 ? row[colIndices.investimento] : "";
-          const rawVolume = colIndices.volume !== -1 ? row[colIndices.volume] : "";
-
-          let codigoMatrizVal = rawCodigoMatriz ? String(rawCodigoMatriz).trim() : "";
-          let redeVal = rawRede ? String(rawRede).trim() : "";
-
-          if (!codigoMatrizVal) {
-            errors.push("Código da Matriz é obrigatório.");
-          } else {
-            // Se o código for lido como inteiro (ex: 146775) no Excel
-            let matched = matrizes.find(m => m.codigo === codigoMatrizVal);
-            if (!matched && !codigoMatrizVal.includes(".")) {
-              matched = matrizes.find(m => m.codigo === codigoMatrizVal + ".0" || m.codigo.startsWith(codigoMatrizVal + "."));
-            }
-            if (matched) {
-              codigoMatrizVal = matched.codigo;
-              redeVal = matched.nome; // Nome da rede correto
-            } else {
-              errors.push(`Código de Matriz "${codigoMatrizVal}" não encontrado no cadastro.`);
-            }
-          }
-
-          let tipoVal = rawTipo ? String(rawTipo).trim() : "";
-          if (!tipoVal) {
-            errors.push("Tipo de Ação é obrigatório.");
-          } else {
-            const tLower = tipoVal.toLowerCase();
-            if (tLower.includes("out")) tipoVal = "Sell Out";
-            else if (tLower.includes("in")) tipoVal = "Sell In";
-            else errors.push("Tipo de Ação inválido.");
-          }
-
-          let pagamentoVal = rawPagamento ? String(rawPagamento).trim() : "";
-          if (!pagamentoVal) {
-            errors.push("Pagamento é obrigatório.");
-          } else {
-            const pLower = pagamentoVal.toLowerCase();
-            if (pLower.includes("abat") || pLower.includes("bole")) pagamentoVal = "Boleto";
-            else if (pLower.includes("trans") || pLower.includes("tran")) pagamentoVal = "Transf. Bancária";
-            else if (pLower.includes("boni")) pagamentoVal = "Bonificação";
-            else errors.push("Pagamento inválido.");
-          }
-
-          let mesVal: string | null = null;
-          if (!rawMes) {
-            errors.push("Mês de referência é obrigatório.");
-          } else {
-            if (typeof rawMes === "number") {
-              const d = excelSerialToDate(rawMes);
-              if (d) mesVal = d.slice(0, 7);
-            } else {
-              const str = String(rawMes).trim();
-              const parts = str.split("/");
-              if (parts.length === 2) {
-                const m = parts[0].padStart(2, '0');
-                const y = parts[1];
-                if (y.length === 4 && !isNaN(Number(m)) && !isNaN(Number(y))) {
-                  mesVal = `${y}-${m}`;
-                }
-              } else if (str.split("-").length === 2) {
-                mesVal = str;
-              }
-            }
-            if (!mesVal) errors.push("Mês inválido. Use MM/AAAA.");
-          }
-
-          let inicioVal: string | null = null;
-          if (!rawInicio) {
-            errors.push("Data início é obrigatória.");
-          } else {
-            inicioVal = typeof rawInicio === "number" ? excelSerialToDate(rawInicio) : parseDateString(rawInicio);
-            if (!inicioVal) errors.push("Data início inválida.");
-          }
-
-          let fimVal: string | null = null;
-          if (!rawFim) {
-            errors.push("Data fim é obrigatória.");
-          } else {
-            fimVal = typeof rawFim === "number" ? excelSerialToDate(rawFim) : parseDateString(rawFim);
-            if (!fimVal) errors.push("Data fim inválida.");
-          }
-
-          let abrangenciaVal = rawAbrangencia ? String(rawAbrangencia).trim() : "";
-          if (!abrangenciaVal) {
-            errors.push("Abrangência é obrigatória.");
-          } else {
-            const aLower = abrangenciaVal.toLowerCase();
-            if (aLower.includes("fam")) abrangenciaVal = "Família";
-            else if (aLower.includes("sku")) abrangenciaVal = "SKU";
-            else errors.push("Abrangência inválida.");
-          }
-
-          let familiaVal: string | null = null;
-          let skuVal = "";
-          let flatVal: number | null = null;
-          let acaoVal: number | null = null;
-          let investVal: number | null = null;
-          let volVal: number | null = null;
-
-          const parseExcelNum = (val: any) => {
-            if (val === undefined || val === null || val === "") return null;
-            if (typeof val === "number") return val;
-            const clean = String(val).replace(/[R$\s\.]/g, '').replace(',', '.');
-            const n = parseFloat(clean);
-            return isNaN(n) ? null : n;
-          };
-
-          flatVal = parseExcelNum(rawFlat);
-          acaoVal = parseExcelNum(rawAcao);
-          investVal = parseExcelNum(rawInvestimento);
-
-          if (rawVolume !== undefined && rawVolume !== null && rawVolume !== "") {
-            if (typeof rawVolume === "number") volVal = rawVolume;
-            else {
-              const clean = String(rawVolume).replace(/\./g, '').replace(',', '.');
-              const n = parseFloat(clean);
-              volVal = isNaN(n) ? null : n;
-            }
-          }
-
-          if (abrangenciaVal === "Família") {
-            familiaVal = rawFamilia ? String(rawFamilia).trim() : "";
-            if (!familiaVal) {
-              errors.push("Família é obrigatória para abrangência Família.");
-            } else {
-              const validFams = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
-              const match = validFams.find(vf => vf.toLowerCase() === familiaVal!.toLowerCase());
-              if (match) familiaVal = match;
-              else errors.push("Família inválida.");
-            }
-            if (investVal === null) errors.push("Investimento é obrigatório.");
-            if (volVal === null) errors.push("Volume é obrigatório.");
-          } else if (abrangenciaVal === "SKU") {
-            skuVal = rawSku ? String(rawSku).trim() : "";
-            if (!skuVal) {
-              errors.push("SKU é obrigatório.");
-            }
-          }
-
-          parsedLines.push({
-            originalRow: row,
-            data: {
-              rede: redeVal,
-              codigo_matriz: codigoMatrizVal,
-              uf: rawUf ? String(rawUf).trim() : "",
-              gerente: rawGerente ? String(rawGerente).trim() : "",
-              canal: rawCanal ? String(rawCanal).trim() : "",
-              tipo_acao: tipoVal,
-              tipo_pagamento: pagamentoVal,
-              mes_referencia: mesVal || "",
-              data_inicio: inicioVal || "",
-              data_fim: fimVal || "",
-              abrangencia: abrangenciaVal,
-              familia_produto: familiaVal,
-              sku: skuVal,
-              preco_flat: flatVal,
-              preco_acao: acaoVal,
-              valor_investimento: investVal,
-              expectativa_volume: volVal
-            },
-            valid: errors.length === 0,
-            errors
-          });
-        }
-
-        // Agrupamento de SKUs
-        const groupedAcoes: any[] = [];
-        const skuGroups: Record<string, any[]> = {};
-        const familiaGroups: Record<string, any[]> = {};
-
-        parsedLines.forEach(line => {
-          if (!line.valid) {
-            groupedAcoes.push({
-              originalRow: line.originalRow,
-              data: {
-                ...line.data,
-                skus_detalhes: []
-              },
-              valid: false,
-              errors: line.errors
-            });
+          if (rawRows.length <= 1) {
+            setFeedback({ type: "error", msg: "A planilha está vazia." });
+            setIsSimulating(false);
             return;
           }
 
-          if (line.data.abrangencia === "Família") {
-            const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
-            if (!familiaGroups[key]) familiaGroups[key] = [];
-            familiaGroups[key].push(line);
-          } else {
-            const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
-            if (!skuGroups[key]) {
-              skuGroups[key] = [];
-            }
-            skuGroups[key].push(line);
-          }
-        });
+          setRawExcelRows(rawRows);
 
-        // Group Família lines
-        Object.entries(familiaGroups).forEach(([key, lines]) => {
-          const first = lines[0].data;
-          const famDetails = lines.map(line => {
-            const famNome = line.data.familia_produto || "";
-            const famId = famNome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
-            return {
-              familia_id: famId,
-              familia_nome: famNome,
+          // 3. Chamar a Server Action de Simulação (All-or-Nothing validation)
+          const res = await simularImportacaoInvestimentos(rawRows);
+          
+          if (!res.success) {
+            setImportErrors(res.errors);
+            setImportSummary(res.summary);
+            setIsSimulating(false);
+            return;
+          }
+
+          // 4. Executar agrupamento dos registros válidos
+          const parsedLines = res.parsedLines;
+          const groupedAcoes: any[] = [];
+          const skuGroups: Record<string, any[]> = {};
+          const familiaGroups: Record<string, any[]> = {};
+
+          parsedLines.forEach(line => {
+            if (line.data.abrangencia === "Família") {
+              const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
+              if (!familiaGroups[key]) familiaGroups[key] = [];
+              familiaGroups[key].push(line);
+            } else {
+              const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
+              if (!skuGroups[key]) skuGroups[key] = [];
+              skuGroups[key].push(line);
+            }
+          });
+
+          const localErrors: any[] = [];
+
+          // Agrupar Famílias
+          Object.entries(familiaGroups).forEach(([key, lines]) => {
+            const first = lines[0].data;
+            const famDetails = lines.map(line => {
+              const famNome = line.data.familia_produto || "";
+              const famId = famNome.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
+              return {
+                familia_id: famId,
+                familia_nome: famNome,
+                preco_flat: line.data.preco_flat,
+                preco_acao: line.data.preco_acao,
+                investimento: line.data.valor_investimento,
+                expectativa_volume: line.data.expectativa_volume,
+                _lineIndex: line.lineIndex
+              };
+            });
+
+            const famNames = famDetails.map(f => f.familia_nome);
+            const duplicateFams = famNames.filter((item, index) => famNames.indexOf(item) !== index);
+            const groupErrors: string[] = [];
+            
+            if (duplicateFams.length > 0) {
+              const dupLines = duplicateFams.map(dup => {
+                const lineNums = famDetails.filter(f => f.familia_nome === dup).map(f => f._lineIndex);
+                localErrors.push({
+                  line: lineNums[0],
+                  column: "Família de Produto",
+                  value: dup,
+                  message: `Família duplicada no mesmo grupo (linhas ${lineNums.join(", ")})`
+                });
+                return `${dup} (linhas ${lineNums.join(", ")})`;
+              });
+              groupErrors.push(`Famílias duplicadas: ${Array.from(new Set(dupLines)).join("; ")}`);
+            }
+
+            const cleanFamDetails = famDetails.map(({ _lineIndex, ...rest }) => rest);
+            groupedAcoes.push({
+              originalRow: lines[0].originalRow,
+              data: {
+                rede: first.rede,
+                codigo_matriz: first.codigo_matriz,
+                uf: first.uf,
+                gerente: first.gerente,
+                canal: first.canal,
+                tipo_acao: first.tipo_acao,
+                tipo_pagamento: first.tipo_pagamento,
+                mes_referencia: first.mes_referencia,
+                data_inicio: first.data_inicio,
+                data_fim: first.data_fim,
+                abrangencia: "Família",
+                familia_produto: famNames.join(", "),
+                familias_detalhes: cleanFamDetails,
+                preco_flat: null,
+                preco_acao: null,
+                valor_investimento: null,
+                expectativa_volume: null,
+                skus_detalhes: [],
+                fase_atual: 1
+              },
+              valid: groupErrors.length === 0,
+              errors: groupErrors
+            });
+          });
+
+          // Agrupar SKUs
+          Object.entries(skuGroups).forEach(([key, lines]) => {
+            const first = lines[0].data;
+            const skusDetails = lines.map(line => ({
+              sku: line.data.sku,
               preco_flat: line.data.preco_flat,
               preco_acao: line.data.preco_acao,
               investimento: line.data.valor_investimento,
               expectativa_volume: line.data.expectativa_volume,
-              _lineIndex: line.originalRow
-            };
-          });
+              _lineIndex: line.lineIndex
+            }));
 
-          const famNames = famDetails.map(f => f.familia_nome);
-          const duplicateFams = famNames.filter((item, index) => famNames.indexOf(item) !== index);
-          const groupErrors: string[] = [];
-          if (duplicateFams.length > 0) {
-            const dupLines = duplicateFams.map(dup => {
-              const lineNums = famDetails.filter(f => f.familia_nome === dup).map(f => f._lineIndex);
-              return `${dup} (linhas ${lineNums.join(", ")})`;
+            const skusList = skusDetails.map(s => s.sku);
+            const duplicateSkus = skusList.filter((item, index) => skusList.indexOf(item) !== index);
+            const groupErrors: string[] = [];
+
+            if (duplicateSkus.length > 0) {
+              const dupLines = duplicateSkus.map(dup => {
+                const lineNums = skusDetails.filter(s => s.sku === dup).map(s => s._lineIndex);
+                localErrors.push({
+                  line: lineNums[0],
+                  column: "SKU",
+                  value: dup,
+                  message: `SKU duplicado no mesmo grupo (linhas ${lineNums.join(", ")})`
+                });
+                return `${dup} (linhas ${lineNums.join(", ")})`;
+              });
+              groupErrors.push(`SKUs duplicados: ${Array.from(new Set(dupLines)).join(", ")}`);
+            }
+
+            const cleanSkusDetails = skusDetails.map(({ _lineIndex, ...rest }) => rest);
+            groupedAcoes.push({
+              originalRow: lines[0].originalRow,
+              data: {
+                rede: first.rede,
+                codigo_matriz: first.codigo_matriz,
+                uf: first.uf,
+                gerente: first.gerente,
+                canal: first.canal,
+                tipo_acao: first.tipo_acao,
+                tipo_pagamento: first.tipo_pagamento,
+                mes_referencia: first.mes_referencia,
+                data_inicio: first.data_inicio,
+                data_fim: first.data_fim,
+                abrangencia: "SKU",
+                familia_produto: null,
+                preco_flat: null,
+                preco_acao: null,
+                valor_investimento: null,
+                expectativa_volume: null,
+                skus_detalhes: cleanSkusDetails,
+                fase_atual: 1
+              },
+              valid: groupErrors.length === 0,
+              errors: groupErrors
             });
-            groupErrors.push(`Famílias duplicadas: ${Array.from(new Set(dupLines)).join("; ")}`);
-          }
-
-          // Remove _lineIndex before saving
-          const cleanFamDetails = famDetails.map(({ _lineIndex, ...rest }) => rest);
-
-          groupedAcoes.push({
-            originalRow: lines[0].originalRow,
-            data: {
-              rede: first.rede,
-              codigo_matriz: first.codigo_matriz,
-              uf: first.uf,
-              gerente: first.gerente,
-              canal: first.canal,
-              tipo_acao: first.tipo_acao,
-              tipo_pagamento: first.tipo_pagamento,
-              mes_referencia: first.mes_referencia,
-              data_inicio: first.data_inicio,
-              data_fim: first.data_fim,
-              abrangencia: "Família",
-              familia_produto: famNames.join(", "),
-              familias_detalhes: cleanFamDetails,
-              preco_flat: null,
-              preco_acao: null,
-              valor_investimento: null,
-              expectativa_volume: null,
-              skus_detalhes: [],
-              fase_atual: 1
-            },
-            valid: groupErrors.length === 0,
-            errors: groupErrors
           });
-        });
 
-        Object.entries(skuGroups).forEach(([key, lines]) => {
-          const first = lines[0].data;
-          const skusDetails = lines.map(line => ({
-            sku: line.data.sku,
-            preco_flat: line.data.preco_flat,
-            preco_acao: line.data.preco_acao,
-            investimento: line.data.valor_investimento,
-            expectativa_volume: line.data.expectativa_volume
-          }));
-
-          const skusList = skusDetails.map(s => s.sku);
-          const duplicateSkus = skusList.filter((item, index) => skusList.indexOf(item) !== index);
-          const groupErrors: string[] = [];
-          if (duplicateSkus.length > 0) {
-            groupErrors.push(`SKUs duplicados: ${Array.from(new Set(duplicateSkus)).join(", ")}`);
+          if (localErrors.length > 0) {
+            setImportErrors(localErrors);
+          } else {
+            setParsedAcoes(groupedAcoes);
+            setImportSummary(res.summary);
           }
+          setIsSimulating(false);
+        } catch (err: any) {
+          console.error(err);
+          setFeedback({ type: "error", msg: "Erro ao processar o arquivo Excel." });
+          setIsSimulating(false);
+        }
+      };
 
-          groupedAcoes.push({
-            originalRow: lines[0].originalRow,
-            data: {
-              rede: first.rede,
-              codigo_matriz: first.codigo_matriz,
-              uf: first.uf,
-              gerente: first.gerente,
-              canal: first.canal,
-              tipo_acao: first.tipo_acao,
-              tipo_pagamento: first.tipo_pagamento,
-              mes_referencia: first.mes_referencia,
-              data_inicio: first.data_inicio,
-              data_fim: first.data_fim,
-              abrangencia: "SKU",
-              familia_produto: null,
-              preco_flat: null,
-              preco_acao: null,
-              valor_investimento: null,
-              expectativa_volume: null,
-              skus_detalhes: skusDetails,
-              fase_atual: 1
-            },
-            valid: groupErrors.length === 0,
-            errors: groupErrors
-          });
-        });
-
-        setParsedAcoes(groupedAcoes);
-      } catch (err) {
-        console.error(err);
-        setFeedback({ type: "error", msg: "Erro ao processar o arquivo Excel." });
-      }
-    };
-
-    reader.readAsBinaryString(file);
+      reader.readAsBinaryString(file);
+    } catch (err: any) {
+      console.error(err);
+      setFeedback({ type: "error", msg: "Erro ao ler arquivo." });
+      setIsSimulating(false);
+    }
   };
 
+  // Efetiva a gravação definitiva de todas as ações validadas
   const handleConfirmImport = () => {
+    if (importErrors.length > 0) {
+      setFeedback({ type: "error", msg: "Corrija todos os erros da planilha antes de salvar." });
+      return;
+    }
+
     const validAcoes = parsedAcoes
       .filter(item => item.valid)
       .map(item => {
-        // Strip out columns that don't exist in the database table
         const { uf, gerente, canal, ...dbFields } = item.data;
         return { ...dbFields, is_planejamento: false };
       });
 
     if (validAcoes.length === 0) {
-      setFeedback({ type: "error", msg: "Nenhum investimento válido." });
+      setFeedback({ type: "error", msg: "Nenhum investimento válido encontrado." });
       return;
     }
 
     startImportTransition(async () => {
       try {
-        const res = await importarInvestimentosEmLote(validAcoes);
+        const res = await importarInvestimentosEmLote(
+          validAcoes,
+          importFileName,
+          fileHash,
+          importSummary?.totalInvestment || 0
+        );
         if (res.success) {
           setFeedback({ type: "success", msg: `${res.count} investimentos importados com sucesso!` });
           setIsImportModalOpen(false);
           setParsedAcoes([]);
           setImportFileName("");
+          setImportErrors([]);
+          setImportSummary(null);
+          setFileHash("");
           loadData();
         }
       } catch (err: any) {
@@ -1465,9 +1296,42 @@ export default function InvestimentoPage() {
 
   const faseCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
-    managerFilteredAcoes.forEach(r => { const f = r.fase_atual || 1; if (counts[f] !== undefined) counts[f]++; });
+    managerFilteredAcoes.forEach(r => {
+      // Aplica os filtros de tela exceto o de fase
+      if (filterRede && r.rede !== filterRede) return;
+      if (filterFamilia) {
+        const matchFam = r.abrangencia === 'Família'
+          ? r.familias_detalhes?.some((f: any) => f.familia_nome === filterFamilia)
+          : r.familia_produto === filterFamilia;
+        if (!matchFam) return;
+      }
+      if (filterDataInicio && r.data_inicio < filterDataInicio) return;
+      if (filterDataFim && r.data_inicio > filterDataFim) return;
+      if (filterMes && r.mes_referencia !== filterMes) return;
+
+      const f = r.fase_atual || 1;
+      if (counts[f] !== undefined) counts[f]++;
+    });
     return counts;
-  }, [managerFilteredAcoes]);
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterMes]);
+
+  const totalFilteredCount = useMemo(() => {
+    let total = 0;
+    managerFilteredAcoes.forEach(r => {
+      if (filterRede && r.rede !== filterRede) return;
+      if (filterFamilia) {
+        const matchFam = r.abrangencia === 'Família'
+          ? r.familias_detalhes?.some((f: any) => f.familia_nome === filterFamilia)
+          : r.familia_produto === filterFamilia;
+        if (!matchFam) return;
+      }
+      if (filterDataInicio && r.data_inicio < filterDataInicio) return;
+      if (filterDataFim && r.data_inicio > filterDataFim) return;
+      if (filterMes && r.mes_referencia !== filterMes) return;
+      total++;
+    });
+    return total;
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterMes]);
 
   const handlePhaseAction = async (id: string, action: () => Promise<any>) => {
     setActionLoading(id);
@@ -1925,7 +1789,7 @@ export default function InvestimentoPage() {
                 }`}
               >
                 <div className="flex items-center gap-1.5 font-semibold">
-                  Todas <span className="text-xs opacity-70 font-normal">({managerFilteredAcoes.length})</span>
+                  Todas <span className="text-xs opacity-70 font-normal">({totalFilteredCount})</span>
                 </div>
                 <span className="text-[10px] opacity-60 font-normal mt-0.5">geral</span>
               </button>
@@ -2818,6 +2682,10 @@ export default function InvestimentoPage() {
                     setIsImportModalOpen(false);
                     setParsedAcoes([]);
                     setImportFileName("");
+                    setImportErrors([]);
+                    setImportSummary(null);
+                    setFileHash("");
+                    setRawExcelRows([]);
                   }} 
                   className="p-2 hover:bg-border rounded-full transition-colors"
                 >
@@ -2850,25 +2718,87 @@ export default function InvestimentoPage() {
                   </div>
                 </div>
 
-                {parsedAcoes.length > 0 && (
-                  <div className="space-y-4">
-                    {/* Resumo */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="p-2.5 bg-foreground/5 border border-border rounded-xl text-center">
-                        <p className="text-[9px] font-bold text-muted uppercase tracking-wider">Ações Lidas</p>
-                        <p className="text-lg font-bold text-foreground mt-0.5">{parsedAcoes.length}</p>
-                      </div>
-                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center">
-                        <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Válidas</p>
-                        <p className="text-lg font-bold text-emerald-400 mt-0.5">{parsedAcoes.filter(e => e.valid).length}</p>
-                      </div>
-                      <div className="p-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
-                        <p className="text-[9px] font-bold text-red-400 uppercase tracking-wider">Com Erros</p>
-                        <p className="text-lg font-bold text-red-400 mt-0.5">{parsedAcoes.filter(e => !e.valid).length}</p>
+                {isSimulating && (
+                  <div className="flex flex-col items-center justify-center py-12 gap-3 text-center bg-background/20 rounded-2xl border border-border/50 animate-pulse">
+                    <div className="w-10 h-10 rounded-full border-4 border-gold/20 border-t-gold animate-spin" />
+                    <div>
+                      <p className="font-semibold text-xs text-foreground">Analisando planilha...</p>
+                      <p className="text-[10px] text-muted mt-1">Aguarde enquanto executamos as pré-validações no servidor.</p>
+                    </div>
+                  </div>
+                )}
+
+                {importErrors.length > 0 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-start gap-3">
+                      <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-bold text-sm text-red-400">Erros de Validação Encontrados</h4>
+                        <p className="text-xs text-muted mt-1">
+                          Identificamos {importErrors.length} erro(s) na planilha. Corrija as inconsistências e envie novamente.
+                        </p>
                       </div>
                     </div>
 
-                    {/* Tabela de Pré-visualização */}
+                    <div className="flex justify-between items-center bg-elevated/40 p-3 rounded-xl border border-border">
+                      <span className="text-[11px] text-muted">A gravação de lotes está bloqueada até que todos os erros sejam corrigidos.</span>
+                      <button
+                        type="button"
+                        onClick={() => downloadErrorsExcel(rawExcelRows, importErrors)}
+                        className="px-3.5 py-1.5 bg-red-500/15 hover:bg-red-500/25 text-red-400 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1.5 border border-red-500/20"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        Baixar Planilha de Erros
+                      </button>
+                    </div>
+
+                    {/* Tabela de Logs de Erro */}
+                    <div className="border border-border rounded-xl overflow-hidden bg-background/50 text-xs">
+                      <div className="max-h-[30vh] overflow-y-auto">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-elevated border-b border-border sticky top-0">
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Linha</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Coluna</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Valor Lido</th>
+                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Motivo do Erro</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {importErrors.map((err, index) => (
+                              <tr key={index} className="hover:bg-red-500/[0.01]">
+                                <td className="p-2.5 text-red-400 font-bold"># {err.line}</td>
+                                <td className="p-2.5 font-semibold text-foreground">{err.column}</td>
+                                <td className="p-2.5 text-muted break-all font-mono text-[10px]">{err.value !== undefined && err.value !== null ? String(err.value) : "—"}</td>
+                                <td className="p-2.5 text-red-400 font-medium">{err.message}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {importSummary && importErrors.length === 0 && parsedAcoes.length > 0 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Resumo Consolidado (Simulado) */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-2.5 bg-foreground/5 border border-border rounded-xl text-center shadow-sm">
+                        <p className="text-[9px] font-bold text-muted uppercase tracking-wider">Ações Mapeadas</p>
+                        <p className="text-lg font-black text-foreground mt-0.5">{importSummary.totalRows}</p>
+                      </div>
+                      <div className="p-2.5 bg-gold/10 border border-gold/20 rounded-xl text-center shadow-sm">
+                        <p className="text-[9px] font-bold text-gold uppercase tracking-wider">Investimento Total</p>
+                        <p className="text-lg font-black text-gold mt-0.5">{formatCurrency(importSummary.totalInvestment, false)}</p>
+                      </div>
+                      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center shadow-sm">
+                        <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Volume Planejado</p>
+                        <p className="text-lg font-black text-emerald-400 mt-0.5">{importSummary.totalVolume?.toLocaleString('pt-BR') || '0'} Kg</p>
+                      </div>
+                    </div>
+
+                    {/* Tabela de Pré-visualização das Ações Agrupadas */}
                     <div className="border border-border rounded-xl overflow-hidden bg-background/50 text-xs">
                       <div className="max-h-[30vh] overflow-y-auto">
                         <table className="w-full text-left border-collapse">
@@ -2882,7 +2812,6 @@ export default function InvestimentoPage() {
                               <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Mês</th>
                               <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Abrangência</th>
                               <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Detalhes</th>
-                              <th className="p-2.5 font-semibold text-muted text-[10px] uppercase">Erros/Observações</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
@@ -2900,9 +2829,9 @@ export default function InvestimentoPage() {
                                   )}
                                 </td>
                                 <td className="p-2.5 font-semibold text-foreground">{item.data.rede || <span className="text-red-400 italic">Vazia</span>}</td>
-                                <td className="p-2.5 text-muted">{item.data.uf || "-"}</td>
-                                <td className="p-2.5 text-muted">{item.data.gerente || "-"}</td>
-                                <td className="p-2.5 text-muted">{item.data.canal || "-"}</td>
+                                <td className="p-2.5 text-muted">{item.data.uf || "—"}</td>
+                                <td className="p-2.5 text-muted">{item.data.gerente || "—"}</td>
+                                <td className="p-2.5 text-muted">{item.data.canal || "—"}</td>
                                 <td className="p-2.5 text-muted">{formatMesReferencia(item.data.mes_referencia) || <span className="text-red-400 italic">Vazio</span>}</td>
                                 <td className="p-2.5 whitespace-nowrap">
                                   <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${item.data.abrangencia === 'Família' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 'bg-purple-500/10 text-purple-500 border-purple-500/20'}`}>
@@ -2918,17 +2847,6 @@ export default function InvestimentoPage() {
                                     </span>
                                   ) : (
                                     <span className="text-foreground-secondary">{item.data.skus_detalhes?.length || 0} SKU(s) detalhado(s)</span>
-                                  )}
-                                </td>
-                                <td className="p-2.5">
-                                  {item.valid ? (
-                                    <span className="text-muted">Pronto</span>
-                                  ) : (
-                                    <ul className="list-disc pl-4 text-red-400 space-y-0.5">
-                                      {item.errors.map((err: string, errIdx: number) => (
-                                        <li key={errIdx}>{err}</li>
-                                      ))}
-                                    </ul>
                                   )}
                                 </td>
                               </tr>
@@ -2949,6 +2867,10 @@ export default function InvestimentoPage() {
                     setIsImportModalOpen(false);
                     setParsedAcoes([]);
                     setImportFileName("");
+                    setImportErrors([]);
+                    setImportSummary(null);
+                    setFileHash("");
+                    setRawExcelRows([]);
                   }}
                   disabled={isImportPending}
                   className="px-4 py-2 text-sm font-semibold text-muted hover:bg-border rounded-xl transition-colors"
@@ -2958,11 +2880,11 @@ export default function InvestimentoPage() {
                 <button
                   type="button"
                   onClick={handleConfirmImport}
-                  disabled={isImportPending || parsedAcoes.length === 0 || parsedAcoes.filter(e => e.valid).length === 0}
+                  disabled={isImportPending || isSimulating || parsedAcoes.length === 0 || importErrors.length > 0}
                   className="px-4 py-2 text-sm font-bold bg-gold text-black rounded-xl hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {isImportPending && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  Importar ({parsedAcoes.filter(e => e.valid).length}) Registros
+                  Confirmar Importação ({parsedAcoes.filter(e => e.valid).length})
                 </button>
               </div>
             </div>
