@@ -721,6 +721,26 @@ export default function MetasPromotorPage() {
     return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   };
 
+  const renderVolumeValue = (val: number, fontClass = "text-xs font-black text-neutral-900 dark:text-neutral-100", alignClass = "items-center text-center") => {
+    if (targetType === "volume") {
+      return (
+        <div className={`flex flex-col ${alignClass} leading-none`}>
+          <span className={fontClass}>
+            {val.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+          </span>
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold mt-0.5 select-none">
+            Unid.
+          </span>
+        </div>
+      );
+    }
+    return (
+      <span className={fontClass}>
+        {val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+      </span>
+    );
+  };
+
   // Helper to render network status badges with increased padding and contrast
   const renderRowStatusBadge = (status: string, goalsSum: number) => {
     if (goalsSum === 0) {
@@ -910,14 +930,21 @@ export default function MetasPromotorPage() {
                       </span>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-sm font-black text-neutral-950 dark:text-neutral-50 block">
-                      {rankingSortBy === "pct" ? `${entry.pct.toFixed(1)}%` : 
-                       rankingSortBy === "achieved" ? formatValue(entry.achieved) : formatValue(entry.target)}
-                    </span>
-                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-bold block">
-                      {rankingSortBy === "pct" ? `Real: ${formatValue(entry.achieved)}` : 
-                       rankingSortBy === "achieved" ? `Meta: ${formatValue(entry.target)}` : `Real: ${formatValue(entry.achieved)}`}
+                  <div className="text-right flex flex-col items-end justify-center">
+                    {rankingSortBy === "pct" ? (
+                      <span className="text-sm font-black text-neutral-950 dark:text-neutral-50 block">
+                        {entry.pct.toFixed(1)}%
+                      </span>
+                    ) : (
+                      renderVolumeValue(
+                        rankingSortBy === "achieved" ? entry.achieved : entry.target,
+                        "text-sm font-black text-neutral-950 dark:text-neutral-50",
+                        "items-end text-right"
+                      )
+                    )}
+                    <span className="text-[9px] text-neutral-500 dark:text-neutral-400 font-bold block mt-1">
+                      {rankingSortBy === "pct" ? `Real: ${entry.achieved.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} Unid.` : 
+                       rankingSortBy === "achieved" ? `Meta: ${entry.target.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} Unid.` : `Real: ${entry.achieved.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} Unid.`}
                     </span>
                   </div>
                 </div>
