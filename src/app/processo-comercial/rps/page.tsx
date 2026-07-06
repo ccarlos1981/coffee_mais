@@ -61,6 +61,25 @@ const MONTHS = [
 
 const YEARS = [2024, 2025, 2026, 2027];
 
+// Helper para obter as segundas-feiras de um mês (formato YYYY-MM-DD)
+function getMondaysOfMonth(year: number, month: number): string[] {
+  const mondays: string[] = [];
+  const date = new Date(Date.UTC(year, month - 1, 1));
+  
+  // Encontra a primeira segunda-feira
+  while (date.getUTCDay() !== 1) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  
+  // Coleta todas as segundas-feiras do mês
+  while (date.getUTCMonth() === month - 1) {
+    mondays.push(date.toISOString().split('T')[0]);
+    date.setUTCDate(date.getUTCDate() + 7);
+  }
+  
+  return mondays;
+}
+
 export default function RpsPage() {
   const router = useRouter();
 
@@ -91,6 +110,22 @@ export default function RpsPage() {
       return d.getDay() === 1; // 1 = Segunda-feira
     }
     return false;
+  }, [todayStr]);
+
+  // Obtém a última segunda-feira do mês anterior ao mês atual de hoje
+  const lastMondayOfPrevMonth = useMemo(() => {
+    const parts = todayStr.split('-');
+    if (parts.length === 3) {
+      const curYear = Number(parts[0]);
+      const curMonth = Number(parts[1]);
+      
+      const prevMonth = curMonth === 1 ? 12 : curMonth - 1;
+      const prevYear = curMonth === 1 ? curYear - 1 : curYear;
+      
+      const prevMondays = getMondaysOfMonth(prevYear, prevMonth);
+      return prevMondays.length > 0 ? prevMondays[prevMondays.length - 1] : "";
+    }
+    return "";
   }, [todayStr]);
 
   // Estados de dados
@@ -227,8 +262,8 @@ export default function RpsPage() {
     });
   };
 
-  // Handler para inputs de gerentes (VOL e INVEST)
-  const handleManagerKpiChange = (mIdx: number, kpi: 'VOL' | 'INVEST', wIdx: number, val: number) => {
+  // Handler para inputs de gerentes (VOL, FAT e INVEST)
+  const handleManagerKpiChange = (mIdx: number, kpi: 'VOL' | 'FAT' | 'INVEST', wIdx: number, val: number) => {
     setManagers(prev => {
       const next = [...prev];
       const mgr = { ...next[mIdx] };
@@ -236,7 +271,7 @@ export default function RpsPage() {
       const kpiData = { ...kpis[kpi] };
       const projections = [...kpiData.projections];
       
-      // Armazena raw value (VOL ou percentual de INVEST)
+      // Armazena raw value (VOL, FAT absoluto ou percentual de INVEST)
       projections[wIdx] = val;
       
       kpiData.projections = projections;
@@ -429,7 +464,7 @@ export default function RpsPage() {
     return ((current - historical) / historical) * 100;
   };
 
-  // Helper de cálculo de dispersão (% Disp)
+  // Helper de cálculo de dispersão (% Disp: Variação Realizado vs Projeção)
   const calcDispersionPct = (closed: number, projected: number) => {
     if (projected <= 0) return 0;
     return ((closed - projected) / projected) * 100;
@@ -438,6 +473,7 @@ export default function RpsPage() {
   // Estilo de cor para células de porcentagem baseadas nas premissas
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
     if (kpi === "DISPERSAO") {
+      // Como a dispersão é Variação (Realizado - Projetado) / Projetado, fica verde se for >= 0% (o real atingiu ou superou a projeção)
       if (pctVal >= 0) {
         return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
@@ -737,9 +773,22 @@ export default function RpsPage() {
                               <td className="col-divider text-right font-medium">{formatCurrency(row.kpis.FAT.desafio / 1000, 0)}</td>
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.FAT.projections[wIdx];
+                                const isFuture = m > todayStr;
                                 return (
-                                  <td key={m} className={`text-right font-bold text-foreground bg-white/5 ${wIdx === 0 ? "col-divider" : ""}`}>
-                                    {formatCurrency(val / 1000, 0)}
+                                  <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
+                                    <input
+                                      type="number"
+                                      value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
+                                      placeholder="0"
+                                      disabled={m !== todayStr}
+                                      onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "FAT", wIdx })}
+                                      onBlur={() => setFocusedInput(null)}
+                                      onChange={(e) => {
+                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                        handleManagerKpiChange(mIdx, "FAT", wIdx, isNaN(num) ? 0 : num * 1000);
+                                      }}
+                                      className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
+                                    />
                                   </td>
                                 );
                               })}
