@@ -28,11 +28,13 @@ import {
   BrainCircuit,
   Trophy,
   ArrowUpRight,
-  Loader2
+  Loader2,
+  History
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { metasPromotorTheme as theme } from "@/lib/metasPromotorTheme";
+import { createClient } from "@/lib/supabase/client";
 
 interface NetworkData {
   rede: string;
@@ -96,6 +98,23 @@ export default function MetasPromotorPage() {
   const [saving, setSaving] = useState(false);
   const [savingNetworkId, setSavingNetworkId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState("Trade");
+  const [userName, setUserName] = useState("Usuário");
+
+  // Load current user details for toast feedbacks
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setUserName(user.email || "Usuário");
+        }
+      } catch (err) {
+        console.error("Error loading user session:", err);
+      }
+    }
+    loadUser();
+  }, []);
 
   // Configuration States
   const [planningCycle, setPlanningCycle] = useState("2026_Q3");
@@ -121,6 +140,11 @@ export default function MetasPromotorPage() {
   // Modals visibility
   const [showReplicatePreview, setShowReplicatePreview] = useState(false);
   const [showAddNetworkModal, setShowAddNetworkModal] = useState<string | null>(null);
+
+  // History Dialog States
+  const [historyModalData, setHistoryModalData] = useState<{ promoterId: string; rede: string; uf: string; promoterName: string } | null>(null);
+  const [historyList, setHistoryList] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Add Network Selection Form State
   const [newNetworkSelection, setNewNetworkSelection] = useState("");
@@ -506,7 +530,16 @@ export default function MetasPromotorPage() {
 
       const json = await res.json();
       if (json.success) {
-        toast.success(json.message || "Meta salva com sucesso!");
+        const dataHora = new Date().toLocaleString("pt-BR");
+        
+        // Exibe o Toast customizado com data, hora e usuário responsável
+        toast.success(
+          <div className="flex flex-col gap-0.5">
+            <span className="font-bold text-emerald-500">✓ Meta salva com sucesso</span>
+            <span className="text-[10px] text-neutral-400">Última atualização: {dataHora}</span>
+            <span className="text-[10px] text-neutral-400">Por: {userName}</span>
+          </div>
+        );
         
         // Update local status and clear the conversion warnings
         setPromoters(prev => {
@@ -538,6 +571,27 @@ export default function MetasPromotorPage() {
     } finally {
       setSavingNetworkId(null);
       toast.dismiss(loadingToast);
+    }
+  };
+
+  // Open history modal and fetch logs from API
+  const handleOpenHistory = async (promoterId: string, rede: string, uf: string, promoterName: string) => {
+    setHistoryModalData({ promoterId, rede, uf, promoterName });
+    setLoadingHistory(true);
+    setHistoryList([]);
+    try {
+      const res = await fetch(`/api/metas-promotor/history?promoter_id=${promoterId}&rede=${encodeURIComponent(rede)}&uf=${uf}`);
+      const json = await res.json();
+      if (json.success) {
+        setHistoryList(json.data || []);
+      } else {
+        toast.error("Erro ao carregar histórico: " + json.error);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Falha ao carregar histórico.");
+    } finally {
+      setLoadingHistory(false);
     }
   };
 
@@ -630,6 +684,34 @@ export default function MetasPromotorPage() {
       gapSum,
       pctSum
     };
+  }, [filteredPromoters]);
+
+  // Reactive integrity panel calculations (OK, Revision, No Meta, Coverage)
+  const integrityStats = useMemo(() => {
+    let ok = 0;
+    let revision = 0;
+    let noMeta = 0;
+    let total = 0;
+
+    filteredPromoters.forEach(p => {
+      p.networks.forEach(net => {
+        total++;
+        if (net.requerConversao) {
+          revision++;
+        } else {
+          const sumGoals = net.goals.reduce((a, b) => a + b, 0);
+          if (sumGoals > 0) {
+            ok++;
+          } else {
+            noMeta++;
+          }
+        }
+      });
+    });
+
+    const coverage = total > 0 ? (ok / total) * 100 : 0;
+
+    return { ok, revision, noMeta, total, coverage };
   }, [filteredPromoters]);
 
   const formatValue = (val: number) => {
@@ -753,6 +835,41 @@ export default function MetasPromotorPage() {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-6 py-6 w-full flex-grow relative z-10 space-y-6">
+        
+        {/* Painel de Integridade de Redes */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 bg-neutral-900/25 border border-border/40 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+            <div>
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-extrabold uppercase block tracking-wider">Redes OK</span>
+              <span className="text-base font-black text-emerald-600 dark:text-emerald-450">{integrityStats.ok} <span className="text-[10px] font-bold text-neutral-500">redes</span></span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3.5 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+            <div>
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-extrabold uppercase block tracking-wider">Revisão Necessária</span>
+              <span className="text-base font-black text-amber-500">{integrityStats.revision} <span className="text-[10px] font-bold text-neutral-500">redes</span></span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5 bg-neutral-500/10 border border-neutral-500/20 rounded-xl px-4 py-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-neutral-500 animate-pulse shrink-0" />
+            <div>
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-extrabold uppercase block tracking-wider">Sem Meta</span>
+              <span className="text-base font-black text-neutral-700 dark:text-neutral-300">{integrityStats.noMeta} <span className="text-[10px] font-bold text-neutral-500">redes</span></span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3.5 bg-blue-500/10 border border-blue-500/20 rounded-xl px-4 py-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+            <div>
+              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-extrabold uppercase block tracking-wider">Cobertura de Cadastro</span>
+              <span className="text-base font-black text-blue-500">{integrityStats.coverage.toFixed(1)}%</span>
+            </div>
+          </div>
+        </div>
         
         {/* Top executive row (Ranking + Target summaries) */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -1404,6 +1521,15 @@ export default function MetasPromotorPage() {
                                   <Trash2 className="w-3 h-3" />
                                   Remover
                                 </button>
+
+                                <button
+                                  onClick={() => handleOpenHistory(prom.id, net.rede, net.uf, prom.name)}
+                                  className="p-1 rounded-md text-amber-550 hover:text-amber-500 hover:bg-amber-550/10 transition-all cursor-pointer flex items-center justify-center gap-1 w-full text-[9px] uppercase font-bold border border-amber-550/20"
+                                  title="Ver histórico de auditoria"
+                                >
+                                  <History className="w-3 h-3" />
+                                  Histórico
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -1610,6 +1736,88 @@ export default function MetasPromotorPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* History Dialog */}
+      {historyModalData && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-border/85 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-5 border-b border-border/40 flex justify-between items-center bg-neutral-950/40">
+              <div>
+                <h3 className="text-base font-black text-neutral-50 flex items-center gap-2">
+                  <History className="w-4.5 h-4.5 text-gold" />
+                  Histórico de Alterações de Meta
+                </h3>
+                <p className="text-[11px] text-neutral-400 font-semibold mt-1">
+                  Rede: <span className="font-extrabold text-neutral-200">{historyModalData.rede} ({historyModalData.uf})</span> &bull; Promotor: <span className="font-extrabold text-neutral-200">{historyModalData.promoterName}</span>
+                </p>
+              </div>
+              <button 
+                onClick={() => setHistoryModalData(null)}
+                className="p-1.5 rounded-lg text-neutral-400 hover:bg-neutral-800 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto flex-1 max-h-[50vh]">
+              {loadingHistory ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="w-8 h-8 animate-spin text-gold" />
+                  <span className="text-xs text-neutral-400 font-extrabold uppercase tracking-wide">Buscando histórico de auditoria...</span>
+                </div>
+              ) : historyList.length === 0 ? (
+                <div className="text-center py-12">
+                  <span className="text-xs text-neutral-500 font-extrabold block">Nenhuma alteração registrada para esta meta ainda.</span>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-border/40 rounded-xl">
+                  <table className="w-full text-left text-xs font-semibold">
+                    <thead className="bg-neutral-950/60 text-neutral-400 border-b border-border/40 text-[10px] uppercase tracking-wider font-extrabold">
+                      <tr>
+                        <th className="px-4 py-2.5">Data/Hora</th>
+                        <th className="px-4 py-2.5">Usuário</th>
+                        <th className="px-4 py-2.5 text-center">Mês</th>
+                        <th className="px-4 py-2.5 text-right">Anterior</th>
+                        <th className="px-4 py-2.5 text-right">Novo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40 text-neutral-200 font-medium">
+                      {historyList.map((row) => (
+                        <tr key={row.id} className="hover:bg-neutral-800/30">
+                          <td className="px-4 py-2.5 font-mono text-[11px] whitespace-nowrap text-neutral-400">
+                            {new Date(row.data).toLocaleString("pt-BR")}
+                          </td>
+                          <td className="px-4 py-2.5 font-bold text-neutral-300 whitespace-nowrap">
+                            {row.usuario}
+                          </td>
+                          <td className="px-4 py-2.5 text-center font-bold">
+                            {row.mes === 7 ? "Jul" : row.mes === 8 ? "Ago" : "Set"}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono text-neutral-400">
+                            {row.valor_anterior !== null ? row.valor_anterior.toLocaleString("pt-BR") + " Unid." : "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-mono font-black text-amber-400">
+                            {row.valor_novo.toLocaleString("pt-BR")} Unid.
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-border/40 bg-neutral-950/20 flex justify-end">
+              <button
+                onClick={() => setHistoryModalData(null)}
+                className="px-4 py-2 bg-neutral-850 hover:bg-neutral-800 font-extrabold text-xs text-neutral-100 rounded-xl cursor-pointer transition-all border border-border/40"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
         </div>
       )}
