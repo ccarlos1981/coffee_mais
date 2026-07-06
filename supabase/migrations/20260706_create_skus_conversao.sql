@@ -115,5 +115,7 @@ SELECT
         ELSE 20
     END AS unidades_por_caixa,
     true AS ativo
-FROM public.products
-ON CONFLICT (product_id) DO NOTHING;
+FROM public.products p
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.cm_skus_conversao c WHERE c.product_id = p.id
+);
