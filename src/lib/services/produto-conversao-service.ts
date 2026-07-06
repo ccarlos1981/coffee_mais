@@ -17,6 +17,7 @@ export class ProdutoConversaoService {
   private static cacheFatores: Record<number, FatorConversao[]> | null = null;
   private static cacheTimestamp = 0;
   private static readonly TTL_MS = 300000; // 300.000 ms = 5 minutos
+  private static initPromise: Promise<Record<number, FatorConversao[]>> | null = null;
 
   private fatores: Record<number, FatorConversao[]> = {};
 
@@ -35,39 +36,49 @@ export class ProdutoConversaoService {
     const agora = Date.now();
     const expirado = agora - ProdutoConversaoService.cacheTimestamp > ProdutoConversaoService.TTL_MS;
 
-    if (!ProdutoConversaoService.cacheFatores || forceReload || expirado) {
-      // Consulta diretamente a tabela mestre, deixando a View para relatórios/telas
-      const { data, error } = await supabaseClient
-        .from("cm_skus_conversao")
-        .select("id, product_id, codigo_integracao, peso_embalagem_kg, unidades_por_caixa, vigencia_inicio, vigencia_fim, ativo");
+    if (forceReload || expirado) {
+      ProdutoConversaoService.cacheFatores = null;
+      ProdutoConversaoService.initPromise = null;
+    }
 
-      if (error) {
-        throw new Error(`Erro ao inicializar ProdutoConversaoService: ${error.message}`);
-      }
+    if (!ProdutoConversaoService.cacheFatores) {
+      if (!ProdutoConversaoService.initPromise) {
+        ProdutoConversaoService.initPromise = (async () => {
+          // Consulta diretamente a tabela mestre, deixando a View para relatórios/telas
+          const { data, error } = await supabaseClient
+            .from("cm_skus_conversao")
+            .select("id, product_id, codigo_integracao, peso_embalagem_kg, unidades_por_caixa, vigencia_inicio, vigencia_fim, ativo");
 
-      const cacheMap: Record<number, FatorConversao[]> = {};
-      for (const item of (data || [])) {
-        const peso = Number(item.peso_embalagem_kg) || 0;
-        const un = Number(item.unidades_por_caixa) || 1;
-        
-        if (!cacheMap[item.product_id]) {
-          cacheMap[item.product_id] = [];
-        }
-        
-        cacheMap[item.product_id].push({
-          id: item.id,
-          product_id: item.product_id,
-          codigo_integracao: item.codigo_integracao,
-          peso_embalagem_kg: peso,
-          unidades_por_caixa: un,
-          peso_total_caixa_kg: peso * un,
-          vigencia_inicio: item.vigencia_inicio,
-          vigencia_fim: item.vigencia_fim,
-          ativo: item.ativo
-        });
+          if (error) {
+            throw new Error(`Erro ao inicializar ProdutoConversaoService: ${error.message}`);
+          }
+
+          const cacheMap: Record<number, FatorConversao[]> = {};
+          for (const item of (data || [])) {
+            const peso = Number(item.peso_embalagem_kg) || 0;
+            const un = Number(item.unidades_por_caixa) || 1;
+            
+            if (!cacheMap[item.product_id]) {
+              cacheMap[item.product_id] = [];
+            }
+            
+            cacheMap[item.product_id].push({
+              id: item.id,
+              product_id: item.product_id,
+              codigo_integracao: item.codigo_integracao,
+              peso_embalagem_kg: peso,
+              unidades_por_caixa: un,
+              peso_total_caixa_kg: peso * un,
+              vigencia_inicio: item.vigencia_inicio,
+              vigencia_fim: item.vigencia_fim,
+              ativo: item.ativo
+            });
+          }
+          return cacheMap;
+        })();
       }
       
-      ProdutoConversaoService.cacheFatores = cacheMap;
+      ProdutoConversaoService.cacheFatores = await ProdutoConversaoService.initPromise;
       ProdutoConversaoService.cacheTimestamp = agora;
     }
 
