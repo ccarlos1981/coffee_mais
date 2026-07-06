@@ -861,10 +861,10 @@ body {
   border-bottom: 3.5px solid var(--accent-gold) !important;
 }
 
-/* Inputs habilitados para edição (fundo verde suave para indicação visual nas segundas-feiras) */
+/* Inputs habilitados para edição (fundo verde suave para indicação visual nas segundas-feiras, sem borda) */
 .data-table input:enabled {
   background-color: rgba(46, 139, 58, 0.08) !important;
-  border-color: var(--success) !important;
+  border-color: transparent !important;
   color: var(--foreground) !important;
 }
 
@@ -876,7 +876,7 @@ body {
 
 [data-theme="dark"] .data-table input:enabled {
   background-color: rgba(76, 175, 80, 0.12) !important;
-  border-color: var(--success) !important;
+  border-color: transparent !important;
   color: var(--foreground) !important;
 }
 
