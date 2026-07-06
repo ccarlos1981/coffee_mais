@@ -25,7 +25,7 @@ function getSupabaseClient() {
 // ─── UPSERT with retry + exponential backoff ───
 async function upsertBatch(
   supabase: ReturnType<typeof getSupabaseClient>,
-  batch: ReturnType<typeof mapToFaturamentoRow>[]
+  batch: any[]
 ): Promise<{ inserted: number; updated: number }> {
   let lastError: Error | null = null;
 
@@ -33,14 +33,14 @@ async function upsertBatch(
     try {
       const keys = batch.map((r) => r.chave_bq).filter(Boolean);
       const { data: existing } = await supabase
-        .from("cm_faturamento_sankhya")
+        .from("cm_faturamento")
         .select("chave_bq")
         .in("chave_bq", keys);
 
       const existingKeys = new Set((existing || []).map((r: { chave_bq: string }) => r.chave_bq));
 
       const { error } = await supabase
-        .from("cm_faturamento_sankhya")
+        .from("cm_faturamento")
         .upsert(batch, { onConflict: "chave_bq" });
 
       if (error) throw new Error(error.message);
@@ -158,7 +158,11 @@ export async function executeSyncFaturamento(params: {
           break;
         }
 
-        const batch = rows.slice(i, i + SYNC_CONFIG.BATCH_SIZE).map(mapToFaturamentoRow);
+        const batch = rows.slice(i, i + SYNC_CONFIG.BATCH_SIZE).map((r) => ({
+          ...mapToFaturamentoRow(r),
+          origem: "BIGQUERY",
+          batch_id: logId,
+        }));
         const result = await upsertBatch(supabase, batch);
         rowsInserted += result.inserted;
         rowsUpdated += result.updated;
@@ -177,7 +181,11 @@ export async function executeSyncFaturamento(params: {
         rowsFetched += batchRows.length;
         batchRows.forEach((r) => allBqKeys.push(`${r.nro_unico}_${r.sequencia}`));
 
-        const mappedBatch = batchRows.map(mapToFaturamentoRow);
+        const mappedBatch = batchRows.map((r) => ({
+          ...mapToFaturamentoRow(r),
+          origem: "BIGQUERY",
+          batch_id: logId,
+        }));
         const result = await upsertBatch(supabase, mappedBatch);
         rowsInserted += result.inserted;
         rowsUpdated += result.updated;
@@ -188,7 +196,7 @@ export async function executeSyncFaturamento(params: {
     // Find keys in Supabase for this period that are NOT in BigQuery anymore
     if (!partial && !shouldStop(startTime)) {
       const { data: supabaseRows } = await supabase
-        .from("cm_faturamento_sankhya")
+        .from("cm_faturamento")
         .select("chave_bq")
         .gte("dt_faturamento", params.startDate)
         .lte("dt_faturamento", params.endDate)
@@ -206,7 +214,7 @@ export async function executeSyncFaturamento(params: {
           for (let i = 0; i < keysToDelete.length; i += SYNC_CONFIG.BATCH_SIZE) {
             const deleteBatch = keysToDelete.slice(i, i + SYNC_CONFIG.BATCH_SIZE);
             const { error: deleteError, count } = await supabase
-              .from("cm_faturamento_sankhya")
+              .from("cm_faturamento")
               .delete({ count: "exact" })
               .in("chave_bq", deleteBatch);
 
