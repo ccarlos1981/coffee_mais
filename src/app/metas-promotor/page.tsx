@@ -965,23 +965,21 @@ export default function MetasPromotorPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-4">
-              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4">
-                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider">Média Mensal Histórica</span>
-                <span className="font-black text-neutral-900 dark:text-neutral-100 text-lg tracking-tight block mt-1">{formatValue(consolidatedStats.avgSum)}</span>
+              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider mb-1">Média Mensal Histórica</span>
+                {renderVolumeValue(consolidatedStats.avgSum, "font-black text-neutral-900 dark:text-neutral-100 text-lg")}
               </div>
-              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4">
-                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider">Realizado Q3</span>
-                <span className="font-black text-emerald-600 dark:text-emerald-450 text-lg tracking-tight block mt-1">{formatValue(consolidatedStats.achievedSum)}</span>
+              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider mb-1">Realizado Q3</span>
+                {renderVolumeValue(consolidatedStats.achievedSum, "font-black text-emerald-600 dark:text-emerald-450 text-lg")}
               </div>
-              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4">
-                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider">Gap Restante</span>
-                <span className={`font-black text-lg tracking-tight block mt-1 ${consolidatedStats.gapSum >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-650 dark:text-red-400"}`}>
-                  {formatValue(consolidatedStats.gapSum)}
-                </span>
+              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-neutral-700 dark:text-neutral-350 block text-[9.5px] uppercase font-black tracking-wider mb-1">Gap Restante</span>
+                {renderVolumeValue(consolidatedStats.gapSum, `font-black text-lg ${consolidatedStats.gapSum >= 0 ? "text-emerald-650 dark:text-emerald-455" : "text-red-650 dark:text-red-400"}`)}
               </div>
-              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4">
-                <span className="text-gold block text-[9.5px] uppercase font-black tracking-wider">Meta Consolidada Q3</span>
-                <span className="font-black text-gold text-lg tracking-tight block mt-1">{formatValue(consolidatedStats.goalSum)}</span>
+              <div className="bg-neutral-950/20 border border-border/30 rounded-2xl p-4 flex flex-col items-center justify-center text-center">
+                <span className="text-gold block text-[9.5px] uppercase font-black tracking-wider mb-1">Meta Consolidada Q3</span>
+                {renderVolumeValue(consolidatedStats.goalSum, "font-black text-gold text-lg")}
               </div>
             </div>
 
@@ -1205,13 +1203,13 @@ export default function MetasPromotorPage() {
 
             {/* Live Consolidated Values */}
             <div className="flex items-center gap-6 text-xs bg-neutral-900/30 border border-border/40 rounded-xl px-4 py-2">
-              <div>
-                <span className="text-neutral-700 dark:text-neutral-300 block text-[9.5px] uppercase font-black">Média Mensal Redes</span>
-                <span className="font-black text-neutral-900 dark:text-neutral-100 text-lg">{formatValue(consolidatedStats.avgSum)}</span>
+              <div className="flex flex-col items-center justify-center text-center">
+                <span className="text-neutral-700 dark:text-neutral-355 block text-[9.5px] uppercase font-black mb-1">Média Mensal Redes</span>
+                {renderVolumeValue(consolidatedStats.avgSum, "font-black text-neutral-900 dark:text-neutral-100 text-lg")}
               </div>
-              <div className="border-l border-border/60 pl-6">
-                <span className="text-gold block text-[9.5px] uppercase font-black">Meta Consolidada (Q3)</span>
-                <span className="font-black text-gold text-lg">{formatValue(consolidatedStats.goalSum)}</span>
+              <div className="border-l border-border/60 pl-6 flex flex-col items-center justify-center text-center">
+                <span className="text-gold block text-[9.5px] uppercase font-black mb-1">Meta Consolidada (Q3)</span>
+                {renderVolumeValue(consolidatedStats.goalSum, "font-black text-gold text-lg")}
               </div>
             </div>
           </div>
@@ -1324,20 +1322,20 @@ export default function MetasPromotorPage() {
 
                   {/* Promoter statistics widget - High Contrast Financial values (+3px) */}
                   <div className="flex items-center gap-6 text-[10.5px] bg-neutral-900/30 border border-border/30 rounded-xl px-4 py-2 shrink-0">
-                    <div>
-                      <span className="text-neutral-700 dark:text-neutral-300 block text-[8.5px] uppercase font-black">Média Mensal</span>
-                      <span className="font-black text-neutral-950 dark:text-neutral-50 text-xs">{formatValue(prom.stats.monthlyAverage)}</span>
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <span className="text-neutral-700 dark:text-neutral-300 block text-[8.5px] uppercase font-black mb-1">Média Mensal</span>
+                      {renderVolumeValue(prom.stats.monthlyAverage, "font-black text-neutral-950 dark:text-neutral-50 text-xs")}
                     </div>
-                    <div className="border-l border-border/50 pl-4">
-                      <span className="text-gold block text-[8.5px] uppercase font-black">Meta Trimestral</span>
-                      <span className="font-black text-gold text-xs">{formatValue(prom.stats.totalGoal)}</span>
+                    <div className="border-l border-border/50 pl-4 flex flex-col items-center justify-center text-center">
+                      <span className="text-gold block text-[8.5px] uppercase font-black mb-1">Meta Trimestral</span>
+                      {renderVolumeValue(prom.stats.totalGoal, "font-black text-gold text-xs")}
                     </div>
-                    <div className="border-l border-border/50 pl-4">
-                      <span className="text-emerald-500 dark:text-emerald-400 block text-[8.5px] uppercase font-black">Realizado</span>
-                      <span className="font-black text-emerald-500 dark:text-emerald-400 text-xs">{formatValue(prom.stats.quarter_achieved)}</span>
+                    <div className="border-l border-border/50 pl-4 flex flex-col items-center justify-center text-center">
+                      <span className="text-emerald-500 dark:text-emerald-450 block text-[8.5px] uppercase font-black mb-1">Realizado</span>
+                      {renderVolumeValue(prom.stats.quarter_achieved, "font-black text-emerald-500 dark:text-emerald-450 text-xs")}
                     </div>
-                    <div className="border-l border-border/50 pl-4">
-                      <span className="text-neutral-700 dark:text-neutral-300 block text-[8.5px] uppercase font-black">Atingimento</span>
+                    <div className="border-l border-border/50 pl-4 flex flex-col items-center justify-center text-center">
+                      <span className="text-neutral-700 dark:text-neutral-300 block text-[8.5px] uppercase font-black mb-1">Atingimento</span>
                       <span className="font-black text-neutral-950 dark:text-neutral-50 text-xs">
                         {prom.stats.totalGoal > 0 ? ((prom.stats.quarter_achieved / prom.stats.totalGoal) * 100).toFixed(1) : "0"}%
                       </span>
@@ -1376,12 +1374,12 @@ export default function MetasPromotorPage() {
                         
                         {/* History Months */}
                         {MONTHS_HIST.map((m) => (
-                          <th key={m} className="px-1.5 py-2 text-xs font-black text-neutral-900 dark:text-neutral-50 text-right bg-neutral-950/25">{m}</th>
+                          <th key={m} className="px-1.5 py-2 text-xs font-black text-neutral-900 dark:text-neutral-50 text-center bg-neutral-950/25">{m}</th>
                         ))}
                         
                         {/* Goals Target Months */}
                         {MONTHS_GOAL.map((m) => (
-                          <th key={m} className="px-1.5 py-2 text-xs font-black text-gold text-right bg-gold/10">{m} (Meta)</th>
+                          <th key={m} className="px-1.5 py-2 text-xs font-black text-gold text-center bg-gold/10">{m} (Meta)</th>
                         ))}
 
                         <th className="px-2 py-2 text-xs font-black text-neutral-900 dark:text-neutral-50 w-10 text-center">Ações</th>
@@ -1440,14 +1438,16 @@ export default function MetasPromotorPage() {
                               return (
                                 <td 
                                   key={hIdx} 
-                                  className={`px-1.5 py-2 text-right font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-950/20 border-r border-border/10 relative align-top ${
+                                  className={`px-1.5 py-2 text-center font-mono text-neutral-800 dark:text-neutral-200 bg-neutral-950/20 border-r border-border/10 relative align-top ${
                                     hIdx === 5 ? "border-r-2 border-r-neutral-400 dark:border-r-neutral-700" : ""
                                   }`}
                                 >
-                                  <div className="flex flex-col items-end">
-                                    <span className={isNegative ? "text-red-650 dark:text-red-400 font-extrabold text-[11px] whitespace-nowrap" : "font-semibold text-[11px] text-neutral-800 dark:text-neutral-200 whitespace-nowrap"}>
-                                      {formatValue(val)}
-                                    </span>
+                                  <div className="flex flex-col items-center">
+                                    {renderVolumeValue(
+                                      val, 
+                                      isNegative ? "text-red-650 dark:text-red-400 font-extrabold text-[11px] whitespace-nowrap" : "font-semibold text-[11px] text-neutral-800 dark:text-neutral-200 whitespace-nowrap",
+                                      "items-center text-center"
+                                    )}
                                     {isNegative && (
                                       <span 
                                         className="bg-red-500/10 text-red-650 dark:text-red-400 border border-red-500/25 px-1 py-0.5 rounded text-[7px] font-black uppercase tracking-wide cursor-help mt-1 text-center block w-full shadow-sm"
@@ -1470,14 +1470,14 @@ export default function MetasPromotorPage() {
                               const aiSuggestValue = parseFloat((baseVal * 1.12).toFixed(2));
 
                               return (
-                                <td key={gIdx} className="px-1.5 py-2 text-right bg-gold/5 border-r border-border/10 min-w-[110px] max-w-[125px] align-top">
-                                  <div className="flex flex-col gap-1.5 items-end">
+                                <td key={gIdx} className="px-1.5 py-2 text-center bg-gold/5 border-r border-border/10 min-w-[110px] max-w-[125px] align-top">
+                                  <div className="flex flex-col gap-1.5 items-center">
                                     
                                     {/* White high-contrast target input with golden borders */}
                                     <input
                                       type="text"
                                       inputMode="numeric"
-                                      className="w-full bg-white dark:bg-neutral-950 border-2 border-amber-500/80 dark:border-amber-400/80 focus:ring-4 focus:ring-amber-500/20 rounded-lg px-2 py-1 text-right font-mono text-xs font-extrabold text-neutral-950 dark:text-neutral-50 focus:outline-none transition-all duration-200 shadow-sm"
+                                      className="w-full bg-white dark:bg-neutral-950 border-2 border-amber-500/80 dark:border-amber-400/80 focus:ring-4 focus:ring-amber-500/20 rounded-lg px-2 py-1 text-center font-mono text-xs font-extrabold text-neutral-950 dark:text-neutral-50 focus:outline-none transition-all duration-200 shadow-sm"
                                       value={goal ? goal.toLocaleString("pt-BR") : ""}
                                       onChange={(e) => {
                                         const raw = e.target.value.replace(/\./g, "").replace(/[^0-9]/g, "");
@@ -1488,34 +1488,39 @@ export default function MetasPromotorPage() {
                                     />
                                     
                                     {/* AI Suggestion */}
-                                    <div className="flex items-center gap-1 text-[8.5px] text-neutral-600 dark:text-neutral-400 font-bold select-none w-full justify-end">
-                                      <BrainCircuit className="w-2.5 h-2.5 text-gold shrink-0" />
-                                      <span 
-                                        className="cursor-help border-b border-dotted border-neutral-500 truncate"
-                                        title={`Sugestão baseada em: Histórico de vendas, Sell-out, Sazonalidade, Tendência regional, Pricing intelligence. Sugerido: ${formatValue(aiSuggestValue)}`}
-                                      >
-                                        Sug: {formatValue(aiSuggestValue)}
-                                      </span>
+                                    <div className="flex flex-col items-center justify-center text-center text-[8px] text-neutral-600 dark:text-neutral-400 font-bold select-none w-full">
+                                      <div className="flex items-center gap-1">
+                                        <BrainCircuit className="w-2.5 h-2.5 text-gold shrink-0" />
+                                        <span 
+                                          className="cursor-help border-b border-dotted border-neutral-500 font-extrabold"
+                                          title={`Sugestão baseada em: Histórico de vendas, Sell-out, Sazonalidade, Tendência regional, Pricing intelligence. Sugerido: ${formatValue(aiSuggestValue)}`}
+                                        >
+                                          Sug: {aiSuggestValue.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}
+                                        </span>
+                                      </div>
+                                      <span className="text-[7.5px] text-neutral-500 font-semibold mt-0.5">Unid.</span>
                                     </div>
 
                                     {/* Saldo (antigo Carry) */}
                                     {showSaldoJulToAgo && (
-                                      <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate border ${
+                                      <div className={`flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider text-center w-full truncate border leading-none ${
                                         julSaldo >= 0
                                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
                                           : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
                                       }`}>
-                                        Saldo {julSaldo >= 0 ? "+" : ""}{julSaldo.toLocaleString("pt-BR")}{targetType === "volume" ? " Unid." : " cx"}
-                                      </span>
+                                        <span>Saldo {julSaldo >= 0 ? "+" : ""}{julSaldo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>
+                                        <span className="text-[7px] text-neutral-550 font-bold mt-0.5">Unid.</span>
+                                      </div>
                                     )}
                                     {showSaldoAgoToSet && (
-                                      <span className={`px-1 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider block text-center w-full truncate border ${
+                                      <div className={`flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase tracking-wider text-center w-full truncate border leading-none ${
                                         agoSaldo >= 0
                                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
                                           : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
                                       }`}>
-                                        Saldo {agoSaldo >= 0 ? "+" : ""}{agoSaldo.toLocaleString("pt-BR")}{targetType === "volume" ? " Unid." : " cx"}
-                                      </span>
+                                        <span>Saldo {agoSaldo >= 0 ? "+" : ""}{agoSaldo.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}</span>
+                                        <span className="text-[7px] text-neutral-550 font-bold mt-0.5">Unid.</span>
+                                      </div>
                                     )}
                                   </div>
                                 </td>
@@ -1562,7 +1567,6 @@ export default function MetasPromotorPage() {
                           </tr>
                         );
                       })}
-
                       {/* Card Totals Row - increased font size (+3px) */}
                       {prom.networks.length > 0 && (
                         <tr className="bg-neutral-900/40 font-black border-t border-border/80 text-xs">
@@ -1576,11 +1580,11 @@ export default function MetasPromotorPage() {
                             return (
                               <td 
                                 key={mIdx} 
-                                className={`px-1.5 py-3 text-right text-neutral-950 dark:text-neutral-50 font-black bg-neutral-950/20 text-[11px] whitespace-nowrap ${
+                                className={`px-1.5 py-3 text-center text-neutral-950 dark:text-neutral-50 font-black bg-neutral-950/20 text-[11px] whitespace-nowrap ${
                                   mIdx === 5 ? "border-r-2 border-r-neutral-400 dark:border-r-neutral-700" : ""
                                 }`}
                               >
-                                {formatValue(sum)}
+                                {renderVolumeValue(sum, "text-neutral-950 dark:text-neutral-50 font-black text-[11px] whitespace-nowrap", "items-center text-center")}
                               </td>
                             );
                           })}
@@ -1589,8 +1593,8 @@ export default function MetasPromotorPage() {
                           {MONTHS_GOAL.map((_, gIdx) => {
                             const sum = prom.networks.reduce((acc, n) => acc + (n.goals[gIdx] || 0), 0);
                             return (
-                              <td key={gIdx} className="px-1.5 py-3 text-right text-gold font-black bg-gold/5 text-[11px] whitespace-nowrap">
-                                {formatValue(sum)}
+                              <td key={gIdx} className="px-1.5 py-3 text-center text-gold font-black bg-gold/5 text-[11px] whitespace-nowrap">
+                                {renderVolumeValue(sum, "text-gold font-black text-[11px] whitespace-nowrap", "items-center text-center")}
                               </td>
                             );
                           })}
@@ -1807,8 +1811,8 @@ export default function MetasPromotorPage() {
                         <th className="px-4 py-2.5">Data/Hora</th>
                         <th className="px-4 py-2.5">Usuário</th>
                         <th className="px-4 py-2.5 text-center">Mês</th>
-                        <th className="px-4 py-2.5 text-right">Anterior</th>
-                        <th className="px-4 py-2.5 text-right">Novo</th>
+                        <th className="px-4 py-2.5 text-center">Anterior</th>
+                        <th className="px-4 py-2.5 text-center">Novo</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/40 text-neutral-200 font-medium">
@@ -1823,11 +1827,15 @@ export default function MetasPromotorPage() {
                           <td className="px-4 py-2.5 text-center font-bold">
                             {row.mes === 7 ? "Jul" : row.mes === 8 ? "Ago" : "Set"}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono text-neutral-400">
-                            {row.valor_anterior !== null ? row.valor_anterior.toLocaleString("pt-BR") + " Unid." : "—"}
+                          <td className="px-4 py-2.5 text-center font-mono text-neutral-450">
+                            {row.valor_anterior !== null ? (
+                              renderVolumeValue(row.valor_anterior, "font-semibold text-[11px] text-neutral-400 whitespace-nowrap")
+                            ) : (
+                              "—"
+                            )}
                           </td>
-                          <td className="px-4 py-2.5 text-right font-mono font-black text-amber-400">
-                            {row.valor_novo.toLocaleString("pt-BR")} Unid.
+                          <td className="px-4 py-2.5 text-center font-mono text-amber-400">
+                            {renderVolumeValue(row.valor_novo, "font-black text-[11px] text-amber-400 whitespace-nowrap")}
                           </td>
                         </tr>
                       ))}
