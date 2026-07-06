@@ -135,6 +135,39 @@ export class ImportService {
     const triggerValue = allowedTriggers.includes(triggeredBy) ? triggeredBy : "manual";
     const triggeredEmail = allowedTriggers.includes(triggeredBy) ? null : triggeredBy;
 
+    // Check if there is an existing RUNNING log with the same hash
+    // and automatically clean/rollback it to avoid duplicate key conflicts.
+    const { data: runningCheck } = await supabase
+      .from("cm_sync_logs")
+      .select("id, metadata")
+      .eq("status", "RUNNING")
+      .eq("source", "excel")
+      .filter("metadata->>file_hash", "eq", fileHash)
+      .limit(1);
+
+    if (runningCheck && runningCheck.length > 0) {
+      const oldBatchId = runningCheck[0].id;
+      try {
+        console.log(`[analyzeExcel] Auto-cleaning stuck running batch: ${oldBatchId}`);
+        await supabase.from("cm_faturamento_staging").delete().eq("batch_id", oldBatchId);
+        await supabase
+          .from("cm_sync_logs")
+          .update({
+            status: "ERROR",
+            finished_at: new Date().toISOString(),
+            error_message: "Substituído por uma nova tentativa de upload.",
+            metadata: {
+              ...(runningCheck[0].metadata as Record<string, any> || {}),
+              sub_status: "ROLLBACKED",
+              rollback_at: new Date().toISOString(),
+            }
+          })
+          .eq("id", oldBatchId);
+      } catch (cleanErr) {
+        console.warn("[analyzeExcel] Failed to auto-cleanup old batch:", cleanErr);
+      }
+    }
+
     // 3. Create the initial cm_sync_logs entry
     const { data: logEntry, error: logError } = await supabase
       .from("cm_sync_logs")
@@ -436,7 +469,7 @@ export class ImportService {
         "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
         "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
       ];
-      const periodStr = `${monthsPt[minDateObj.getMonth()]}/${minDateObj.getFullYear()}`;
+      const periodStr = `${monthsPt[minDateObj.getUTCMonth()]}/${minDateObj.getUTCFullYear()}`;
 
       // 6. Write parsed rows into the staging table in chunks
       const chunkSize = 200;
@@ -472,7 +505,8 @@ export class ImportService {
         };
       }
 
-      const qualityScore = Math.max(0, parseFloat((100 - (errorsCount * 5) - (warningsCount * 1.5)).toFixed(1)));
+      const totalRowsCount = jsonData.length || 1;
+      const qualityScore = Math.max(0, parseFloat((100 - (errorsCount * 100 / totalRowsCount) - (warningsCount * 15 / totalRowsCount)).toFixed(1)));
 
       const validationChecklist = {
         layoutRecognized: true,
@@ -549,19 +583,20 @@ export class ImportService {
       }
 
       return previewData;
-    } catch (err: any) {
-      console.error("[ImportService] Error during analyzeExcel:", err);
+    } catch (error: unknown) {
+      console.error("[ImportService] Error during analyzeExcel:", error);
+      const message = error instanceof Error ? error.message : String(error);
       // Update log to error status
       await supabase
         .from("cm_sync_logs")
         .update({
           status: "ERROR",
           finished_at: new Date().toISOString(),
-          error_message: err.message || String(err),
+          error_message: message,
         })
         .eq("id", batchId);
 
-      throw err;
+      throw error;
     }
   }
 
@@ -599,21 +634,22 @@ export class ImportService {
       );
 
       return { success: true, rowsPromoted };
-    } catch (err: any) {
-      console.error("[ImportService] Error during confirmImport:", err);
+    } catch (error: unknown) {
+      console.error("[ImportService] Error during confirmImport:", error);
+      const message = error instanceof Error ? error.message : String(error);
       await supabase
         .from("cm_sync_logs")
         .update({
           status: "ERROR",
           finished_at: new Date().toISOString(),
-          error_message: err.message || String(err),
+          error_message: message,
         })
         .eq("id", batchId);
 
       // Clean staging for this batch to avoid clutter
       await supabase.from("cm_faturamento_staging").delete().eq("batch_id", batchId);
 
-      throw err;
+      throw error;
     }
   }
 
@@ -660,9 +696,9 @@ export class ImportService {
       }
 
       return { success: true, deletedCount: count || 0 };
-    } catch (err: any) {
-      console.error("[ImportService] Error during rollbackImport:", err);
-      throw err;
+    } catch (error: unknown) {
+      console.error("[ImportService] Error during rollbackImport:", error);
+      throw error;
     }
   }
 }

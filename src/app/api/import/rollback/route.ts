@@ -14,10 +14,11 @@ export async function POST(request: NextRequest) {
     const result = await ImportService.rollbackImport(batchId);
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    console.error("[API Rollback] Error:", err);
+  } catch (error: unknown) {
+    console.error("[API Rollback] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: err.message || "Erro ao desfazer lote" },
+      { success: false, error: message || "Erro ao desfazer lote" },
       { status: 500 }
     );
   }

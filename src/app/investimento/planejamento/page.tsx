@@ -647,19 +647,26 @@ export default function PlanejamentoInvestimentoPage() {
           const res = await simularImportacaoInvestimentos(rawRows);
           
           if (!res.success) {
-            setImportErrors(res.errors);
-            setImportSummary(res.summary);
+            setFeedback({ type: "error", msg: res.message || "Erro ao processar a planilha." });
+            setIsSimulating(false);
+            return;
+          }
+
+          const { errors, summary, parsedLines } = res.data || {};
+
+          if (errors && errors.length > 0) {
+            setImportErrors(errors);
+            setImportSummary(summary);
             setIsSimulating(false);
             return;
           }
 
           // 4. Executar agrupamento dos registros válidos
-          const parsedLines = res.parsedLines;
           const groupedAcoes: any[] = [];
           const skuGroups: Record<string, any[]> = {};
           const familiaGroups: Record<string, any[]> = {};
 
-          parsedLines.forEach(line => {
+          (parsedLines || []).forEach(line => {
             if (line.data.abrangencia === "Família") {
               const key = `${line.data.codigo_matriz}|${line.data.tipo_acao}|${line.data.tipo_pagamento}|${line.data.mes_referencia}|${line.data.data_inicio}|${line.data.data_fim}`;
               if (!familiaGroups[key]) familiaGroups[key] = [];
@@ -790,7 +797,7 @@ export default function PlanejamentoInvestimentoPage() {
             setImportErrors(localErrors);
           } else {
             setParsedAcoes(groupedAcoes);
-            setImportSummary(res.summary);
+            setImportSummary(summary);
           }
           setIsSimulating(false);
         } catch (err: any) {
@@ -836,7 +843,8 @@ export default function PlanejamentoInvestimentoPage() {
           importSummary?.totalInvestment || 0
         );
         if (res.success) {
-          setFeedback({ type: "success", msg: `${res.count} planejamentos importados com sucesso!` });
+          const count = res.data?.count || 0;
+          setFeedback({ type: "success", msg: `${count} planejamentos importados com sucesso!` });
           setIsImportModalOpen(false);
           setParsedAcoes([]);
           setImportFileName("");
@@ -844,6 +852,8 @@ export default function PlanejamentoInvestimentoPage() {
           setImportSummary(null);
           setFileHash("");
           loadData();
+        } else {
+          setFeedback({ type: "error", msg: res.message || "Erro ao salvar importação." });
         }
       } catch (err: any) {
         setFeedback({ type: "error", msg: err.message || "Erro ao salvar importação." });

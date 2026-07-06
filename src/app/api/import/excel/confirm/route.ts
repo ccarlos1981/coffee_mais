@@ -14,10 +14,11 @@ export async function POST(request: NextRequest) {
     const result = await ImportService.confirmImport(batchId, mode);
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    console.error("[API Confirm] Error:", err);
+  } catch (error: unknown) {
+    console.error("[API Confirm] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: err.message || "Erro ao confirmar importação" },
+      { success: false, error: message || "Erro ao confirmar importação" },
       { status: 500 }
     );
   }

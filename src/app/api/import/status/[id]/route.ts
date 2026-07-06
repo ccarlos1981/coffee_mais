@@ -32,10 +32,11 @@ export async function GET(
       success: true,
       log: logEntry,
     });
-  } catch (err: any) {
-    console.error("[API Status] Error:", err);
+  } catch (error: unknown) {
+    console.error("[API Status] Error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { success: false, error: err.message },
+      { success: false, error: message },
       { status: 500 }
     );
   }

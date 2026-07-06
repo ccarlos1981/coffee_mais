@@ -479,25 +479,117 @@ export default function ImportHubPage() {
 
             {/* Preview Sheet Card */}
             {status === "preview" && preview && (
-              <div className="glass-card p-6 rounded-2xl border border-border bg-card/60 space-y-6 animate-slide-up">
-                {/* Header and Indicator Block */}
-                <div className="border-b border-border pb-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileSpreadsheet className="w-5 h-5 text-gold" />
-                      <h2 className="text-base font-bold text-foreground">Validação da Importação</h2>
+              <div className="space-y-6 animate-slide-up">
+                {/* Card Executivo no Topo */}
+                <div className="glass-card p-6 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/5 via-card/50 to-card/30 space-y-4">
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <div className="flex items-center gap-2">
+                      <Coffee className="w-5 h-5 text-gold animate-pulse" />
+                      <h2 className="text-base font-bold text-foreground">Resumo Executivo da Importação</h2>
                     </div>
-                    <span className="rounded-full bg-gold/15 border border-gold/30 text-gold px-3 py-1 text-xs font-semibold">
-                      Análise de Dados
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${
+                      preview.errorsCount > 0 
+                        ? "bg-red-500/10 text-red-400 border-red-500/20" 
+                        : preview.warningsCount > 0 
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20" 
+                        : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    }`}>
+                      {preview.errorsCount > 0 
+                        ? "⚠️ Importação Bloqueada" 
+                        : preview.warningsCount > 0 
+                        ? "⚡ Pendente de Confirmação (Com Alertas)" 
+                        : "✅ Pronta para Importação"}
                     </span>
                   </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Arquivo</span>
+                      <span className="text-xs font-bold text-zinc-100 truncate block mt-0.5" title={preview.filename}>
+                        {preview.filename}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Período</span>
+                      <span className="text-xs font-bold text-gold block mt-0.5">
+                        {preview.period}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Faturamento Líquido</span>
+                      <span className="text-sm font-extrabold text-emerald-400 block mt-0.5">
+                        {preview.totalNet.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Status de Validação</span>
+                      <span className={`text-xs font-bold block mt-0.5 ${
+                        preview.errorsCount > 0 ? "text-red-400" : preview.warningsCount > 0 ? "text-amber-400" : "text-emerald-400"
+                      }`}>
+                        {preview.errorsCount > 0 ? "Inconsistente (Bloqueado)" : preview.warningsCount > 0 ? "Avisos Pendentes" : "Consistente (OK)"}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Pedidos (Linhas)</span>
+                      <span className="text-sm font-bold text-zinc-200 block mt-0.5">
+                        {preview.totalRows.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Clientes</span>
+                      <span className="text-sm font-bold text-zinc-200 block mt-0.5">
+                        {preview.uniquePartners.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30">
+                      <span className="text-[10px] text-muted uppercase block font-semibold">Produtos</span>
+                      <span className="text-sm font-bold text-zinc-200 block mt-0.5">
+                        {preview.uniqueProducts.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="bg-background/25 p-3 rounded-xl border border-border/30 flex justify-between items-center col-span-2 sm:col-span-1">
+                      <div>
+                        <span className="text-[10px] text-muted uppercase block font-semibold">Inconsistências</span>
+                        <div className="flex gap-2 mt-0.5">
+                          <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20" title="Alertas">
+                            ⚠️ {preview.warningsCount}
+                          </span>
+                          <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20" title="Erros Críticos">
+                            🚫 {preview.errorsCount}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detalhes de Validação */}
+                <div className="glass-card p-6 rounded-2xl border border-border bg-card/60 space-y-6">
+                  {/* Header and Indicator Block */}
+                  <div className="border-b border-border pb-4 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <FileSpreadsheet className="w-5 h-5 text-gold" />
+                        <h2 className="text-base font-bold text-foreground">Validação da Importação</h2>
+                      </div>
+                      <span className="rounded-full bg-gold/15 border border-gold/30 text-gold px-3 py-1 text-xs font-semibold">
+                        Análise de Dados
+                      </span>
+                    </div>
 
                   {/* Indicator Bar */}
                   {preview.errorsCount > 0 ? (
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/25 text-red-400">
                       <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold text-sm">🔴 IMPORTAÇÃO BLOQUEADA</p>
+                        <p className="font-bold text-sm">🔴 Importação com {preview.warningsCount} alertas e {preview.errorsCount} erros críticos</p>
                         <p className="text-xs text-zinc-300 mt-1">Existem erros críticos na planilha. A importação não poderá ser realizada até que sejam corrigidos.</p>
                       </div>
                     </div>
@@ -505,7 +597,7 @@ export default function ImportHubPage() {
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-400">
                       <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold text-sm">🟡 IMPORTAÇÃO COM ALERTAS</p>
+                        <p className="font-bold text-sm">🟡 Importação com {preview.warningsCount} alertas e {preview.errorsCount} erros críticos</p>
                         <p className="text-xs text-zinc-300 mt-1">Existem inconsistências que não impedem a importação. Revise antes de continuar.</p>
                       </div>
                     </div>
@@ -513,7 +605,7 @@ export default function ImportHubPage() {
                     <div className="flex items-start gap-3 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400">
                       <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="font-bold text-sm">🟢 IMPORTAÇÃO PRONTA</p>
+                        <p className="font-bold text-sm">🟢 Importação com 0 alertas e 0 erros críticos</p>
                         <p className="text-xs text-zinc-300 mt-1">Nenhum erro crítico encontrado. Os dados podem ser importados com segurança.</p>
                       </div>
                     </div>
@@ -726,6 +818,30 @@ export default function ImportHubPage() {
                         </label>
                       </div>
                     </div>
+
+                    <div className="mt-3 p-3 rounded-lg bg-background/50 border border-blue-900/20 text-xs space-y-1">
+                      {reimportMode === "replace" ? (
+                        <div className="flex items-start gap-2 text-amber-400">
+                          <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" />
+                          <div>
+                            <span className="font-semibold block">Ação do Modo Substituir todo o período:</span>
+                            <p className="text-zinc-300 mt-0.5">
+                              Os <span className="font-bold text-red-400">{preview.currentBaseStats.totalRows.toLocaleString()}</span> registros existentes da Base Atual serão <span className="font-bold text-red-400">removidos definitivamente</span> e <span className="font-bold text-emerald-400">{preview.totalRows.toLocaleString()}</span> novos registros serão gravados para o período de <span className="font-semibold text-zinc-200">{preview.period}</span>.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 text-blue-400">
+                          <Info className="w-4 h-4 flex-shrink-0 mt-0.5 text-blue-500" />
+                          <div>
+                            <span className="font-semibold block">Ação do Modo Acrescentar registros:</span>
+                            <p className="text-zinc-300 mt-0.5">
+                              Os <span className="font-bold text-blue-400">{preview.currentBaseStats.totalRows.toLocaleString()}</span> registros existentes serão <span className="font-bold text-blue-400">preservados</span> e os <span className="font-bold text-emerald-400">{preview.totalRows.toLocaleString()}</span> novos registros da planilha serão adicionados. A base total do período passará a ter <span className="font-bold text-zinc-100">{(preview.currentBaseStats.totalRows + preview.totalRows).toLocaleString()}</span> registros.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -822,7 +938,9 @@ export default function ImportHubPage() {
                         onClick={() => setShowInconsistencies(!showInconsistencies)}
                         className="text-xs text-gold flex items-center gap-1 hover:underline font-semibold"
                       >
-                        {showInconsistencies ? "Ocultar inconsistências" : "Ver inconsistências"}
+                        {showInconsistencies 
+                          ? `Ocultar inconsistências (${preview.warningsCount + preview.errorsCount})` 
+                          : `Ver inconsistências (${preview.warningsCount + preview.errorsCount})`}
                         <ChevronDown className={`w-3.5 h-3.5 transform transition-transform ${showInconsistencies ? "rotate-180" : ""}`} />
                       </button>
                     </div>
@@ -884,7 +1002,8 @@ export default function ImportHubPage() {
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
             {/* Uploading Progress Block */}
             {status === "uploading" && (
@@ -1132,10 +1251,13 @@ export default function ImportHubPage() {
                 <thead>
                   <tr className="border-b border-border bg-elevated/45 text-muted font-semibold uppercase tracking-wider text-[10px]">
                     <th className="p-4">Data / Hora</th>
+                    <th className="p-4">Batch ID</th>
+                    <th className="p-4">Usuário</th>
                     <th className="p-4">Origem</th>
                     <th className="p-4">Recurso / Período</th>
-                    <th className="p-4">Registros Inseridos</th>
-                    <th className="p-4">Status</th>
+                    <th className="p-4 text-right">Registros</th>
+                    <th className="p-4 text-right">Fat. Líquido</th>
+                    <th className="p-4 text-center">Status</th>
                     <th className="p-4 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -1152,7 +1274,7 @@ export default function ImportHubPage() {
                     const fileName = log.metadata?.file_name || (isExcel ? "Planilha Manual" : "View BigQuery");
 
                     return (
-                      <tr key={log.id} className="hover:bg-elevated/20 transition-all">
+                      <tr key={log.id} className="hover:bg-elevated/20 transition-all text-[11px]">
                         <td className="p-4 whitespace-nowrap text-zinc-300">
                           {new Date(log.started_at).toLocaleString("pt-BR", {
                             day: "2-digit",
@@ -1160,31 +1282,45 @@ export default function ImportHubPage() {
                             year: "numeric",
                             hour: "2-digit",
                             minute: "2-digit",
-                            second: "2-digit",
                           })}
                         </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <span className="font-mono text-zinc-500 text-[10px]" title={log.id}>
+                            {log.id.substring(0, 8)}...
+                          </span>
+                        </td>
                         <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          <span className="text-zinc-400 max-w-[120px] truncate block" title={log.metadata?.triggered_by_email || log.triggered_by || "sistema"}>
+                            {log.metadata?.triggered_by_email || log.triggered_by || "sistema"}
+                          </span>
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                             isExcel ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
                           }`}>
                             {isExcel ? "EXCEL" : "BIGQUERY"}
                           </span>
                         </td>
                         <td className="p-4">
-                          <div className="font-semibold text-foreground max-w-[200px] truncate" title={fileName}>
+                          <div className="font-semibold text-foreground max-w-[180px] truncate" title={fileName}>
                             {fileName}
                           </div>
                           <div className="text-[10px] text-muted">
-                            Período: {log.metadata?.period || `${log.period_start} a ${log.period_end}`}
+                            {log.metadata?.period || (log.period_start && log.period_end ? `${log.period_start} a ${log.period_end}` : "-")}
                           </div>
                         </td>
-                        <td className="p-4">
-                          <span className="font-semibold text-zinc-200">
-                            {(log.rows_inserted || 0).toLocaleString("pt-BR")}
-                          </span>
-                          <span className="text-[10px] text-muted block">Duração: {duration}</span>
+                        <td className="p-4 text-right whitespace-nowrap font-semibold text-zinc-200">
+                          {(log.rows_inserted || log.rows_fetched || 0).toLocaleString("pt-BR")}
+                          <span className="text-[9px] text-muted block font-normal">Duração: {duration}</span>
                         </td>
-                        <td className="p-4">
+                        <td className="p-4 text-right whitespace-nowrap font-semibold text-emerald-400">
+                          {log.metadata?.total_net
+                            ? Number(log.metadata.total_net).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+                            : log.metadata?.totalNet
+                            ? Number(log.metadata.totalNet).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })
+                            : "-"}
+                        </td>
+                        <td className="p-4 text-center whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded font-semibold text-[10px] ${
                             isSuccess
                               ? "bg-emerald-500/15 text-emerald-400"
@@ -1203,7 +1339,7 @@ export default function ImportHubPage() {
                               : "PROCESSANDO"}
                           </span>
                           {log.error_message && !isRollbacked && (
-                            <span className="text-[10px] text-red-400 block max-w-[150px] truncate mt-1" title={log.error_message}>
+                            <span className="text-[10px] text-red-400 block max-w-[150px] truncate mt-1 text-left" title={log.error_message}>
                               {log.error_message}
                             </span>
                           )}
