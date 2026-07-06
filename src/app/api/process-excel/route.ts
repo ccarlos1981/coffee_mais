@@ -507,6 +507,8 @@ export async function POST(request: NextRequest) {
 
     const sheetsDetected: string[] = [];
     let totalRecords = 0;
+    let insertedCount = 0;
+    let syncedCount = 0;
     let dateMin: string | null = null;
     let dateMax: string | null = null;
 
@@ -526,111 +528,28 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let insertedCount = 0;
-    let syncedCount = 0;
-
     if (isFaturamentoType) {
-      if (allFaturamentoRows.length > 0) {
-        // Find date range
-        const dates = allFaturamentoRows.map(r => r.dt_faturamento).sort();
-        dateMin = dates[0];
-        dateMax = dates[dates.length - 1];
-
-        // Delete existing records in that range
-        const { error: deleteErr } = await supabase
-          .from('cm_faturamento_sankhya')
-          .delete()
-          .gte('dt_faturamento', dateMin)
-          .lte('dt_faturamento', dateMax);
-
-        if (deleteErr) {
-          console.error("Error deleting existing faturamento records:", deleteErr);
-          // Update batch status to error
-          await supabase
-            .from("upload_batches")
-            .update({ status: "error", completed_at: new Date().toISOString() })
-            .eq("id", batchId);
-          return Response.json({ error: `Erro ao limpar faturamento existente: ${deleteErr.message}` }, { status: 500 });
-        }
-
-        // Insert in batches of 100 with retry mechanism
-        const batchSize = 100;
-        for (let i = 0; i < allFaturamentoRows.length; i += batchSize) {
-          const batch = allFaturamentoRows.slice(i, i + batchSize);
-          
-          let success = false;
-          let retries = 3;
-          let lastError = null;
-
-          while (retries > 0 && !success) {
-            try {
-              const { error: insertErr } = await supabase
-                .from('cm_faturamento_sankhya')
-                .insert(batch);
-
-              if (insertErr) {
-                lastError = insertErr;
-                retries--;
-                if (retries > 0) {
-                  console.warn(`[process-excel] Faturamento insert error, retrying in 500ms... Retries left: ${retries}`);
-                  await new Promise(resolve => setTimeout(resolve, 500));
-                }
-              } else {
-                success = true;
-              }
-            } catch (err) {
-              lastError = err;
-              retries--;
-              if (retries > 0) {
-                console.warn(`[process-excel] Faturamento insert fetch failed, retrying in 500ms... Retries left: ${retries}`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
-            }
-          }
-
-          if (!success) {
-            const errMsg = lastError instanceof Error ? lastError.message : ((lastError as any)?.message || String(lastError));
-            console.error(`Error inserting faturamento batch at ${i}:`, lastError);
-            // Update batch status to error
-            await supabase
-              .from("upload_batches")
-              .update({ status: "error", completed_at: new Date().toISOString() })
-              .eq("id", batchId);
-            return Response.json({ error: `Erro ao inserir faturamento: ${errMsg}` }, { status: 500 });
-          }
-          insertedCount += batch.length;
-        }
-        totalRecords = allFaturamentoRows.length;
-
-        // Refresh materialized views
-        try {
-          console.log("[process-excel] Refreshing materialized views...");
-          await supabase.rpc("refresh_materialized_views");
-          console.log("[process-excel] Materialized views refreshed successfully");
-        } catch (mvErr) {
-          console.error("MV refresh error (non-fatal):", mvErr);
-        }
+      const { ImportService } = require("@/lib/services/import-service");
+      const preview = await ImportService.analyzeExcel(buffer, file.name, file.size, "legacy_api");
+      
+      if (preview.errorsCount > 0) {
+        return Response.json(
+          { error: `O arquivo de faturamento possui erros de validação: ${preview.inconsistencies[0]?.message}` },
+          { status: 400 }
+        );
       }
 
-      // Update batch status to completed on success
-      await supabase
-        .from("upload_batches")
-        .update({
-          records_processed: totalRecords,
-          status: "done",
-          completed_at: new Date().toISOString(),
-        })
-        .eq("id", batchId);
+      const confirmResult = await ImportService.confirmImport(preview.batchId, "replace");
 
       return Response.json({
-        batchId,
-        recordsProcessed: totalRecords,
-        recordsInserted: insertedCount,
+        batchId: preview.batchId,
+        recordsProcessed: preview.totalRows,
+        recordsInserted: confirmResult.rowsPromoted,
         duplicatesSkipped: 0,
         recordsSynced: 0,
         sheetsDetected,
         sheetsAvailable: workbook.SheetNames,
-        period: dateMin && dateMax ? { start: dateMin, end: dateMax } : null,
+        period: { start: preview.periodStart, end: preview.periodEnd },
         isFaturamento: true
       });
     }

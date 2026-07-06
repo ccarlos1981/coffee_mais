@@ -610,12 +610,33 @@ export default function PlanejamentoInvestimentoPage() {
         try {
           const bstr = evt.target?.result;
           const wb = XLSX.read(bstr, { type: "binary" });
-          const wsname = wb.SheetNames[0];
+          
+          // Busca robusta pela aba correta:
+          // 1. Procurar uma aba cujo nome contenha "Modelo" (case-insensitive)
+          // 2. Procurar uma aba contendo "Investimento" (case-insensitive)
+          // 3. Procurar uma aba contendo "Planejamento" (case-insensitive)
+          let wsname = "";
+          const modelSheet = wb.SheetNames.find(name => name.toLowerCase().includes("modelo"));
+          const investSheet = wb.SheetNames.find(name => name.toLowerCase().includes("investimento"));
+          const planSheet = wb.SheetNames.find(name => name.toLowerCase().includes("planejamento"));
+
+          if (modelSheet) {
+            wsname = modelSheet;
+          } else if (investSheet) {
+            wsname = investSheet;
+          } else if (planSheet) {
+            wsname = planSheet;
+          }
+
+          if (!wsname) {
+            throw new Error("Não foi encontrada uma aba de importação válida. Utilize a planilha modelo gerada pelo sistema.");
+          }
+
           const ws = wb.Sheets[wsname];
           const rawRows = XLSX.utils.sheet_to_json<any[]>(ws, { header: 1 });
           
           if (rawRows.length <= 1) {
-            setFeedback({ type: "error", msg: "A planilha está vazia." });
+            setFeedback({ type: "error", msg: "A planilha está vazia ou a aba de dados não foi encontrada." });
             setIsSimulating(false);
             return;
           }
@@ -774,7 +795,7 @@ export default function PlanejamentoInvestimentoPage() {
           setIsSimulating(false);
         } catch (err: any) {
           console.error(err);
-          setFeedback({ type: "error", msg: "Erro ao processar o arquivo Excel." });
+          setFeedback({ type: "error", msg: err.message || "Erro ao processar o arquivo Excel." });
           setIsSimulating(false);
         }
       };
@@ -782,7 +803,7 @@ export default function PlanejamentoInvestimentoPage() {
       reader.readAsBinaryString(file);
     } catch (err: any) {
       console.error(err);
-      setFeedback({ type: "error", msg: "Erro ao ler arquivo." });
+      setFeedback({ type: "error", msg: err.message || "Erro ao ler arquivo." });
       setIsSimulating(false);
     }
   };
@@ -1733,6 +1754,15 @@ export default function PlanejamentoInvestimentoPage() {
                   </p>
                 </div>
               </div>
+
+              {feedback && (
+                <div className={`p-4 rounded-xl flex items-center gap-3 transition-all duration-300 ${
+                  feedback.type === "success" ? "bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981]" : "bg-danger/10 border border-danger/20 text-danger"
+                }`}>
+                  {feedback.type === "error" && <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+                  <span className="text-xs font-semibold">{feedback.msg}</span>
+                </div>
+              )}
 
               {isSimulating && (
                 <div className="flex flex-col items-center justify-center py-12 gap-3 text-center bg-background/20 rounded-2xl border border-border/50 animate-pulse">
