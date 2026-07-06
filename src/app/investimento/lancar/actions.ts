@@ -2842,7 +2842,40 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
     // 5. Instanciar ExcelJS Workbook
     const ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
+
+    // 5.1 Aba: Instruções (Primeira Aba)
+    const instructionsSheet = workbook.addWorksheet("Instruções");
+    instructionsSheet.views = [{ showGridLines: false }];
+    
+    // Título das Instruções
+    instructionsSheet.getCell("A1").value = "Coffee Mais - Planejador de Investimentos Comerciais";
+    instructionsSheet.getCell("A1").font = { name: "Arial", size: 16, bold: true, color: { argb: "1F4E78" } };
+    
+    instructionsSheet.getCell("A3").value = "Instruções de Preenchimento da Planilha Modelo";
+    instructionsSheet.getCell("A3").font = { name: "Arial", size: 12, bold: true, color: { argb: "333333" } };
+    
+    const steps = [
+      "1. A planilha já vem pré-preenchida nas colunas cinzas (A a E) com as redes e códigos de matriz da sua carteira.",
+      "2. NÃO altere as colunas cinzas (Código, Rede, UF, Gerente e Canal), pois elas estão protegidas e são utilizadas apenas para conferência.",
+      "3. Preencha os dados da ação comercial apenas nas colunas amarelas (F a Q) para as lojas/redes que receberão as ações comerciais.",
+      "4. Utilize os seletores (dropdowns/listas suspensas) nas colunas de Tipo de Ação, Pagamento, Mês, Abrangência, Família e SKU para evitar erros de digitação.",
+      "5. Deixe em branco (sem preenchimento comercial) os clientes que não possuírem ações comerciais no período. Essas linhas serão ignoradas automaticamente durante a simulação.",
+      "6. Salve o arquivo e faça o upload no modal do sistema para simular os indicadores e concluir a gravação transacional."
+    ];
+
+    steps.forEach((step, idx) => {
+      const cell = instructionsSheet.getCell(`A${5 + idx}`);
+      cell.value = step;
+      cell.font = { name: "Arial", size: 10 };
+      cell.alignment = { wrapText: true };
+    });
+    instructionsSheet.getColumn(1).width = 130;
+
+    // 5.2 Aba Principal: Modelo
     const mainSheet = workbook.addWorksheet(isPlanejamento ? "Modelo Planejamento" : "Modelo Investimentos");
+    mainSheet.views = [{ state: "frozen", ySplit: 1, showGridLines: true }];
+
+    // 5.3 Aba Oculta: Validação
     const listsSheet = workbook.addWorksheet("Listas_Validação");
     listsSheet.state = "veryHidden";
 
@@ -2910,19 +2943,80 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
       { header: "Expectativa de Volume", key: "volume", width: 20 }
     ];
 
-    // 8. Inserir linhas das matrizes autorizadas
+    // Estilizar cabeçalho (Linha 1)
+    const headerRow = mainSheet.getRow(1);
+    headerRow.height = 30;
+    headerRow.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFF" } };
+    headerRow.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+
+    // Estilo dos cabeçalhos: Informativos (Cinza Escuro) e Comerciais (Azul Escuro / Aço)
+    for (let c = 1; c <= 5; c++) {
+      headerRow.getCell(c).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "595959" }
+      };
+    }
+    for (let c = 6; c <= 17; c++) {
+      headerRow.getCell(c).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "1F4E78" }
+      };
+    }
+
+    // Inserir Notas explicativas (Comments) nos cabeçalhos F a Q
+    mainSheet.getCell("F1").note = "Tipo da ação comercial: Selecione 'Sell Out' ou 'Sell In'.";
+    mainSheet.getCell("G1").note = "Forma de pagamento: Selecione 'Boleto', 'Transf. Bancária' ou 'Bonificação'.";
+    mainSheet.getCell("H1").note = "Mês de referência: Selecione no formato MM/AAAA da lista.";
+    mainSheet.getCell("I1").note = "Data de início da ação no formato DD/MM/AAAA.";
+    mainSheet.getCell("J1").note = "Data de término da ação no formato DD/MM/AAAA.";
+    mainSheet.getCell("K1").note = "Selecione 'Família' para focar em grupos de produtos ou 'SKU' para produtos específicos.";
+    mainSheet.getCell("L1").note = "Selecione a Família de Produto se a abrangência for 'Família'.";
+    mainSheet.getCell("M1").note = "Selecione o SKU específico se a abrangência for 'SKU'.";
+    mainSheet.getCell("N1").note = "Preço regular sugerido (Flat Price) - Opcional.";
+    mainSheet.getCell("O1").note = "Preço com desconto na ação (Preço da Ação) - Opcional.";
+    mainSheet.getCell("P1").note = "Valor em reais (R$) do investimento total para este cliente (Obrigatório).";
+    mainSheet.getCell("Q1").note = "Expectativa de volume físico vendido na ação em Kg/Unidades (Obrigatório).";
+
+    // 8. Inserir linhas das matrizes autorizadas com estilos de preenchimento e proteção
+    const grayFill = { type: "pattern", pattern: "solid", fgColor: { argb: "F2F2F2" } };
+    const yellowFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2CC" } };
+    const borderStyle = {
+      top: { style: "thin", color: { argb: "D9D9D9" } },
+      left: { style: "thin", color: { argb: "D9D9D9" } },
+      bottom: { style: "thin", color: { argb: "D9D9D9" } },
+      right: { style: "thin", color: { argb: "D9D9D9" } }
+    };
+
+    const addStyledRow = (codigo: string, rede: string, uf: string, gerente: string, canal: string) => {
+      const addedRow = mainSheet.addRow([codigo, rede, uf, gerente, canal, "", "", "", "", "", "", "", "", "", "", "", ""]);
+      addedRow.height = 20;
+
+      // Colunas A a E (Informativas, Cinza, Bloqueadas)
+      for (let c = 1; c <= 5; c++) {
+        const cell = addedRow.getCell(c);
+        cell.fill = grayFill;
+        cell.protection = { locked: true };
+        cell.border = borderStyle;
+        cell.font = { name: "Arial", size: 9 };
+      }
+      // Colunas F a Q (Comerciais, Amarelo Claro, Desbloqueadas)
+      for (let c = 6; c <= 17; c++) {
+        const cell = addedRow.getCell(c);
+        cell.fill = yellowFill;
+        cell.protection = { locked: false };
+        cell.border = borderStyle;
+        cell.font = { name: "Arial", size: 9 };
+      }
+    };
+
     if (targetMatrizes.length > 0) {
       targetMatrizes.forEach(m => {
-        mainSheet.addRow([
-          m.codigo,
-          m.nome || "",
-          m.uf || "",
-          m.gerente || "",
-          m.canal || ""
-        ]);
+        addStyledRow(m.codigo, m.nome || "", m.uf || "", m.gerente || "", m.canal || "");
       });
     } else {
-      mainSheet.addRow(["146775.0", "BISTEK", "SC", "Leandro", "KA"]);
+      addStyledRow("146775.0", "BISTEK", "SC", "Leandro", "KA");
     }
 
     const rowCount = Math.max(targetMatrizes.length + 1, 100);
@@ -2967,12 +3061,34 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
       };
     }
 
+    // Ativar proteção da planilha e auto-filtro
+    mainSheet.autoFilter = `A1:Q${rowCount}`;
+    mainSheet.protect("coffemais_lock_sheets", {
+      selectLockedCells: true,
+      selectUnlockedCells: true,
+      formatCells: false,
+      formatColumns: false,
+      formatRows: false,
+      insertColumns: false,
+      insertRows: false,
+      insertHyperlinks: false,
+      deleteColumns: false,
+      deleteRows: false,
+      sort: true,
+      autoFilter: true
+    });
+
     // 10. Converter para Buffer e retornar base64
     const buffer = await workbook.xlsx.writeBuffer();
+    const dateStr = new Date().toISOString().split("T")[0];
+    const finalFileName = isPlanejamento 
+      ? `modelo_planejamento_investimentos_${dateStr}.xlsx` 
+      : `modelo_lancamento_investimentos_${dateStr}.xlsx`;
+
     return {
       success: true,
       data: Buffer.from(buffer).toString("base64"),
-      fileName: isPlanejamento ? "modelo_planejamento_investimentos.xlsx" : "modelo_lancamento_investimentos.xlsx"
+      fileName: finalFileName
     };
 
   } catch (err: any) {
