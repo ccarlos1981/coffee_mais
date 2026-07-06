@@ -133,10 +133,13 @@ async function processarMetaVendas(productId: number, unidadesMeta: number) {
 ---
 
 ## 4. Módulos Consumidores e Responsabilidades
-* **Módulo Promotor**: Abastecimentos e coletas em unidades no PDV são convertidos para caixas/quilos em relatórios gerenciais de supervisor.
 * **Módulo Faturamento**: Notas recebidas em caixas/quilos são convertidas para unidades físicas para cruzamento de estoque.
 * **Módulo Investimentos**: Importação de planejamentos e volume planejado expressos em caixas ou quilos são unificados via serviço.
-* **KPIs & Dashboards**: Atingimento de metas de volume (expresso em caixas ou toneladas) convertido em tempo real a partir de vendas físicas unitárias.
+* **Módulo Promotor (Metas)**: **Exceção Oficial de Unidade de Negócio**.
+  * Enquanto o restante do ecossistema Coffee++ (Investimentos, Planejamento, BI, Faturamento, etc.) trabalha estritamente em **Caixas**, o módulo de Metas dos Promotores é a única exceção que opera e persiste metas em **Unidades (UN)**.
+  * A tabela `cm_promotor_metas` utiliza a coluna dedicada `volume_target_units` para registrar as metas em unidades.
+  * O histórico de vendas em caixas (Sankhya) é mapeado por SKU individual, convertido para unidades através do `ProdutoConversaoService` e somado antes da agregação final.
+  * A coluna `volume_target_boxes` permanece populada em segundo plano apenas para histórico e compatibilidade, mas todo o acompanhamento, saldo, gap e ranking do módulo utilizam exclusivamente `volume_target_units`.
 
 ---
 

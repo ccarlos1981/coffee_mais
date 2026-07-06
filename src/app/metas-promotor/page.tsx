@@ -27,7 +27,8 @@ import {
   X,
   BrainCircuit,
   Trophy,
-  ArrowUpRight
+  ArrowUpRight,
+  Loader2
 } from "lucide-react";
 import { toast, Toaster } from "sonner";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -41,6 +42,7 @@ interface NetworkData {
   realizado: number[]; // Jul, Ago, Set (simulated or real sales)
   status: string;
   selected?: boolean;
+  requerConversao?: boolean;
 }
 
 interface PromoterStats {
@@ -92,6 +94,7 @@ const AVAILABLE_NETWORKS_UF = [
 export default function MetasPromotorPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingNetworkId, setSavingNetworkId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState("Trade");
 
   // Configuration States
@@ -465,6 +468,79 @@ export default function MetasPromotorPage() {
     }
   };
 
+  // Save a single network targets to Supabase
+  const handleSaveSingleNetwork = async (promoterId: string, network: NetworkData, promoterName: string) => {
+    if (isLocked) return;
+
+    const numJul = parseFloat(String(network.goals[0])) || 0;
+    const numAgo = parseFloat(String(network.goals[1])) || 0;
+    const numSet = parseFloat(String(network.goals[2])) || 0;
+    if (numJul < 0 || numAgo < 0 || numSet < 0) {
+      toast.error("Valores de meta não podem ser negativos.");
+      return;
+    }
+
+    const netId = `${promoterId}_${network.rede}_${network.uf}`;
+    setSavingNetworkId(netId);
+    const loadingToast = toast.loading(`Salvando meta de ${network.rede} (${network.uf})...`);
+
+    try {
+      const res = await fetch("/api/metas-promotor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          planning_cycle: planningCycle,
+          version,
+          single_network: true,
+          promoter_id: promoterId,
+          promoter_name: promoterName,
+          target_type: targetType,
+          network: {
+            rede: network.rede,
+            uf: network.uf,
+            goals: network.goals,
+            status: network.status
+          }
+        })
+      });
+
+      const json = await res.json();
+      if (json.success) {
+        toast.success(json.message || "Meta salva com sucesso!");
+        
+        // Update local status and clear the conversion warnings
+        setPromoters(prev => {
+          return prev.map(p => {
+            if (p.id !== promoterId) return p;
+            const updatedNets = p.networks.map(n => {
+              if (n.rede === network.rede && n.uf === network.uf) {
+                return {
+                  ...n,
+                  status: n.status === "SEM META" ? "DRAFT" : n.status,
+                  requerConversao: false
+                };
+              }
+              return n;
+            });
+            return {
+              ...p,
+              networks: updatedNets,
+              stats: recalculatePromoterStats(updatedNets)
+            };
+          });
+        });
+      } else {
+        toast.error(json.error || "Falha ao salvar meta.");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro de conexão ao salvar meta.");
+    } finally {
+      setSavingNetworkId(null);
+      toast.dismiss(loadingToast);
+    }
+  };
+
   // Extract list of supervisors, UFs, and networks for filter dropdowns
   const supervisorsList = useMemo(() => {
     const list = new Set<string>();
@@ -558,7 +634,7 @@ export default function MetasPromotorPage() {
 
   const formatValue = (val: number) => {
     if (targetType === "volume") {
-      return val.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " cx";
+      return val.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) + " Unid.";
     }
     return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
   };
@@ -979,7 +1055,7 @@ export default function MetasPromotorPage() {
                   targetType === "volume" ? "bg-gold text-neutral-950 font-black shadow-sm" : "text-muted hover:text-foreground"
                 }`}
               >
-                <Package className="w-3.5 h-3.5" /> Meta de Volume (Caixas)
+                <Package className="w-3.5 h-3.5" /> Meta de Volume (Unidades)
               </button>
             </div>
 
@@ -1199,6 +1275,14 @@ export default function MetasPromotorPage() {
                             <td className="px-2 py-2 align-top">
                               <span className="font-extrabold text-neutral-900 dark:text-neutral-100 block text-xs">{net.rede}</span>
                               <span className="text-[9px] text-neutral-500 dark:text-neutral-400 block uppercase tracking-wider font-extrabold">{net.uf}</span>
+                              {net.requerConversao && (
+                                <span 
+                                  className="inline-block bg-amber-500/20 text-amber-500 border border-amber-500/30 px-1 py-0.5 rounded text-[8px] font-black uppercase mt-1 animate-pulse select-none cursor-help"
+                                  title="Esta meta antiga está gravada em Caixas no banco de dados e precisa ser revisada. Digite as metas em unidades e salve."
+                                >
+                                  ⚠️ Requer Revisão (cx)
+                                </span>
+                              )}
                             </td>
 
                             {/* Status badge */}
@@ -1277,7 +1361,7 @@ export default function MetasPromotorPage() {
                                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
                                           : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
                                       }`}>
-                                        Saldo {julSaldo >= 0 ? "+" : ""}{julSaldo.toLocaleString("pt-BR")} cx
+                                        Saldo {julSaldo >= 0 ? "+" : ""}{julSaldo.toLocaleString("pt-BR")}{targetType === "volume" ? " Unid." : " cx"}
                                       </span>
                                     )}
                                     {showSaldoAgoToSet && (
@@ -1286,7 +1370,7 @@ export default function MetasPromotorPage() {
                                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/25"
                                           : "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/25"
                                       }`}>
-                                        Saldo {agoSaldo >= 0 ? "+" : ""}{agoSaldo.toLocaleString("pt-BR")} cx
+                                        Saldo {agoSaldo >= 0 ? "+" : ""}{agoSaldo.toLocaleString("pt-BR")}{targetType === "volume" ? " Unid." : " cx"}
                                       </span>
                                     )}
                                   </div>
@@ -1294,16 +1378,33 @@ export default function MetasPromotorPage() {
                               );
                             })}
 
-                            {/* Delete button */}
-                            <td className="px-2 py-2 text-center">
-                              <button
-                                onClick={() => handleRemoveNetwork(prom.id, net.rede, net.uf)}
-                                disabled={isLocked}
-                                className="p-1.5 rounded-lg text-neutral-500 hover:text-red-500 hover:bg-red-500/10 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
-                                title="Remover Rede da Meta"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                            {/* Actions (Save Single & Delete) */}
+                            <td className="px-2 py-2 align-top min-w-[125px]">
+                              <div className="flex flex-col gap-1.5 items-center justify-center">
+                                <button
+                                  onClick={() => handleSaveSingleNetwork(prom.id, net, prom.name)}
+                                  disabled={isLocked || savingNetworkId === `${prom.id}_${net.rede}_${net.uf}`}
+                                  className="w-full px-2 py-1 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-neutral-950 font-black rounded-lg text-[9px] uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                                  title="Salvar apenas esta rede"
+                                >
+                                  {savingNetworkId === `${prom.id}_${net.rede}_${net.uf}` ? (
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin text-neutral-950 font-black" />
+                                  ) : (
+                                    <Save className="w-2.5 h-2.5 text-neutral-950 font-black" />
+                                  )}
+                                  {savingNetworkId === `${prom.id}_${net.rede}_${net.uf}` ? "Salvando..." : "Salvar Meta"}
+                                </button>
+                                
+                                <button
+                                  onClick={() => handleRemoveNetwork(prom.id, net.rede, net.uf)}
+                                  disabled={isLocked}
+                                  className="p-1 rounded-md text-neutral-500 hover:text-red-500 hover:bg-red-500/10 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer flex items-center justify-center gap-1 w-full text-[9px] uppercase font-bold"
+                                  title="Remover Rede da Meta"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  Remover
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
