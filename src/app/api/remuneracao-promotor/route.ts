@@ -26,11 +26,12 @@ export async function GET(request: Request) {
     const quarter = Math.ceil(month / 3);
     const isQuarterEnd = (month % 3 === 0);
 
-    // 1. Fetch Promotores com ficha vinculada ao RH (cm_employees)
+    // 1. Fetch approved Promotores com ficha vinculada ao RH (cm_employees)
     const { data: userProfiles, error: upErr } = await adminClient
       .from("cm_user_profiles")
       .select("id, employee_code, default_variavel_mensal")
-      .eq("role", "Promotor");
+      .eq("role", "Promotor")
+      .eq("approved", true);
 
     if (upErr) throw upErr;
 
