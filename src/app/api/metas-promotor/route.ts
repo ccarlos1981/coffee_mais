@@ -69,11 +69,12 @@ export async function GET(request: Request) {
       .maybeSingle();
     const userRole = profile?.role || "Trade";
 
-    // 2. Fetch all promoters
+    // 2. Fetch all approved promoters
     const { data: userProfiles, error: upErr } = await adminClient
       .from("cm_user_profiles")
       .select("id, role, employee_code")
-      .eq("role", "Promotor");
+      .eq("role", "Promotor")
+      .eq("approved", true);
 
     if (upErr) throw upErr;
 

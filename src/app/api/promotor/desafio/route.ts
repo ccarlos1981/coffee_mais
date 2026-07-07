@@ -38,11 +38,12 @@ export async function GET(request: Request) {
     const supervisor = searchParams.get("supervisor");
     const uf = searchParams.get("uf");
 
-    // Fetch all promoters from user_profiles
+    // Fetch all approved promoters from user_profiles
     const { data: userProfiles, error: upErr } = await adminClient
       .from("cm_user_profiles")
       .select("id, employee_code")
-      .eq("role", "Promotor");
+      .eq("role", "Promotor")
+      .eq("approved", true);
 
     if (upErr) throw upErr;
 
@@ -89,11 +90,12 @@ export async function GET(request: Request) {
       .eq("year", new Date().getFullYear())
       .in("month", [7, 8, 9]);
 
-    // Fetch UF from user profiles
+    // Fetch UF from approved user profiles
     const { data: allProfiles } = await adminClient
       .from("cm_user_profiles")
       .select("id, uf, employee_code")
-      .eq("role", "Promotor");
+      .eq("role", "Promotor")
+      .eq("approved", true);
     const profileMap = new Map((allProfiles || []).map(p => [p.id, p]));
 
     // Build metas map: promotor_id -> month -> total_boxes
