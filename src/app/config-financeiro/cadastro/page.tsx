@@ -272,7 +272,12 @@ export default function ClienteCadastroPage() {
     setFetchingCnpj(true);
     try {
       const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cleanCnpj}`);
-      if (!response.ok) throw new Error("CNPJ não encontrado");
+      if (response.status === 404) {
+        throw new Error("CNPJ não encontrado");
+      }
+      if (!response.ok) {
+        throw new Error("Erro ao buscar dados do CNPJ");
+      }
       
       const data = await response.json();
       
@@ -289,9 +294,13 @@ export default function ClienteCadastroPage() {
       }));
 
       toast.success("Dados do CNPJ importados com sucesso!");
-    } catch (error) {
-      console.error(error);
-      toast.error("Não foi possível buscar os dados desse CNPJ.");
+    } catch (error: any) {
+      console.warn("Erro ao buscar CNPJ:", error?.message || error);
+      if (error?.message === "CNPJ não encontrado") {
+        toast.error("CNPJ não encontrado na Receita Federal.");
+      } else {
+        toast.error("Não foi possível buscar os dados desse CNPJ.");
+      }
     } finally {
       setFetchingCnpj(false);
     }

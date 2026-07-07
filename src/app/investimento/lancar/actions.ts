@@ -176,6 +176,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
   const data_inicio = formData.get("data_inicio") as string;
   const data_fim = formData.get("data_fim") as string;
   const tipo_acao = formData.get("tipo_acao") as string;
+  const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
   const mes_referencia = formData.get("mes_referencia") as string;
   const date_mode = (formData.get("date_mode") as string) || "single";
   
@@ -315,6 +316,7 @@ export async function criarAcaoInvestimento(formData: FormData) {
       data_fim: calculated_data_fim,
       date_mode,
       tipo_acao,
+      tipo_acao_detalhe,
       familia_produto,
       familias_detalhes,
       preco_flat,
@@ -349,6 +351,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
   const data_inicio = formData.get("data_inicio") as string;
   const data_fim = formData.get("data_fim") as string;
   const tipo_acao = formData.get("tipo_acao") as string;
+  const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
   const mes_referencia = formData.get("mes_referencia") as string;
   const date_mode = (formData.get("date_mode") as string) || "single";
   
@@ -510,6 +513,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData) 
       data_fim: calculated_data_fim,
       date_mode,
       tipo_acao,
+      tipo_acao_detalhe,
       familia_produto,
       familias_detalhes,
       preco_flat,
