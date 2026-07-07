@@ -308,7 +308,7 @@ export default function ClienteCadastroPage() {
 
   // Role & Permission Mappings
   const isAdminOrCeo = userRole === "Admin" || userRole === "CEO";
-  const isCommercialUser = userRole === "Gerente Regional" || userRole === "Vendedor" || userRole === "Supervisor" || userRole === "Promotor";
+  const isCommercialUser = userRole === "Gerente Regional" || userRole === "Vendedor" || userRole === "Supervisor" || userRole === "Promotor" || userRole === "Trade";
   const isFinancialUser = userRole === "Financeiro";
   const isOperationsUser = userRole === "Trade";
 

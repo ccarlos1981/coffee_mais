@@ -15,6 +15,7 @@ interface DashboardData {
   ranking: PromotorRankingEntry[];
   lastUpdated: string;
   currentUserCode?: string;
+  currentUserRole?: string;
 }
 
 type ViewRole = "PROMOTOR" | "SUPERVISOR" | "ADMIN";
@@ -30,6 +31,7 @@ export default function DesafioPerformancePage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
   const [currentRole, setCurrentRole] = useState<ViewRole>("PROMOTOR");
+  const [roleInitialized, setRoleInitialized] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -46,6 +48,17 @@ export default function DesafioPerformancePage() {
           setData(json);
           if (json.currentUserCode) {
             setCurrentUserCode(json.currentUserCode);
+          }
+          if (json.currentUserRole && !roleInitialized) {
+            const dbRole = json.currentUserRole.toUpperCase();
+            let mappedRole: ViewRole = "PROMOTOR";
+            if (["ADMIN", "CEO", "TRADE"].includes(dbRole)) {
+              mappedRole = "ADMIN";
+            } else if (dbRole === "SUPERVISOR") {
+              mappedRole = "SUPERVISOR";
+            }
+            setCurrentRole(mappedRole);
+            setRoleInitialized(true);
           }
         }
       } catch (err) {
@@ -109,13 +122,15 @@ export default function DesafioPerformancePage() {
           </div>
           
           <div className="flex items-center gap-3 flex-wrap">
-            <button 
-              onClick={cycleRole}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-neutral-800 text-white border-neutral-700"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              Visão: {currentRole}
-            </button>
+            {!loading && data?.currentUserRole && ["ADMIN", "CEO", "TRADE", "SUPERVISOR"].includes(data.currentUserRole.toUpperCase()) && (
+              <button 
+                onClick={cycleRole}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition-all bg-neutral-800 text-white border-neutral-700"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Visão: {currentRole}
+              </button>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -257,7 +272,7 @@ export default function DesafioPerformancePage() {
                   {(() => {
                     const isCurrentUserInRanking = data.ranking.some(r => r.employee_code === currentUserCode);
                     return data.ranking.map((row, idx) => {
-                      const isSelf = isCurrentUserInRanking ? row.employee_code === currentUserCode : idx === 0;
+                      const isSelf = isCurrentUserInRanking && row.employee_code === currentUserCode;
                       return (
                         <tr 
                           key={row.promotor_id} 
@@ -279,16 +294,16 @@ export default function DesafioPerformancePage() {
                           {/* Financial Columns - Desafio & Real */}
                           <td className="px-3 py-3 text-right font-mono text-muted text-[13px]">
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 -- cx</span>
+                              <span className="text-neutral-550">🔒 -- un</span>
                             ) : (
-                              `${row.jul.meta.toLocaleString("pt-BR")} cx`
+                              `${row.jul.meta.toLocaleString("pt-BR")} un`
                             )}
                           </td>
                           <td className="px-3 py-3 text-right font-mono font-bold text-foreground text-[13px]">
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 -- cx</span>
+                              <span className="text-neutral-550">🔒 -- un</span>
                             ) : (
-                              `${row.jul.realizado.toLocaleString("pt-BR")} cx`
+                              `${row.jul.realizado.toLocaleString("pt-BR")} un`
                             )}
                           </td>
                           
@@ -323,7 +338,7 @@ export default function DesafioPerformancePage() {
               {(() => {
                 const isCurrentUserInRanking = data.ranking.some(r => r.employee_code === currentUserCode);
                 return data.ranking.map((row, idx) => {
-                  const isSelf = isCurrentUserInRanking ? row.employee_code === currentUserCode : idx === 0;
+                  const isSelf = isCurrentUserInRanking && row.employee_code === currentUserCode;
                   return (
                     <div 
                       key={row.promotor_id}
@@ -362,17 +377,17 @@ export default function DesafioPerformancePage() {
                           <div className="text-right">
                             <span className="text-muted text-[9px] uppercase mr-1">Desafio (Qtd)</span>
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 -- cx</span>
+                              <span className="text-neutral-550">🔒 -- un</span>
                             ) : (
-                              `${row.jul.meta.toLocaleString("pt-BR")} cx`
+                              `${row.jul.meta.toLocaleString("pt-BR")} un`
                             )}
                           </div>
                           <div className="text-right">
                             <span className="text-muted text-[9px] uppercase mr-1">Real (Qtd)</span>
                             {currentRole === "PROMOTOR" && !isSelf ? (
-                              <span className="text-neutral-550">🔒 -- cx</span>
+                              <span className="text-neutral-550">🔒 -- un</span>
                             ) : (
-                              `${row.jul.realizado.toLocaleString("pt-BR")} cx`
+                              `${row.jul.realizado.toLocaleString("pt-BR")} un`
                             )}
                           </div>
                           {currentRole === "ADMIN" && (
