@@ -225,3 +225,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    9d806a3..58cbc44  main -> main
 [06/07/2026 12:41] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 2a11f88] auto-save: 06/07/2026 15:58
+ 7 files changed, 371 insertions(+), 21 deletions(-)
+ create mode 100644 scratch/monitor_faturamento_imports.js
+ create mode 100644 scratch/poll_faturamento_imports.js
+ create mode 100644 scripts/test_import_regression.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   d144895..2a11f88  main -> main
+[06/07/2026 15:58] ✅ Alterações enviadas com sucesso para o GitHub.
