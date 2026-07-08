@@ -514,11 +514,13 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
         
         if (result?.success) {
           router.refresh();
-          if (result.is_planejamento) {
+          if (result.data?.is_planejamento || (result as any).is_planejamento) {
             router.push("/investimento/planejamento");
           } else {
             router.push("/investimento");
           }
+        } else if (result) {
+          setError(result.message || "Ocorreu um erro ao salvar.");
         }
       } catch (err: unknown) {
         const errMsg = err instanceof Error ? err.message : String(err);

@@ -40,7 +40,7 @@ import {
   HelpCircle,
   Layers
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, validarFamiliaTrade } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -198,6 +198,18 @@ export function calcularStatusItemInvestimento(
   return "AGENDADA";
 }
 
+function getConsolidatedStatusText(fams: any[]): string {
+  if (!fams || fams.length === 0) return 'APROVADO';
+  const statuses = fams.map(f => (f.status || f.status_trade || 'PENDENTE').toUpperCase());
+  const hasPending = statuses.some(s => s === 'PENDENTE' || s === 'PENDING' || s === 'AGUARDANDO VALIDAÇÃO');
+  const allApproved = statuses.every(s => s === 'APROVADA' || s === 'APROVADO');
+  const allReproved = statuses.every(s => s === 'REPROVADA' || s === 'REPROVADO');
+  if (allApproved) return 'APROVADO';
+  if (allReproved) return 'REPROVADO';
+  if (hasPending) return 'EM VALIDAÇÃO';
+  return 'PARCIALMENTE APROVADO';
+}
+
 const FASE_CONFIG: Record<number, { label: string; sublabel: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
   1: { label: "Planej. GRV", sublabel: "fase 1", color: "text-amber-400", bgColor: "bg-amber-400/10", borderColor: "border-amber-400/30", icon: "📋" },
   2: { label: "Trade", sublabel: "fase 2", color: "text-blue-400", bgColor: "bg-blue-400/10", borderColor: "border-blue-400/30", icon: "🔍" },
@@ -251,7 +263,7 @@ export default function InvestimentoPage() {
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [auditQuery, setAuditQuery] = useState("");
   const [auditResult, setAuditResult] = useState<any>(null);
-  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditNetworkLoading, setAuditNetworkLoading] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
   const [isAuditFaturamentoExpanded, setIsAuditFaturamentoExpanded] = useState(false);
   const [auditFaturamentoLoading, setAuditFaturamentoLoading] = useState(false);
@@ -325,6 +337,49 @@ export default function InvestimentoPage() {
   const [executionScore, setExecutionScore] = useState("");
   const [showConsolidadoGerentes, setShowConsolidadoGerentes] = useState(false);
 
+  const [actionFamilies, setActionFamilies] = useState<any[]>([]);
+  const [familiesLoading, setFamiliesLoading] = useState(false);
+  const [familyHistory, setFamilyHistory] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!selectedAction?.id) {
+      setActionFamilies([]);
+      setFamilyHistory([]);
+      return;
+    }
+    const loadFamiliesAndHistory = async () => {
+      setFamiliesLoading(true);
+      try {
+        const { data: fams, error: famErr } = await supabase
+          .from("cm_investimento_familias")
+          .select("*")
+          .eq("investimento_id", selectedAction.id)
+          .order("familia", { ascending: true });
+        
+        if (!famErr && fams) {
+          setActionFamilies(fams);
+          if (fams.length > 0) {
+            const famIds = fams.map((f: any) => f.id);
+            const { data: hist, error: histErr } = await supabase
+              .from("cm_investimento_familias_history")
+              .select("*, cm_investimento_familias(familia)")
+              .in("familia_id", famIds)
+              .order("data_hora", { ascending: false });
+            
+            if (!histErr && hist) {
+              setFamilyHistory(hist);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erro ao carregar famílias/histórico:", err);
+      } finally {
+        setFamiliesLoading(false);
+      }
+    };
+    loadFamiliesAndHistory();
+  }, [selectedAction?.id]);
+
   useEffect(() => {
     if (selectedAction) {
       setRealVolume(selectedAction.real_volume?.toString() || "");
@@ -345,7 +400,7 @@ export default function InvestimentoPage() {
 
   const handleAuditSearch = async (targetQuery: string) => {
     if (!targetQuery.trim()) return;
-    setAuditLoading(true);
+    setAuditNetworkLoading(true);
     setAuditError(null);
     setAuditResult(null);
     setIsAuditFaturamentoExpanded(false);
@@ -361,7 +416,7 @@ export default function InvestimentoPage() {
       console.error(err);
       setAuditError(err.message || 'Erro de rede ao buscar auditoria.');
     } finally {
-      setAuditLoading(false);
+      setAuditNetworkLoading(false);
     }
   };
 
@@ -1255,6 +1310,16 @@ export default function InvestimentoPage() {
     return mesStr;
   };
 
+  const getValorTotal = (r: any) => {
+    if (r.abrangencia === "SKU" && r.skus_detalhes) {
+      return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+    }
+    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
+      return r.familias_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+    }
+    return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+  };
+
   const mesesDisponiveis = useMemo(() => {
     const meses = managerFilteredAcoes.map(d => d.mes_referencia).filter(Boolean) as string[];
     return Array.from(new Set(meses)).sort((a, b) => b.localeCompare(a));
@@ -1386,7 +1451,7 @@ export default function InvestimentoPage() {
     if (auditData.notFound) {
       return {
         severity: '🔴 Crítico',
-        diagnosis: 'Rede inexistente no ecossistema.',
+        diagnosis: 'A rede não foi encontrada no cadastro mestre.',
         recommendations: 'A rede procurada não possui registros em nenhuma das tabelas mestre (cm_clientes, base_atendimento, cm_redes_matrizes ou network_matrix). Crie o cadastro mestre na página de Configuração Financeira.'
       };
     }
@@ -1403,8 +1468,8 @@ export default function InvestimentoPage() {
     const totalAcoes = auditData.investimentos?.totalAcoes || 0;
     if (totalAcoes === 0) {
       return {
-        severity: '🟡 Atenção',
-        diagnosis: 'A rede não possui investimentos cadastrados.',
+        severity: '🟠 Alerta',
+        diagnosis: 'A rede existe, porém ainda não possui investimentos cadastrados.',
         recommendations: 'Nenhuma ação de investimento foi criada para esta rede no banco de dados. Utilize o formulário Lançar Investimento para criar ações.'
       };
     }
@@ -1424,7 +1489,7 @@ export default function InvestimentoPage() {
     if (visibleActions.length > 0) {
       return {
         severity: '🟢 Informativo',
-        diagnosis: 'A rede não desapareceu.',
+        diagnosis: 'A rede está visível e operacional.',
         recommendations: 'A rede está ativa e visível no painel principal sob os filtros atuais.'
       };
     } else {
@@ -1434,8 +1499,8 @@ export default function InvestimentoPage() {
       const matchGerente = firstAction.gerente_responsavel || 'Sem gerente';
       const matchStatus = calcularStatusItemInvestimento(firstAction, firstAction.fase_atual || 1, firstAction.apuracao_preenchida_em);
       return {
-        severity: '🟢 Informativo',
-        diagnosis: 'A rede está sendo ocultada pelos filtros atuais.',
+        severity: '🟡 Atenção',
+        diagnosis: 'A rede existe, porém está sendo ocultada pelos filtros atuais.',
         recommendations: `As ações cadastradas para esta rede não correspondem aos filtros de Mês/Fase/Gerente/Status selecionados no painel. Localização correta de um registro: Mês: ${formatMesReferencia(matchMonth)} | Fase: ${matchFase} | Status: ${matchStatus.toLowerCase()} | Gerente: ${matchGerente}.`
       };
     }
@@ -1611,6 +1676,56 @@ export default function InvestimentoPage() {
     }
   };
 
+  const handleValidarFamilia = async (familiaId: string, aprovado: boolean, observacao?: string) => {
+    if (!selectedAction) return;
+    setActionLoading(selectedAction.id);
+    try {
+      const res = await validarFamiliaTrade(selectedAction.id, familiaId, aprovado, observacao);
+      if (res.success) {
+        // 1. Recarregar lista de famílias e histórico localmente
+        const { data: fams } = await supabase
+          .from("cm_investimento_familias")
+          .select("*")
+          .eq("investimento_id", selectedAction.id)
+          .order("familia", { ascending: true });
+        
+        if (fams) {
+          setActionFamilies(fams);
+          if (fams.length > 0) {
+            const famIds = fams.map((f: any) => f.id);
+            const { data: hist } = await supabase
+              .from("cm_investimento_familias_history")
+              .select("*, cm_investimento_familias(familia)")
+              .in("familia_id", famIds)
+              .order("data_hora", { ascending: false });
+            if (hist) setFamilyHistory(hist);
+          }
+        }
+        
+        // 2. Recarregar tabela de fundo
+        await loadData();
+        
+        // 3. Atualizar fase do pai no estado da modal
+        setSelectedAction(prev => {
+          if (!prev) return null;
+          const statusCons = res.data?.consolidatedStatus;
+          const nextF = statusCons === 'APROVADO' ? 3 : statusCons === 'REPROVADO' ? 1 : 2;
+          return { ...prev, fase_atual: nextF };
+        });
+
+        setFeedback({ type: "success", msg: "Status da família atualizado!" });
+        setTimeout(() => setFeedback(null), 3000);
+      } else {
+        alert(res.message || "Erro ao validar família.");
+      }
+    } catch (err: any) {
+      console.error("Erro validar familia:", err);
+      alert("Erro ao processar: " + err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleApuracaoSubmit = async () => {
     if (!selectedAction) return;
     try {
@@ -1651,17 +1766,6 @@ export default function InvestimentoPage() {
     } finally {
       setActionLoading(null);
     }
-  };
-
-  const getValorTotal = (r: AcaoInvestimento) => {
-    if (r.abrangencia === "SKU" && r.skus_detalhes) {
-      return r.skus_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
-      return r.familias_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    // Fallback for legacy records
-    return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
   };
 
   const subtotal = useMemo(() => {
@@ -3408,6 +3512,397 @@ export default function InvestimentoPage() {
           </div>
         )}
 
+        {/* Modal: Auditoria de Rede */}
+        {isAuditModalOpen && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-card w-full max-w-5xl h-[85vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 border border-border">
+              {/* Header */}
+              <div className="p-4 border-b border-border flex justify-between items-center bg-elevated">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gold/10 flex items-center justify-center">
+                    <Search className="w-5 h-5 text-gold" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">🔍 Rastreabilidade e Auditoria de Redes</h3>
+                    <p className="text-xs text-muted">Audite qualquer rede no ecossistema Coffee++ sob demanda</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setIsAuditModalOpen(false)} 
+                  className="p-2 hover:bg-border rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5 text-muted" />
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div className="p-4 bg-elevated border-b border-border flex gap-3">
+                <div className="flex-1 relative">
+                  <input
+                    type="text"
+                    value={auditQuery}
+                    onChange={(e) => setAuditQuery(e.target.value)}
+                    placeholder="Pesquisar por network_id, matriz_id, cod_parceiro, CNPJ ou Nome da rede..."
+                    className="w-full bg-background border border-border rounded-xl pl-4 pr-10 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAuditSearch(auditQuery);
+                    }}
+                  />
+                  {auditQuery && (
+                    <button 
+                      onClick={() => setAuditQuery("")} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-border rounded-full"
+                    >
+                      <X className="w-3.5 h-3.5 text-muted" />
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => handleAuditSearch(auditQuery)}
+                  disabled={auditNetworkLoading || !auditQuery.trim()}
+                  className="px-6 py-2.5 bg-gold text-black rounded-xl text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2 shadow-sm"
+                >
+                  {auditNetworkLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  Pesquisar
+                </button>
+              </div>
+
+              {/* Content Area */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-background/50">
+                {auditNetworkLoading && !auditResult && (
+                  <div className="flex flex-col items-center justify-center py-20 gap-3 text-center animate-pulse">
+                    <div className="w-10 h-10 rounded-full border-4 border-gold/20 border-t-gold animate-spin" />
+                    <div>
+                      <p className="font-semibold text-xs text-foreground">Executando varredura e rastreabilidade...</p>
+                      <p className="text-[10px] text-muted mt-1">Isso consulta Cadastro Mestre, Investimentos e Promotores no banco.</p>
+                    </div>
+                  </div>
+                )}
+
+                {auditError && (
+                  <div className="p-4 bg-danger/10 border border-danger/20 rounded-2xl flex items-start gap-3 text-danger">
+                    <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-sm">Erro ao Executar Auditoria</h4>
+                      <p className="text-xs opacity-90 mt-1">{auditError}</p>
+                    </div>
+                  </div>
+                )}
+
+                {!auditNetworkLoading && !auditResult && !auditError && (
+                  <div className="flex flex-col items-center justify-center py-24 text-center border border-dashed border-border/85 rounded-2xl p-6 bg-card/25">
+                    <Search className="w-10 h-10 text-muted/60 mb-3" />
+                    <p className="font-semibold text-sm text-foreground">Nenhuma consulta ativa</p>
+                    <p className="text-xs text-muted max-w-sm mt-1">
+                      Digite o nome, ID ou código de integração de uma rede acima para iniciar a varredura ponta a ponta.
+                    </p>
+                  </div>
+                )}
+
+                {auditResult && (
+                  <div className="space-y-6">
+                    {/* Diagnóstico Conclusivo */}
+                    {(() => {
+                      const diag = auditResult.restricted
+                        ? { severity: auditResult.severity, diagnosis: auditResult.diagnosis, recommendations: auditResult.recommendations }
+                        : getAuditConclusiveDiagnosis(auditResult);
+                      if (!diag) return null;
+                      
+                      const bannerColors: Record<string, string> = {
+                        '🟢 Informativo': 'bg-[#10b981]/10 border-[#10b981]/20 text-[#10b981]',
+                        '🟡 Atenção': 'bg-amber-500/10 border-amber-500/20 text-amber-500',
+                        '🟠 Alerta': 'bg-orange-500/10 border-orange-500/20 text-orange-500',
+                        '🔴 Crítico': 'bg-red-500/10 border-red-500/20 text-red-500'
+                      };
+
+                      return (
+                        <div className={`p-4 border rounded-2xl flex items-start gap-3 shadow-sm ${bannerColors[diag.severity] || ''}`}>
+                          <div className="text-xl mt-0.5">
+                            {diag.severity.includes('Crítico') && '🔴'}
+                            {diag.severity.includes('Alerta') && '🟠'}
+                            {diag.severity.includes('Atenção') && '🟡'}
+                            {diag.severity.includes('Informativo') && '🟢'}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-sm uppercase tracking-wider">{diag.diagnosis}</h4>
+                            <p className="text-xs opacity-90 mt-1">{diag.recommendations}</p>
+                            <div className="text-[10px] opacity-75 mt-2 font-semibold">
+                              Severidade: <span className="font-bold">{diag.severity}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {!auditResult.restricted && (
+                      <>
+                        {/* Widgets de Scores Circulares */}
+                        {auditResult.scores && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 bg-card border border-border/80 rounded-2xl p-5 shadow-sm">
+                        {/* Circular widget: Health Score */}
+                        <div className="flex items-center gap-4 border-r border-border/60 pr-4">
+                          <div className="relative w-20 h-20 shrink-0">
+                            <svg className="w-full h-full -rotate-90">
+                              <circle cx="40" cy="40" r="34" className="stroke-border/40 fill-none" strokeWidth="6" />
+                              <circle 
+                                cx="40" cy="40" r="34" 
+                                className="stroke-gold fill-none transition-all duration-700" 
+                                strokeWidth="6"
+                                strokeDasharray={2 * Math.PI * 34}
+                                strokeDashoffset={2 * Math.PI * 34 * (1 - auditResult.scores.healthScore / 100)}
+                              />
+                            </svg>
+                            <span className="absolute inset-0 flex items-center justify-center font-black text-sm text-foreground">
+                              {auditResult.scores.healthScore}%
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-foreground">Health Score (Saúde de Dados)</h4>
+                            <p className="text-[11px] text-muted mt-0.5">Mapeia a consistência do cadastro e relacionamento da rede nas tabelas do ecossistema.</p>
+                          </div>
+                        </div>
+
+                        {/* Circular widget: Score Operacional */}
+                        <div className="flex items-center gap-4">
+                          <div className="relative w-20 h-20 shrink-0">
+                            <svg className="w-full h-full -rotate-90">
+                              <circle cx="40" cy="40" r="34" className="stroke-border/40 fill-none" strokeWidth="6" />
+                              <circle 
+                                cx="40" cy="40" r="34" 
+                                className="stroke-emerald-400 fill-none transition-all duration-700" 
+                                strokeWidth="6"
+                                strokeDasharray={2 * Math.PI * 34}
+                                strokeDashoffset={2 * Math.PI * 34 * (1 - auditResult.scores.scoreOperacional / 100)}
+                              />
+                            </svg>
+                            <span className="absolute inset-0 flex items-center justify-center font-black text-sm text-foreground">
+                              {auditResult.scores.scoreOperacional}%
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-foreground">Score Operacional (Execução)</h4>
+                            <p className="text-[11px] text-muted mt-0.5">Avalia o andamento e conclusão física das ações, metas, visitas e faturamentos reais.</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Abas e Listagem Detalhada */}
+                    <div className="space-y-4">
+                      {/* Section 1: Cadastro Mestre */}
+                      <div className="bg-card border border-border/80 rounded-2xl p-4 space-y-3">
+                        <h4 className="font-bold text-xs text-foreground uppercase border-b border-border pb-2 flex justify-between">
+                          <span>📋 Cadastro Mestre e Relacionamentos</span>
+                          <span className={`text-[10px] font-black ${auditResult.cadastro?.status === 'Ativo' ? 'text-green-400' : 'text-red-400'}`}>
+                            {auditResult.cadastro?.status}
+                          </span>
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                          <div>
+                            <span className="text-muted block">Nome Matriz (cm_clientes):</span>
+                            <span className="font-semibold text-foreground">{auditResult.rede}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">Código Matriz (cm_clientes):</span>
+                            <span className="font-semibold font-mono text-foreground">{auditResult.codigo || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">CNPJ Cadastrado:</span>
+                            <span className="font-semibold text-foreground">{auditResult.cadastro?.cnpj || <span className="text-red-400 font-bold italic">Nulo</span>}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">Fase do Cadastro Mestre:</span>
+                            <span className="font-semibold text-foreground capitalize">{auditResult.cadastro?.fase}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">Gerente Responsável:</span>
+                            <span className="font-semibold text-foreground">{auditResult.cadastro?.cm_clientes?.[0]?.responsavel || 'Sem Gerente'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">UF Faturamento:</span>
+                            <span className="font-semibold text-foreground">{auditResult.cadastro?.cm_clientes?.[0]?.uf || '—'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 2: Investimentos */}
+                      <div className="bg-card border border-border/80 rounded-2xl p-4 space-y-3">
+                        <h4 className="font-bold text-xs text-foreground uppercase border-b border-border pb-2">
+                          📈 Investimentos Cadastrados
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs border-b border-border/40 pb-3">
+                          <div>
+                            <span className="text-muted block">Total de Ações Registradas:</span>
+                            <span className="font-bold text-foreground text-sm">{auditResult.investimentos?.totalAcoes} ações</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">Último Usuário que Alterou:</span>
+                            <span className="font-semibold text-foreground">{auditResult.investimentos?.lastChange?.user || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-muted block">Data da Última Alteração:</span>
+                            <span className="font-semibold text-foreground">
+                              {auditResult.investimentos?.lastChange?.date ? new Date(auditResult.investimentos.lastChange.date).toLocaleString('pt-BR') : '—'}
+                            </span>
+                          </div>
+                        </div>
+                        {auditResult.investimentos?.acoesList?.length > 0 && (
+                          <div className="overflow-x-auto text-[11px]">
+                            <table className="w-full text-left whitespace-nowrap">
+                              <thead>
+                                <tr className="text-muted border-b border-border/60">
+                                  <th className="py-1">Código</th>
+                                  <th className="py-1">Família/Produto</th>
+                                  <th className="py-1">Mês Ref.</th>
+                                  <th className="py-1">Fase Atual</th>
+                                  <th className="py-1">Tipo Pgto</th>
+                                  <th className="py-1">Expectativa Vol.</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border/40">
+                                {auditResult.investimentos.acoesList.slice(0, 10).map((a: any) => (
+                                  <tr key={a.id} className="hover:bg-foreground/[0.01]">
+                                    <td className="py-1.5 font-semibold text-foreground">#{a.codigo}</td>
+                                    <td className="py-1.5 text-foreground">{a.familia_produto}</td>
+                                    <td className="py-1.5 text-muted">{formatMesReferencia(a.mes_referencia)}</td>
+                                    <td className="py-1.5">
+                                      <span className={`px-1.5 py-0.5 rounded border text-[9px] font-bold ${FASE_CONFIG[a.fase_atual || 1]?.bgColor} ${FASE_CONFIG[a.fase_atual || 1]?.color} ${FASE_CONFIG[a.fase_atual || 1]?.borderColor}`}>
+                                        {FASE_CONFIG[a.fase_atual || 1]?.label}
+                                      </span>
+                                    </td>
+                                    <td className="py-1.5 text-muted">{a.tipo_pagamento || '—'}</td>
+                                    <td className="py-1.5 text-muted">{a.expectativa_volume || '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Section 3: Promotores & Visitas */}
+                      <div className="bg-card border border-border/80 rounded-2xl p-4 space-y-3">
+                        <h4 className="font-bold text-xs text-foreground uppercase border-b border-border pb-2">
+                          👥 Disponibilização para Promotores
+                        </h4>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                          <div className="p-3 bg-elevated/40 border border-border/40 rounded-xl">
+                            <span className="text-muted block text-[10px]">Pontos de Venda (PDVs)</span>
+                            <span className="font-black text-lg text-foreground block mt-1">{auditResult.promotores?.totalPdvs}</span>
+                          </div>
+                          <div className="p-3 bg-elevated/40 border border-border/40 rounded-xl">
+                            <span className="text-muted block text-[10px]">Metas Cadastradas</span>
+                            <span className="font-black text-lg text-foreground block mt-1">{auditResult.promotores?.totalMetas}</span>
+                          </div>
+                          <div className="p-3 bg-elevated/40 border border-border/40 rounded-xl">
+                            <span className="text-muted block text-[10px]">Visitas Totais</span>
+                            <span className="font-black text-lg text-foreground block mt-1">{auditResult.promotores?.totalVisitas}</span>
+                          </div>
+                          <div className="p-3 bg-elevated/40 border border-border/40 rounded-xl">
+                            <span className="text-muted block text-[10px]">Check-ins Realizados</span>
+                            <span className="font-black text-lg text-emerald-400 block mt-1">{auditResult.promotores?.totalCheckins}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Section 4: Faturamento (EXPANSÃO SOB DEMANDA - Apenas para Trade/Diretoria/Admin) */}
+                      {!auditResult.isManagerOrComercial && (
+                        <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
+                          <button
+                            onClick={handleExpandAuditFaturamento}
+                            className="w-full flex items-center justify-between p-4 bg-elevated border-b border-border text-left font-bold text-xs text-foreground uppercase hover:bg-border transition-all"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>📊 Histórico de Faturamento e Vendas (Sankhya)</span>
+                              {!isAuditFaturamentoExpanded && <span className="px-2 py-0.5 rounded bg-gold/10 text-gold text-[9px] font-normal lowercase tracking-normal">clique para consultar no banco</span>}
+                            </div>
+                            <span>{isAuditFaturamentoExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}</span>
+                          </button>
+                          {isAuditFaturamentoExpanded && (
+                            <div className="p-4 space-y-3 bg-card animate-in fade-in duration-200">
+                              {auditFaturamentoLoading ? (
+                                <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted">
+                                  <RefreshCw className="w-4 h-4 animate-spin text-gold" />
+                                  Carregando faturamento oficial...
+                                </div>
+                              ) : auditResult.faturamento?.vendas?.length > 0 ? (
+                                <div className="overflow-x-auto text-[11px]">
+                                  <table className="w-full text-left whitespace-nowrap">
+                                    <thead>
+                                      <tr className="text-muted border-b border-border/60">
+                                        <th className="py-1">Mês</th>
+                                        <th className="py-1">Faturamento Líquido</th>
+                                        <th className="py-1">Quantidade (UN)</th>
+                                        <th className="py-1">UF</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/40">
+                                      {auditResult.faturamento.vendas.map((s: any, idx: number) => (
+                                        <tr key={idx}>
+                                          <td className="py-1.5 text-foreground font-semibold">{formatMesReferencia(s.mes)}</td>
+                                          <td className="py-1.5 text-foreground font-bold">{formatCurrency(s.fat || 0, false)}</td>
+                                          <td className="py-1.5 text-muted">{s.qty?.toLocaleString('pt-BR') || 0}</td>
+                                          <td className="py-1.5 text-muted">{s.uf || '—'}</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="py-4 text-center text-xs text-muted">
+                                  Nenhum faturamento físico de Sankhya registrado para esta rede no banco de dados.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Section 5: Timeline Cronológica */}
+                      <div className="bg-card border border-border/80 rounded-2xl p-4 space-y-4">
+                        <h4 className="font-bold text-xs text-foreground uppercase border-b border-border pb-2">
+                          ⏳ Timeline Cronológica da Rede
+                        </h4>
+                        {auditResult.timeline?.length > 0 ? (
+                          <div className="relative border-l border-border/80 pl-4 ml-2 space-y-4 text-xs py-2">
+                            {auditResult.timeline.map((item: any, idx: number) => (
+                              <div key={idx} className="relative">
+                                {/* Bullet indicator */}
+                               <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-gold border border-background shadow" />
+                                <div className="text-muted text-[10px] font-mono">
+                                  {new Date(item.date).toLocaleDateString('pt-BR')} {new Date(item.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                                <div className="font-bold text-foreground mt-0.5">{item.title}</div>
+                                <div className="text-muted text-[11px] mt-0.5">{item.desc}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="py-4 text-center text-xs text-muted">
+                            Nenhum registro cronológico de alteração ou evento foi compilado para esta rede.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-border flex justify-end bg-elevated">
+                <button
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className="px-6 py-2 bg-border text-foreground hover:bg-border/80 rounded-xl text-sm font-semibold transition-all"
+                >
+                  Fechar Auditoria
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Modal: Detalhes da Ação */}
         {selectedAction && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -3439,6 +3934,20 @@ export default function InvestimentoPage() {
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${selectedAction.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                           {selectedAction.tipo_acao}
                         </span>
+                        {(() => {
+                          const consStatus = getConsolidatedStatusText(actionFamilies.length > 0 ? actionFamilies : (selectedAction.familias_detalhes || []));
+                          const badgeClasses: Record<string, string> = {
+                            'APROVADO': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
+                            'REPROVADO': 'bg-red-500/15 text-red-400 border-red-500/25',
+                            'EM VALIDAÇÃO': 'bg-blue-500/15 text-blue-400 border-blue-500/25',
+                            'PARCIALMENTE APROVADO': 'bg-orange-500/15 text-orange-400 border-orange-500/25'
+                          };
+                          return (
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase ${badgeClasses[consStatus] || 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25'}`}>
+                              {consStatus}
+                            </span>
+                          );
+                        })()}
                         {selectedAction.tipo_pagamento && (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-blue-500/10 text-blue-400 border-blue-500/20 uppercase tracking-wide">
                             {selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'BOLETO' : 'TRANSFERÊNCIA'}
@@ -3563,33 +4072,111 @@ export default function InvestimentoPage() {
                       <span className="text-xs text-muted block mb-1">Valor do Investimento Total Estimado</span>
                       <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction), false)}</span>
                     </div>
-                    {selectedAction.familias_detalhes && selectedAction.familias_detalhes.length > 0 && (
+                    {((actionFamilies && actionFamilies.length > 0) || (selectedAction?.familias_detalhes && selectedAction.familias_detalhes.length > 0)) && (
                       <div className="col-span-2 space-y-3 mt-2">
                         <span className="text-xs text-muted block font-bold">Detalhes das Famílias</span>
                         <div className="grid grid-cols-1 gap-2">
-                          {selectedAction.familias_detalhes.map((f: any, idx: number) => (
-                            <div key={idx} className="bg-background border border-border p-3 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <span className="font-bold text-gold text-sm flex-1">{f.familia_nome}</span>
-                              <div className="flex flex-wrap gap-4 text-xs">
-                                <div className="flex flex-col">
-                                  <span className="text-muted">Flat</span>
-                                  <span className="font-medium text-foreground">{f.preco_flat ? formatCurrency(f.preco_flat) : '-'}</span>
+                          {(actionFamilies.length > 0 ? actionFamilies : (selectedAction?.familias_detalhes || [])).map((f: any, idx: number) => {
+                            const fStatus = (f.status || f.status_trade || 'PENDENTE').toUpperCase();
+                            const isPending = fStatus === 'PENDENTE' || fStatus === 'PENDING' || fStatus === 'AGUARDANDO VALIDAÇÃO';
+                            const isApproved = fStatus === 'APROVADA' || fStatus === 'APROVADO';
+                            const isReproved = fStatus === 'REPROVADA' || fStatus === 'REPROVADO';
+                            const isExecuted = fStatus === 'EXECUTADA';
+                            
+                            const canValidate = (selectedAction?.fase_atual || 1) === 2 && ['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '');
+
+                            const valTotal = (Number(f.investimento || 0) * Number(f.expectativa_volume || 0));
+
+                            return (
+                              <div key={idx} className="bg-background border border-border p-3.5 rounded-xl flex flex-col gap-3">
+                                <div className="flex justify-between items-center w-full">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-foreground text-sm">{f.familia || f.familia_nome}</span>
+                                    {isApproved && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Aprovada</span>}
+                                    {isReproved && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-red-500/15 text-red-400 border border-red-500/20">Reprovada</span>}
+                                    {isPending && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">Pendente</span>}
+                                    {isExecuted && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">Executada</span>}
+                                  </div>
+                                  <span className="text-xs text-gold font-bold">{formatCurrency(valTotal, false)}</span>
                                 </div>
-                                <div className="flex flex-col">
-                                  <span className="text-muted">Ação</span>
-                                  <span className="font-medium text-foreground">{f.preco_acao ? formatCurrency(f.preco_acao) : '-'}</span>
+
+                                <div className="flex flex-wrap gap-4 text-xs bg-elevated/40 p-2 rounded-lg border border-border/40 justify-between">
+                                  <div className="flex flex-col">
+                                    <span className="text-muted text-[10px]">Flat</span>
+                                    <span className="font-medium text-foreground">{f.preco_flat ? formatCurrency(f.preco_flat) : '-'}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-muted text-[10px]">Ação</span>
+                                    <span className="font-medium text-foreground">{f.preco_acao ? formatCurrency(f.preco_acao) : '-'}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-muted text-[10px]">Inv. Unit.</span>
+                                    <span className="font-medium text-gold">{f.investimento ? formatCurrency(f.investimento, false) : '-'}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-muted text-[10px]">Volume</span>
+                                    <span className="font-medium text-foreground">{f.expectativa_volume || '-'}</span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="text-muted text-[10px]">Período</span>
+                                    <span className="font-medium text-foreground text-[10px]">
+                                      {f.start_date || f.data_execucao ? `${formatDate(f.start_date || f.data_execucao)}` : '-'}
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="flex flex-col">
-                                  <span className="text-muted">Inv.</span>
-                                  <span className="font-medium text-gold">{f.investimento ? formatCurrency(f.investimento, false) : '-'}</span>
-                                </div>
-                                <div className="flex flex-col">
-                                  <span className="text-muted">Vol.</span>
-                                  <span className="font-medium text-foreground">{f.expectativa_volume ? f.expectativa_volume : '-'}</span>
-                                </div>
+
+                                {(f.aprovado_por || f.reprovado_por || f.observacao_trade || f.comprovante_url) && (
+                                  <div className="text-[11px] text-muted space-y-1 bg-elevated/20 p-2 rounded border border-border/50">
+                                    {f.aprovado_por && (
+                                      <div>
+                                        Responsável: <span className="font-bold text-foreground">{f.aprovado_por}</span> em {new Date(f.aprovado_em).toLocaleDateString('pt-BR')}
+                                      </div>
+                                    )}
+                                    {f.observacao_trade && (
+                                      <div className="text-red-400">
+                                        Observação Trade: <span className="italic text-foreground">&quot;{f.observacao_trade}&quot;</span>
+                                      </div>
+                                    )}
+                                    {f.comprovante_url && (
+                                      <div>
+                                        Comprovante: <a href={f.comprovante_url} target="_blank" rel="noopener noreferrer" className="text-gold underline hover:text-gold/80 font-semibold">Visualizar arquivo</a>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {canValidate && (
+                                  <div className="flex gap-2 mt-1">
+                                    <button
+                                      onClick={() => {
+                                        if (confirm(`Aprovar a família ${f.familia || f.familia_nome}?`)) {
+                                          handleValidarFamilia(f.familia_id, true);
+                                        }
+                                      }}
+                                      disabled={actionLoading === selectedAction.id}
+                                      className="flex-1 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                                    >
+                                      Aprovar Família
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        const reason = prompt(`Motivo da reprovação da família ${f.familia || f.familia_nome}:`);
+                                        if (reason && reason.trim()) {
+                                          handleValidarFamilia(f.familia_id, false, reason);
+                                        } else if (reason !== null) {
+                                          alert("O motivo é obrigatório para reprovar.");
+                                        }
+                                      }}
+                                      disabled={actionLoading === selectedAction.id}
+                                      className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                                    >
+                                      Reprovar Família
+                                    </button>
+                                  </div>
+                                )}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -3692,6 +4279,41 @@ export default function InvestimentoPage() {
                     )}
                   </div>
                 )}
+
+                {/* Histórico de Aprovações por Família */}
+                <div className="pt-3 border-t border-border">
+                  <span className="text-xs text-muted font-bold block mb-2">Histórico de Validações de Famílias ({familyHistory.length})</span>
+                  {familyHistory.length === 0 ? (
+                    <p className="text-[11px] text-muted italic">Nenhuma validação registrada para as famílias desta ação.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                      {familyHistory.map((hist, idx) => {
+                        const isApp = hist.status_novo === 'APROVADA';
+                        return (
+                          <div key={idx} className="bg-elevated p-2 rounded-lg border border-border/40 text-[11px] space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold text-foreground">
+                                {hist.cm_investimento_familias?.familia || "Família"}
+                              </span>
+                              <span className={`px-1 py-0.5 rounded text-[9px] font-black uppercase ${isApp ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                                {isApp ? 'Aprovada' : 'Reprovada'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-muted flex justify-between">
+                              <span>Por: {hist.usuario}</span>
+                              <span>{new Date(hist.data_hora).toLocaleString('pt-BR')}</span>
+                            </div>
+                            {hist.observacao && (
+                              <p className="text-foreground/80 italic mt-0.5 bg-background/50 p-1 rounded border border-border/20">
+                                &quot;{hist.observacao}&quot;
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
 
                 {/* Histórico de Alterações */}
                 <div className="pt-3 border-t border-border">
