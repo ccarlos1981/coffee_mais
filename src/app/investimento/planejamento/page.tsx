@@ -496,22 +496,75 @@ export default function PlanejamentoInvestimentoPage() {
       return;
     }
     const headers = ["Código", "Data Registro", "Rede", "Família", "Ação", "Data Início", "Data Fim", "Valor"];
-    const csvContent = [
-      headers.join(";"),
-      ...filteredData.map(row => {
+    const csvRows: string[] = [];
+
+    filteredData.forEach(row => {
+      const createdStr = row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : "";
+      const redeStr = `"${row.rede || ""}"`;
+      const acaoStr = `"${row.tipo_acao || ""}"`;
+
+      if (row.abrangencia !== "SKU" && row.familias_detalhes && row.familias_detalhes.length > 0) {
+        row.familias_detalhes.forEach((f: any) => {
+          const invVal = f.investimento != null ? f.investimento : row.valor_investimento;
+          const volVal = f.expectativa_volume != null ? f.expectativa_volume : row.expectativa_volume;
+          const val = (Number(invVal) || 0) * (Number(volVal) || 0);
+          const startDate = f.start_date || row.data_inicio;
+          const endDate = f.end_date || row.data_fim;
+
+          csvRows.push([
+            row.codigo || "",
+            createdStr,
+            redeStr,
+            `"${f.familia_nome || ""}"`,
+            acaoStr,
+            formatDate(startDate),
+            formatDate(endDate),
+            val.toString().replace('.', ',')
+          ].join(";"));
+        });
+      } else if (row.abrangencia === "SKU" && row.skus_detalhes && row.skus_detalhes.length > 0) {
+        row.skus_detalhes.forEach((s: any) => {
+          const invVal = s.investimento != null ? s.investimento : row.valor_investimento;
+          const volVal = s.expectativa_volume != null ? s.expectativa_volume : row.expectativa_volume;
+          const val = (Number(invVal) || 0) * (Number(volVal) || 0);
+          const startDate = s.start_date || row.data_inicio;
+          const endDate = s.end_date || row.data_fim;
+
+          csvRows.push([
+            row.codigo || "",
+            createdStr,
+            redeStr,
+            `"${s.sku || ""}"`,
+            acaoStr,
+            formatDate(startDate),
+            formatDate(endDate),
+            val.toString().replace('.', ',')
+          ].join(";"));
+        });
+      } else {
         const val = getValorTotal(row);
-        const fam = row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (row.familia_produto || ""));
-        return [
+        const fam = row.abrangencia === "SKU" 
+          ? "Múltiplos SKUs" 
+          : (row.familias_detalhes && row.familias_detalhes.length > 0 
+            ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
+            : (row.familia_produto || ""));
+
+        csvRows.push([
           row.codigo || "",
-          new Date(row.created_at).toLocaleDateString("pt-BR"),
-          `"${row.rede}"`,
+          createdStr,
+          redeStr,
           `"${fam}"`,
-          `"${row.tipo_acao}"`,
+          acaoStr,
           formatDate(row.data_inicio),
           formatDate(row.data_fim),
           val.toString().replace('.', ',')
-        ].join(";");
-      })
+        ].join(";"));
+      }
+    });
+
+    const csvContent = [
+      headers.join(";"),
+      ...csvRows
     ].join("\n");
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });

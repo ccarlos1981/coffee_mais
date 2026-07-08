@@ -1560,16 +1560,141 @@ export default function InvestimentoPage() {
       return `"${str.replace(/"/g, '""')}"`;
     };
     
-    const csvContent = [
-      headers.join(";"),
-      ...filteredData.map(row => {
+    const csvRows: string[] = [];
+
+    filteredData.forEach(row => {
+      if (row.abrangencia !== "SKU" && row.familias_detalhes && row.familias_detalhes.length > 0) {
+        row.familias_detalhes.forEach(f => {
+          const flatVal = f.preco_flat != null ? f.preco_flat : row.preco_flat;
+          const acaoVal = f.preco_acao != null ? f.preco_acao : row.preco_acao;
+          const invVal = f.investimento != null ? f.investimento : row.valor_investimento;
+          const volVal = f.expectativa_volume != null ? f.expectativa_volume : row.expectativa_volume;
+          const startDate = (f as any).start_date || row.data_inicio;
+          const endDate = (f as any).end_date || row.data_fim;
+
+          csvRows.push([
+            escapeCSV(row.codigo),
+            escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.gerente_responsavel),
+            escapeCSV(row.rede),
+            escapeCSV(row.codigo_matriz),
+            escapeCSV(row.mes_referencia),
+            escapeCSV(row.abrangencia),
+            escapeCSV(row.tipo_acao),
+            escapeCSV(FASE_CONFIG[row.fase_atual || 1]?.label || "Planej. GRV"),
+            escapeCSV(row.date_mode || "single"),
+            escapeCSV(formatDate(startDate)),
+            escapeCSV(formatDate(endDate)),
+            escapeCSV(f.familia_nome),
+            escapeCSV(flatVal != null ? flatVal.toString().replace('.', ',') : ""),
+            escapeCSV(acaoVal != null ? acaoVal.toString().replace('.', ',') : ""),
+            escapeCSV(invVal != null ? invVal.toString().replace('.', ',') : ""),
+            escapeCSV(volVal != null ? volVal.toString() : ""),
+            escapeCSV(row.condicao_pagamento),
+            escapeCSV(row.numero_acordo),
+            escapeCSV(row.checklist_comunicacao ? "Sim" : "Não"),
+            escapeCSV(row.checklist_logistica ? "Sim" : "Não"),
+            escapeCSV(row.checklist_auditoria ? "Sim" : "Não"),
+            escapeCSV(row.checklist_garantia ? "Sim" : "Não"),
+            escapeCSV(row.checklist_conferencia ? "Sim" : "Não"),
+            escapeCSV(row.apuracao_preenchida_em ? new Date(row.apuracao_preenchida_em).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.apuracao_qtd_vendida != null ? row.apuracao_qtd_vendida.toString() : ""),
+            escapeCSV(row.apuracao_valor_realizado != null ? row.apuracao_valor_realizado.toString().replace('.', ',') : ""),
+            escapeCSV(row.apuracao_numero_acordo),
+            escapeCSV(row.sem_boleto ? "Sim" : "Não"),
+            escapeCSV(row.apuracao_boleto_id),
+            escapeCSV(row.financeiro_pago_em ? new Date(row.financeiro_pago_em).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.financeiro_pago_por),
+            escapeCSV(row.financeiro_observacoes),
+            escapeCSV(row.roi != null ? row.roi.toString().replace('.', ',') : ""),
+            escapeCSV(row.real_volume != null ? row.real_volume.toString() : ""),
+            escapeCSV(row.real_faturamento != null ? row.real_faturamento.toString().replace('.', ',') : ""),
+            escapeCSV(row.real_margem != null ? row.real_margem.toString().replace('.', ',') : ""),
+            escapeCSV(row.approved_by),
+            escapeCSV(row.approved_at ? new Date(row.approved_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.reopened_reason),
+            escapeCSV(row.approval_comment),
+            escapeCSV(row.rejection_reason),
+            escapeCSV(row.cancel_reason),
+            escapeCSV(row.execution_score != null ? row.execution_score.toString() : ""),
+            escapeCSV(row.familias_detalhes ? JSON.stringify(row.familias_detalhes) : ""),
+            escapeCSV(row.skus_detalhes ? JSON.stringify(row.skus_detalhes) : ""),
+            escapeCSV(row.documento_url),
+            escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
+            escapeCSV(row.financeiro_comprovante_url),
+            escapeCSV(row.financeiro_boleto_url)
+          ].join(";"));
+        });
+      } else if (row.abrangencia === "SKU" && row.skus_detalhes && row.skus_detalhes.length > 0) {
+        row.skus_detalhes.forEach(s => {
+          const flatVal = s.preco_flat != null ? s.preco_flat : row.preco_flat;
+          const acaoVal = s.preco_acao != null ? s.preco_acao : row.preco_acao;
+          const invVal = s.investimento != null ? s.investimento : row.valor_investimento;
+          const volVal = s.expectativa_volume != null ? s.expectativa_volume : row.expectativa_volume;
+          const startDate = s.start_date || row.data_inicio;
+          const endDate = s.end_date || row.data_fim;
+
+          csvRows.push([
+            escapeCSV(row.codigo),
+            escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.gerente_responsavel),
+            escapeCSV(row.rede),
+            escapeCSV(row.codigo_matriz),
+            escapeCSV(row.mes_referencia),
+            escapeCSV(row.abrangencia),
+            escapeCSV(row.tipo_acao),
+            escapeCSV(FASE_CONFIG[row.fase_atual || 1]?.label || "Planej. GRV"),
+            escapeCSV(row.date_mode || "single"),
+            escapeCSV(formatDate(startDate)),
+            escapeCSV(formatDate(endDate)),
+            escapeCSV(s.sku),
+            escapeCSV(flatVal != null ? flatVal.toString().replace('.', ',') : ""),
+            escapeCSV(acaoVal != null ? acaoVal.toString().replace('.', ',') : ""),
+            escapeCSV(invVal != null ? invVal.toString().replace('.', ',') : ""),
+            escapeCSV(volVal != null ? volVal.toString() : ""),
+            escapeCSV(row.condicao_pagamento),
+            escapeCSV(row.numero_acordo),
+            escapeCSV(row.checklist_comunicacao ? "Sim" : "Não"),
+            escapeCSV(row.checklist_logistica ? "Sim" : "Não"),
+            escapeCSV(row.checklist_auditoria ? "Sim" : "Não"),
+            escapeCSV(row.checklist_garantia ? "Sim" : "Não"),
+            escapeCSV(row.checklist_conferencia ? "Sim" : "Não"),
+            escapeCSV(row.apuracao_preenchida_em ? new Date(row.apuracao_preenchida_em).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.apuracao_qtd_vendida != null ? row.apuracao_qtd_vendida.toString() : ""),
+            escapeCSV(row.apuracao_valor_realizado != null ? row.apuracao_valor_realizado.toString().replace('.', ',') : ""),
+            escapeCSV(row.apuracao_numero_acordo),
+            escapeCSV(row.sem_boleto ? "Sim" : "Não"),
+            escapeCSV(row.apuracao_boleto_id),
+            escapeCSV(row.financeiro_pago_em ? new Date(row.financeiro_pago_em).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.financeiro_pago_por),
+            escapeCSV(row.financeiro_observacoes),
+            escapeCSV(row.roi != null ? row.roi.toString().replace('.', ',') : ""),
+            escapeCSV(row.real_volume != null ? row.real_volume.toString() : ""),
+            escapeCSV(row.real_faturamento != null ? row.real_faturamento.toString().replace('.', ',') : ""),
+            escapeCSV(row.real_margem != null ? row.real_margem.toString().replace('.', ',') : ""),
+            escapeCSV(row.approved_by),
+            escapeCSV(row.approved_at ? new Date(row.approved_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.reopened_reason),
+            escapeCSV(row.approval_comment),
+            escapeCSV(row.rejection_reason),
+            escapeCSV(row.cancel_reason),
+            escapeCSV(row.execution_score != null ? row.execution_score.toString() : ""),
+            escapeCSV(row.familias_detalhes ? JSON.stringify(row.familias_detalhes) : ""),
+            escapeCSV(row.skus_detalhes ? JSON.stringify(row.skus_detalhes) : ""),
+            escapeCSV(row.documento_url),
+            escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
+            escapeCSV(row.financeiro_comprovante_url),
+            escapeCSV(row.financeiro_boleto_url)
+          ].join(";"));
+        });
+      } else {
         const fam = row.abrangencia === "SKU" 
           ? "Múltiplos SKUs" 
           : (row.familias_detalhes && row.familias_detalhes.length > 0 
             ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
             : (row.familia_produto || ""));
 
-        return [
+        csvRows.push([
           escapeCSV(row.codigo),
           escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
           escapeCSV(row.gerente_responsavel),
@@ -1620,8 +1745,13 @@ export default function InvestimentoPage() {
           escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
           escapeCSV(row.financeiro_comprovante_url),
           escapeCSV(row.financeiro_boleto_url)
-        ].join(";");
-      })
+        ].join(";"));
+      }
+    });
+
+    const csvContent = [
+      headers.join(";"),
+      ...csvRows
     ].join("\n");
 
     const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" }); // \uFEFF BOM for Excel
