@@ -29,7 +29,8 @@ import {
   Map,
   BookOpen,
   Trophy,
-  Bell
+  Bell,
+  FileText
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ModuleGroup } from "@/components/ModuleGroup";
@@ -116,6 +117,7 @@ const allModules: NavigationGroup[] = [
       { title: "Compliance e KPIs", description: "Auditoria de campo", href: "/trade/dashboard", icon: ShieldCheck, color: "from-red-600 to-red-800", ready: true },
       { title: "Missões Trade", description: "Checklists de loja", href: "/trade/missoes", icon: Target, color: "from-purple-600 to-purple-800", ready: true },
       { title: "Desafio Promotor", description: "Campanhas e incentivos", href: "/promotor/desafio", icon: Trophy, color: "from-amber-500 to-orange-600", ready: true },
+      { title: "Pesquisa Light", permission: "Pesquisa Light", description: "Pesquisa rápida de preços", href: "/promotor/pesquisa-light", icon: FileText, color: "from-amber-600 to-amber-800", ready: true },
     ],
   },
   {
