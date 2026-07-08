@@ -38,9 +38,10 @@ import {
   RotateCcw,
   Sparkles,
   HelpCircle,
-  Layers
+  Layers,
+  Paperclip
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, validarFamiliaTrade } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, validarFamiliaTrade, atualizarChecklistFamilia, atualizarDocumentosFamilia } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -102,6 +103,12 @@ interface AcaoInvestimento {
   checklist_auditoria?: boolean;
   checklist_garantia?: boolean;
   checklist_conferencia?: boolean;
+  verba_aprovada?: boolean;
+  contrato_assinado?: boolean;
+  percentual_comunicacao?: number;
+  percentual_logistica?: number;
+  percentual_auditoria?: number;
+  percentual_conferencia?: number;
   fase_atual?: number;
   
   // Apuração (Fase 3) fields
@@ -708,17 +715,25 @@ export default function InvestimentoPage() {
 
   const allTradeChecked = Object.values(tradeChecklist).every(Boolean);
 
-  const handleChecklistChange = async (field: keyof typeof tradeChecklist, checked: boolean) => {
+  const handleParentChecklistChange = async (fieldName: 'checklist_garantia' | 'verba_aprovada' | 'contrato_assinado', checked: boolean) => {
     if (!selectedAction) return;
-    const newChecklist = { ...tradeChecklist, [field]: checked };
-    setTradeChecklist(newChecklist);
     try {
-      await atualizarChecklistTrade(selectedAction.id, { ...newChecklist, conferencia: true });
-      // Update local data to reflect changes silently
-      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [`checklist_${field}`]: checked } : item));
-    } catch (err) {
-      console.error("Falha ao salvar checklist:", err);
-      // Revert state if needed, but for better UX we just log it.
+      const { error } = await supabase
+        .from("cm_acoes_investimento")
+        .update({ [fieldName]: checked })
+        .eq("id", selectedAction.id);
+      
+      if (error) throw error;
+      
+      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
+      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
+      
+      if (fieldName === 'checklist_garantia') {
+        setTradeChecklist(prev => ({ ...prev, garantia: checked }));
+      }
+    } catch (err: any) {
+      console.error("Falha ao salvar checklist comercial:", err);
+      alert("Erro ao salvar checklist: " + err.message);
     }
   };
 
@@ -1725,6 +1740,76 @@ export default function InvestimentoPage() {
       setActionLoading(null);
     }
   };
+
+  const handleToggleChecklist = async (familyId: string, fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia', value: boolean) => {
+    if (!selectedAction) return;
+    setActionLoading(selectedAction.id);
+    try {
+      const res = await atualizarChecklistFamilia(familyId, fieldName, value);
+      if (res.success) {
+        setActionFamilies(prev => prev.map(item => item.id === familyId ? { ...item, [fieldName]: value } : item));
+        const { data: updatedParent } = await supabase
+          .from("cm_acoes_investimento")
+          .select("*")
+          .eq("id", selectedAction.id)
+          .single();
+        if (updatedParent) {
+          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, ...updatedParent } : item));
+          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, ...updatedParent } : prev);
+        }
+        setFeedback({ type: "success", msg: "Checklist da família atualizado!" });
+        setTimeout(() => setFeedback(null), 3000);
+      } else {
+        alert(res.message || "Erro ao atualizar checklist.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao processar: " + err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleFamilyDocumentUpload = async (familyId: string, fieldName: 'comprovante_url' | 'evidencias_urls', file: File | null) => {
+    if (!file || !selectedAction) return;
+    setActionLoading(selectedAction.id);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${fieldName}_${familyId}_${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from("comprovantes_investimento")
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const currentFam = actionFamilies.find(f => f.id === familyId);
+      if (!currentFam) return;
+
+      let updateVal: any;
+      if (fieldName === 'comprovante_url') {
+        updateVal = fileName;
+      } else {
+        const currentEvidencias = Array.isArray(currentFam.evidencias_urls) ? currentFam.evidencias_urls : [];
+        updateVal = [...currentEvidencias, fileName];
+      }
+
+      const res = await atualizarDocumentosFamilia(familyId, fieldName === 'comprovante_url' ? updateVal : undefined, fieldName === 'evidencias_urls' ? updateVal : undefined);
+      if (res.success) {
+        setActionFamilies(prev => prev.map(item => item.id === familyId ? { ...item, [fieldName]: updateVal } : item));
+        setFeedback({ type: "success", msg: "Documento anexado com sucesso!" });
+        setTimeout(() => setFeedback(null), 3000);
+      } else {
+        alert(res.message || "Erro ao salvar o documento.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao enviar arquivo: " + err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
 
   const handleApuracaoSubmit = async () => {
     if (!selectedAction) return;
@@ -4145,15 +4230,132 @@ export default function InvestimentoPage() {
                                   </div>
                                 )}
 
+                                {/* Checklists e Arquivos por Família */}
+                                <div className="mt-2 pt-2 border-t border-border/30 space-y-2">
+                                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted block">
+                                    Checklist Operacional
+                                  </span>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={f.checklist_comunicacao || false}
+                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                        onChange={async (e) => {
+                                          await handleToggleChecklist(f.id, 'checklist_comunicacao', e.target.checked);
+                                        }}
+                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
+                                      />
+                                      <span>Comunicação</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={f.checklist_logistica || false}
+                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                        onChange={async (e) => {
+                                          await handleToggleChecklist(f.id, 'checklist_logistica', e.target.checked);
+                                        }}
+                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
+                                      />
+                                      <span>Logística</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={f.checklist_auditoria || false}
+                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                        onChange={async (e) => {
+                                          await handleToggleChecklist(f.id, 'checklist_auditoria', e.target.checked);
+                                        }}
+                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
+                                      />
+                                      <span>Auditoria</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={f.checklist_conferencia || false}
+                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                        onChange={async (e) => {
+                                          await handleToggleChecklist(f.id, 'checklist_conferencia', e.target.checked);
+                                        }}
+                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
+                                      />
+                                      <span>Conferência Trade</span>
+                                    </label>
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-3 mt-2 pt-2 border-t border-border/20 text-xs">
+                                    <div className="flex-1 flex flex-col gap-1">
+                                      <span className="text-[10px] text-muted font-bold">Evidências Físicas</span>
+                                      <div className="flex items-center gap-2">
+                                        <label className="flex items-center gap-1.5 px-2 py-1 bg-elevated border border-border/50 rounded hover:bg-elevated/80 cursor-pointer transition-all">
+                                          <Paperclip className="w-3.5 h-3.5 text-muted" />
+                                          <span>Anexar Arquivo</span>
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept=".pdf,image/*"
+                                            onChange={(e) => handleFamilyDocumentUpload(f.id, 'evidencias_urls', e.target.files?.[0] || null)}
+                                            disabled={actionLoading === selectedAction.id}
+                                          />
+                                        </label>
+                                      </div>
+                                      {f.evidencias_urls && f.evidencias_urls.length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                          {f.evidencias_urls.map((ev: string, evIdx: number) => (
+                                            <button
+                                              key={evIdx}
+                                              onClick={() => handleViewDocument(ev)}
+                                              className="text-[10px] text-gold underline hover:text-gold/80 font-medium block"
+                                            >
+                                              Evidência #{evIdx + 1}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="flex-1 flex flex-col gap-1">
+                                      <span className="text-[10px] text-muted font-bold">Comprovante de Execução</span>
+                                      <div className="flex items-center gap-2">
+                                        <label className="flex items-center gap-1.5 px-2 py-1 bg-elevated border border-border/50 rounded hover:bg-elevated/80 cursor-pointer transition-all">
+                                          <Paperclip className="w-3.5 h-3.5 text-muted" />
+                                          <span>Anexar Arquivo</span>
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            accept=".pdf,image/*"
+                                            onChange={(e) => handleFamilyDocumentUpload(f.id, 'comprovante_url', e.target.files?.[0] || null)}
+                                            disabled={actionLoading === selectedAction.id}
+                                          />
+                                        </label>
+                                      </div>
+                                      {f.comprovante_url && (
+                                        <div className="mt-1.5">
+                                          <button
+                                            onClick={() => handleViewDocument(f.comprovante_url)}
+                                            className="text-[10px] text-gold underline hover:text-gold/80 font-bold block"
+                                          >
+                                            Visualizar Comprovante
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
                                 {canValidate && (
-                                  <div className="flex gap-2 mt-1">
+                                  <div className="flex gap-2 mt-2">
                                     <button
                                       onClick={() => {
                                         if (confirm(`Aprovar a família ${f.familia || f.familia_nome}?`)) {
                                           handleValidarFamilia(f.familia_id, true);
                                         }
                                       }}
-                                      disabled={actionLoading === selectedAction.id}
+                                      disabled={actionLoading === selectedAction.id || !(f.checklist_comunicacao && f.checklist_logistica && f.checklist_auditoria && f.checklist_conferencia)}
+                                      title={!(f.checklist_comunicacao && f.checklist_logistica && f.checklist_auditoria && f.checklist_conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a família." : ""}
                                       className="flex-1 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
                                     >
                                       Aprovar Família
@@ -4472,41 +4674,117 @@ export default function InvestimentoPage() {
                     </button>
                   )}
 
-                  {(selectedAction.fase_atual || 1) === 2 && (
-                    <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-2 mb-1">
-                      <span className="text-sm font-bold text-foreground">Checklist de Validação (Trade)</span>
-                      
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" className="mt-1 flex-shrink-0 w-4 h-4 rounded border-border text-gold focus:ring-gold/50" checked={tradeChecklist.comunicacao} onChange={(e) => handleChecklistChange('comunicacao', e.target.checked)} />
-                        <div>
-                          <span className="font-bold text-sm text-foreground block group-hover:text-gold transition-colors">1) Comunicação</span>
-                          <span className="text-xs text-muted block">Envio do calendário para a equipe de campo e agências.</span>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" className="mt-1 flex-shrink-0 w-4 h-4 rounded border-border text-gold focus:ring-gold/50" checked={tradeChecklist.logistica} onChange={(e) => handleChecklistChange('logistica', e.target.checked)} />
-                        <div>
-                          <span className="font-bold text-sm text-foreground block group-hover:text-gold transition-colors">2) Logística</span>
-                          <span className="text-xs text-muted block">Verificação de estoque para garantir ruptura zero durante a ação.</span>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" className="mt-1 flex-shrink-0 w-4 h-4 rounded border-border text-gold focus:ring-gold/50" checked={tradeChecklist.auditoria} onChange={(e) => handleChecklistChange('auditoria', e.target.checked)} />
-                        <div>
-                          <span className="font-bold text-sm text-foreground block group-hover:text-gold transition-colors">3) Auditoria</span>
-                          <span className="text-xs text-muted block">Promotores confirmam a implementação (fotos e preços na gôndola).</span>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input type="checkbox" className="mt-1 flex-shrink-0 w-4 h-4 rounded border-border text-gold focus:ring-gold/50" checked={tradeChecklist.garantia} onChange={(e) => handleChecklistChange('garantia', e.target.checked)} />
-                        <div>
-                          <span className="font-bold text-sm text-foreground block group-hover:text-gold transition-colors">4) Garantia</span>
-                          <span className="text-xs text-muted block">Validação de que o que foi planejado está sendo executado.</span>
-                        </div>
-                      </label>
+                  {(selectedAction.fase_atual || 1) === 2 && (() => {
+                    const familiesToUse = actionFamilies.length > 0 ? actionFamilies : (selectedAction?.familias_detalhes || []);
+                    const totalFamilies = familiesToUse.length;
+                    
+                    const comunicacaoCount = familiesToUse.filter((f: any) => f.checklist_comunicacao).length;
+                    const logisticaCount = familiesToUse.filter((f: any) => f.checklist_logistica).length;
+                    const auditoriaCount = familiesToUse.filter((f: any) => f.checklist_auditoria).length;
+                    const conferenciaCount = familiesToUse.filter((f: any) => f.checklist_conferencia).length;
 
-                    </div>
-                  )}
+                    const pctComunicacao = totalFamilies > 0 ? Math.round((comunicacaoCount / totalFamilies) * 100) : 0;
+                    const pctLogistica = totalFamilies > 0 ? Math.round((logisticaCount / totalFamilies) * 100) : 0;
+                    const pctAuditoria = totalFamilies > 0 ? Math.round((auditoriaCount / totalFamilies) * 100) : 0;
+                    const pctConferencia = totalFamilies > 0 ? Math.round((conferenciaCount / totalFamilies) * 100) : 0;
+
+                    return (
+                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
+                        <span className="text-xs font-bold text-foreground">Checklist Comercial & Progresso (Ação Pai)</span>
+                        
+                        {/* Progresso das Famílias - Somente Leitura */}
+                        <div className="space-y-2 bg-background/50 p-2.5 rounded-lg border border-border/40 text-xs">
+                          <span className="text-[9px] uppercase font-bold text-muted block tracking-wider mb-1">
+                            Progresso Operacional das Famílias
+                          </span>
+                          
+                          {/* Comunicação */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between font-semibold">
+                              <span>📢 Comunicação</span>
+                              <span className="text-gold">{pctComunicacao}% ({comunicacaoCount}/{totalFamilies})</span>
+                            </div>
+                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctComunicacao}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Logística */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between font-semibold">
+                              <span>🚚 Logística</span>
+                              <span className="text-gold">{pctLogistica}% ({logisticaCount}/{totalFamilies})</span>
+                            </div>
+                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctLogistica}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Auditoria */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between font-semibold">
+                              <span>🔍 Auditoria</span>
+                              <span className="text-gold">{pctAuditoria}% ({auditoriaCount}/{totalFamilies})</span>
+                            </div>
+                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctAuditoria}%` }} />
+                            </div>
+                          </div>
+
+                          {/* Conferência */}
+                          <div className="space-y-1">
+                            <div className="flex justify-between font-semibold">
+                              <span>⚖️ Conferência Trade</span>
+                              <span className="text-gold">{pctConferencia}% ({conferenciaCount}/{totalFamilies})</span>
+                            </div>
+                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
+                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctConferencia}%` }} />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Checkboxes Comerciais Editáveis */}
+                        <div className="space-y-2 pt-1">
+                          <label className="flex items-start gap-3 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                              checked={selectedAction.checklist_garantia || false} 
+                              onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
+                            />
+                            <div>
+                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
+                              <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
+                            </div>
+                          </label>
+                          <label className="flex items-start gap-3 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                              checked={selectedAction.verba_aprovada || false} 
+                              onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
+                            />
+                            <div>
+                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
+                              <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
+                            </div>
+                          </label>
+                          <label className="flex items-start gap-3 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                              checked={selectedAction.contrato_assinado || false} 
+                              onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
+                            />
+                            <div>
+                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
+                              <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <div className="flex gap-2">
@@ -4520,18 +4798,10 @@ export default function InvestimentoPage() {
                           }
                         }}
                         disabled={actionLoading === selectedAction.id}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <AlertTriangle className="w-4 h-4" />}
                         Ação Não Aconteceu
-                      </button>
-                      <button
-                        onClick={() => handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, { ...tradeChecklist, conferencia: true }))}
-                        disabled={actionLoading === selectedAction.id || !allTradeChecked}
-                        className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border border-blue-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Shield className="w-4 h-4" />}
-                        Validado pelo Trade
                       </button>
                     </div>
                   )}
