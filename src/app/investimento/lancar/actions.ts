@@ -3160,6 +3160,21 @@ export async function validarFamiliaTrade(
     const statusAnterior = familyRecord.status;
     const statusNovo = aprovado ? "APROVADA" : "REPROVADA";
 
+    // Block approval if checklists are not complete
+    if (aprovado) {
+      if (
+        !familyRecord.checklist_comunicacao ||
+        !familyRecord.checklist_logistica ||
+        !familyRecord.checklist_auditoria ||
+        !familyRecord.checklist_conferencia
+      ) {
+        return errorResult(
+          ActionErrorCode.VALIDATION_ERROR,
+          "Não é possível aprovar a família sem que todos os checklists operacionais (Comunicação, Logística, Auditoria e Conferência) estejam concluídos."
+        );
+      }
+    }
+
     // 3. Update family record status
     const { error: updateErr } = await supabase
       .from("cm_investimento_familias")
@@ -3261,6 +3276,97 @@ export async function validarFamiliaTrade(
     return errorResult(
       ActionErrorCode.INTERNAL_ERROR,
       `Erro inesperado no servidor. Incident ID: ${requestId}.`,
+      requestId
+    );
+  }
+}
+
+export async function atualizarChecklistFamilia(
+  familyId: string,
+  fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia',
+  value: boolean
+): Promise<ActionResult<any>> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return errorResult(ActionErrorCode.UNAUTHORIZED, "Usuário não autenticado.");
+  }
+
+  try {
+    // 1. Fetch user role to secure authorization
+    const { data: profile } = await supabase
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const userRole = profile?.role || "";
+    const allowedRoles = ["Admin", "Trade", "CEO", "Financeiro", "Diretor"];
+    if (!allowedRoles.includes(userRole)) {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sem permissão para alterar o checklist da família.");
+    }
+
+    // 2. Update the specific checklist field
+    const { error: updateErr } = await supabase
+      .from("cm_investimento_familias")
+      .update({
+        [fieldName]: value,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", familyId);
+
+    if (updateErr) {
+      throw updateErr;
+    }
+
+    revalidatePath("/investimento");
+    return successResult({ familyId, fieldName, value });
+  } catch (err: any) {
+    const requestId = await logServerError("atualizarChecklistFamilia", { familyId, fieldName, value }, err);
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      `Erro ao atualizar checklist. Incident ID: ${requestId}.`,
+      requestId
+    );
+  }
+}
+
+export async function atualizarDocumentosFamilia(
+  familyId: string,
+  comprovanteUrl?: string | null,
+  evidenciasUrls?: string[] | null
+): Promise<ActionResult<any>> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return errorResult(ActionErrorCode.UNAUTHORIZED, "Usuário não autenticado.");
+  }
+
+  try {
+    const updateData: any = {};
+    if (comprovanteUrl !== undefined) updateData.comprovante_url = comprovanteUrl;
+    if (evidenciasUrls !== undefined) updateData.evidencias_urls = evidenciasUrls || [];
+
+    updateData.updated_at = new Date().toISOString();
+
+    const { error: updateErr } = await supabase
+      .from("cm_investimento_familias")
+      .update(updateData)
+      .eq("id", familyId);
+
+    if (updateErr) {
+      throw updateErr;
+    }
+
+    revalidatePath("/investimento");
+    return successResult({ familyId, ...updateData });
+  } catch (err: any) {
+    const requestId = await logServerError("atualizarDocumentosFamilia", { familyId, comprovanteUrl, evidenciasUrls }, err);
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      `Erro ao atualizar comprovantes. Incident ID: ${requestId}.`,
       requestId
     );
   }

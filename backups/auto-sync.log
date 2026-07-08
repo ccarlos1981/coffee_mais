@@ -252,3 +252,14 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
 To https://github.com/ccarlos1981/coffee_mais.git
    4363a65..edbcdda  main -> main
 [07/07/2026 22:49] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 9b33d62] auto-save: 08/07/2026 11:41
+ 12 files changed, 9292 insertions(+), 17 deletions(-)
+ create mode 100644 docs/PESQUISA_LIGHT.md
+ create mode 100644 scratch/find_tables.js
+ create mode 100644 src/app/api/audit-network/route.ts
+ create mode 100644 src/app/promotor/pesquisa-light/actions.ts
+ create mode 100644 src/app/promotor/pesquisa-light/page.tsx
+ create mode 100644 supabase/migrations/20260708_create_pesquisa_light.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   edbcdda..9b33d62  main -> main
+[08/07/2026 11:41] ✅ Alterações enviadas com sucesso para o GitHub.
