@@ -1,16 +1,39 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey);
+  return createSupabaseClient(supabaseUrl, supabaseKey);
 }
 
 export async function GET(request: Request) {
   try {
+    const supabaseServer = await createClient();
+    const { data: { user: authUser }, error: authError } = await supabaseServer.auth.getUser();
+
+    if (authError || !authUser) {
+      return NextResponse.json({ success: false, error: 'Não autenticado.' }, { status: 401 });
+    }
+
+    // Buscar Perfil do Usuário para controle de RLS e Roles
+    const { data: profile } = await supabaseServer
+      .from('cm_user_profiles')
+      .select('role, email')
+      .eq('id', authUser.id)
+      .single();
+
+    const userRole = profile?.role || 'Comercial';
+    const userEmail = profile?.email || authUser.email || '';
+    const emailPrefix = userEmail.split('@')[0].split('.')[0].toUpperCase(); // 'LEANDRO'
+
+    // Definir permissões de perfis
+    const isManagerOrComercial = !['CEO', 'Admin', 'Trade', 'Financeiro', 'Supervisor'].includes(userRole);
+
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query')?.trim() || '';
     const includeFaturamento = searchParams.get('include_faturamento') === 'true';
@@ -31,14 +54,10 @@ export async function GET(request: Request) {
     const isNumeric = /^\d+(\.\d+)?$/.test(query);
 
     if (isUUID) {
-      // 1. Prioridade network_id / UUID
       const { data: c } = await supabase.from('cm_clientes').select('*').eq('id', query);
       if (c) cmClientes = c;
     } else if (isNumeric) {
-      // 2. Prioridade matriz_id / codigo_integracao / codigo parceiro
       const numVal = parseInt(query, 10);
-      
-      // Query by numeric codes
       const { data: c } = await supabase
         .from('cm_clientes')
         .select('*')
@@ -57,7 +76,6 @@ export async function GET(request: Request) {
         .or(`codigo.eq.${query},codigo.eq.${numVal}.0`);
       if (rm) cmRedesMatrizes = rm;
 
-      // Try numeric matching on network_matrix id
       const { data: nm } = await supabase
         .from('network_matrix')
         .select('*')
@@ -65,7 +83,6 @@ export async function GET(request: Request) {
       if (nm) networkMatrix = nm;
     }
 
-    // Se não encontrou nada específico por ID/Código, ou não é UUID/Numérico, realiza busca por nome (ILIKE)
     if (cmClientes.length === 0 && baseAtendimento.length === 0 && cmRedesMatrizes.length === 0 && networkMatrix.length === 0) {
       const { data: c } = await supabase
         .from('cm_clientes')
@@ -99,10 +116,45 @@ export async function GET(request: Request) {
         data: {
           notFound: true,
           severity: '🔴 Crítico',
-          diagnosis: 'Rede inexistente no ecossistema.',
+          diagnosis: 'A rede não foi encontrada no cadastro mestre.',
           recommendations: 'Verifique se o nome, código ou ID digitado está correto. Caso o cliente seja novo, cadastre-o no portal de configuração de clientes.'
         }
       });
+    }
+
+    // CONTROLE DE ACESSO (RLS COMERCIAL / GERENTE):
+    // Se o usuário for Gerente ou Comercial, ele só pode auditar redes sob sua gerência direta.
+    if (isManagerOrComercial) {
+      const isOwner = cmClientes.some(c => {
+        const resp = (c.responsavel || '').toUpperCase();
+        return resp.includes(emailPrefix) || resp.includes(userEmail.toUpperCase());
+      }) || baseAtendimento.some(b => {
+        const resp = (b.responsavel || '').toUpperCase();
+        return resp.includes(emailPrefix) || resp.includes(userEmail.toUpperCase());
+      });
+
+      if (!isOwner && cmClientes.length > 0) {
+        try {
+          await supabase.from("cm_audit_logs").insert({
+            user_id: authUser.id,
+            action: 'AUDIT_NETWORK_RESTRICTED',
+            table_name: 'cm_clientes',
+            new_data: { query }
+          });
+        } catch (logErr) {
+          console.error('[Telemetry Audit Restricted]', logErr);
+        }
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            restricted: true,
+            severity: '🔴 Crítico',
+            diagnosis: 'Acesso restrito: rede sob responsabilidade de outro gerente.',
+            recommendations: 'Você não possui permissão de segurança para visualizar dados comerciais ou auditar redes de outros gerentes.'
+          }
+        });
+      }
     }
 
     // 2. Extração de Chaves de Relacionamento Consolidadas
@@ -124,7 +176,6 @@ export async function GET(request: Request) {
 
     const networkMatrixIds = Array.from(new Set([
       ...networkMatrix.map(nm => nm.id),
-      // cross-match with network_matrix by name
       ...(await (async () => {
         if (networkNames.length === 0) return [];
         const matches: string[] = networkNames.map(n => `network.ilike.%${n}%`);
@@ -140,7 +191,6 @@ export async function GET(request: Request) {
     const mainMatrizCode = matrizCodes[0] || (clientCodes[0] ? String(clientCodes[0]) : null);
 
     // 3. Consultas Complementares (Investimentos, Promotores, Faturamento)
-    // A. Investimentos
     let acoes: any[] = [];
     const acoesOrs: string[] = [];
     if (networkNames.length > 0) {
@@ -155,6 +205,14 @@ export async function GET(request: Request) {
         .select('*')
         .or(acoesOrs.join(','));
       if (acs) acoes = acs;
+    }
+
+    // SEGURANÇA: Filtrar investimentos apenas do gerente comercial logado
+    if (isManagerOrComercial) {
+      acoes = acoes.filter(a => {
+        const mgr = (a.gerente_responsavel || '').toUpperCase();
+        return mgr.includes(emailPrefix) || mgr.includes(userEmail.toUpperCase());
+      });
     }
 
     const acoesIds = acoes.map(a => a.id);
@@ -178,7 +236,6 @@ export async function GET(request: Request) {
     }
 
     // C. Promotores
-    // PDVs
     let pdvs: any[] = [];
     const pdvOrs: string[] = [];
     if (networkMatrixIds.length > 0) {
@@ -205,7 +262,7 @@ export async function GET(request: Request) {
       if (mList) metas = mList;
     }
 
-    // Visitas e Checkins
+    // Visitas
     let visitas: any[] = [];
     if (clientCodes.length > 0) {
       const { data: vList } = await supabase
@@ -215,9 +272,9 @@ export async function GET(request: Request) {
       if (vList) visitas = vList;
     }
 
-    // D. Faturamento (Assíncrono sob demanda)
+    // D. Faturamento (Assíncrono sob demanda + Bloqueio para Regional Manager)
     let faturamento: any[] = [];
-    if (includeFaturamento && networkNames.length > 0) {
+    if (includeFaturamento && !isManagerOrComercial && networkNames.length > 0) {
       const { data: fatList } = await supabase
         .from('mv_vendas_mensal')
         .select('*')
@@ -225,10 +282,10 @@ export async function GET(request: Request) {
       if (fatList) faturamento = fatList;
     }
 
-    // 4. Montar Timeline Cronológica da Rede
+    // 4. Montar Timeline Cronológica (Filtrada se Manager)
     const timeline: Array<{ date: string; title: string; desc: string; type: string }> = [];
 
-    // Criação do cadastro
+    // Cadastro Mestre (somente para trade/admin ou se for dono)
     cmClientes.forEach(c => {
       if (c.created_at) {
         timeline.push({
@@ -240,7 +297,7 @@ export async function GET(request: Request) {
       }
     });
 
-    // Lançamentos e aprovações de investimentos
+    // Lançamentos
     acoes.forEach(a => {
       if (a.created_at) {
         timeline.push({
@@ -266,41 +323,25 @@ export async function GET(request: Request) {
           type: 'investimento_conferido'
         });
       }
-      if (a.financeiro_pago_em) {
-        timeline.push({
-          date: a.financeiro_pago_em,
-          title: `Pagamento Efetuado (Cód. ${a.codigo})`,
-          desc: `Liquidação financeira registrada pelo usuário ${a.financeiro_pago_por || ''}.`,
-          type: 'investimento_pago'
-        });
-      }
     });
 
-    // Visitas
-    visitas.forEach(v => {
-      if (v.created_at) {
-        timeline.push({
-          date: v.created_at,
-          title: `Visita Programada`,
-          desc: `Rota de atendimento programada para o parceiro ${v.cod_parceiro}. Status: ${v.status || 'Pendente'}.`,
-          type: 'visita_programada'
-        });
-      }
-      if (v.checkin_servidor) {
-        timeline.push({
-          date: v.checkin_servidor,
-          title: `Check-in Realizado`,
-          desc: `Promotor efetuou check-in presencial no ponto de venda (Distância: ${v.distancia_checkin_metros || 0}m).`,
-          type: 'checkin_realizado'
-        });
-      }
-    });
+    // Visitas (somente se não comercial para evitar vazamento operacional profundo de rotas)
+    if (!isManagerOrComercial) {
+      visitas.forEach(v => {
+        if (v.checkin_servidor) {
+          timeline.push({
+            date: v.checkin_servidor,
+            title: `Check-in Realizado`,
+            desc: `Promotor efetuou check-in presencial no ponto de venda (Distância: ${v.distancia_checkin_metros || 0}m).`,
+            type: 'checkin_realizado'
+          });
+        }
+      });
+    }
 
-    // Ordenar timeline cronologicamente
     timeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     // 5. Cálculo dos Scores
-    // A. Health Score (Saúde de Dados - Max 100%)
     let hsCadastro = 0;
     if (cmClientes.length > 0) {
       const active = cmClientes.some(c => c.status === 'ativo');
@@ -311,7 +352,6 @@ export async function GET(request: Request) {
     if (baseAtendimento.length > 0) hsCadastro += 10;
     if (cmRedesMatrizes.length > 0) hsCadastro += 10;
     if (networkMatrix.length > 0) hsCadastro += 10;
-    // Normalize to 20%
     const scoreCadastroMestre = Math.min(hsCadastro, 20);
 
     const scoreInvestimentos = acoes.length > 0 ? 20 : 0;
@@ -321,7 +361,7 @@ export async function GET(request: Request) {
 
     const healthScore = scoreCadastroMestre + scoreInvestimentos + scoreFaturamento + scorePromotores + scorePDVs;
 
-    // B. Score Operacional (Prontidão / Execução - Max 100%)
+    // Operational Score
     let opDadosMestres = 0;
     if (cmClientes.length > 0) {
       const completedPhase = cmClientes.some(c => c.fase === 'concluido');
@@ -361,38 +401,46 @@ export async function GET(request: Request) {
 
     const scoreOperacional = Math.min(opDadosMestres, 20) + Math.min(opInvestimentos, 20) + Math.min(opTrade, 20) + Math.min(opPromotores, 20) + Math.min(opFaturamento, 20);
 
-    // 6. Diagnóstico e Severidade
+    // Diagnóstico
     let severity = '🟢 Informativo';
-    let diagnosis = 'A rede não desapareceu.';
-    let recommendations = 'A rede está ativa e totalmente visível sob os filtros atuais.';
+    let diagnosis = 'A rede está visível e operacional.';
+    let recommendations = 'A rede está ativa e visível sob os filtros atuais.';
 
     const clientActive = cmClientes.some(c => c.status === 'ativo');
     const clientIncomplete = cmClientes.some(c => c.fase === 'comercial' && !c.cnpj);
 
     if (cmClientes.length === 0) {
       severity = '🔴 Crítico';
-      diagnosis = 'Inconsistência cadastral (Cadastro inexistente).';
-      recommendations = 'A rede não possui registro ativo na tabela principal de Clientes. Crie o cadastro mestre na tela de Configuração Financeira.';
+      diagnosis = 'A rede não foi encontrada no cadastro mestre.';
+      recommendations = 'A rede não possui cadastro ativo. Crie o cadastro mestre na tela de Configuração Financeira.';
     } else if (clientIncomplete) {
       severity = '🟠 Alerta';
-      diagnosis = 'Cadastro incompleto.';
-      recommendations = 'A rede está travada na fase Comercial por ausência de CNPJ. Insira o CNPJ correspondente e conclua a fase comercial para liberar o fluxo.';
+      diagnosis = 'A rede possui inconsistências cadastrais.';
+      recommendations = 'Falta CNPJ no cadastro mestre Comercial. Insira o CNPJ para liberar.';
     } else if (acoes.length === 0) {
-      severity = '🟡 Atenção';
-      diagnosis = 'A rede não possui investimentos cadastrados.';
-      recommendations = 'Nenhuma ação de investimento foi lançada para esta rede até o momento. Utilize o formulário de Lançamento para criar novas ações.';
-    } else if (pdvs.length === 0) {
-      severity = '🟡 Atenção';
-      diagnosis = 'A rede não possui PDVs cadastrados.';
-      recommendations = 'Nenhuma loja física desta rede está cadastrada no sistema. Importe as filiais via planilha ou pelo cadastro individual de PDVs.';
+      severity = '🟠 Alerta';
+      diagnosis = 'A rede existe, porém ainda não possui investimentos cadastrados.';
+      recommendations = 'Nenhuma ação de investimento foi criada.';
     }
 
-    // Retorna os dados organizados
+
+    try {
+      await supabase.from("cm_audit_logs").insert({
+        user_id: authUser.id,
+        action: 'AUDIT_NETWORK',
+        table_name: 'cm_clientes',
+        new_data: { query, diagnosis, severity }
+      });
+    } catch (logErr) {
+      console.error('[Telemetry Audit]', logErr);
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         rede: mainNetworkName,
         codigo: mainMatrizCode,
+        isManagerOrComercial,
         cadastro: {
           cm_clientes: cmClientes,
           base_atendimento: baseAtendimento,

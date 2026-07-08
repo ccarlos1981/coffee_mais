@@ -23,6 +23,33 @@ function parseVolume(str: string | null): number | null {
   return isNaN(num) ? null : num;
 }
 
+async function logServerError(functionName: string, payload: any, error: any): Promise<string> {
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  let userEmail = "anonymous";
+  let userId = "anonymous";
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      userEmail = user.email || "unknown";
+      userId = user.id;
+    }
+  } catch (_) {}
+
+  console.error("STRUCTURED_SERVER_ERROR:", JSON.stringify({
+    timestamp: new Date().toISOString(),
+    requestId,
+    functionName,
+    userId,
+    userEmail,
+    payload,
+    errorMessage: error?.message || String(error),
+    errorStack: error?.stack || null
+  }, null, 2));
+
+  return requestId;
+}
+
 async function avaliarAlertasAcaoInvestimento(
   supabase: any,
   abrangencia: string,
@@ -168,375 +195,389 @@ async function avaliarAlertasAcaoInvestimento(
 
 // ─── Fase 1: Criar / Editar Ação (Comercial) ───────────────────────────
 
-export async function criarAcaoInvestimento(formData: FormData) {
-  const supabase = await createClient();
-
+export async function criarAcaoInvestimento(formData: FormData): Promise<ActionResult<any>> {
   const rede = formData.get("rede") as string;
-  const codigo_matriz = formData.get("codigo_matriz") as string;
-  const data_inicio = formData.get("data_inicio") as string;
-  const data_fim = formData.get("data_fim") as string;
-  const tipo_acao = formData.get("tipo_acao") as string;
-  const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
-  const mes_referencia = formData.get("mes_referencia") as string;
-  const date_mode = (formData.get("date_mode") as string) || "single";
-  
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
+  const data_inicio = formData.get("data_inicio") as string;
   
-  // Parse familias_detalhes (multi-family JSONB)
-  let familias_detalhes: any = [];
-  const fam_str = formData.get("familias_detalhes") as string;
-  if (fam_str) {
-    try {
-      familias_detalhes = JSON.parse(fam_str);
-    } catch(e) {}
-  }
+  try {
+    const supabase = await createClient();
 
-  // Parse skus_detalhes (multi-SKU JSONB)
-  let skus_detalhes: any = [];
-  const skus_str = formData.get("skus_detalhes") as string;
-  if (skus_str) {
-    try {
-      skus_detalhes = JSON.parse(skus_str);
-    } catch(e) {}
-  }
+    const codigo_matriz = formData.get("codigo_matriz") as string;
+    const data_fim = formData.get("data_fim") as string;
+    const tipo_acao = formData.get("tipo_acao") as string;
+    const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
+    const mes_referencia = formData.get("mes_referencia") as string;
+    const date_mode = (formData.get("date_mode") as string) || "single";
+    const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
+    
+    // Parse familias_detalhes (multi-family JSONB)
+    let familias_detalhes: any = [];
+    const fam_str = formData.get("familias_detalhes") as string;
+    if (fam_str) {
+      try {
+        familias_detalhes = JSON.parse(fam_str);
+      } catch(e) {}
+    }
 
+    // Parse skus_detalhes (multi-SKU JSONB)
+    let skus_detalhes: any = [];
+    const skus_str = formData.get("skus_detalhes") as string;
+    if (skus_str) {
+      try {
+        skus_detalhes = JSON.parse(skus_str);
+      } catch(e) {}
+    }
 
+    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+    }
 
-  if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-    throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
-  }
+    if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma família ou um SKU deve ser selecionado.");
+    }
 
-  if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
-    throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
-  }
+    let calculated_data_inicio = data_inicio;
+    let calculated_data_fim = data_fim;
 
-  let calculated_data_inicio = data_inicio;
-  let calculated_data_fim = data_fim;
+    if (date_mode === "multiple") {
+      const dates: string[] = [];
+      if (familias_detalhes && familias_detalhes.length > 0) {
+        for (const f of familias_detalhes) {
+          if (!f.start_date || !f.end_date) {
+            return errorResult(ActionErrorCode.VALIDATION_ERROR, `A família ${f.familia_nome} precisa ter Data Início e Data Fim definidas.`);
+          }
+          dates.push(f.start_date, f.end_date);
+        }
+      }
+      if (skus_detalhes && skus_detalhes.length > 0) {
+        for (const s of skus_detalhes) {
+          if (!s.start_date || !s.end_date) {
+            return errorResult(ActionErrorCode.VALIDATION_ERROR, `O SKU ${s.sku} precisa ter Data Início e Data Fim definidas.`);
+          }
+          dates.push(s.start_date, s.end_date);
+        }
+      }
+      if (dates.length > 0) {
+        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
+        calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
+        calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+      } else {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
+      }
+    } else {
+      // Replicate global dates to details JSONB
+      if (familias_detalhes && familias_detalhes.length > 0) {
+        familias_detalhes = familias_detalhes.map((f: any) => ({
+          ...f,
+          start_date: data_inicio,
+          end_date: data_fim
+        }));
+      }
+      if (skus_detalhes && skus_detalhes.length > 0) {
+        skus_detalhes = skus_detalhes.map((s: any) => ({
+          ...s,
+          start_date: data_inicio,
+          end_date: data_fim
+        }));
+      }
+    }
 
-  if (date_mode === "multiple") {
-    const dates: string[] = [];
+    // Financial validations for families
     if (familias_detalhes && familias_detalhes.length > 0) {
       for (const f of familias_detalhes) {
-        if (!f.start_date || !f.end_date) {
-          throw new Error(`A família ${f.familia_nome} precisa ter Data Início e Data Fim definidas.`);
+        if (f.preco_acao && f.preco_flat && Number(f.preco_acao) > Number(f.preco_flat)) {
+          return errorResult(ActionErrorCode.VALIDATION_ERROR, `Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
         }
-        dates.push(f.start_date, f.end_date);
+        if (f.investimento_manual) {
+          const { data: { user } } = await supabase.auth.getUser();
+          f.investimento_override_by = user?.id || null;
+        }
       }
     }
+
+    // Financial validations for SKUs
     if (skus_detalhes && skus_detalhes.length > 0) {
       for (const s of skus_detalhes) {
-        if (!s.start_date || !s.end_date) {
-          throw new Error(`O SKU ${s.sku} precisa ter Data Início e Data Fim definidas.`);
+        if (s.preco_acao && s.preco_flat && Number(s.preco_acao) > Number(s.preco_flat)) {
+          return errorResult(ActionErrorCode.VALIDATION_ERROR, `SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
         }
-        dates.push(s.start_date, s.end_date);
+        if (s.investimento_manual) {
+          const { data: { user } } = await supabase.auth.getUser();
+          s.investimento_override_by = user?.id || null;
+        }
       }
     }
-    if (dates.length > 0) {
-      const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
-      calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
-      calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
-    } else {
-      throw new Error("Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
-    }
-  } else {
-    // Replicate global dates to details JSONB
-    if (familias_detalhes && familias_detalhes.length > 0) {
-      familias_detalhes = familias_detalhes.map((f: any) => ({
-        ...f,
-        start_date: data_inicio,
-        end_date: data_fim
-      }));
-    }
-    if (skus_detalhes && skus_detalhes.length > 0) {
-      skus_detalhes = skus_detalhes.map((s: any) => ({
-        ...s,
-        start_date: data_inicio,
-        end_date: data_fim
-      }));
-    }
-  }
 
-  // Financial validations for families
-  if (familias_detalhes && familias_detalhes.length > 0) {
-    for (const f of familias_detalhes) {
-      if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
-        throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
-      }
-      if (f.investimento_manual) {
-        const { data: { user } } = await supabase.auth.getUser();
-        f.investimento_override_by = user?.id || null;
-      }
-    }
-  }
-
-  // Financial validations for SKUs
-  if (skus_detalhes && skus_detalhes.length > 0) {
-    for (const s of skus_detalhes) {
-      if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
-        throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
-      }
-      if (s.investimento_manual) {
-        const { data: { user } } = await supabase.auth.getUser();
-        s.investimento_override_by = user?.id || null;
-      }
-    }
-  }
-
-  // Calculate consolidated fields using shared helper
-  const {
-    familia_produto,
-    preco_flat,
-    preco_acao,
-    valor_investimento,
-    expectativa_volume
-  } = calcularCamposConsolidadosInvestimento(
-    familias_detalhes,
-    skus_detalhes,
-    formData.get("familia_produto") as string
-  );
-
-  const is_planejamento = formData.get("is_planejamento") === "true";
-
-  // Evaluate alerts
-  const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
-    supabase,
-    abrangencia,
-    familias_detalhes,
-    skus_detalhes,
-    rede,
-    codigo_matriz
-  );
-
-  const { error } = await supabase.from("cm_acoes_investimento").insert([
-    {
-      rede,
-      codigo_matriz: codigo_matriz || null,
-      data_inicio: calculated_data_inicio,
-      data_fim: calculated_data_fim,
-      date_mode,
-      tipo_acao,
-      tipo_acao_detalhe,
+    // Calculate consolidated fields using shared helper
+    const {
       familia_produto,
-      familias_detalhes,
       preco_flat,
       preco_acao,
       valor_investimento,
-      expectativa_volume,
-      abrangencia,
-      tipo_pagamento,
+      expectativa_volume
+    } = calcularCamposConsolidadosInvestimento(
+      familias_detalhes,
       skus_detalhes,
-      mes_referencia,
-      fase_atual: 1,
-      is_planejamento,
-      alertas_preventivos
+      formData.get("familia_produto") as string
+    );
+
+    const is_planejamento = formData.get("is_planejamento") === "true";
+
+    // Evaluate alerts
+    const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
+      supabase,
+      abrangencia,
+      familias_detalhes,
+      skus_detalhes,
+      rede,
+      codigo_matriz
+    );
+
+    const { error } = await supabase.from("cm_acoes_investimento").insert([
+      {
+        rede,
+        codigo_matriz: codigo_matriz || null,
+        data_inicio: calculated_data_inicio,
+        data_fim: calculated_data_fim,
+        date_mode,
+        tipo_acao,
+        tipo_acao_detalhe,
+        familia_produto,
+        familias_detalhes,
+        preco_flat,
+        preco_acao,
+        valor_investimento,
+        expectativa_volume,
+        abrangencia,
+        tipo_pagamento,
+        skus_detalhes,
+        mes_referencia,
+        fase_atual: 1,
+        is_planejamento,
+        alertas_preventivos
+      }
+    ]);
+
+    if (error) {
+      console.error("Erro ao inserir ação de investimento:", error);
+      throw error;
     }
-  ]);
 
-  if (error) {
-    console.error("Erro ao inserir ação de investimento:", error);
-    throw new Error("Falha ao salvar investimento.");
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+    return successResult({ is_planejamento });
+  } catch (err: any) {
+    const requestId = await logServerError("criarAcaoInvestimento", { rede, abrangencia, data_inicio }, err);
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      `Erro inesperado no servidor. Incident ID: ${requestId}.`,
+      requestId
+    );
   }
-
-  revalidatePath("/investimento");
-  revalidatePath("/investimento/planejamento");
-  return { success: true, is_planejamento };
 }
 
-export async function atualizarAcaoInvestimento(id: string, formData: FormData) {
-  const supabase = await createClient();
-
+export async function atualizarAcaoInvestimento(id: string, formData: FormData): Promise<ActionResult<any>> {
   const rede = formData.get("rede") as string;
-  const codigo_matriz = formData.get("codigo_matriz") as string;
-  const data_inicio = formData.get("data_inicio") as string;
-  const data_fim = formData.get("data_fim") as string;
-  const tipo_acao = formData.get("tipo_acao") as string;
-  const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
-  const mes_referencia = formData.get("mes_referencia") as string;
-  const date_mode = (formData.get("date_mode") as string) || "single";
-  
   const abrangencia = formData.get("abrangencia") as string || "Família";
-  const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
+  const data_inicio = formData.get("data_inicio") as string;
   
-  // Parse familias_detalhes (multi-family JSONB)
-  let familias_detalhes: any = [];
-  const fam_str = formData.get("familias_detalhes") as string;
-  if (fam_str) {
-    try {
-      familias_detalhes = JSON.parse(fam_str);
-    } catch(e) {}
-  }
+  try {
+    const supabase = await createClient();
 
-  // Parse skus_detalhes (multi-SKU JSONB)
-  let skus_detalhes: any = [];
-  const skus_str = formData.get("skus_detalhes") as string;
-  if (skus_str) {
-    try {
-      skus_detalhes = JSON.parse(skus_str);
-    } catch(e) {}
-  }
+    const codigo_matriz = formData.get("codigo_matriz") as string;
+    const data_fim = formData.get("data_fim") as string;
+    const tipo_acao = formData.get("tipo_acao") as string;
+    const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
+    const mes_referencia = formData.get("mes_referencia") as string;
+    const date_mode = (formData.get("date_mode") as string) || "single";
+    const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
+    
+    // Parse familias_detalhes (multi-family JSONB)
+    let familias_detalhes: any = [];
+    const fam_str = formData.get("familias_detalhes") as string;
+    if (fam_str) {
+      try {
+        familias_detalhes = JSON.parse(fam_str);
+      } catch(e) {}
+    }
 
+    // Parse skus_detalhes (multi-SKU JSONB)
+    let skus_detalhes: any = [];
+    const skus_str = formData.get("skus_detalhes") as string;
+    if (skus_str) {
+      try {
+        skus_detalhes = JSON.parse(skus_str);
+      } catch(e) {}
+    }
 
+    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+    }
 
-  if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-    throw new Error("Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
-  }
+    if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma família ou um SKU deve ser selecionado.");
+    }
 
-  if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
-    throw new Error("Ao menos uma família ou um SKU deve ser selecionado.");
-  }
+    let calculated_data_inicio = data_inicio;
+    let calculated_data_fim = data_fim;
 
-  let calculated_data_inicio = data_inicio;
-  let calculated_data_fim = data_fim;
+    if (date_mode === "multiple") {
+      const dates: string[] = [];
+      if (familias_detalhes && familias_detalhes.length > 0) {
+        for (const f of familias_detalhes) {
+          if (!f.start_date || !f.end_date) {
+            return errorResult(ActionErrorCode.VALIDATION_ERROR, "Cada família selecionada no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+          }
+          dates.push(f.start_date, f.end_date);
+        }
+      }
+      if (skus_detalhes && skus_detalhes.length > 0) {
+        for (const s of skus_detalhes) {
+          if (!s.start_date || !s.end_date) {
+            return errorResult(ActionErrorCode.VALIDATION_ERROR, "Cada SKU selecionado no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+          }
+          dates.push(s.start_date, s.end_date);
+        }
+      }
+      if (dates.length > 0) {
+        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
+        calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
+        calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+      } else {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
+      }
+    } else {
+      // Replicate global dates to details JSONB
+      if (familias_detalhes && familias_detalhes.length > 0) {
+        familias_detalhes = familias_detalhes.map((f: any) => ({
+          ...f,
+          start_date: data_inicio,
+          end_date: data_fim
+        }));
+      }
+      if (skus_detalhes && skus_detalhes.length > 0) {
+        skus_detalhes = skus_detalhes.map((s: any) => ({
+          ...s,
+          start_date: data_inicio,
+          end_date: data_fim
+        }));
+      }
+    }
 
-  if (date_mode === "multiple") {
-    const dates: string[] = [];
+    // Financial validations for families
     if (familias_detalhes && familias_detalhes.length > 0) {
       for (const f of familias_detalhes) {
-        if (!f.start_date || !f.end_date) {
-          throw new Error("Cada família selecionada no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+        if (f.preco_acao && f.preco_flat && Number(f.preco_acao) > Number(f.preco_flat)) {
+          return errorResult(ActionErrorCode.VALIDATION_ERROR, `Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
         }
-        dates.push(f.start_date, f.end_date);
+        if (f.investimento_manual) {
+          const { data: { user } } = await supabase.auth.getUser();
+          f.investimento_override_by = user?.id || null;
+        }
       }
     }
+
+    // Financial validations for SKUs
     if (skus_detalhes && skus_detalhes.length > 0) {
       for (const s of skus_detalhes) {
-        if (!s.start_date || !s.end_date) {
-          throw new Error("Cada SKU selecionado no modo Múltiplas Datas precisa ter Data Início e Data Fim definidas.");
+        if (s.preco_acao && s.preco_flat && Number(s.preco_acao) > Number(s.preco_flat)) {
+          return errorResult(ActionErrorCode.VALIDATION_ERROR, `SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
         }
-        dates.push(s.start_date, s.end_date);
+        if (s.investimento_manual) {
+          const { data: { user } } = await supabase.auth.getUser();
+          s.investimento_override_by = user?.id || null;
+        }
       }
     }
-    if (dates.length > 0) {
-      const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
-      calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
-      calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
-    } else {
-      throw new Error("Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
-    }
-  } else {
-    // Replicate global dates to details JSONB
-    if (familias_detalhes && familias_detalhes.length > 0) {
-      familias_detalhes = familias_detalhes.map((f: any) => ({
-        ...f,
-        start_date: data_inicio,
-        end_date: data_fim
-      }));
-    }
-    if (skus_detalhes && skus_detalhes.length > 0) {
-      skus_detalhes = skus_detalhes.map((s: any) => ({
-        ...s,
-        start_date: data_inicio,
-        end_date: data_fim
-      }));
-    }
-  }
 
-  // Financial validations for families
-  if (familias_detalhes && familias_detalhes.length > 0) {
-    for (const f of familias_detalhes) {
-      if (f.preco_acao && f.preco_flat && f.preco_acao > f.preco_flat) {
-        throw new Error(`Família ${f.familia_nome}: Preço Ação (${f.preco_acao}) não pode ser maior que Preço Flat (${f.preco_flat}).`);
-      }
-      if (f.investimento_manual) {
-        const { data: { user } } = await supabase.auth.getUser();
-        f.investimento_override_by = user?.id || null;
-      }
-    }
-  }
+    const is_planejamento = formData.get("is_planejamento") === "true";
 
-  // Financial validations for SKUs
-  if (skus_detalhes && skus_detalhes.length > 0) {
-    for (const s of skus_detalhes) {
-      if (s.preco_acao && s.preco_flat && s.preco_acao > s.preco_flat) {
-        throw new Error(`SKU ${s.sku}: Preço Ação (${s.preco_acao}) não pode ser maior que Preço Flat (${s.preco_flat}).`);
-      }
-      if (s.investimento_manual) {
-        const { data: { user } } = await supabase.auth.getUser();
-        s.investimento_override_by = user?.id || null;
-      }
-    }
-  }
-
-  const is_planejamento = formData.get("is_planejamento") === "true";
-
-  // Check lock by status (fase_atual >= 5)
-  const { data: currentAction } = await supabase
-    .from("cm_acoes_investimento")
-    .select("fase_atual")
-    .eq("id", id)
-    .single();
-
-  if (currentAction && (currentAction.fase_atual || 1) >= 5) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Não autorizado.");
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
+    // Check lock by status (fase_atual >= 5)
+    const { data: currentAction } = await supabase
+      .from("cm_acoes_investimento")
+      .select("fase_atual")
+      .eq("id", id)
       .single();
-    const roleLower = profile?.role?.toLowerCase();
-    if (roleLower !== "admin" && roleLower !== "ceo" && roleLower !== "diretor") {
-      throw new Error("Esta ação está aprovada e bloqueada para edição. Somente diretores, CEO ou Admin podem reabrir ou alterar.");
+
+    if (currentAction && (currentAction.fase_atual || 1) >= 5) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return errorResult(ActionErrorCode.UNAUTHORIZED, "Não autorizado.");
+      const { data: profile } = await supabase
+        .from("cm_user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      const roleLower = profile?.role?.toLowerCase();
+      if (roleLower !== "admin" && roleLower !== "ceo" && roleLower !== "diretor") {
+        return errorResult(ActionErrorCode.BUSINESS_RULE_VIOLATION, "Esta ação está aprovada e bloqueada para edição. Somente diretores, CEO ou Admin podem reabrir ou alterar.");
+      }
     }
-  }
 
-  // Calculate consolidated fields using shared helper
-  const {
-    familia_produto,
-    preco_flat,
-    preco_acao,
-    valor_investimento,
-    expectativa_volume
-  } = calcularCamposConsolidadosInvestimento(
-    familias_detalhes,
-    skus_detalhes,
-    formData.get("familia_produto") as string
-  );
-
-  // Evaluate alerts
-  const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
-    supabase,
-    abrangencia,
-    familias_detalhes,
-    skus_detalhes,
-    rede,
-    codigo_matriz
-  );
-
-  const { error } = await supabase
-    .from("cm_acoes_investimento")
-    .update({
-      rede,
-      codigo_matriz: codigo_matriz || null,
-      data_inicio: calculated_data_inicio,
-      data_fim: calculated_data_fim,
-      date_mode,
-      tipo_acao,
-      tipo_acao_detalhe,
+    // Calculate consolidated fields using shared helper
+    const {
       familia_produto,
-      familias_detalhes,
       preco_flat,
       preco_acao,
       valor_investimento,
-      expectativa_volume,
-      abrangencia,
-      tipo_pagamento,
+      expectativa_volume
+    } = calcularCamposConsolidadosInvestimento(
+      familias_detalhes,
       skus_detalhes,
-      mes_referencia,
-      is_planejamento,
-      alertas_preventivos
-    })
-    .eq("id", id);
+      formData.get("familia_produto") as string
+    );
 
-  if (error) {
-    console.error("Erro ao atualizar ação de investimento:", error);
-    throw new Error("Falha ao atualizar investimento.");
+    // Evaluate alerts
+    const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
+      supabase,
+      abrangencia,
+      familias_detalhes,
+      skus_detalhes,
+      rede,
+      codigo_matriz
+    );
+
+    const { error } = await supabase
+      .from("cm_acoes_investimento")
+      .update({
+        rede,
+        codigo_matriz: codigo_matriz || null,
+        data_inicio: calculated_data_inicio,
+        data_fim: calculated_data_fim,
+        date_mode,
+        tipo_acao,
+        tipo_acao_detalhe,
+        familia_produto,
+        familias_detalhes,
+        preco_flat,
+        preco_acao,
+        valor_investimento,
+        expectativa_volume,
+        abrangencia,
+        tipo_pagamento,
+        skus_detalhes,
+        mes_referencia,
+        is_planejamento,
+        alertas_preventivos
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Erro ao atualizar ação de investimento:", error);
+      throw error;
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+    return successResult({ is_planejamento });
+  } catch (err: any) {
+    const requestId = await logServerError("atualizarAcaoInvestimento", { id, rede, abrangencia, data_inicio }, err);
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      `Erro inesperado no servidor. Incident ID: ${requestId}.`,
+      requestId
+    );
   }
-
-  revalidatePath("/investimento");
-  revalidatePath("/investimento/planejamento");
-  return { success: true, is_planejamento };
 }
 
 // ─── Fase 2: Validação pelo Trade ───────────────────────────────────────
@@ -3074,5 +3115,153 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
   } catch (err: any) {
     console.error("Erro ao gerar planilha inteligente:", err);
     return { success: false, error: err.message };
+  }
+}
+
+export async function validarFamiliaTrade(
+  investimentoId: string,
+  familiaId: string,
+  aprovado: boolean,
+  observacao?: string
+): Promise<ActionResult<any>> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return errorResult(ActionErrorCode.UNAUTHORIZED, "Usuário não autenticado.");
+  }
+
+  try {
+    // 1. Fetch user role to secure authorization
+    const { data: profile } = await supabase
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const userRole = profile?.role || "";
+    const allowedRoles = ["Admin", "Trade", "CEO", "Financeiro", "Diretor"];
+    if (!allowedRoles.includes(userRole)) {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Apenas usuários do Trade ou Administradores podem validar famílias.");
+    }
+
+    // 2. Fetch target family record
+    const { data: familyRecord, error: fetchErr } = await supabase
+      .from("cm_investimento_familias")
+      .select("*")
+      .eq("investimento_id", investimentoId)
+      .eq("familia_id", familiaId)
+      .single();
+
+    if (fetchErr || !familyRecord) {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Família de produto não encontrada para este investimento.");
+    }
+
+    const statusAnterior = familyRecord.status;
+    const statusNovo = aprovado ? "APROVADA" : "REPROVADA";
+
+    // 3. Update family record status
+    const { error: updateErr } = await supabase
+      .from("cm_investimento_familias")
+      .update({
+        status: statusNovo,
+        aprovado_por: user.email,
+        aprovado_em: new Date().toISOString(),
+        observacao_trade: observacao || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq("id", familyRecord.id);
+
+    if (updateErr) {
+      throw updateErr;
+    }
+
+    // 4. Log audit log: APROVACAO_FAMILIA or REPROVACAO_FAMILIA in cm_investimento_familias_history
+    const { error: histErr } = await supabase
+      .from("cm_investimento_familias_history")
+      .insert({
+        familia_id: familyRecord.id,
+        status_anterior: statusAnterior,
+        status_novo: statusNovo,
+        usuario: user.email || "unknown",
+        observacao: observacao || (aprovado ? "Família aprovada pelo Trade" : "Família reprovada pelo Trade")
+      });
+
+    if (histErr) {
+      console.error("Erro ao inserir histórico da família:", histErr);
+    }
+
+    // Also log in parent level cm_audit_logs for audit consistency
+    try {
+      await supabase.from("cm_audit_logs").insert({
+        user_id: user.id,
+        action: aprovado ? "APROVACAO_FAMILIA" : "REPROVACAO_FAMILIA",
+        table_name: "cm_investimento_familias",
+        new_data: {
+          investimento_id: investimentoId,
+          familia: familyRecord.familia,
+          familia_id: familiaId,
+          observacao,
+          valor: familyRecord.valor_investimento
+        }
+      });
+    } catch (auditErr) {
+      console.error("Erro ao registrar log de auditoria global:", auditErr);
+    }
+
+    // 5. Fetch all families for this action to calculate the consolidated status
+    const { data: allFamilies, error: allErr } = await supabase
+      .from("cm_investimento_familias")
+      .select("*")
+      .eq("investimento_id", investimentoId);
+
+    if (allErr || !allFamilies) {
+      return errorResult(ActionErrorCode.INTERNAL_ERROR, "Erro ao recuperar famílias vinculadas.");
+    }
+
+    // Calculate consolidated status
+    const statuses = allFamilies.map(f => f.status);
+    const hasPending = statuses.some(s => s === "PENDENTE");
+    const allApproved = statuses.every(s => s === "APROVADA");
+    const allReproved = statuses.every(s => s === "REPROVADA");
+
+    let nextFase = 2; // Default is phase 2 (Em Validação / Trade)
+    if (allApproved) {
+      nextFase = 3; // All approved → Validated (Phase 3 - apuração)
+    } else if (allReproved) {
+      nextFase = 1; // All reproved → Rascunho/Planejamento (Phase 1)
+    } else if (!hasPending) {
+      // Mixture of approved and reproved, and no pending remaining
+      nextFase = 2;
+    }
+
+    // Update parent action phase
+    const { error: parentUpdateErr } = await supabase
+      .from("cm_acoes_investimento")
+      .update({
+        fase_atual: nextFase,
+        ...(allApproved ? {
+          trade_validado_em: new Date().toISOString(),
+          trade_validado_por: user.email || "unknown"
+        } : {})
+      })
+      .eq("id", investimentoId);
+
+    if (parentUpdateErr) {
+      throw parentUpdateErr;
+    }
+
+    revalidatePath("/investimento");
+    return successResult({
+      status: statusNovo,
+      consolidatedStatus: allApproved ? "APROVADO" : allReproved ? "REPROVADO" : hasPending ? "EM VALIDAÇÃO" : "PARCIALMENTE APROVADO"
+    });
+  } catch (err: any) {
+    const requestId = await logServerError("validarFamiliaTrade", { investimentoId, familiaId, aprovado }, err);
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      `Erro inesperado no servidor. Incident ID: ${requestId}.`,
+      requestId
+    );
   }
 }
