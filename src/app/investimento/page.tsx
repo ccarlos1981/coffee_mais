@@ -244,6 +244,17 @@ export default function InvestimentoPage() {
   const [filterFamilia, setFilterFamilia] = useState("");
   const [filterDataInicio, setFilterDataInicio] = useState("");
   const [filterDataFim, setFilterDataFim] = useState("");
+  const [filterGerente, setFilterGerente] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+
+  // Audit Network Modal States
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditResult, setAuditResult] = useState<any>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+  const [isAuditFaturamentoExpanded, setIsAuditFaturamentoExpanded] = useState(false);
+  const [auditFaturamentoLoading, setAuditFaturamentoLoading] = useState(false);
   const [page, setPage] = useState(0);
   const itemsPerPage = 50;
   const [showFilters, setShowFilters] = useState(false);
@@ -331,6 +342,62 @@ export default function InvestimentoPage() {
       setExecutionScore("");
     }
   }, [selectedAction?.id]);
+
+  const handleAuditSearch = async (targetQuery: string) => {
+    if (!targetQuery.trim()) return;
+    setAuditLoading(true);
+    setAuditError(null);
+    setAuditResult(null);
+    setIsAuditFaturamentoExpanded(false);
+    try {
+      const res = await fetch(`/api/audit-network?query=${encodeURIComponent(targetQuery)}`);
+      const json = await res.json();
+      if (json.success) {
+        setAuditResult(json.data);
+      } else {
+        setAuditError(json.error || 'Erro ao carregar auditoria.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setAuditError(err.message || 'Erro de rede ao buscar auditoria.');
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  const handleExpandAuditFaturamento = async () => {
+    if (isAuditFaturamentoExpanded || !auditResult?.rede) return;
+    setIsAuditFaturamentoExpanded(true);
+    setAuditFaturamentoLoading(true);
+    try {
+      const res = await fetch(`/api/audit-network?query=${encodeURIComponent(auditResult.rede)}&include_faturamento=true`);
+      const json = await res.json();
+      if (json.success && json.data?.faturamento) {
+        setAuditResult((prev: any) => ({
+          ...prev,
+          faturamento: json.data.faturamento
+        }));
+      }
+    } catch (err) {
+      console.error('Erro ao buscar faturamento da auditoria:', err);
+    } finally {
+      setAuditFaturamentoLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuditModalOpen) {
+      if (filterRede) {
+        setAuditQuery(filterRede);
+        handleAuditSearch(filterRede);
+      } else {
+        setAuditQuery("");
+        setAuditResult(null);
+        setAuditError(null);
+        setIsAuditFaturamentoExpanded(false);
+      }
+    }
+  }, [isAuditModalOpen]);
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -1206,9 +1273,173 @@ export default function InvestimentoPage() {
       if (filterDataInicio && r.data_inicio < filterDataInicio) return false;
       if (filterDataFim && r.data_inicio > filterDataFim) return false;
       if (filterMes && r.mes_referencia !== filterMes) return false;
+      
+      // Filtros adicionados para a Auditoria e UX
+      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterStatus) {
+        const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
+        if (status !== filterStatus) return false;
+      }
+      
       return true;
     });
-  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode]);
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode, filterGerente, filterStatus]);
+
+  const gerentesDisponiveis = useMemo(() => {
+    const fromMatrizes = matrizes.map(m => m.gerente).filter(Boolean);
+    const fromActions = data.map(r => r.gerente_responsavel).filter(Boolean);
+    return Array.from(new Set([...fromMatrizes, ...fromActions])).sort();
+  }, [matrizes, data]);
+
+  const coverageMetrics = useMemo(() => {
+    const baseActions = managerFilteredAcoes;
+    const actionsForMetrics = baseActions.filter(r => {
+      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterMes && r.mes_referencia !== filterMes) return false;
+      if (filterStatus) {
+        const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
+        if (status !== filterStatus) return false;
+      }
+      return true;
+    });
+
+    let baseMatrizes = myMatrizes;
+    if (filterGerente) {
+      const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+      baseMatrizes = matrizes.filter(m => {
+        if (!m.gerente) return false;
+        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return cleanFilterG === cleanGerente;
+      });
+    }
+    const totalRedesCadastradas = baseMatrizes.length;
+
+    const activeNetworkNames = new Set(actionsForMetrics.map(r => r.rede.toUpperCase().trim()));
+    const redesComInvestimento = baseMatrizes.filter(m => {
+      const nameKey = m.nome ? m.nome.toUpperCase().trim() : "";
+      return activeNetworkNames.has(nameKey);
+    }).length;
+
+    const cobertura = totalRedesCadastradas > 0 ? Math.round((redesComInvestimento / totalRedesCadastradas) * 100) : 0;
+
+    let valorPlanejado = 0;
+    let valorAprovado = 0;
+    let valorRealizado = 0;
+
+    actionsForMetrics.forEach(action => {
+      const val = getValorTotal(action);
+      if ((action.fase_atual || 1) === 1) {
+        valorPlanejado += val;
+      }
+      if ((action.fase_atual || 1) >= 3) {
+        valorAprovado += val;
+      }
+      if ((action.fase_atual || 1) >= 4 || !!action.apuracao_preenchida_em) {
+        valorRealizado += (action.apuracao_valor_realizado || val);
+      }
+    });
+
+    return {
+      totalRedesCadastradas,
+      redesComInvestimento,
+      cobertura,
+      valorPlanejado,
+      valorAprovado,
+      valorRealizado
+    };
+  }, [managerFilteredAcoes, myMatrizes, matrizes, filterGerente, filterMes, filterStatus]);
+
+  const autoFilterAlert = useMemo(() => {
+    if (!filterRede) return null;
+    
+    const currentCount = filteredData.length;
+    if (currentCount > 0) return null;
+
+    const otherActions = managerFilteredAcoes.filter(r => r.rede === filterRede);
+    if (otherActions.length === 0) return null;
+
+    const uniqueMonths = Array.from(new Set(otherActions.map(r => r.mes_referencia).filter(Boolean))) as string[];
+    const uniqueFases = Array.from(new Set(otherActions.map(r => r.fase_atual || 1))) as number[];
+    const uniqueGerentes = Array.from(new Set(otherActions.map(r => r.gerente_responsavel).filter(Boolean))) as string[];
+    const uniqueStatuses = Array.from(new Set(otherActions.map(r => calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em)))) as string[];
+
+    const targetMonth = uniqueMonths[0] || "";
+    const targetFase = uniqueFases[0] || null;
+    const targetGerente = uniqueGerentes[0] || "";
+    const targetStatus = uniqueStatuses[0] || "";
+
+    return {
+      months: uniqueMonths,
+      fases: uniqueFases,
+      gerentes: uniqueGerentes,
+      statuses: uniqueStatuses,
+      totalCount: otherActions.length,
+      targetMonth,
+      targetFase,
+      targetGerente,
+      targetStatus
+    };
+  }, [filterRede, filteredData.length, managerFilteredAcoes]);
+
+  const getAuditConclusiveDiagnosis = (auditData: any) => {
+    if (!auditData) return null;
+    if (auditData.notFound) {
+      return {
+        severity: '🔴 Crítico',
+        diagnosis: 'Rede inexistente no ecossistema.',
+        recommendations: 'A rede procurada não possui registros em nenhuma das tabelas mestre (cm_clientes, base_atendimento, cm_redes_matrizes ou network_matrix). Crie o cadastro mestre na página de Configuração Financeira.'
+      };
+    }
+
+    const hasIncomplete = auditData.cadastro?.fase === 'comercial' && !auditData.cadastro?.cnpj;
+    if (hasIncomplete) {
+      return {
+        severity: '🟠 Alerta',
+        diagnosis: 'A rede possui inconsistências cadastrais.',
+        recommendations: 'O cadastro mestre na tabela cm_clientes está travado na fase Comercial e sem CNPJ. Insira um CNPJ válido e conclua a fase comercial para que o fluxo avance para Finanças/Trade.'
+      };
+    }
+
+    const totalAcoes = auditData.investimentos?.totalAcoes || 0;
+    if (totalAcoes === 0) {
+      return {
+        severity: '🟡 Atenção',
+        diagnosis: 'A rede não possui investimentos cadastrados.',
+        recommendations: 'Nenhuma ação de investimento foi criada para esta rede no banco de dados. Utilize o formulário Lançar Investimento para criar ações.'
+      };
+    }
+
+    const actionsList = auditData.investimentos?.acoesList || [];
+    const visibleActions = actionsList.filter((r: any) => {
+      if (viewMode !== 'matrix' && viewMode !== 'calendar' && filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
+      if (filterMes && r.mes_referencia !== filterMes) return false;
+      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterStatus) {
+        const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
+        if (status !== filterStatus) return false;
+      }
+      return true;
+    });
+
+    if (visibleActions.length > 0) {
+      return {
+        severity: '🟢 Informativo',
+        diagnosis: 'A rede não desapareceu.',
+        recommendations: 'A rede está ativa e visível no painel principal sob os filtros atuais.'
+      };
+    } else {
+      const firstAction = actionsList[0];
+      const matchMonth = firstAction.mes_referencia || '-';
+      const matchFase = FASE_CONFIG[firstAction.fase_atual || 1]?.label || `Fase ${firstAction.fase_atual || 1}`;
+      const matchGerente = firstAction.gerente_responsavel || 'Sem gerente';
+      const matchStatus = calcularStatusItemInvestimento(firstAction, firstAction.fase_atual || 1, firstAction.apuracao_preenchida_em);
+      return {
+        severity: '🟢 Informativo',
+        diagnosis: 'A rede está sendo ocultada pelos filtros atuais.',
+        recommendations: `As ações cadastradas para esta rede não correspondem aos filtros de Mês/Fase/Gerente/Status selecionados no painel. Localização correta de um registro: Mês: ${formatMesReferencia(matchMonth)} | Fase: ${matchFase} | Status: ${matchStatus.toLowerCase()} | Gerente: ${matchGerente}.`
+      };
+    }
+  };
 
   const acoesPorGerente = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -1937,9 +2168,54 @@ export default function InvestimentoPage() {
           </div>
         )}
 
-        {/* Data Area */}
         <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col bg-background">
           <div className="flex flex-col gap-4 mb-4">
+            {/* Painel de Cobertura e KPIs do Gerente */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-elevated/40 border border-border/60 rounded-2xl mb-1 backdrop-blur-sm">
+              <div className="flex flex-col justify-between p-4 bg-card border border-border/40 rounded-xl shadow-sm">
+                <span className="text-muted text-[10px] font-bold uppercase tracking-wider">Cobertura Comercial</span>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-gold">{coverageMetrics.cobertura}%</span>
+                  <span className="text-muted text-xs font-semibold">
+                    ({coverageMetrics.redesComInvestimento}/{coverageMetrics.totalRedesCadastradas} redes)
+                  </span>
+                </div>
+                <div className="w-full bg-border/40 h-1.5 rounded-full mt-3 overflow-hidden">
+                  <div 
+                    className="bg-gold h-full rounded-full transition-all duration-500" 
+                    style={{ width: `${coverageMetrics.cobertura}%` }}
+                  />
+                </div>
+                <span className="text-muted text-[9px] mt-2 block">
+                  Gerente: <span className="text-foreground font-bold">{filterGerente || "Todos"}</span>
+                </span>
+              </div>
+
+              <div className="flex flex-col justify-between p-4 bg-card border border-border/40 rounded-xl shadow-sm">
+                <span className="text-muted text-[10px] font-bold uppercase tracking-wider">Valor Planejado (Fase 1)</span>
+                <span className="mt-2 text-xl font-bold text-amber-400">
+                  {formatCurrency(coverageMetrics.valorPlanejado, false)}
+                </span>
+                <span className="text-muted text-[9px] mt-2 block">Total alocado em rascunhos</span>
+              </div>
+
+              <div className="flex flex-col justify-between p-4 bg-card border border-border/40 rounded-xl shadow-sm">
+                <span className="text-muted text-[10px] font-bold uppercase tracking-wider">Valor Aprovado (Fase 3+)</span>
+                <span className="mt-2 text-xl font-bold text-blue-400">
+                  {formatCurrency(coverageMetrics.valorAprovado, false)}
+                </span>
+                <span className="text-muted text-[9px] mt-2 block">Investimentos validados pelo Trade</span>
+              </div>
+
+              <div className="flex flex-col justify-between p-4 bg-card border border-border/40 rounded-xl shadow-sm">
+                <span className="text-muted text-[10px] font-bold uppercase tracking-wider">Valor Realizado (Apuração)</span>
+                <span className="mt-2 text-xl font-bold text-emerald-400">
+                  {formatCurrency(coverageMetrics.valorRealizado, false)}
+                </span>
+                <span className="text-muted text-[9px] mt-2 block">Faturamento físico real</span>
+              </div>
+            </div>
+
             {/* Phase Tabs - only in table mode */}
             {viewMode === 'table' && (
             <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -2017,6 +2293,29 @@ export default function InvestimentoPage() {
                 </select>
               </div>
 
+              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                <select
+                  value={filterGerente}
+                  onChange={(e) => setFilterGerente(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                >
+                  <option value="">Todos os Gerentes</option>
+                  {gerentesDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                >
+                  <option value="">Todos os Status</option>
+                  <option value="AGENDADA">Agendada</option>
+                  <option value="EM_ANDAMENTO">Em Andamento</option>
+                  <option value="ENCERRADA">Encerrada</option>
+                  <option value="ATRASADA">Atrasada</option>
+                </select>
+              </div>
+
               <div className="flex gap-3 flex-1">
                 <div className="flex items-center flex-1 bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all">
                   <span className="text-muted text-xs mr-2">De:</span>
@@ -2039,20 +2338,68 @@ export default function InvestimentoPage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => {
-                  setFilterRede("");
-                  setFilterFamilia("");
-                  setFilterDataInicio("");
-                  setFilterDataFim("");
-                  setFilterFase(null);
-                  setFilterMes("");
-                }}
-                className="flex items-center justify-center gap-2 px-6 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap"
-              >
-                Limpar Filtros
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setFilterRede("");
+                    setFilterFamilia("");
+                    setFilterDataInicio("");
+                    setFilterDataFim("");
+                    setFilterFase(null);
+                    setFilterMes("");
+                    setFilterGerente("");
+                    setFilterStatus("");
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap"
+                >
+                  Limpar Filtros
+                </button>
+
+                <button
+                  onClick={() => setIsAuditModalOpen(true)}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gold bg-gold/10 hover:bg-gold/20 border border-gold/20 rounded-xl transition-all whitespace-nowrap"
+                >
+                  🔍 Auditar Rede
+                </button>
+              </div>
             </div>
+
+            {/* Alerta Inteligente de Filtros */}
+            {autoFilterAlert && (
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-500 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 animate-in fade-in duration-200">
+                <div>
+                  <div className="font-semibold text-sm">Encontramos registros desta rede em outros filtros.</div>
+                  <div className="text-xs opacity-90 mt-1">
+                    Rede <span className="font-bold">{filterRede}</span> possui ações em:
+                    <ul className="list-disc pl-4 mt-1">
+                      {autoFilterAlert.months.length > 0 && (
+                        <li>Mês: <span className="font-semibold">{autoFilterAlert.months.map(formatMesReferencia).join(', ')}</span></li>
+                      )}
+                      {autoFilterAlert.fases.length > 0 && (
+                        <li>Fase: <span className="font-semibold">{autoFilterAlert.fases.map(f => FASE_CONFIG[f]?.label || `Fase ${f}`).join(', ')}</span></li>
+                      )}
+                      {autoFilterAlert.gerentes.length > 0 && (
+                        <li>Gerente: <span className="font-semibold">{autoFilterAlert.gerentes.join(', ')}</span></li>
+                      )}
+                      {autoFilterAlert.statuses.length > 0 && (
+                        <li>Status: <span className="font-semibold">{autoFilterAlert.statuses.map(s => s.toLowerCase()).join(', ')}</span></li>
+                      )}
+                    </ul>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    if (autoFilterAlert.targetMonth) setFilterMes(autoFilterAlert.targetMonth);
+                    if (autoFilterAlert.targetFase !== null) setFilterFase(autoFilterAlert.targetFase);
+                    if (autoFilterAlert.targetGerente) setFilterGerente(autoFilterAlert.targetGerente);
+                    if (autoFilterAlert.targetStatus) setFilterStatus(autoFilterAlert.targetStatus);
+                  }}
+                  className="px-4 py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-all shadow-sm whitespace-nowrap self-stretch sm:self-auto flex items-center justify-center"
+                >
+                  Visualizar registros encontrados
+                </button>
+              </div>
+            )}
             {viewMode === "table" && (
               <div className="flex items-center justify-between text-sm text-muted px-1">
                 <span>{filteredData.length} lançamento{filteredData.length !== 1 ? 's' : ''} encontrado{filteredData.length !== 1 ? 's' : ''}</span>

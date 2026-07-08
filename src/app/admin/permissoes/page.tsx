@@ -94,7 +94,8 @@ const CATEGORIZED_MODULES = [
       "Central de Rotas e SLAs",
       "Command Center",
       "Compliance e KPIs",
-      "Missões Trade"
+      "Missões Trade",
+      "Pesquisa Light"
     ]
   },
   {
