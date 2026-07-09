@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package, Lock, Unlock, AlertTriangle, Check } from "lucide-react";
 import Link from "next/link";
@@ -8,13 +8,13 @@ import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
 
 interface InvestmentFormProps {
-  redes: Array<{ codigo: string; nome: string; canal: string }>;
+  redes: Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
   familias: string[];
   skus?: string[];
   initialData?: any;
 }
 
-export function InvestmentForm({ redes, familias, skus, initialData }: InvestmentFormProps) {
+export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }: InvestmentFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -26,6 +26,27 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   
   const isLocked = initialData && (initialData.fase_atual || 1) >= 5 && !initialData.is_reopened;
   
+  const redes = useMemo<Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode: string }>>(() => {
+    const baseCounts: Record<string, number> = {};
+    rawRedes.forEach(r => {
+      const base = r.codigo.split(".")[0];
+      baseCounts[base] = (baseCounts[base] || 0) + 1;
+    });
+
+    const runningIndices: Record<string, number> = {};
+    return rawRedes.map(r => {
+      const base = r.codigo.split(".")[0];
+      const total = baseCounts[base] || 0;
+      const displayCode = total > 1
+        ? `${base}.${runningIndices[base] = (runningIndices[base] || 0) + 1}`
+        : r.codigo;
+      return {
+        ...r,
+        displayCode
+      };
+    });
+  }, [rawRedes]);
+
   // Find initial network object if editing
   const initRedeObj = initialData?.codigo_matriz
     ? redes.find(r => r.codigo === initialData.codigo_matriz)
@@ -34,7 +55,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
   // Combobox state for Rede
   const [searchRede, setSearchRede] = useState("");
   const [isRedeOpen, setIsRedeOpen] = useState(false);
-  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(initRedeObj || null);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; displayCode?: string } | null>(initRedeObj || null);
   const [paymentDisabled, setPaymentDisabled] = useState(false);
   const [globalStart, setGlobalStart] = useState<string>(initialData?.data_inicio || "");
   const [globalEnd, setGlobalEnd] = useState<string>(initialData?.data_fim || "");
@@ -85,7 +106,8 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
 
   const filteredRedes = redes.filter(r => 
     r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
-    r.codigo.toLowerCase().includes(searchRede.toLowerCase())
+    r.codigo.toLowerCase().includes(searchRede.toLowerCase()) ||
+    r.displayCode.toLowerCase().includes(searchRede.toLowerCase())
   );
 
   // Helpers
@@ -580,7 +602,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                 type="text"
                 placeholder="Digite para buscar a rede..."
                 className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50"
-                value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.codigo} - ${selectedRede.nome}` : "")}
+                value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.displayCode || selectedRede.codigo} - ${selectedRede.nome}` : "")}
                 onChange={(e) => {
                   setSearchRede(e.target.value);
                   if (!isRedeOpen) setIsRedeOpen(true);
@@ -596,7 +618,7 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                 {filteredRedes.length > 0 ? (
                   filteredRedes.map(r => (
                     <button
-                      key={r.codigo}
+                      key={`${r.codigo}-${r.nome}-${r.gerente || ''}`}
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-gold/10 hover:text-gold transition-colors flex items-center justify-between"
                       onClick={() => {
@@ -606,8 +628,13 @@ export function InvestmentForm({ redes, familias, skus, initialData }: Investmen
                       }}
                     >
                       <div>
-                        <span className="font-semibold text-gold mr-2">{r.codigo}</span>
+                        <span className="font-semibold text-gold mr-2">{r.displayCode || r.codigo}</span>
                         <span>{r.nome}</span>
+                        {(r.uf || r.regional || r.gerente) && (
+                          <span className="text-[11px] text-muted ml-2">
+                            ({[r.uf, r.regional, r.gerente].filter(Boolean).join(" - ")})
+                          </span>
+                        )}
                       </div>
                       <span className="text-xs text-muted">({r.canal})</span>
                     </button>

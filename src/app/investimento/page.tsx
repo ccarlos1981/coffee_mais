@@ -1674,18 +1674,63 @@ export default function InvestimentoPage() {
   }, [filteredData]);
 
   const acoesNoMesCount = useCallback((m: any, mes: string) => {
-    return data.filter(action => 
-      (action.codigo_matriz === m.codigo || (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())) &&
-      action.mes_referencia === mes
-    ).length;
-  }, [data]);
+    return managerFilteredAcoes.filter(action => {
+      const matchesNetwork = action.codigo_matriz === m.codigo || 
+        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim());
+      if (!matchesNetwork) return false;
+      if (action.mes_referencia !== mes) return false;
+
+      if (filterGerente) {
+        const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!action.gerente_responsavel) return false;
+        const cleanGerente = action.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (cleanFilterG !== cleanGerente) return false;
+      }
+
+      if (filterStatus) {
+        const status = calcularStatusItemInvestimento(action, action.fase_atual || 1, action.apuracao_preenchida_em);
+        if (status !== filterStatus) return false;
+      }
+
+      if (filterFamilia) {
+        const hasFamilia = action.familias_detalhes && action.familias_detalhes.length > 0
+          ? action.familias_detalhes.some(f => f.familia_nome === filterFamilia)
+          : action.familia_produto === filterFamilia;
+        if (!hasFamilia) return false;
+      }
+
+      return true;
+    }).length;
+  }, [managerFilteredAcoes, filterGerente, filterStatus, filterFamilia]);
 
   const sortedMatrizesWithInvestimento = useMemo(() => {
     return myMatrizes.map(m => {
-      const acoesCount = data.filter(action =>
-        action.codigo_matriz === m.codigo || 
-        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim())
-      ).length;
+      const acoesCount = managerFilteredAcoes.filter(action => {
+        const matchesNetwork = action.codigo_matriz === m.codigo || 
+          (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim());
+        if (!matchesNetwork) return false;
+
+        if (filterGerente) {
+          const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (!action.gerente_responsavel) return false;
+          const cleanGerente = action.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (cleanFilterG !== cleanGerente) return false;
+        }
+
+        if (filterStatus) {
+          const status = calcularStatusItemInvestimento(action, action.fase_atual || 1, action.apuracao_preenchida_em);
+          if (status !== filterStatus) return false;
+        }
+
+        if (filterFamilia) {
+          const hasFamilia = action.familias_detalhes && action.familias_detalhes.length > 0
+            ? action.familias_detalhes.some(f => f.familia_nome === filterFamilia)
+            : action.familia_produto === filterFamilia;
+          if (!hasFamilia) return false;
+        }
+
+        return true;
+      }).length;
       const redeKey = m.nome ? m.nome.toUpperCase().trim() : "";
       const faturamentoTotal = faturamentoTotalMap[redeKey] || 0;
       return {
@@ -1699,11 +1744,20 @@ export default function InvestimentoPage() {
       }
       return b.faturamentoTotal - a.faturamentoTotal;
     });
-  }, [myMatrizes, data, faturamentoTotalMap]);
+  }, [myMatrizes, managerFilteredAcoes, faturamentoTotalMap, filterGerente, filterStatus, filterFamilia]);
 
   const filteredMatrizesInView = useMemo(() => {
     let result = sortedMatrizesWithInvestimento;
     
+    if (filterGerente) {
+      const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+      result = result.filter(m => {
+        if (!m.gerente) return false;
+        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        return cleanFilterG === cleanGerente;
+      });
+    }
+
     if (showOnlyWithoutActions && filterMes) {
       result = result.filter(m => acoesNoMesCount(m, filterMes) === 0);
     }
@@ -1715,7 +1769,7 @@ export default function InvestimentoPage() {
       (m.codigo && m.codigo.toLowerCase().includes(searchLower)) ||
       (m.gerente && m.gerente.toLowerCase().includes(searchLower))
     );
-  }, [sortedMatrizesWithInvestimento, matrizSearch, showOnlyWithoutActions, filterMes, acoesNoMesCount]);
+  }, [sortedMatrizesWithInvestimento, filterGerente, matrizSearch, showOnlyWithoutActions, filterMes, acoesNoMesCount]);
 
   const faseCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };

@@ -30,9 +30,9 @@ export default function PesquisaLightPage() {
   // Estados do formulário
   const [searchRede, setSearchRede] = useState("");
   const [isRedeOpen, setIsRedeOpen] = useState(false);
-  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(null);
-  const [redes, setRedes] = useState<Array<{ codigo: string; nome: string; canal: string }>>([]);
-  const [recomendadas, setRecomendadas] = useState<Array<{ codigo: string; nome: string; canal: string }>>([]);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode?: string } | null>(null);
+  const [redes, setRedes] = useState<Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode?: string }>>([]);
+  const [recomendadas, setRecomendadas] = useState<Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode?: string }>>([]);
   const [ufPrincipal, setUfPrincipal] = useState<string | null>(null);
   const [precoFlat, setPrecoFlat] = useState("");
   const [tipoFlat, setTipoFlat] = useState<"Moído" | "Grão">("Moído");
@@ -45,7 +45,8 @@ export default function PesquisaLightPage() {
 
   const filteredRedes = redes.filter(r => 
     r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
-    r.codigo.toLowerCase().includes(searchRede.toLowerCase())
+    r.codigo.toLowerCase().includes(searchRede.toLowerCase()) ||
+    (r.displayCode && r.displayCode.toLowerCase().includes(searchRede.toLowerCase()))
   );
 
   useEffect(() => {
@@ -93,11 +94,38 @@ export default function PesquisaLightPage() {
 
         // Carregar redes da mesma fonte utilizada no módulo de investimentos
         const redesList = await obterRedesMatrizes();
-        setRedes(redesList);
+        
+        const baseCounts: Record<string, number> = {};
+        redesList.forEach(r => {
+          const base = r.codigo.split(".")[0];
+          baseCounts[base] = (baseCounts[base] || 0) + 1;
+        });
+
+        const runningIndices: Record<string, number> = {};
+        const redesWithDisplay = redesList.map(r => {
+          const base = r.codigo.split(".")[0];
+          const total = baseCounts[base] || 0;
+          const displayCode = total > 1
+            ? `${base}.${runningIndices[base] = (runningIndices[base] || 0) + 1}`
+            : r.codigo;
+          return {
+            ...r,
+            displayCode
+          };
+        });
+
+        setRedes(redesWithDisplay);
 
         // Carregar as 10 redes recomendadas (baseado no faturamento/estado)
         const topRedes = await obterRedesRecomendadas(principalUf);
-        setRecomendadas(topRedes);
+        const topRedesWithDisplay = topRedes.map(tr => {
+          const matched = redesWithDisplay.find(r => r.codigo === tr.codigo && r.nome === tr.nome);
+          return {
+            ...tr,
+            displayCode: matched?.displayCode || tr.codigo
+          };
+        });
+        setRecomendadas(topRedesWithDisplay);
       } catch (err) {
         console.error("Erro ao carregar dados:", err);
       } finally {
@@ -274,7 +302,7 @@ export default function PesquisaLightPage() {
                     required
                     placeholder="Digite para buscar a rede..."
                     className="w-full bg-neutral-950 border border-neutral-900 focus:border-amber-500/40 rounded-xl p-3 pr-10 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none transition"
-                    value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.codigo} - ${selectedRede.nome}` : "")}
+                    value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.displayCode || selectedRede.codigo} - ${selectedRede.nome}` : "")}
                     onChange={(e) => {
                       setSearchRede(e.target.value);
                       if (!isRedeOpen) setIsRedeOpen(true);
@@ -294,7 +322,7 @@ export default function PesquisaLightPage() {
                     <div className="flex gap-1.5 flex-wrap">
                       {recomendadas.map((r) => (
                         <button
-                          key={r.codigo}
+                          key={`${r.codigo}-${r.nome}-${r.gerente || ''}`}
                           type="button"
                           onClick={() => {
                             setSelectedRede(r);
@@ -315,7 +343,7 @@ export default function PesquisaLightPage() {
                     {filteredRedes.length > 0 ? (
                       filteredRedes.map(r => (
                         <button
-                          key={r.codigo}
+                          key={`${r.codigo}-${r.nome}-${r.gerente || ''}`}
                           type="button"
                           className="w-full text-left px-4 py-3 text-sm text-neutral-100 hover:bg-amber-500/10 hover:text-amber-400 transition-colors flex items-center justify-between"
                           onClick={() => {
@@ -325,8 +353,13 @@ export default function PesquisaLightPage() {
                           }}
                         >
                           <div>
-                            <span className="font-semibold text-amber-500 mr-2">{r.codigo}</span>
+                            <span className="font-semibold text-amber-500 mr-2">{r.displayCode || r.codigo}</span>
                             <span>{r.nome}</span>
+                            {(r.uf || r.regional || r.gerente) && (
+                              <span className="text-[11px] text-neutral-500 ml-2">
+                                ({[r.uf, r.regional, r.gerente].filter(Boolean).join(" - ")})
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs text-neutral-500">({r.canal})</span>
                         </button>
