@@ -2,11 +2,13 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
-import { ChevronLeft, BarChart3, TrendingUp, DollarSign, MapPin, Building2, Coffee, Wallet } from "lucide-react";
+import { ChevronLeft, BarChart3, TrendingUp, DollarSign, MapPin, Building2, Coffee, Wallet, Shield, AlertCircle, CheckCircle, Clock, Activity, RefreshCw, List, Search } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   ComposedChart,
+  BarChart,
+  LineChart,
   Line,
   Bar,
   XAxis,
@@ -30,10 +32,32 @@ export default function DashboardClient({ acoes, pdvs }: { acoes: any[]; pdvs: a
   const [selectedRede, setSelectedRede] = useState<string>("Todas");
   const [selectedGlobalMonth, setSelectedGlobalMonth] = useState<string>(format(new Date(), 'yyyy-MM'));
   const [isMounted, setIsMounted] = useState(false);
+  const [activeTab, setActiveTab] = useState<'executivo' | 'observabilidade'>('executivo');
+  const [stabilizationMetrics, setStabilizationMetrics] = useState<any>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [inconsistencySearch, setInconsistencySearch] = useState("");
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'observabilidade' && !stabilizationMetrics) {
+      const loadMetrics = async () => {
+        setMetricsLoading(true);
+        try {
+          const { obterMetricasEstabilizacao } = await import("./actions");
+          const data = await obterMetricasEstabilizacao();
+          setStabilizationMetrics(data);
+        } catch (err) {
+          console.error("Erro ao carregar métricas de estabilização:", err);
+        } finally {
+          setMetricsLoading(false);
+        }
+      };
+      loadMetrics();
+    }
+  }, [activeTab, stabilizationMetrics]);
 
   const last6Months = useMemo(() => {
     const months = [{ value: 'Todos', label: 'Todos os meses' }];
@@ -233,8 +257,26 @@ export default function DashboardClient({ acoes, pdvs }: { acoes: any[]; pdvs: a
       </header>
 
       <main className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-8">
-        {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        {/* Tab Selector */}
+        <div className="flex gap-4 border-b border-border mb-6">
+          <button 
+            onClick={() => setActiveTab('executivo')}
+            className={`pb-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${activeTab === 'executivo' ? 'border-fuchsia-500 text-foreground border-b-fuchsia-500' : 'border-transparent text-muted hover:text-foreground'}`}
+          >
+            📊 Painel Executivo
+          </button>
+          <button 
+            onClick={() => setActiveTab('observabilidade')}
+            className={`pb-2.5 text-sm font-semibold border-b-2 transition-all cursor-pointer ${activeTab === 'observabilidade' ? 'border-fuchsia-500 text-foreground border-b-fuchsia-500' : 'border-transparent text-muted hover:text-foreground'}`}
+          >
+            🛡️ Integridade & Estabilização
+          </button>
+        </div>
+
+        {activeTab === 'executivo' && (
+          <>
+            {/* KPI Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-card border border-border rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col justify-between">
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-3 text-muted">
@@ -471,8 +513,255 @@ export default function DashboardClient({ acoes, pdvs }: { acoes: any[]; pdvs: a
             </table>
           </div>
         </div>
+      </>
+    )}
 
-      </main>
+    {activeTab === 'observabilidade' && (
+      <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-200">
+        {metricsLoading || !stabilizationMetrics ? (
+          <div className="flex flex-col items-center justify-center py-20 gap-3">
+            <RefreshCw className="w-8 h-8 text-fuchsia-500 animate-spin" />
+            <p className="text-sm text-muted">Carregando auditoria e métricas em tempo real...</p>
+          </div>
+        ) : (
+          <>
+            {/* Métricas e Alertas Operacionais */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2.5 text-muted mb-1.5">
+                  <div className="p-1.5 bg-red-500/10 rounded-lg">
+                    <Shield className="w-4 h-4 text-red-500" />
+                  </div>
+                  <h3 className="font-semibold text-xs">Total Inconsistências</h3>
+                </div>
+                <p className={`text-xl sm:text-2xl font-black ${stabilizationMetrics.inconsistencias.length > 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                  {stabilizationMetrics.inconsistencias.length}
+                </p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2.5 text-muted mb-1.5">
+                  <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <h3 className="font-semibold text-xs">Tempo Criação → Aprov.</h3>
+                </div>
+                <p className="text-xl sm:text-2xl font-black text-foreground">
+                  {stabilizationMetrics.tempoCiclo.tempo_medio_aprovacao_dias || 0} dias
+                </p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2.5 text-muted mb-1.5">
+                  <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <h3 className="font-semibold text-xs">Tempo Aprov. → Exec.</h3>
+                </div>
+                <p className="text-xl sm:text-2xl font-black text-foreground">
+                  {stabilizationMetrics.tempoCiclo.tempo_medio_execucao_dias || 0} dias
+                </p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-2.5 text-muted mb-1.5">
+                  <div className="p-1.5 bg-blue-500/10 rounded-lg">
+                    <Clock className="w-4 h-4 text-blue-500" />
+                  </div>
+                  <h3 className="font-semibold text-xs">Tempo Exec. → Quit.</h3>
+                </div>
+                <p className="text-xl sm:text-2xl font-black text-foreground">
+                  {stabilizationMetrics.tempoCiclo.tempo_medio_quitacao_dias || 0} dias
+                </p>
+              </div>
+            </div>
+
+            {/* Métricas de Integridade / Órfãs */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <span className="text-xs text-muted font-semibold block mb-1">Campanhas Órfãs</span>
+                <p className="text-lg sm:text-xl font-bold text-foreground">{stabilizationMetrics.campanhasOrfas}</p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <span className="text-xs text-muted font-semibold block mb-1">Ações Órfãs</span>
+                <p className="text-lg sm:text-xl font-bold text-foreground">{stabilizationMetrics.acoesOrfas}</p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <span className="text-xs text-muted font-semibold block mb-1">Média de Ações / Campanha</span>
+                <p className="text-lg sm:text-xl font-bold text-foreground">{stabilizationMetrics.mediaAcoes}</p>
+              </div>
+              <div className="bg-card border border-border rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col justify-between">
+                <span className="text-xs text-muted font-semibold block mb-1">Divergências Operacional x Finan.</span>
+                <p className={`text-lg sm:text-xl font-bold ${stabilizationMetrics.divergencias > 0 ? 'text-red-500' : 'text-foreground'}`}>{stabilizationMetrics.divergencias}</p>
+              </div>
+            </div>
+
+            {/* Gráficos Operacionais e de ROI */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+              {/* Campanhas criadas por dia */}
+              <div className="bg-card border border-border rounded-3xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-foreground mb-4">Campanhas Criadas por Dia (Histórico recente)</h3>
+                {stabilizationMetrics.campanhasPorDia.length === 0 ? (
+                  <p className="text-xs text-muted italic py-10 text-center">Sem dados de criação recentes.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={[...stabilizationMetrics.campanhasPorDia].reverse()}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="dia" stroke="#888888" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#888888" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e1b4b', border: '1px solid rgba(255,255,255,0.1)' }} />
+                      <Bar dataKey="qtd" fill="#f59e0b" name="Campanhas" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* ROI Médio por Rede */}
+              <div className="bg-card border border-border rounded-3xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-foreground mb-4">ROI Médio por Rede (Top 10)</h3>
+                {stabilizationMetrics.roiRede.length === 0 ? (
+                  <p className="text-xs text-muted italic py-10 text-center">Nenhum ROI calculado no período.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={stabilizationMetrics.roiRede}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="rede" stroke="#888888" fontSize={9} tickLine={false} />
+                      <YAxis stroke="#888888" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e1b4b', border: '1px solid rgba(255,255,255,0.1)' }} />
+                      <Bar dataKey="roi_medio" fill="#10b981" name="ROI Médio" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* ROI Médio por Família */}
+              <div className="bg-card border border-border rounded-3xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-foreground mb-4">ROI Médio por Família de Produtos</h3>
+                {stabilizationMetrics.roiFamilia.length === 0 ? (
+                  <p className="text-xs text-muted italic py-10 text-center">Nenhum ROI calculado por família.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={stabilizationMetrics.roiFamilia}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="familia" stroke="#888888" fontSize={10} tickLine={false} />
+                      <YAxis stroke="#888888" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e1b4b', border: '1px solid rgba(255,255,255,0.1)' }} />
+                      <Bar dataKey="roi_medio" fill="#6366f1" name="ROI Médio" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+
+              {/* ROI Médio por Campanha */}
+              <div className="bg-card border border-border rounded-3xl p-5 shadow-sm">
+                <h3 className="text-sm font-bold text-foreground mb-4">ROI Médio por Campanha (Top 10)</h3>
+                {stabilizationMetrics.roiCampanha.length === 0 ? (
+                  <p className="text-xs text-muted italic py-10 text-center">Nenhum ROI calculado por campanha.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={stabilizationMetrics.roiCampanha}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="codigo_campanha" stroke="#888888" fontSize={9} tickLine={false} />
+                      <YAxis stroke="#888888" fontSize={10} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1e1b4b', border: '1px solid rgba(255,255,255,0.1)' }} />
+                      <Bar dataKey="roi_medio" fill="#ec4899" name="ROI Médio" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
+
+            {/* Histórico Temporal de Estabilidade */}
+            <div className="bg-card border border-border rounded-3xl p-5 shadow-sm">
+              <h3 className="text-sm font-bold text-foreground mb-4">Evolução Temporal da Estabilidade (Últimos 30 Dias)</h3>
+              {stabilizationMetrics.dailySnapshots.length === 0 ? (
+                <p className="text-xs text-muted italic py-10 text-center">Nenhum registro de snapshot diário encontrado. Aguardando execuções agendadas.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={stabilizationMetrics.dailySnapshots}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="snapshot_date" stroke="#888888" fontSize={10} tickLine={false} />
+                    <YAxis stroke="#888888" fontSize={10} tickLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: '#1e1b4b', border: '1px solid rgba(255,255,255,0.1)' }} />
+                    <Legend />
+                    <Line type="monotone" dataKey="campanhas_criadas" stroke="#f59e0b" name="Campanhas Criadas" strokeWidth={2} activeDot={{ r: 8 }} />
+                    <Line type="monotone" dataKey="acoes_orfas" stroke="#ef4444" name="Ações Órfãs" strokeWidth={2} />
+                    <Line type="monotone" dataKey="divergencias_financeiras" stroke="#ec4899" name="Divergências Financ." strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Relatório Dinâmico de Inconsistências de Integridade */}
+            <div className="bg-card border border-border rounded-3xl p-6 shadow-sm">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h2 className="text-base font-bold text-foreground">Relatório de Inconsistências Auditadas</h2>
+                  <p className="text-xs text-muted">Resultados da rotina automática do banco public.check_investimentos_integrity()</p>
+                </div>
+                <div className="w-full sm:w-72 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted pointer-events-none" />
+                  <input 
+                    type="text"
+                    placeholder="Buscar inconsistências..."
+                    value={inconsistencySearch}
+                    onChange={(e) => setInconsistencySearch(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-fuchsia-500/50 text-foreground"
+                  />
+                </div>
+              </div>
+
+              {stabilizationMetrics.inconsistencias.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <CheckCircle className="w-10 h-10 text-emerald-500 mb-2" />
+                  <span className="font-bold text-sm text-foreground">Banco 100% Íntegro!</span>
+                  <p className="text-xs text-muted max-w-sm mt-0.5">Nenhuma falha lógica ou inconsistência comercial-financeira foi detectada.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-border/60 rounded-xl">
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-elevated text-muted uppercase text-[0.65rem] tracking-wider border-b border-border/80">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Tipo de Inconsistência</th>
+                        <th className="px-4 py-3 font-semibold">Origem (Tabela)</th>
+                        <th className="px-4 py-3 font-semibold">Detalhes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {(() => {
+                        const filtered = stabilizationMetrics.inconsistencias.filter((inc: any) => 
+                          inc.tipo_inconsistencia.toLowerCase().includes(inconsistencySearch.toLowerCase()) ||
+                          inc.detalhes.toLowerCase().includes(inconsistencySearch.toLowerCase())
+                        );
+                        if (filtered.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={3} className="px-4 py-8 text-center text-muted italic">Nenhuma inconsistência encontrada para os filtros aplicados.</td>
+                            </tr>
+                          );
+                        }
+                        return filtered.map((inc: any, idx: number) => (
+                          <tr key={idx} className="hover:bg-elevated/40 transition-colors">
+                            <td className="px-4 py-3 font-bold text-red-400 capitalize">
+                              {inc.tipo_inconsistencia.replace(/_/g, " ")}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-muted text-[10px]">
+                              {inc.origem_tabela}
+                            </td>
+                            <td className="px-4 py-3 text-foreground font-medium">
+                              {inc.detalhes}
+                            </td>
+                          </tr>
+                        ));
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )}
+
+  </main>
     </div>
   );
 }
