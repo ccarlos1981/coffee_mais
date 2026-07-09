@@ -2151,13 +2151,13 @@ export async function obterRedesMatrizes() {
   // We use range queries to fetch all pages dynamically.
   const { data: page1, error: error1 } = await supabase
     .from("v_redes_matrizes_detalhes")
-    .select("codigo, nome, canal")
+    .select("codigo, nome, canal, uf, regional, gerente")
     .order("nome", { ascending: true })
     .range(0, 999);
 
   const { data: page2, error: error2 } = await supabase
     .from("v_redes_matrizes_detalhes")
-    .select("codigo, nome, canal")
+    .select("codigo, nome, canal, uf, regional, gerente")
     .order("nome", { ascending: true })
     .range(1000, 1999);
 
