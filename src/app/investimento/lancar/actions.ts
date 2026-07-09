@@ -309,59 +309,155 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       }
     }
 
-    // Calculate consolidated fields using shared helper
-    const {
-      familia_produto,
-      preco_flat,
-      preco_acao,
-      valor_investimento,
-      expectativa_volume
-    } = calcularCamposConsolidadosInvestimento(
-      familias_detalhes,
-      skus_detalhes,
-      formData.get("familia_produto") as string
-    );
-
     const is_planejamento = formData.get("is_planejamento") === "true";
 
-    // Evaluate alerts
-    const alertas_preventivos = await avaliarAlertasAcaoInvestimento(
-      supabase,
-      abrangencia,
-      familias_detalhes,
-      skus_detalhes,
-      rede,
-      codigo_matriz
-    );
-
-    const { error } = await supabase.from("cm_acoes_investimento").insert([
-      {
-        rede,
-        codigo_matriz: codigo_matriz || null,
-        data_inicio: calculated_data_inicio,
-        data_fim: calculated_data_fim,
-        date_mode,
-        tipo_acao,
-        tipo_acao_detalhe,
-        familia_produto,
-        familias_detalhes,
-        preco_flat,
-        preco_acao,
-        valor_investimento,
-        expectativa_volume,
-        abrangencia,
-        tipo_pagamento,
-        skus_detalhes,
-        mes_referencia,
-        fase_atual: 1,
-        is_planejamento,
-        alertas_preventivos
+    // 1. Fetch SKU conversion info to map SKUs to families dynamically
+    const { data: skuProducts } = await supabase
+      .from("v_produtos_detalhes")
+      .select("codigo_integracao, product_type");
+    const skuFamilyMap = new Map<string, string>();
+    if (skuProducts) {
+      for (const p of skuProducts) {
+        if (p.codigo_integracao && p.product_type) {
+          skuFamilyMap.set(p.codigo_integracao, p.product_type);
+        }
       }
-    ]);
+    }
 
-    if (error) {
-      console.error("Erro ao inserir ação de investimento:", error);
-      throw error;
+    // 2. Build independent actions based on grid rows (1 grid row = 1 action)
+    const actionsToInsert: any[] = [];
+
+    if (abrangencia === "Família" || abrangencia === "Misto") {
+      // Loop over each family row in familias_detalhes (1 grid row = 1 action)
+      for (const f of (familias_detalhes || [])) {
+        const famName = f.familia_nome || f.familia_id;
+        
+        // Filter SKUs corresponding to this family
+        const sDet = (skus_detalhes || []).filter((s: any) => skuFamilyMap.get(s.sku) === famName);
+
+        // Calculate consolidated values for this single family row action
+        const {
+          familia_produto,
+          preco_flat,
+          preco_acao,
+          valor_investimento,
+          expectativa_volume
+        } = calcularCamposConsolidadosInvestimento([f], sDet, famName);
+
+        const action_alertas = await avaliarAlertasAcaoInvestimento(
+          supabase,
+          sDet.length > 0 ? "Misto" : "Família",
+          [f],
+          sDet,
+          rede,
+          codigo_matriz
+        );
+
+        actionsToInsert.push({
+          rede,
+          codigo_matriz: codigo_matriz || null,
+          data_inicio: f.start_date || calculated_data_inicio,
+          data_fim: f.end_date || calculated_data_fim,
+          date_mode: "single",
+          tipo_acao,
+          tipo_acao_detalhe,
+          familia_produto,
+          familias_detalhes: [f], // Single-item array for retrocompatibility
+          preco_flat,
+          preco_acao,
+          valor_investimento,
+          expectativa_volume,
+          abrangencia: sDet.length > 0 ? "Misto" : "Família",
+          tipo_pagamento,
+          skus_detalhes: sDet,
+          mes_referencia,
+          fase_atual: 1,
+          is_planejamento,
+          alertas_preventivos: action_alertas,
+          status_financeiro: "NAO_FATURADA"
+        });
+      }
+    } else if (abrangencia === "SKU") {
+      // Loop over each SKU row in skus_detalhes (1 grid row = 1 action)
+      for (const s of (skus_detalhes || [])) {
+        const famName = skuFamilyMap.get(s.sku) || "Outros";
+
+        // Calculate consolidated values for this single SKU row action
+        const {
+          familia_produto,
+          preco_flat,
+          preco_acao,
+          valor_investimento,
+          expectativa_volume
+        } = calcularCamposConsolidadosInvestimento(null, [s], s.sku);
+
+        const action_alertas = await avaliarAlertasAcaoInvestimento(
+          supabase,
+          "SKU",
+          [],
+          [s],
+          rede,
+          codigo_matriz
+        );
+
+        actionsToInsert.push({
+          rede,
+          codigo_matriz: codigo_matriz || null,
+          data_inicio: s.start_date || calculated_data_inicio,
+          data_fim: s.end_date || calculated_data_fim,
+          date_mode: "single",
+          tipo_acao,
+          tipo_acao_detalhe,
+          familia_produto: famName,
+          familias_detalhes: [{
+            familia_id: famName,
+            familia_nome: famName,
+            preco_flat,
+            preco_acao,
+            investimento: valor_investimento,
+            expectativa_volume,
+            start_date: s.start_date || calculated_data_inicio,
+            end_date: s.end_date || calculated_data_fim,
+            status_trade: "PENDENTE"
+          }], // Single-item array for retrocompatibility
+          preco_flat,
+          preco_acao,
+          valor_investimento,
+          expectativa_volume,
+          abrangencia: "SKU",
+          tipo_pagamento,
+          skus_detalhes: [s],
+          mes_referencia,
+          fase_atual: 1,
+          is_planejamento,
+          alertas_preventivos: action_alertas,
+          status_financeiro: "NAO_FATURADA"
+        });
+      }
+    }
+
+    if (actionsToInsert.length === 0) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma ação válida deve ser gerada a partir do lançamento.");
+    }
+
+    // 3. Execute transactional insert via Postgres RPC
+    const p_campanha = {
+      nome_campanha: `Campanha ${rede} - ${mes_referencia}`,
+      rede,
+      codigo_matriz: codigo_matriz || null,
+      mes_referencia,
+      status_operacional: "PLANEJAMENTO",
+      status_financeiro: "ABERTA"
+    };
+
+    const { data: rpcResult, error: rpcError } = await supabase.rpc("criar_campanha_e_acoes_v2", {
+      p_campanha,
+      p_acoes: actionsToInsert
+    });
+
+    if (rpcError) {
+      console.error("Erro na transação de criação de campanha/ações:", rpcError);
+      throw rpcError;
     }
 
     revalidatePath("/investimento");
