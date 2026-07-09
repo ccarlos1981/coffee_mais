@@ -263,3 +263,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    edbcdda..9b33d62  main -> main
 [08/07/2026 11:41] ✅ Alterações enviadas com sucesso para o GitHub.
+[main bfb1fb4] auto-save: 08/07/2026 16:36
+ 4 files changed, 516 insertions(+), 55 deletions(-)
+ create mode 100644 supabase/migrations/20260708_migrate_checklists_to_family.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   84f8804..bfb1fb4  main -> main
+[08/07/2026 16:36] ✅ Alterações enviadas com sucesso para o GitHub.
