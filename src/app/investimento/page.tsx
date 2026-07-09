@@ -2397,7 +2397,7 @@ export default function InvestimentoPage() {
           </div>
         )}
 
-        <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col bg-background">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto flex flex-col bg-background min-h-0">
           <div className="flex flex-col gap-4 mb-4">
             {/* Painel de Cobertura e KPIs do Gerente */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 bg-elevated/40 border border-border/60 rounded-2xl mb-1 backdrop-blur-sm">
@@ -2656,7 +2656,7 @@ export default function InvestimentoPage() {
             )}
           </div>
 
-          <div className="flex-1 bg-card md:border md:border-border md:rounded-2xl overflow-hidden flex flex-col shadow-sm relative">
+          <div className="w-full bg-card md:border md:border-border md:rounded-2xl flex flex-col shadow-sm relative">
             
             {viewMode === "table" ? (
               <>
@@ -3494,7 +3494,7 @@ export default function InvestimentoPage() {
                 )}
               </div>
             ) : (
-              <div className="flex-1 flex flex-col min-h-0 bg-card overflow-hidden">
+              <div className="w-full flex flex-col bg-card">
                 {/* Matrix view header */}
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between p-4 border-b border-border bg-elevated/30 gap-4">
                   <div>
@@ -3594,7 +3594,7 @@ export default function InvestimentoPage() {
                 </div>
 
                 {/* Matrix view body */}
-                <div className="flex-1 overflow-auto">
+                <div className="w-full overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs whitespace-nowrap">
                     <thead className="sticky top-0 bg-elevated border-b border-border z-10 shadow-sm">
                       <tr>
