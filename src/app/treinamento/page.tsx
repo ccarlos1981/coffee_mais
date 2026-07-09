@@ -103,7 +103,7 @@ const AVAILABLE_MANUALS: ManualConfig[] = [
     description: "Trilha para Gente & Gestão: workflow financeiro, overrides, auditoria e lock de trimestre.",
     icon: DollarSign,
     color: "from-emerald-600 to-emerald-800",
-    roles: ["Admin", "CEO", "RH"],
+    roles: ["Admin", "CEO", "RH", "TI"],
     category: "Remuneração e Metas do Promotor"
   }
 ];

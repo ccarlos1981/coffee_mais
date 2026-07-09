@@ -291,3 +291,7 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
 To https://github.com/ccarlos1981/coffee_mais.git
    df06add..aa81e1e  main -> main
 [09/07/2026 10:05] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 1c25c52] auto-save: 09/07/2026 14:24
+ 4 files changed, 14 insertions(+), 13 deletions(-)
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[09/07/2026 14:24] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
