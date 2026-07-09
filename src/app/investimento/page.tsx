@@ -318,6 +318,7 @@ export default function InvestimentoPage() {
   const [modalPrazo, setModalPrazo] = useState<string | null>(null);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
   const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
+  const [showOnlyWithoutActions, setShowOnlyWithoutActions] = useState(false);
 
   // Calendar State
   const [viewMode, setViewMode] = useState<"table" | "calendar" | "matrix">("table");
@@ -1701,14 +1702,20 @@ export default function InvestimentoPage() {
   }, [myMatrizes, data, faturamentoTotalMap]);
 
   const filteredMatrizesInView = useMemo(() => {
-    if (!matrizSearch) return sortedMatrizesWithInvestimento;
+    let result = sortedMatrizesWithInvestimento;
+    
+    if (showOnlyWithoutActions && filterMes) {
+      result = result.filter(m => acoesNoMesCount(m, filterMes) === 0);
+    }
+    
+    if (!matrizSearch) return result;
     const searchLower = matrizSearch.toLowerCase();
-    return sortedMatrizesWithInvestimento.filter(m => 
+    return result.filter(m => 
       (m.nome && m.nome.toLowerCase().includes(searchLower)) ||
       (m.codigo && m.codigo.toLowerCase().includes(searchLower)) ||
       (m.gerente && m.gerente.toLowerCase().includes(searchLower))
     );
-  }, [sortedMatrizesWithInvestimento, matrizSearch]);
+  }, [sortedMatrizesWithInvestimento, matrizSearch, showOnlyWithoutActions, filterMes, acoesNoMesCount]);
 
   const faseCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
@@ -3501,6 +3508,17 @@ export default function InvestimentoPage() {
                     <h3 className="text-base font-bold text-foreground">Histórico de Investimentos por Rede</h3>
                   </div>
                   <div className="flex items-center gap-3 w-full md:w-auto">
+                    {filterMes && (
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={showOnlyWithoutActions}
+                          onChange={(e) => setShowOnlyWithoutActions(e.target.checked)}
+                          className="rounded border-border text-gold focus:ring-gold bg-elevated w-3.5 h-3.5"
+                        />
+                        <span>Sem ação em {formatMesReferencia(filterMes)}</span>
+                      </label>
+                    )}
                     <input
                       type="text"
                       placeholder="Buscar rede, código ou gerente..."
