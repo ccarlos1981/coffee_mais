@@ -16,7 +16,7 @@ O ciclo de investimentos garante a rastreabilidade comercial. Nenhuma verba é p
 Nesta etapa, o Gerente Regional rascunha as ações comerciais futuras para suas redes. O objetivo é reservar orçamento e prever os volumes esperados de vendas.
 
 * **Formulário de Cadastro (Lançamento)**: Acesse a tela de Lançamento e selecione a Rede, tipo de ação (Sell Out/Sell In), tipo de pagamento (Abatimento, Transferência ou Bonificação), período e vigência.
-* **Margens e Famílias**: Escolha a abrangência (Família ou SKU). No caso de Família, defina a categoria (Moído, Grão, Cápsula, Drip ou KG), preço normal, preço de ação, investimento unitário e volume planejado. O sistema calcula o total automaticamente.
+* **Margens e Famílias**: Escolha a abrangência (Família ou SKU). No caso de Família, defina a categoria (Moído, Grão, Cápsula, Drip, KG ou Café Verde), preço normal, preço de ação, investimento unitário e volume planejado. O sistema calcula o total automaticamente.
 * **Ativação (Promover)**: Enquanto a ação está em elaboração, ela reside apenas no rascunho. Ao clicar em **Promover**, ela se torna oficialmente um investimento ativo e segue para a esteira de auditoria.
 
 ---

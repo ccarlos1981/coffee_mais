@@ -2,11 +2,13 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { unstable_cache } from "next/cache";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
 import nodemailer from "nodemailer";
 
 export interface PesquisaLightData {
   rede: string;
+  codigoMatriz: string;
   precoFlat: number;
   tipoFlat: "Moído" | "Grão";
   precoGourmet: number;
@@ -27,6 +29,9 @@ export async function salvarPesquisaLight(data: PesquisaLightData): Promise<Acti
     // 2. Validar campos obrigatórios
     if (!data.rede || !data.rede.trim()) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "O nome da rede é obrigatório.");
+    }
+    if (!data.codigoMatriz || !data.codigoMatriz.trim()) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "O código da rede é obrigatório.");
     }
     if (data.precoFlat <= 0) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "O preço do café Flat deve ser maior que zero.");
@@ -82,6 +87,7 @@ export async function salvarPesquisaLight(data: PesquisaLightData): Promise<Acti
         promotor_id: employeeId,
         usuario_id: user.id,
         rede: data.rede.trim(),
+        codigo_matriz: data.codigoMatriz.trim(),
         preco_flat: data.precoFlat,
         tipo_flat: data.tipoFlat,
         preco_gourmet: data.precoGourmet
@@ -239,3 +245,41 @@ Favor avaliar a oportunidade comercial e as possíveis ações competitivas.`;
     });
   }
 }
+
+// Funcao auxiliar cacheavel (independente do contexto da requisicao/cookies)
+const obterRedesRecomendadasCached = unstable_cache(
+  async (uf: string | null) => {
+    const adminSupabase = createAdminClient();
+    const { data, error } = await adminSupabase.rpc("get_top_redes_por_uf", { p_uf: uf });
+    if (error) {
+      console.error("Erro ao chamar get_top_redes_por_uf no cache:", error);
+      throw error;
+    }
+    return (data || []).map((row: any) => ({
+      codigo: row.codigo_matriz,
+      nome: row.nome,
+      canal: row.canal || ""
+    }));
+  },
+  ["top-redes-por-uf"],
+  {
+    revalidate: 3600, // 1 hora de TTL
+    tags: ["top-redes"]
+  }
+);
+
+export async function obterRedesRecomendadas(uf: string | null): Promise<Array<{ codigo: string; nome: string; canal: string }>> {
+  try {
+    // Valida seguranca/sessao antes de permitir acesso ao cache
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return [];
+    }
+    return await obterRedesRecomendadasCached(uf);
+  } catch (err) {
+    console.error("Erro ao obter redes recomendadas:", err);
+    return [];
+  }
+}
+

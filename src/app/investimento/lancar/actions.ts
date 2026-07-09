@@ -8,6 +8,7 @@ import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } fr
 import { calcularCamposConsolidadosInvestimento } from "@/lib/investimento/consolidacao";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
@@ -2285,7 +2286,7 @@ export async function simularImportacaoInvestimentos(rawRows: any[][]): Promise<
 
     const validMatrizes = matrizes || [];
     const validSkus = dbFilters?.produtos || [];
-    const validFams = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
+    const validFams = [...PRODUCT_FAMILIES];
 
     // 2. Mapear cabeçalhos de colunas
     const headers = rawRows[0].map(h => String(h || "").trim().toLowerCase());
@@ -2518,7 +2519,7 @@ export async function simularImportacaoInvestimentos(rawRows: any[][]): Promise<
             familiaVal = match;
           } else {
             rowErrors.push(`Família "${familiaVal}" inválida.`);
-            errors.push({ line: i + 1, column: "Família de Produto", value: rawFamilia, message: `Família "${familiaVal}" inválida (valores aceitos: Grão, Moído, Drip, Capsula, 1KG).` });
+            errors.push({ line: i + 1, column: "Família de Produto", value: rawFamilia, message: `Família "${familiaVal}" inválida (valores aceitos: ${PRODUCT_FAMILIES.join(", ")}).` });
           }
         }
         if (investVal === null || investVal <= 0) {
@@ -3016,7 +3017,7 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
     });
 
     // Coluna C: Família de Produto
-    const familias = ["Grão", "Moído", "Drip", "Capsula", "1KG"];
+    const familias = [...PRODUCT_FAMILIES];
     familias.forEach((val, idx) => {
       listsSheet.getCell(`C${idx + 1}`).value = val;
     });
