@@ -29,7 +29,8 @@ const ROLES = [
   "Vendedor",
   "Promotor",
   "Financeiro",
-  "RH"
+  "RH",
+  "TI"
 ];
 
 const CATEGORIZED_MODULES = [

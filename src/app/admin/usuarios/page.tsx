@@ -71,7 +71,8 @@ export default async function AdminUsuariosPage() {
     "Vendedor",
     "Promotor",
     "Financeiro",
-    "RH"
+    "RH",
+    "TI"
   ];
 
   return (

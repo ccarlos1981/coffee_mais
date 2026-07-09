@@ -39,7 +39,9 @@ export default function CadastroPage() {
     "Supervisor",
     "Vendedor",
     "Promotor",
-    "Financeiro"
+    "Financeiro",
+    "RH",
+    "TI"
   ];
 
   async function handleSubmit(formData: FormData) {
@@ -393,7 +395,6 @@ export default function CadastroPage() {
                   {ROLES.map(role => (
                     <option key={role} value={role}>{role}</option>
                   ))}
-                  <option value="RH">RH</option>
                 </select>
                 <div style={{ position: "absolute", right: "12px", pointerEvents: "none", color: "var(--foreground-dim)" }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
