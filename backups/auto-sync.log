@@ -282,3 +282,7 @@ To https://github.com/ccarlos1981/coffee_mais.git
  create mode 100644 supabase/migrations/20260710_sprint6_decommissioning.sql
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [09/07/2026 01:40] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main bfbe677] auto-save: 09/07/2026 04:40
+ 3 files changed, 7763 insertions(+)
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[09/07/2026 04:40] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
