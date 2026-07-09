@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef, useTransition } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, useTransition, Fragment } from "react";
 import Link from "next/link";
 import {
   Search,
@@ -41,7 +41,7 @@ import {
   Layers,
   Paperclip
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, validarFamiliaTrade, atualizarChecklistFamilia, atualizarDocumentosFamilia } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo } from "./lancar/actions";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -159,6 +159,12 @@ interface AcaoInvestimento {
   post_action_notes?: string | null;
   execution_score?: number | null;
   date_mode?: "single" | "multiple" | null;
+  campanha_id?: string | null;
+  status_financeiro_acao?: string | null;
+  codigo_campanha?: string | null;
+  nome_campanha?: string | null;
+  status_operacional_campanha?: string | null;
+  status_financeiro_campanha?: string | null;
 }
 
 interface InvestmentPeriod {
@@ -279,7 +285,9 @@ export default function InvestimentoPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [filterFase, setFilterFase] = useState<number | null>(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false });
+  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
+  const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
+  const [globalSearch, setGlobalSearch] = useState("");
   const [filterMes, setFilterMes] = useState(() => {
     const d = new Date();
     const y = d.getFullYear();
@@ -344,48 +352,7 @@ export default function InvestimentoPage() {
   const [executionScore, setExecutionScore] = useState("");
   const [showConsolidadoGerentes, setShowConsolidadoGerentes] = useState(false);
 
-  const [actionFamilies, setActionFamilies] = useState<any[]>([]);
-  const [familiesLoading, setFamiliesLoading] = useState(false);
-  const [familyHistory, setFamilyHistory] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (!selectedAction?.id) {
-      setActionFamilies([]);
-      setFamilyHistory([]);
-      return;
-    }
-    const loadFamiliesAndHistory = async () => {
-      setFamiliesLoading(true);
-      try {
-        const { data: fams, error: famErr } = await supabase
-          .from("cm_investimento_familias")
-          .select("*")
-          .eq("investimento_id", selectedAction.id)
-          .order("familia", { ascending: true });
-        
-        if (!famErr && fams) {
-          setActionFamilies(fams);
-          if (fams.length > 0) {
-            const famIds = fams.map((f: any) => f.id);
-            const { data: hist, error: histErr } = await supabase
-              .from("cm_investimento_familias_history")
-              .select("*, cm_investimento_familias(familia)")
-              .in("familia_id", famIds)
-              .order("data_hora", { ascending: false });
-            
-            if (!histErr && hist) {
-              setFamilyHistory(hist);
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Erro ao carregar famílias/histórico:", err);
-      } finally {
-        setFamiliesLoading(false);
-      }
-    };
-    loadFamiliesAndHistory();
-  }, [selectedAction?.id]);
 
   useEffect(() => {
     if (selectedAction) {
@@ -565,7 +532,8 @@ export default function InvestimentoPage() {
         comunicacao: selectedAction.checklist_comunicacao || false, 
         logistica: selectedAction.checklist_logistica || false, 
         auditoria: selectedAction.checklist_auditoria || false, 
-        garantia: selectedAction.checklist_garantia || false
+        garantia: selectedAction.checklist_garantia || false,
+        conferencia: selectedAction.checklist_conferencia || false
       });
       setApuracaoForm({
         numero_acordo: selectedAction.apuracao_numero_acordo || "",
@@ -1360,10 +1328,116 @@ export default function InvestimentoPage() {
         const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
         if (status !== filterStatus) return false;
       }
+
+      // Busca global
+      if (globalSearch) {
+        const searchLower = globalSearch.toLowerCase();
+        const matchSearch =
+          (r.rede && r.rede.toLowerCase().includes(searchLower)) ||
+          (r.gerente_responsavel && r.gerente_responsavel.toLowerCase().includes(searchLower)) ||
+          (r.codigo_campanha && r.codigo_campanha.toLowerCase().includes(searchLower)) ||
+          (r.nome_campanha && r.nome_campanha.toLowerCase().includes(searchLower)) ||
+          (r.numero_acordo && r.numero_acordo.toLowerCase().includes(searchLower)) ||
+          (r.codigo && r.codigo.toString().includes(searchLower)) ||
+          (r.familia_produto && r.familia_produto.toLowerCase().includes(searchLower)) ||
+          (r.familias_detalhes && r.familias_detalhes.some((f: any) => f.familia_nome && f.familia_nome.toLowerCase().includes(searchLower)));
+        if (!matchSearch) return false;
+      }
       
       return true;
     });
-  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode, filterGerente, filterStatus]);
+  }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode, filterGerente, filterStatus, globalSearch]);
+
+  const groupedRenderableData = useMemo(() => {
+    const items: Array<{
+      type: "campaign";
+      id: string;
+      codigo_campanha: string;
+      nome_campanha: string;
+      rede: string;
+      codigo_matriz?: string | null;
+      mes_referencia?: string | null;
+      status_operacional_campanha: string;
+      status_financeiro_campanha: string;
+      valor_previsto: number;
+      valor_homologado: number;
+      valor_pago: number;
+      saldo: number;
+      acoes: any[];
+    } | {
+      type: "legacy";
+      id: string;
+      action: any;
+    }> = [];
+
+    const campaignGroupsMap: Record<string, any> = {};
+
+    filteredData.forEach((action) => {
+      if (!action.campanha_id) {
+        items.push({
+          type: "legacy",
+          id: action.id,
+          action
+        });
+      } else {
+        let group = campaignGroupsMap[action.campanha_id];
+        if (!group) {
+          group = {
+            type: "campaign",
+            id: action.campanha_id,
+            codigo_campanha: action.codigo_campanha || "Campanha",
+            nome_campanha: action.nome_campanha || `Campanha ${action.rede}`,
+            rede: action.rede,
+            codigo_matriz: action.codigo_matriz,
+            mes_referencia: action.mes_referencia,
+            status_operacional_campanha: action.status_operacional_campanha || "PLANEJAMENTO",
+            status_financeiro_campanha: action.status_financeiro_campanha || "ABERTA",
+            valor_previsto: 0,
+            valor_homologado: 0,
+            valor_pago: 0,
+            saldo: 0,
+            acoes: []
+          };
+          campaignGroupsMap[action.campanha_id] = group;
+          items.push(group);
+        }
+        
+        group.acoes.push(action);
+        
+        // Calcular valores consolidados
+        const val = getValorTotal(action);
+        group.valor_previsto += val;
+        if ((action.fase_atual || 1) >= 3) {
+          group.valor_homologado += val;
+        }
+        if ((action.fase_atual || 1) === 6 || action.status_financeiro_acao === 'QUITADA') {
+          group.valor_pago += (action.apuracao_valor_realizado || val);
+        }
+      }
+    });
+
+    // Calcular saldos consolidados
+    items.forEach((item) => {
+      if (item.type === "campaign") {
+        item.saldo = Math.max(0, item.valor_homologado - item.valor_pago);
+      }
+    });
+
+    return items;
+  }, [filteredData]);
+
+  // Efeito de auto-expansão ao buscar/filtrar
+  useEffect(() => {
+    if (globalSearch || filterFamilia) {
+      const expanded: Record<string, boolean> = {};
+      filteredData.forEach(action => {
+        if (action.campanha_id) {
+          expanded[action.campanha_id] = true;
+        }
+      });
+      setExpandedCampaigns(expanded);
+    }
+  }, [filteredData, globalSearch, filterFamilia]);
 
   const gerentesDisponiveis = useMemo(() => {
     const fromMatrizes = matrizes.map(m => m.gerente).filter(Boolean);
@@ -1691,91 +1765,40 @@ export default function InvestimentoPage() {
     }
   };
 
-  const handleValidarFamilia = async (familiaId: string, aprovado: boolean, observacao?: string) => {
+  const handleActionChecklistChange = async (fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia', checked: boolean) => {
     if (!selectedAction) return;
     setActionLoading(selectedAction.id);
     try {
-      const res = await validarFamiliaTrade(selectedAction.id, familiaId, aprovado, observacao);
-      if (res.success) {
-        // 1. Recarregar lista de famílias e histórico localmente
-        const { data: fams } = await supabase
-          .from("cm_investimento_familias")
-          .select("*")
-          .eq("investimento_id", selectedAction.id)
-          .order("familia", { ascending: true });
-        
-        if (fams) {
-          setActionFamilies(fams);
-          if (fams.length > 0) {
-            const famIds = fams.map((f: any) => f.id);
-            const { data: hist } = await supabase
-              .from("cm_investimento_familias_history")
-              .select("*, cm_investimento_familias(familia)")
-              .in("familia_id", famIds)
-              .order("data_hora", { ascending: false });
-            if (hist) setFamilyHistory(hist);
-          }
-        }
-        
-        // 2. Recarregar tabela de fundo
-        await loadData();
-        
-        // 3. Atualizar fase do pai no estado da modal
-        setSelectedAction(prev => {
-          if (!prev) return null;
-          const statusCons = res.data?.consolidatedStatus;
-          const nextF = statusCons === 'APROVADO' ? 3 : statusCons === 'REPROVADO' ? 1 : 2;
-          return { ...prev, fase_atual: nextF };
-        });
+      const updatedChecklist = {
+        comunicacao: fieldName === 'checklist_comunicacao' ? checked : (selectedAction.checklist_comunicacao || false),
+        logistica: fieldName === 'checklist_logistica' ? checked : (selectedAction.checklist_logistica || false),
+        auditoria: fieldName === 'checklist_auditoria' ? checked : (selectedAction.checklist_auditoria || false),
+        garantia: selectedAction.checklist_garantia || false,
+        conferencia: fieldName === 'checklist_conferencia' ? checked : (selectedAction.checklist_conferencia || false)
+      };
 
-        setFeedback({ type: "success", msg: "Status da família atualizado!" });
-        setTimeout(() => setFeedback(null), 3000);
-      } else {
-        alert(res.message || "Erro ao validar família.");
-      }
-    } catch (err: any) {
-      console.error("Erro validar familia:", err);
-      alert("Erro ao processar: " + err.message);
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleToggleChecklist = async (familyId: string, fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia', value: boolean) => {
-    if (!selectedAction) return;
-    setActionLoading(selectedAction.id);
-    try {
-      const res = await atualizarChecklistFamilia(familyId, fieldName, value);
-      if (res.success) {
-        setActionFamilies(prev => prev.map(item => item.id === familyId ? { ...item, [fieldName]: value } : item));
-        const { data: updatedParent } = await supabase
-          .from("cm_acoes_investimento")
-          .select("*")
-          .eq("id", selectedAction.id)
-          .single();
-        if (updatedParent) {
-          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, ...updatedParent } : item));
-          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, ...updatedParent } : prev);
-        }
-        setFeedback({ type: "success", msg: "Checklist da família atualizado!" });
-        setTimeout(() => setFeedback(null), 3000);
-      } else {
-        alert(res.message || "Erro ao atualizar checklist.");
-      }
+      await atualizarChecklistTrade(selectedAction.id, updatedChecklist);
+      
+      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
+      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
+      setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: checked }));
+      
+      setFeedback({ type: "success", msg: "Checklist operacional atualizado!" });
+      setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       console.error(err);
-      alert("Erro ao processar: " + err.message);
+      alert("Erro ao salvar checklist: " + err.message);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleFamilyDocumentUpload = async (familyId: string, fieldName: 'comprovante_url' | 'evidencias_urls', file: File | null) => {
+  const handleActionEvidenceUpload = async (file: File | null) => {
     if (!file || !selectedAction) return;
     setActionLoading(selectedAction.id);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${fieldName}_${familyId}_${Date.now()}.${fileExt}`;
+      const fileName = `evidence_${selectedAction.id}_${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from("comprovantes_investimento")
@@ -1783,28 +1806,24 @@ export default function InvestimentoPage() {
 
       if (uploadError) throw uploadError;
 
-      const currentFam = actionFamilies.find(f => f.id === familyId);
-      if (!currentFam) return;
+      const currentEvidencias = Array.isArray(selectedAction.evidencias_urls) ? selectedAction.evidencias_urls : [];
+      const updatedEvidencias = [...currentEvidencias, fileName];
 
-      let updateVal: any;
-      if (fieldName === 'comprovante_url') {
-        updateVal = fileName;
-      } else {
-        const currentEvidencias = Array.isArray(currentFam.evidencias_urls) ? currentFam.evidencias_urls : [];
-        updateVal = [...currentEvidencias, fileName];
-      }
+      const { error: dbError } = await supabase
+        .from("cm_acoes_investimento")
+        .update({ evidencias_urls: updatedEvidencias })
+        .eq("id", selectedAction.id);
 
-      const res = await atualizarDocumentosFamilia(familyId, fieldName === 'comprovante_url' ? updateVal : undefined, fieldName === 'evidencias_urls' ? updateVal : undefined);
-      if (res.success) {
-        setActionFamilies(prev => prev.map(item => item.id === familyId ? { ...item, [fieldName]: updateVal } : item));
-        setFeedback({ type: "success", msg: "Documento anexado com sucesso!" });
-        setTimeout(() => setFeedback(null), 3000);
-      } else {
-        alert(res.message || "Erro ao salvar o documento.");
-      }
+      if (dbError) throw dbError;
+
+      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, evidencias_urls: updatedEvidencias } : item));
+      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, evidencias_urls: updatedEvidencias } : prev);
+      
+      setFeedback({ type: "success", msg: "Evidência anexada com sucesso!" });
+      setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       console.error(err);
-      alert("Erro ao enviar arquivo: " + err.message);
+      alert("Erro ao enviar evidência: " + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -1859,10 +1878,10 @@ export default function InvestimentoPage() {
 
   const paginatedData = useMemo(() => {
     const start = page * itemsPerPage;
-    return filteredData.slice(start, start + itemsPerPage);
-  }, [filteredData, page]);
+    return groupedRenderableData.slice(start, start + itemsPerPage);
+  }, [groupedRenderableData, page]);
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+  const totalPages = Math.ceil(groupedRenderableData.length / itemsPerPage);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este lançamento?")) return;
@@ -1924,6 +1943,9 @@ export default function InvestimentoPage() {
     const headers = [
       "Código",
       "Data Registro",
+      "Código Campanha",
+      "Nome Campanha",
+      "Valor Consolidado Campanha (Apenas Ref. - NÃO Somar em Pivôs)",
       "Gerente Responsável",
       "Rede",
       "Código Matriz",
@@ -1980,6 +2002,15 @@ export default function InvestimentoPage() {
       return `"${str.replace(/"/g, '""')}"`;
     };
     
+    // Pré-calcular previsto consolidado por campanha para referenciar nas linhas filhas
+    const campaignValPrevMap: Record<string, number> = {};
+    filteredData.forEach(r => {
+      if (r.campanha_id) {
+        const val = getValorTotal(r);
+        campaignValPrevMap[r.campanha_id] = (campaignValPrevMap[r.campanha_id] || 0) + val;
+      }
+    });
+
     const csvRows: string[] = [];
 
     filteredData.forEach(row => {
@@ -1995,6 +2026,9 @@ export default function InvestimentoPage() {
           csvRows.push([
             escapeCSV(row.codigo),
             escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.codigo_campanha || ""),
+            escapeCSV(row.nome_campanha || ""),
+            escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
             escapeCSV(row.gerente_responsavel),
             escapeCSV(row.rede),
             escapeCSV(row.codigo_matriz),
@@ -2057,6 +2091,9 @@ export default function InvestimentoPage() {
           csvRows.push([
             escapeCSV(row.codigo),
             escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+            escapeCSV(row.codigo_campanha || ""),
+            escapeCSV(row.nome_campanha || ""),
+            escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
             escapeCSV(row.gerente_responsavel),
             escapeCSV(row.rede),
             escapeCSV(row.codigo_matriz),
@@ -2111,12 +2148,15 @@ export default function InvestimentoPage() {
         const fam = row.abrangencia === "SKU" 
           ? "Múltiplos SKUs" 
           : (row.familias_detalhes && row.familias_detalhes.length > 0 
-            ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
+            ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
             : (row.familia_produto || ""));
 
         csvRows.push([
           escapeCSV(row.codigo),
           escapeCSV(row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : ""),
+          escapeCSV(row.codigo_campanha || ""),
+          escapeCSV(row.nome_campanha || ""),
+          escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
           escapeCSV(row.gerente_responsavel),
           escapeCSV(row.rede),
           escapeCSV(row.codigo_matriz),
@@ -2451,6 +2491,23 @@ export default function InvestimentoPage() {
             </button>
 
             <div className={`flex-col lg:flex-row gap-3 ${showFilters ? 'flex' : 'hidden lg:flex'}`}>
+              {/* Busca Global */}
+              <div className="flex items-center bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all flex-1 min-w-[240px]">
+                <Search className="w-4 h-4 text-muted mr-2" />
+                <input
+                  type="text"
+                  placeholder="Buscar por código, rede, gerente, campanha, família..."
+                  value={globalSearch}
+                  onChange={(e) => setGlobalSearch(e.target.value)}
+                  className="w-full bg-transparent py-2 text-sm text-foreground focus:outline-none placeholder:text-muted"
+                />
+                {globalSearch && (
+                  <button onClick={() => setGlobalSearch("")} className="text-muted hover:text-foreground">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-3 flex-1">
                 <select
                   value={filterMes}
@@ -2538,6 +2595,8 @@ export default function InvestimentoPage() {
                     setFilterMes("");
                     setFilterGerente("");
                     setFilterStatus("");
+                    setGlobalSearch("");
+                    setExpandedCampaigns({});
                   }}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap"
                 >
@@ -2637,144 +2696,330 @@ export default function InvestimentoPage() {
                       </td>
                     </tr>
                   ) : (
-                    paginatedData.map((row) => (
-                      <tr key={row.id} onClick={() => setSelectedAction(row)} className="hover:bg-elevated/50 transition-colors group cursor-pointer">
-                        <td className="px-3 xl:px-4 py-3 text-foreground/80 font-mono text-xs">
-                          {row.codigo ? `#${row.codigo}` : '-'}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                          {new Date(row.created_at).toLocaleDateString('pt-BR')}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
-                          <div>
-                            <span>{row.rede}</span>
-                            {row.codigo_matriz && (
-                              <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                          {(() => {
-                            const formatted = formatMesReferencia(row.mes_referencia);
-                            if (formatted === "-") return "-";
-                            const parts = formatted.split("/");
-                            if (parts.length === 2) {
-                              return (
-                                <div className="flex flex-col gap-0.5 text-xs font-semibold">
-                                  <span className="text-foreground">{parts[0]}</span>
-                                  <span className="text-muted text-[10px] font-normal">{parts[1]}</span>
+                    paginatedData.map((item) => {
+                      if (item.type === "campaign") {
+                        const isExpanded = expandedCampaigns[item.id] || false;
+                        let minDate = "";
+                        let maxDate = "";
+                        item.acoes.forEach(a => {
+                          if (a.data_inicio && (!minDate || a.data_inicio < minDate)) minDate = a.data_inicio;
+                          if (a.data_fim && (!maxDate || a.data_fim > maxDate)) maxDate = a.data_fim;
+                        });
+
+                        return (
+                          <Fragment key={item.id}>
+                            <tr 
+                              onClick={() => setExpandedCampaigns(prev => ({ ...prev, [item.id]: !prev[item.id] }))} 
+                              className="bg-elevated/70 font-bold border-l-4 border-l-gold hover:bg-elevated/90 transition-all cursor-pointer select-none"
+                            >
+                              <td className="px-3 xl:px-4 py-3 text-gold font-mono text-xs font-bold">
+                                <div className="flex items-center gap-1.5">
+                                  <Layers className="w-3.5 h-3.5" />
+                                  <span>{item.codigo_campanha}</span>
                                 </div>
-                              );
-                            }
-                            return <span className="font-semibold">{formatted}</span>;
-                          })()}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                          <div className="flex flex-col gap-0.5 text-xs font-medium">
-                            <span className="flex items-center gap-1">
-                              {formatDate(row.data_inicio)}
-                              {row.date_mode === 'multiple' && (
-                                <span className="text-[9px] bg-gold/10 text-gold px-1 rounded font-bold border border-gold/20" title="Múltiplas datas por item">Múlt.</span>
-                              )}
-                            </span>
-                            <span className="text-muted">{formatDate(row.data_fim)}</span>
-                          </div>
-                        </td>
-                        <td className="px-3 xl:px-4 py-3">
-                          <span className={`px-2 py-1 rounded-md text-xs font-medium border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
-                            {row.tipo_acao}
-                          </span>
-                        </td>
-                        <td className="px-3 xl:px-4 py-3">
-                          {(() => {
-                            const fase = row.fase_atual || 1;
-                            const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
-                            const tradePercent = fase === 2 ? getTradeProgress(row) : null;
-                            const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-foreground/80 font-normal">
+                                -
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
+                                <div>
+                                  <span>{item.rede}</span>
+                                  {item.codigo_matriz && (
+                                    <span className="text-[10px] text-muted block font-mono mt-0.5">{item.codigo_matriz}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                                {formatMesReferencia(item.mes_referencia)}
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                                <div className="flex flex-col gap-0.5 text-xs font-medium">
+                                  <span>{formatDate(minDate)}</span>
+                                  <span className="text-muted">{formatDate(maxDate)}</span>
+                                </div>
+                              </td>
+                              <td className="px-3 xl:px-4 py-3">
+                                <span className="px-2 py-1 rounded-md text-xs font-medium border bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20">
+                                  Campanha
+                                </span>
+                              </td>
+                              <td className="px-3 xl:px-4 py-3">
+                                <div className="flex flex-col gap-1">
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-500/10 text-blue-500 border-blue-500/20 text-center uppercase">
+                                    Op: {item.status_operacional_campanha}
+                                  </span>
+                                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-center uppercase">
+                                    Fin: {item.status_financeiro_campanha}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-foreground/80 font-normal text-xs whitespace-normal max-w-[200px]">
+                                {item.acoes.length} {item.acoes.length === 1 ? 'Ação' : 'Ações'}: {item.acoes.map(a => a.familia_produto).join(", ")}
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-foreground">
+                                {formatCurrency(item.valor_previsto, false)}
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-blue-500">
+                                {formatCurrency(item.valor_homologado, false)}
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-emerald-500">
+                                {formatCurrency(item.valor_pago, false)}
+                              </td>
+                              <td className="px-3 xl:px-4 py-3 text-center">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span className="text-xs text-muted">Saldo: <span className="font-bold text-foreground">{formatCurrency(item.saldo, false)}</span></span>
+                                  {isExpanded ? <ChevronUp className="w-4 h-4 text-gold" /> : <ChevronDown className="w-4 h-4 text-gold" />}
+                                </div>
+                              </td>
+                            </tr>
                             
-                            const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
-                            const color = tradeClasses ? tradeClasses.text : cfg.color;
-                            const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
+                            {isExpanded && item.acoes.map((row: any) => (
+                              <tr key={row.id} onClick={() => setSelectedAction(row)} className="hover:bg-elevated/30 bg-background/25 border-l-4 border-l-gold/20 transition-colors group cursor-pointer text-xs">
+                                <td className="px-3 xl:px-4 py-2 pl-6 text-muted font-mono text-[11px]">
+                                  {row.codigo ? `#${row.codigo}` : '-'}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-muted">
+                                  {new Date(row.created_at).toLocaleDateString('pt-BR')}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 font-medium text-muted pl-6">
+                                  ↳ {row.familia_produto}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-muted">
+                                  -
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-muted">
+                                  <div className="flex flex-col gap-0.5 text-[10px]">
+                                    <span>{formatDate(row.data_inicio)}</span>
+                                    <span>{formatDate(row.data_fim)}</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 xl:px-4 py-2">
+                                  <span className="px-1.5 py-0.5 rounded text-[10px] border bg-blue-500/5 text-blue-400 border-blue-500/10">
+                                    {row.tipo_acao}
+                                  </span>
+                                </td>
+                                <td className="px-3 xl:px-4 py-2">
+                                  {(() => {
+                                    const fase = row.fase_atual || 1;
+                                    const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
+                                    const tradePercent = fase === 2 ? getTradeProgress(row) : null;
+                                    const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
+                                    
+                                    const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
+                                    const color = tradeClasses ? tradeClasses.text : cfg.color;
+                                    const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
 
-                            return (
-                              <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${bgColor} ${borderColor} ${color}`}>
-                                {cfg.icon}
-                                <span>{cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}</span>
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                          {row.abrangencia === "SKU" 
-                            ? "Múltiplos SKUs" 
-                            : (row.familias_detalhes && row.familias_detalhes.length > 0 
-                              ? row.familias_detalhes.map(f => f.familia_nome).join(", ") 
-                              : row.familia_produto)}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
-                          {formatCurrency(getValorTotal(row), false)}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
-                          {row.abrangencia === "SKU" 
-                            ? "-" 
-                            : (row.familias_detalhes && row.familias_detalhes.length > 0
-                              ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].preco_acao ? formatCurrency(row.familias_detalhes[0].preco_acao) : '-') : 'Múltiplos')
-                              : (row.preco_acao ? formatCurrency(row.preco_acao) : '-'))}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
-                          {row.abrangencia === "SKU" 
-                            ? "-" 
-                            : (row.familias_detalhes && row.familias_detalhes.length > 0
-                              ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].expectativa_volume ? row.familias_detalhes[0].expectativa_volume.toLocaleString('pt-BR') : '-') : 'Múltiplos')
-                              : (row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-'))}
-                        </td>
-                        <td className="px-3 xl:px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            {row.documento_url ? (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleViewDocument(row.documento_url!); }}
-                                className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 rounded-lg transition-colors"
-                                title="Visualizar Documento"
-                              >
-                                <FileText className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <label onClick={(e) => e.stopPropagation()} className="p-2 text-[#10b981] hover:text-[#059669] hover:bg-[#10b981]/10 rounded-lg transition-colors cursor-pointer" title="Anexar Documento / Acordo">
-                                {uploadingId === row.id ? (
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <FileUp className="w-4 h-4" />
+                                    return (
+                                      <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${bgColor} ${borderColor} ${color}`}>
+                                        {cfg.icon}
+                                        <span>{cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}</span>
+                                      </div>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-muted">
+                                  {row.abrangencia}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-right font-medium text-muted">
+                                  {formatCurrency(getValorTotal(row), false)}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-right font-medium text-muted">
+                                  {row.preco_acao ? formatCurrency(row.preco_acao) : '-'}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-right font-medium text-muted">
+                                  {row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-'}
+                                </td>
+                                <td className="px-3 xl:px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex items-center justify-center gap-2">
+                                    {row.documento_url ? (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleViewDocument(row.documento_url!); }}
+                                        className="p-1 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 rounded transition-colors"
+                                        title="Visualizar Documento"
+                                      >
+                                        <FileText className="w-3.5 h-3.5" />
+                                      </button>
+                                    ) : (
+                                      <label onClick={(e) => e.stopPropagation()} className="p-1 text-[#10b981] hover:text-[#059669] hover:bg-[#10b981]/10 rounded transition-colors cursor-pointer" title="Anexar Documento / Acordo">
+                                        {uploadingId === row.id ? (
+                                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                          <FileUp className="w-3.5 h-3.5" />
+                                        )}
+                                        <input 
+                                          type="file" 
+                                          className="hidden" 
+                                          accept=".pdf,image/*"
+                                          onChange={(e) => handleFileUpload(row.id, e.target.files?.[0] || null)}
+                                          disabled={uploadingId === row.id}
+                                        />
+                                      </label>
+                                    )}
+
+                                    <Link
+                                      href={`/investimento/${row.id}/editar`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="p-1 text-muted hover:text-gold hover:bg-gold/10 rounded transition-colors"
+                                      title="Editar"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </Link>
+
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                      className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors"
+                                      title="Excluir"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        );
+                      } else {
+                        const row = item.action;
+                        return (
+                          <tr key={row.id} onClick={() => setSelectedAction(row)} className="hover:bg-elevated/50 transition-colors group cursor-pointer">
+                            <td className="px-3 xl:px-4 py-3 text-foreground/80 font-mono text-xs">
+                              {row.codigo ? `#${row.codigo}` : '-'}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                              {new Date(row.created_at).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
+                              <div>
+                                <span>{row.rede}</span>
+                                {row.codigo_matriz && (
+                                  <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
                                 )}
-                                <input 
-                                  type="file" 
-                                  className="hidden" 
-                                  accept=".pdf,image/*"
-                                  onChange={(e) => handleFileUpload(row.id, e.target.files?.[0] || null)}
-                                  disabled={uploadingId === row.id}
-                                />
-                              </label>
-                            )}
+                              </div>
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                              {(() => {
+                                const formatted = formatMesReferencia(row.mes_referencia);
+                                if (formatted === "-") return "-";
+                                const parts = formatted.split("/");
+                                if (parts.length === 2) {
+                                  return (
+                                    <div className="flex flex-col gap-0.5 text-xs font-semibold">
+                                      <span className="text-foreground">{parts[0]}</span>
+                                      <span className="text-muted text-[10px] font-normal">{parts[1]}</span>
+                                    </div>
+                                  );
+                                }
+                                return <span className="font-semibold">{formatted}</span>;
+                              })()}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                              <div className="flex flex-col gap-0.5 text-xs font-medium">
+                                <span className="flex items-center gap-1">
+                                  {formatDate(row.data_inicio)}
+                                  {row.date_mode === 'multiple' && (
+                                    <span className="text-[9px] bg-gold/10 text-gold px-1 rounded font-bold border border-gold/20" title="Múltiplas datas por item">Múlt.</span>
+                                  )}
+                                </span>
+                                <span className="text-muted">{formatDate(row.data_fim)}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 xl:px-4 py-3">
+                              <span className={`px-2 py-1 rounded-md text-xs font-medium border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
+                                {row.tipo_acao}
+                              </span>
+                            </td>
+                            <td className="px-3 xl:px-4 py-3">
+                              {(() => {
+                                const fase = row.fase_atual || 1;
+                                const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
+                                const tradePercent = fase === 2 ? getTradeProgress(row) : null;
+                                const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
+                                
+                                const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
+                                const color = tradeClasses ? tradeClasses.text : cfg.color;
+                                const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
 
-                            <Link
-                              href={`/investimento/${row.id}/editar`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-2 text-muted hover:text-gold hover:bg-gold/10 rounded-lg transition-colors"
-                              title="Editar"
-                            >
-                              <Pencil className="w-4 h-4" />
-                            </Link>
+                                return (
+                                  <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${bgColor} ${borderColor} ${color}`}>
+                                    {cfg.icon}
+                                    <span>{cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}</span>
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-foreground/80">
+                              {row.abrangencia === "SKU" 
+                                ? "Múltiplos SKUs" 
+                                : (row.familias_detalhes && row.familias_detalhes.length > 0 
+                                  ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") 
+                                  : row.familia_produto)}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
+                              {formatCurrency(getValorTotal(row), false)}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
+                              {row.abrangencia === "SKU" 
+                                ? "-" 
+                                : (row.familias_detalhes && row.familias_detalhes.length > 0
+                                  ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].preco_acao ? formatCurrency(row.familias_detalhes[0].preco_acao) : '-') : 'Múltiplos')
+                                  : (row.preco_acao ? formatCurrency(row.preco_acao) : '-'))}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-right font-medium text-foreground">
+                              {row.abrangencia === "SKU" 
+                                ? "-" 
+                                : (row.familias_detalhes && row.familias_detalhes.length > 0
+                                  ? (row.familias_detalhes.length === 1 ? (row.familias_detalhes[0].expectativa_volume ? row.familias_detalhes[0].expectativa_volume.toLocaleString('pt-BR') : '-') : 'Múltiplos')
+                                  : (row.expectativa_volume ? row.expectativa_volume.toLocaleString('pt-BR') : '-'))}
+                            </td>
+                            <td className="px-3 xl:px-4 py-3 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                {row.documento_url ? (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleViewDocument(row.documento_url!); }}
+                                    className="p-2 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 rounded-lg transition-colors"
+                                    title="Visualizar Documento"
+                                  >
+                                    <FileText className="w-4 h-4" />
+                                  </button>
+                                ) : (
+                                  <label onClick={(e) => e.stopPropagation()} className="p-2 text-[#10b981] hover:text-[#059669] hover:bg-[#10b981]/10 rounded-lg transition-colors cursor-pointer" title="Anexar Documento / Acordo">
+                                    {uploadingId === row.id ? (
+                                      <RefreshCw className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                      <FileUp className="w-4 h-4" />
+                                    )}
+                                    <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept=".pdf,image/*"
+                                      onChange={(e) => handleFileUpload(row.id, e.target.files?.[0] || null)}
+                                      disabled={uploadingId === row.id}
+                                    />
+                                  </label>
+                                )}
 
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                              className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
-                              title="Excluir"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                                <Link
+                                  href={`/investimento/${row.id}/editar`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-2 text-muted hover:text-gold hover:bg-gold/10 rounded-lg transition-colors"
+                                  title="Editar"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </Link>
+
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                  className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
+                                  title="Excluir"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+                    })
                   )}
                 </tbody>
                 {filteredData.length > 0 && (
@@ -2805,118 +3050,221 @@ export default function InvestimentoPage() {
                   Nenhum lançamento encontrado.
                 </div>
               ) : (
-                paginatedData.map((row) => (
-                  <div key={row.id} onClick={() => setSelectedAction(row)} className="bg-elevated border border-border p-4 rounded-2xl flex flex-col gap-3 relative shadow-sm cursor-pointer hover:border-gold transition-colors group">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          {row.codigo && <span className="font-mono text-xs font-bold text-gold bg-gold/10 px-1.5 py-0.5 rounded">#{row.codigo}</span>}
-                          <span className="text-xs text-muted font-medium">{new Date(row.created_at).toLocaleDateString('pt-BR')}</span>
-                        </div>
-                        <h3 className="font-bold text-foreground text-lg leading-tight flex items-baseline gap-2">
-                          {row.rede}
-                          {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
-                        </h3>
-                        <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map(f => f.familia_nome).join(", ") : row.familia_produto)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
-                          {row.tipo_acao}
-                        </span>
-                        {(() => {
-                          const fase = row.fase_atual || 1;
-                          const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
-                          const tradePercent = fase === 2 ? getTradeProgress(row) : null;
-                          const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
-                          
-                          const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
-                          const color = tradeClasses ? tradeClasses.text : cfg.color;
-                          const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
+                    paginatedData.map((item) => {
+                      if (item.type === "campaign") {
+                        const isExpanded = expandedCampaigns[item.id] || false;
+                        let minDate = "";
+                        let maxDate = "";
+                        item.acoes.forEach(a => {
+                          if (a.data_inicio && (!minDate || a.data_inicio < minDate)) minDate = a.data_inicio;
+                          if (a.data_fim && (!maxDate || a.data_fim > maxDate)) maxDate = a.data_fim;
+                        });
 
-                          return (
-                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${bgColor} ${color} ${borderColor}`}>
-                              {cfg.icon} {cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}
-                            </span>
-                          );
-                        })()}
-                      </div>
-                    </div>
+                        return (
+                          <div key={item.id} className="bg-elevated border-l-4 border-l-gold border-y border-r border-border p-4 rounded-2xl flex flex-col gap-3 relative shadow-sm hover:border-gold transition-colors">
+                            <div className="flex justify-between items-start cursor-pointer" onClick={() => setExpandedCampaigns(prev => ({ ...prev, [item.id]: !prev[item.id] }))}>
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="font-mono text-[10px] font-bold text-gold bg-gold/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                    <Layers className="w-3 h-3" />
+                                    {item.codigo_campanha}
+                                  </span>
+                                  <span className="text-[11px] text-muted font-medium">{formatMesReferencia(item.mes_referencia)}</span>
+                                </div>
+                                <h3 className="font-bold text-foreground text-base leading-tight">
+                                  {item.rede}
+                                </h3>
+                                <p className="text-[11px] text-muted mt-1">
+                                  Período: {formatDate(minDate)} - {formatDate(maxDate)}
+                                </p>
+                                <p className="text-xs text-foreground/80 mt-1 font-semibold">
+                                  {item.acoes.length} {item.acoes.length === 1 ? 'Ação' : 'Ações'}: {item.acoes.map(a => a.familia_produto).join(", ")}
+                                </p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1.5">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-blue-500/10 text-blue-500 border-blue-500/20 uppercase text-center min-w-[70px]">
+                                  {item.status_operacional_campanha}
+                                </span>
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-emerald-500/10 text-emerald-500 border-emerald-500/20 uppercase text-center min-w-[70px]">
+                                  {item.status_financeiro_campanha}
+                                </span>
+                                {isExpanded ? <ChevronUp className="w-4 h-4 text-gold mt-1" /> : <ChevronDown className="w-4 h-4 text-gold mt-1" />}
+                              </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-2 bg-background/30 p-2.5 rounded-xl border border-border/40 text-xs">
+                              <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Previsto</span>
+                                <span className="font-bold text-foreground">{formatCurrency(item.valor_previsto, false)}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Homologado</span>
+                                <span className="font-bold text-blue-500">{formatCurrency(item.valor_homologado, false)}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Pago</span>
+                                <span className="font-bold text-emerald-500">{formatCurrency(item.valor_pago, false)}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted block text-[10px] uppercase font-semibold">Saldo</span>
+                                <span className="font-bold text-foreground">{formatCurrency(item.saldo, false)}</span>
+                              </div>
+                            </div>
 
-                    <div className="flex items-center gap-2 text-sm text-muted bg-background p-2 rounded-lg border border-border/50">
-                      <CalendarIcon className="w-4 h-4 text-gold flex-shrink-0" />
-                      <span className="font-medium">
-                        {formatDate(row.data_inicio)} até {formatDate(row.data_fim)}
-                        {row.date_mode === 'multiple' && (
-                          <span className="ml-1.5 text-[9px] bg-gold/10 text-gold px-1.5 py-0.5 rounded font-bold border border-gold/20">Múltiplas</span>
-                        )}
-                      </span>
-                    </div>
+                            {isExpanded && (
+                              <div className="mt-2 space-y-3 pt-3 border-t border-border/40">
+                                {item.acoes.map((row: any) => (
+                                  <div key={row.id} onClick={() => setSelectedAction(row)} className="bg-background/40 border border-border/30 p-3 rounded-xl flex flex-col gap-2 relative shadow-sm cursor-pointer hover:border-gold transition-colors">
+                                    <div className="flex justify-between items-start">
+                                      <div>
+                                        <h4 className="font-bold text-foreground text-sm">↳ {row.familia_produto}</h4>
+                                        <p className="text-[10px] text-muted">{formatDate(row.data_inicio)} até {formatDate(row.data_fim)}</p>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        {(() => {
+                                          const fase = row.fase_atual || 1;
+                                          const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
+                                          const tradePercent = fase === 2 ? getTradeProgress(row) : null;
+                                          const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
+                                          
+                                          const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
+                                          const color = tradeClasses ? tradeClasses.text : cfg.color;
+                                          const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
 
-                    <div className="flex items-center justify-between mt-1 pt-3 border-t border-border">
-                      <div className="flex flex-col">
-                        <div className="font-black text-gold text-xl tracking-tight leading-none mb-1">
-                          {formatCurrency(getValorTotal(row), false)}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          {row.abrangencia !== "SKU" && row.preco_acao && (
-                            <div className="text-xs text-muted">
-                              PPC: <span className="font-medium text-foreground">{formatCurrency(row.preco_acao)}</span>
-                            </div>
-                          )}
-                          {row.abrangencia !== "SKU" && row.expectativa_volume && (
-                            <div className="text-xs text-muted">
-                              Exp. Vol.: <span className="font-medium text-foreground">{row.expectativa_volume}</span>
-                            </div>
-                          )}
-                          {row.abrangencia === "SKU" && (
-                            <div className="text-xs text-muted">
-                              SKUs: <span className="font-medium text-foreground">{row.skus_detalhes?.length || 0}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {row.documento_url ? (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewDocument(row.documento_url!); }}
-                            className="p-2.5 text-blue-500 bg-blue-500/10 rounded-xl hover:bg-blue-500/20 transition-colors"
-                          >
-                            <FileText className="w-5 h-5" />
-                          </button>
-                        ) : (
-                          <label onClick={(e) => e.stopPropagation()} className="p-2.5 text-[#10b981] bg-[#10b981]/10 rounded-xl hover:bg-[#10b981]/20 transition-colors cursor-pointer">
-                            {uploadingId === row.id ? (
-                              <RefreshCw className="w-5 h-5 animate-spin" />
-                            ) : (
-                              <FileUp className="w-5 h-5" />
+                                          return (
+                                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors ${bgColor} ${borderColor} ${color}`}>
+                                              <span>{cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}</span>
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs">
+                                      <span className="font-medium text-foreground">{formatCurrency(getValorTotal(row), false)}</span>
+                                      <span className="text-muted text-[10px]">{row.tipo_acao}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             )}
-                            <input 
-                              type="file" 
-                              className="hidden" 
-                              accept=".pdf,image/*"
-                              onChange={(e) => handleFileUpload(row.id, e.target.files?.[0] || null)}
-                              disabled={uploadingId === row.id}
-                            />
-                          </label>
-                        )}
-                        <Link
-                          href={`/investimento/${row.id}/editar`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-2.5 text-gold bg-gold/10 rounded-xl hover:bg-gold/20 transition-colors"
-                        >
-                          <Pencil className="w-5 h-5" />
-                        </Link>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                          className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                          </div>
+                        );
+                      } else {
+                        const row = item.action;
+                        return (
+                          <div key={row.id} onClick={() => setSelectedAction(row)} className="bg-elevated border border-border p-4 rounded-2xl flex flex-col gap-3 relative shadow-sm cursor-pointer hover:border-gold transition-colors group">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                  {row.codigo && <span className="font-mono text-xs font-bold text-gold bg-gold/10 px-1.5 py-0.5 rounded">#{row.codigo}</span>}
+                                  <span className="text-xs text-muted font-medium">{new Date(row.created_at).toLocaleDateString('pt-BR')}</span>
+                                </div>
+                                <h3 className="font-bold text-foreground text-lg leading-tight flex items-baseline gap-2">
+                                  {row.rede}
+                                  {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
+                                </h3>
+                                <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)}</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className={`px-2 py-1 rounded-md text-xs font-bold border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
+                                  {row.tipo_acao}
+                                </span>
+                                {(() => {
+                                  const fase = row.fase_atual || 1;
+                                  const cfg = FASE_CONFIG[fase] || FASE_CONFIG[1];
+                                  const tradePercent = fase === 2 ? getTradeProgress(row) : null;
+                                  const tradeClasses = tradePercent !== null ? getTradeBadgeClasses(tradePercent) : null;
+                                  
+                                  const bgColor = tradeClasses ? tradeClasses.bg : cfg.bgColor;
+                                  const color = tradeClasses ? tradeClasses.text : cfg.color;
+                                  const borderColor = tradeClasses ? tradeClasses.border : cfg.borderColor;
+
+                                  return (
+                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold border ${bgColor} ${color} ${borderColor}`}>
+                                      {cfg.icon} {cfg.label}{tradePercent !== null ? ` ${tradePercent}%` : ''}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-sm text-muted bg-background p-2 rounded-lg border border-border/50">
+                              <CalendarIcon className="w-4 h-4 text-gold flex-shrink-0" />
+                              <span className="font-medium">
+                                {formatDate(row.data_inicio)} até {formatDate(row.data_fim)}
+                                {row.date_mode === 'multiple' && (
+                                  <span className="ml-1.5 text-[9px] bg-gold/10 text-gold px-1.5 py-0.5 rounded font-bold border border-gold/20">Múltiplas</span>
+                                )}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-1 pt-3 border-t border-border">
+                              <div className="flex flex-col">
+                                <div className="font-black text-gold text-xl tracking-tight leading-none mb-1">
+                                  {formatCurrency(getValorTotal(row), false)}
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  {row.abrangencia !== "SKU" && row.preco_acao && (
+                                    <div className="text-xs text-muted">
+                                      PPC: <span className="font-medium text-foreground">{formatCurrency(row.preco_acao)}</span>
+                                    </div>
+                                  )}
+                                  {row.abrangencia !== "SKU" && row.expectativa_volume && (
+                                    <div className="text-xs text-muted">
+                                      Exp. Vol.: <span className="font-medium text-foreground">{row.expectativa_volume}</span>
+                                    </div>
+                                  )}
+                                  {row.abrangencia === "SKU" && (
+                                    <div className="text-xs text-muted">
+                                      SKUs: <span className="font-medium text-foreground">{row.skus_detalhes?.length || 0}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2">
+                                {row.documento_url ? (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleViewDocument(row.documento_url!); }}
+                                    className="p-2.5 text-blue-500 bg-blue-500/10 rounded-xl hover:bg-blue-500/20 transition-colors"
+                                  >
+                                    <FileText className="w-5 h-5" />
+                                  </button>
+                                ) : (
+                                  <label onClick={(e) => e.stopPropagation()} className="p-2.5 text-[#10b981] bg-[#10b981]/10 rounded-xl hover:bg-[#10b981]/20 transition-colors cursor-pointer">
+                                    {uploadingId === row.id ? (
+                                      <RefreshCw className="w-5 h-5 animate-spin" />
+                                    ) : (
+                                      <FileUp className="w-5 h-5" />
+                                    )}
+                                    <input 
+                                      type="file" 
+                                      className="hidden" 
+                                      accept=".pdf,image/*"
+                                      onChange={(e) => handleFileUpload(row.id, e.target.files?.[0] || null)}
+                                      disabled={uploadingId === row.id}
+                                    />
+                                  </label>
+                                )}
+                                <Link
+                                  href={`/investimento/${row.id}/editar`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-2.5 text-gold bg-gold/10 rounded-xl hover:bg-gold/20 transition-colors"
+                                >
+                                  <Pencil className="w-5 h-5" />
+                                </Link>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                  className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })
               )}
             </div>
 
@@ -4020,16 +4368,10 @@ export default function InvestimentoPage() {
                           {selectedAction.tipo_acao}
                         </span>
                         {(() => {
-                          const consStatus = getConsolidatedStatusText(actionFamilies.length > 0 ? actionFamilies : (selectedAction.familias_detalhes || []));
-                          const badgeClasses: Record<string, string> = {
-                            'APROVADO': 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25',
-                            'REPROVADO': 'bg-red-500/15 text-red-400 border-red-500/25',
-                            'EM VALIDAÇÃO': 'bg-blue-500/15 text-blue-400 border-blue-500/25',
-                            'PARCIALMENTE APROVADO': 'bg-orange-500/15 text-orange-400 border-orange-500/25'
-                          };
+                          const cfg = FASE_CONFIG[selectedAction.fase_atual || 1] || FASE_CONFIG[1];
                           return (
-                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase ${badgeClasses[consStatus] || 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25'}`}>
-                              {consStatus}
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border uppercase ${cfg.bgColor} ${cfg.color} ${cfg.borderColor}`}>
+                              {cfg.label}
                             </span>
                           );
                         })()}
@@ -4146,6 +4488,7 @@ export default function InvestimentoPage() {
                             : selectedAction.familia_produto)}
                       </span>
                     </div>
+
                     <div className="bg-elevated p-3 rounded-xl border border-border col-span-2">
                       <span className="text-xs text-muted block mb-1">Período</span>
                       <div className="flex items-center gap-2">
@@ -4153,254 +4496,202 @@ export default function InvestimentoPage() {
                         <span className="font-medium text-foreground">{formatDate(selectedAction.data_inicio)} até {formatDate(selectedAction.data_fim)}</span>
                       </div>
                     </div>
-                    <div className="bg-elevated p-3 rounded-xl border border-border col-span-2">
-                      <span className="text-xs text-muted block mb-1">Valor do Investimento Total Estimado</span>
-                      <span className="font-black text-gold text-lg">{formatCurrency(getValorTotal(selectedAction), false)}</span>
+
+                    {/* Renderização incondicional de valores unitários da ação */}
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Preço Flat</span>
+                      <span className="font-bold text-foreground">{selectedAction.preco_flat ? formatCurrency(selectedAction.preco_flat) : '-'}</span>
                     </div>
-                    {((actionFamilies && actionFamilies.length > 0) || (selectedAction?.familias_detalhes && selectedAction.familias_detalhes.length > 0)) && (
-                      <div className="col-span-2 space-y-3 mt-2">
-                        <span className="text-xs text-muted block font-bold">Detalhes das Famílias</span>
-                        <div className="grid grid-cols-1 gap-2">
-                          {(actionFamilies.length > 0 ? actionFamilies : (selectedAction?.familias_detalhes || [])).map((f: any, idx: number) => {
-                            const fStatus = (f.status || f.status_trade || 'PENDENTE').toUpperCase();
-                            const isPending = fStatus === 'PENDENTE' || fStatus === 'PENDING' || fStatus === 'AGUARDANDO VALIDAÇÃO';
-                            const isApproved = fStatus === 'APROVADA' || fStatus === 'APROVADO';
-                            const isReproved = fStatus === 'REPROVADA' || fStatus === 'REPROVADO';
-                            const isExecuted = fStatus === 'EXECUTADA';
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Preço da Ação</span>
+                      <span className="font-bold text-foreground">{selectedAction.preco_acao ? formatCurrency(selectedAction.preco_acao) : '-'}</span>
+                    </div>
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Expectativa de Volume</span>
+                      <span className="font-bold text-foreground">{selectedAction.expectativa_volume || '-'}</span>
+                    </div>
+                    <div className="bg-elevated p-3 rounded-xl border border-border">
+                      <span className="text-xs text-muted block mb-1">Investimento Unitário</span>
+                      <span className="font-bold text-foreground">{selectedAction.valor_investimento ? formatCurrency(selectedAction.valor_investimento) : '-'}</span>
+                    </div>
+
+                    {/* Checklist Operacional & Evidências do Trade (Fase 2) */}
+                    {(selectedAction.fase_atual || 1) === 2 && (
+                      <div className="col-span-2 space-y-4 border-t border-border/50 pt-4 mt-2">
+                        <span className="text-xs text-muted block font-bold">Checklist Operacional & Evidências (Trade)</span>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Checkboxes Operacionais */}
+                          <div className="space-y-3 bg-elevated/40 p-4 rounded-xl border border-border/40">
+                            <span className="text-[10px] uppercase font-bold text-muted block tracking-wider mb-2">Checklist de Execução</span>
+                            <div className="space-y-2.5">
+                              <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                                  checked={tradeChecklist.comunicacao} 
+                                  onChange={(e) => handleActionChecklistChange('checklist_comunicacao', e.target.checked)} 
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">📢 1) Comunicação Concluída</span>
+                              </label>
+                              <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                                  checked={tradeChecklist.logistica} 
+                                  onChange={(e) => handleActionChecklistChange('checklist_logistica', e.target.checked)} 
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">🚚 2) Logística/Estoque Alinhado</span>
+                              </label>
+                              <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                                  checked={tradeChecklist.auditoria} 
+                                  onChange={(e) => handleActionChecklistChange('checklist_auditoria', e.target.checked)} 
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">🔍 3) Auditoria de Preço Agendada</span>
+                              </label>
+                              <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                                  checked={tradeChecklist.conferencia} 
+                                  onChange={(e) => handleActionChecklistChange('checklist_conferencia', e.target.checked)} 
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">⚖️ 4) Conferência Fís./Vídeo Alinhada</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Evidências e Documentos */}
+                          <div className="space-y-3 bg-elevated/40 p-4 rounded-xl border border-border/40">
+                            <span className="text-[10px] uppercase font-bold text-muted block tracking-wider mb-2">Upload de Evidências</span>
                             
-                            const canValidate = (selectedAction?.fase_atual || 1) === 2 && ['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '');
-
-                            const valTotal = (Number(f.investimento || 0) * Number(f.expectativa_volume || 0));
-
-                            return (
-                              <div key={idx} className="bg-background border border-border p-3.5 rounded-xl flex flex-col gap-3">
-                                <div className="flex justify-between items-center w-full">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-foreground text-sm">{f.familia || f.familia_nome}</span>
-                                    {isApproved && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Aprovada</span>}
-                                    {isReproved && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-red-500/15 text-red-400 border border-red-500/20">Reprovada</span>}
-                                    {isPending && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-blue-500/15 text-blue-400 border border-blue-500/20">Pendente</span>}
-                                    {isExecuted && <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-purple-500/15 text-purple-400 border border-purple-500/20">Executada</span>}
-                                  </div>
-                                  <span className="text-xs text-gold font-bold">{formatCurrency(valTotal, false)}</span>
-                                </div>
-
-                                <div className="flex flex-wrap gap-4 text-xs bg-elevated/40 p-2 rounded-lg border border-border/40 justify-between">
-                                  <div className="flex flex-col">
-                                    <span className="text-muted text-[10px]">Flat</span>
-                                    <span className="font-medium text-foreground">{f.preco_flat ? formatCurrency(f.preco_flat) : '-'}</span>
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-muted text-[10px]">Ação</span>
-                                    <span className="font-medium text-foreground">{f.preco_acao ? formatCurrency(f.preco_acao) : '-'}</span>
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-muted text-[10px]">Inv. Unit.</span>
-                                    <span className="font-medium text-gold">{f.investimento ? formatCurrency(f.investimento, false) : '-'}</span>
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-muted text-[10px]">Volume</span>
-                                    <span className="font-medium text-foreground">{f.expectativa_volume || '-'}</span>
-                                  </div>
-                                  <div className="flex flex-col">
-                                    <span className="text-muted text-[10px]">Período</span>
-                                    <span className="font-medium text-foreground text-[10px]">
-                                      {f.start_date || f.data_execucao ? `${formatDate(f.start_date || f.data_execucao)}` : '-'}
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {(f.aprovado_por || f.reprovado_por || f.observacao_trade || f.comprovante_url) && (
-                                  <div className="text-[11px] text-muted space-y-1 bg-elevated/20 p-2 rounded border border-border/50">
-                                    {f.aprovado_por && (
-                                      <div>
-                                        Responsável: <span className="font-bold text-foreground">{f.aprovado_por}</span> em {new Date(f.aprovado_em).toLocaleDateString('pt-BR')}
-                                      </div>
-                                    )}
-                                    {f.observacao_trade && (
-                                      <div className="text-red-400">
-                                        Observação Trade: <span className="italic text-foreground">&quot;{f.observacao_trade}&quot;</span>
-                                      </div>
-                                    )}
-                                    {f.comprovante_url && (
-                                      <div>
-                                        Comprovante: <a href={f.comprovante_url} target="_blank" rel="noopener noreferrer" className="text-gold underline hover:text-gold/80 font-semibold">Visualizar arquivo</a>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-
-                                {/* Checklists e Arquivos por Família */}
-                                <div className="mt-2 pt-2 border-t border-border/30 space-y-2">
-                                  <span className="text-[10px] uppercase font-bold tracking-wider text-muted block">
-                                    Checklist Operacional
-                                  </span>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={f.checklist_comunicacao || false}
-                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                        onChange={async (e) => {
-                                          await handleToggleChecklist(f.id, 'checklist_comunicacao', e.target.checked);
-                                        }}
-                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
-                                      />
-                                      <span>Comunicação</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={f.checklist_logistica || false}
-                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                        onChange={async (e) => {
-                                          await handleToggleChecklist(f.id, 'checklist_logistica', e.target.checked);
-                                        }}
-                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
-                                      />
-                                      <span>Logística</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={f.checklist_auditoria || false}
-                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                        onChange={async (e) => {
-                                          await handleToggleChecklist(f.id, 'checklist_auditoria', e.target.checked);
-                                        }}
-                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
-                                      />
-                                      <span>Auditoria</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 text-xs bg-elevated/20 p-1.5 rounded border border-border/30 cursor-pointer hover:bg-elevated/40 transition-all select-none">
-                                      <input
-                                        type="checkbox"
-                                        checked={f.checklist_conferencia || false}
-                                        disabled={actionLoading === selectedAction.id || !['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                        onChange={async (e) => {
-                                          await handleToggleChecklist(f.id, 'checklist_conferencia', e.target.checked);
-                                        }}
-                                        className="w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50"
-                                      />
-                                      <span>Conferência Trade</span>
-                                    </label>
-                                  </div>
-
-                                  <div className="flex flex-col sm:flex-row gap-3 mt-2 pt-2 border-t border-border/20 text-xs">
-                                    <div className="flex-1 flex flex-col gap-1">
-                                      <span className="text-[10px] text-muted font-bold">Evidências Físicas</span>
-                                      <div className="flex items-center gap-2">
-                                        <label className="flex items-center gap-1.5 px-2 py-1 bg-elevated border border-border/50 rounded hover:bg-elevated/80 cursor-pointer transition-all">
-                                          <Paperclip className="w-3.5 h-3.5 text-muted" />
-                                          <span>Anexar Arquivo</span>
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept=".pdf,image/*"
-                                            onChange={(e) => handleFamilyDocumentUpload(f.id, 'evidencias_urls', e.target.files?.[0] || null)}
-                                            disabled={actionLoading === selectedAction.id}
-                                          />
-                                        </label>
-                                      </div>
-                                      {f.evidencias_urls && f.evidencias_urls.length > 0 && (
-                                        <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                          {f.evidencias_urls.map((ev: string, evIdx: number) => (
-                                            <button
-                                              key={evIdx}
-                                              onClick={() => handleViewDocument(ev)}
-                                              className="text-[10px] text-gold underline hover:text-gold/80 font-medium block"
-                                            >
-                                              Evidência #{evIdx + 1}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                    
-                                    <div className="flex-1 flex flex-col gap-1">
-                                      <span className="text-[10px] text-muted font-bold">Comprovante de Execução</span>
-                                      <div className="flex items-center gap-2">
-                                        <label className="flex items-center gap-1.5 px-2 py-1 bg-elevated border border-border/50 rounded hover:bg-elevated/80 cursor-pointer transition-all">
-                                          <Paperclip className="w-3.5 h-3.5 text-muted" />
-                                          <span>Anexar Arquivo</span>
-                                          <input
-                                            type="file"
-                                            className="hidden"
-                                            accept=".pdf,image/*"
-                                            onChange={(e) => handleFamilyDocumentUpload(f.id, 'comprovante_url', e.target.files?.[0] || null)}
-                                            disabled={actionLoading === selectedAction.id}
-                                          />
-                                        </label>
-                                      </div>
-                                      {f.comprovante_url && (
-                                        <div className="mt-1.5">
-                                          <button
-                                            onClick={() => handleViewDocument(f.comprovante_url)}
-                                            className="text-[10px] text-gold underline hover:text-gold/80 font-bold block"
-                                          >
-                                            Visualizar Comprovante
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {canValidate && (
-                                  <div className="flex gap-2 mt-2">
+                            <div className="flex flex-col gap-2">
+                              <label className="flex items-center justify-center gap-1.5 px-3 py-2 bg-elevated hover:bg-border/40 border border-border rounded-xl cursor-pointer transition-all text-xs font-bold text-foreground">
+                                <FileUp className="w-4 h-4 text-gold" />
+                                <span>Anexar Nova Evidência</span>
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept=".pdf,image/*"
+                                  onChange={(e) => handleActionEvidenceUpload(e.target.files?.[0] || null)}
+                                  disabled={actionLoading === selectedAction.id}
+                                />
+                              </label>
+                              
+                              {selectedAction.evidencias_urls && selectedAction.evidencias_urls.length > 0 ? (
+                                <div className="space-y-1.5 max-h-32 overflow-y-auto mt-2">
+                                  <span className="text-[10px] text-muted block font-semibold">Arquivos Anexados:</span>
+                                  {selectedAction.evidencias_urls.map((url: string, idx: number) => (
                                     <button
-                                      onClick={() => {
-                                        if (confirm(`Aprovar a família ${f.familia || f.familia_nome}?`)) {
-                                          handleValidarFamilia(f.familia_id, true);
-                                        }
-                                      }}
-                                      disabled={actionLoading === selectedAction.id || !(f.checklist_comunicacao && f.checklist_logistica && f.checklist_auditoria && f.checklist_conferencia)}
-                                      title={!(f.checklist_comunicacao && f.checklist_logistica && f.checklist_auditoria && f.checklist_conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a família." : ""}
-                                      className="flex-1 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                                      key={idx}
+                                      onClick={() => handleViewDocument(url)}
+                                      className="text-xs text-gold hover:underline block truncate text-left max-w-full"
                                     >
-                                      Aprovar Família
+                                      📄 Evidência #{idx + 1} ({url.split('_').pop()})
                                     </button>
-                                    <button
-                                      onClick={() => {
-                                        const reason = prompt(`Motivo da reprovação da família ${f.familia || f.familia_nome}:`);
-                                        if (reason && reason.trim()) {
-                                          handleValidarFamilia(f.familia_id, false, reason);
-                                        } else if (reason !== null) {
-                                          alert("O motivo é obrigatório para reprovar.");
-                                        }
-                                      }}
-                                      disabled={actionLoading === selectedAction.id}
-                                      className="flex-1 py-1.5 bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-                                    >
-                                      Reprovar Família
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[11px] text-muted italic block mt-2">Nenhuma evidência anexada pelo Trade.</span>
+                              )}
+                            </div>
+                          </div>
                         </div>
+
+                        {/* Botões de Decisão */}
+                        {['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '') && (
+                          <div className="flex gap-3 mt-3">
+                            <button
+                              onClick={() => {
+                                if (confirm(`Aprovar esta ação de investimento do gerente?`)) {
+                                  handlePhaseAction(selectedAction.id, () => validarTrade(selectedAction.id, {
+                                    comunicacao: tradeChecklist.comunicacao,
+                                    logistica: tradeChecklist.logistica,
+                                    auditoria: tradeChecklist.auditoria,
+                                    garantia: selectedAction.checklist_garantia || false,
+                                    conferencia: tradeChecklist.conferencia
+                                  }));
+                                }
+                              }}
+                              disabled={actionLoading === selectedAction.id || !(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia)}
+                              title={!(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a ação." : ""}
+                              className="flex-1 py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle className="w-4 h-4" />
+                              Aprovar Lançamento
+                            </button>
+                            <button
+                              onClick={async () => {
+                                const reason = prompt("Motivo da reprovação / reabertura da ação:");
+                                if (reason && reason.trim()) {
+                                  handlePhaseAction(selectedAction.id, () => reabrirAcaoInvestimento(selectedAction.id, reason));
+                                } else if (reason !== null) {
+                                  alert("O motivo é obrigatório para reprovar.");
+                                }
+                              }}
+                              disabled={actionLoading === selectedAction.id}
+                              className="flex-1 py-2.5 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                            >
+                              <X className="w-4 h-4" />
+                              Reprovar e Reabrir
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
-                    {(!selectedAction.familias_detalhes || selectedAction.familias_detalhes.length === 0) && (!selectedAction.skus_detalhes || selectedAction.skus_detalhes.length === 0) && (
-                      <>
-                        <div className="bg-elevated p-3 rounded-xl border border-border">
-                          <span className="text-xs text-muted block mb-1">Preço Flat</span>
-                          <span className="font-bold text-foreground">{selectedAction.preco_flat ? formatCurrency(selectedAction.preco_flat) : '-'}</span>
+
+                    {/* Exibição consolidada/leitura de checklists para fases diferentes da Fase 2 */}
+                    {(selectedAction.fase_atual || 1) !== 2 && (
+                      <div className="col-span-2 space-y-3 border-t border-border/50 pt-4 mt-2">
+                        <span className="text-xs text-muted block font-bold">Checklist Operacional & Evidências (Trade)</span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div className="bg-elevated/30 p-3 rounded-xl border border-border/40 space-y-1.5">
+                            <span className="text-[10px] text-muted uppercase font-bold block mb-1">Status do Checklist</span>
+                            <div className="flex items-center gap-2">
+                              <span>{selectedAction.checklist_comunicacao ? "✅" : "❌"}</span>
+                              <span>Comunicação</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span>{selectedAction.checklist_logistica ? "✅" : "❌"}</span>
+                              <span>Logística/Estoque</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span>{selectedAction.checklist_auditoria ? "✅" : "❌"}</span>
+                              <span>Auditoria de Preço</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span>{selectedAction.checklist_conferencia ? "✅" : "❌"}</span>
+                              <span>Conferência Trade</span>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-elevated/30 p-3 rounded-xl border border-border/40 space-y-1.5">
+                            <span className="text-[10px] text-muted uppercase font-bold block mb-1">Evidências Anexadas</span>
+                            {selectedAction.evidencias_urls && selectedAction.evidencias_urls.length > 0 ? (
+                              <div className="space-y-1 max-h-24 overflow-y-auto">
+                                {selectedAction.evidencias_urls.map((url: string, idx: number) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => handleViewDocument(url)}
+                                    className="text-xs text-gold hover:underline block truncate text-left max-w-full"
+                                  >
+                                    📄 Evidência #{idx + 1}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-muted italic block">Nenhuma evidência anexada.</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="bg-elevated p-3 rounded-xl border border-border">
-                          <span className="text-xs text-muted block mb-1">Preço da Ação</span>
-                          <span className="font-bold text-foreground">{selectedAction.preco_acao ? formatCurrency(selectedAction.preco_acao) : '-'}</span>
-                        </div>
-                        <div className="bg-elevated p-3 rounded-xl border border-border">
-                          <span className="text-xs text-muted block mb-1">Expectativa de Volume</span>
-                          <span className="font-bold text-foreground">{selectedAction.expectativa_volume || '-'}</span>
-                        </div>
-                        <div className="bg-elevated p-3 rounded-xl border border-border">
-                          <span className="text-xs text-muted block mb-1">Investimento Unitário</span>
-                          <span className="font-bold text-foreground">{selectedAction.valor_investimento ? formatCurrency(selectedAction.valor_investimento) : '-'}</span>
-                        </div>
-                      </>
+                      </div>
                     )}
                     {selectedAction.skus_detalhes && selectedAction.skus_detalhes.length > 0 && (
                       <div className="col-span-2 space-y-3 mt-2">
@@ -4436,26 +4727,7 @@ export default function InvestimentoPage() {
                       <div className="col-span-2 space-y-3 mt-3 border-t border-border/50 pt-3">
                         <span className="text-xs text-muted block font-bold">Cronograma da Ação</span>
                         <div className="space-y-2">
-                          {selectedAction.familias_detalhes && selectedAction.familias_detalhes.map((f: any, idx: number) => {
-                            const status = calcularStatusItemInvestimento(f, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
-                            const badgeColors = {
-                              AGENDADA: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-                              EM_ANDAMENTO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-                              ENCERRADA: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-                              ATRASADA: "bg-rose-500/10 text-rose-400 border-rose-500/20",
-                            };
-                            return (
-                              <div key={`cron-fam-${idx}`} className="flex items-center justify-between bg-elevated border border-border p-2.5 rounded-lg text-xs">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-foreground">{f.familia_nome} (Família)</span>
-                                  <span className="text-[10px] text-muted">{formatDate(f.start_date)} até {formatDate(f.end_date)}</span>
-                                </div>
-                                <span className={`px-2 py-0.5 rounded border text-[10px] font-bold ${badgeColors[status]}`}>
-                                  {status.replace("_", " ")}
-                                </span>
-                              </div>
-                            );
-                          })}
+
                           {selectedAction.skus_detalhes && selectedAction.skus_detalhes.map((s: any, idx: number) => {
                             const status = calcularStatusItemInvestimento(s, selectedAction.fase_atual || 1, selectedAction.apuracao_preenchida_em);
                             const badgeColors = {
@@ -4482,40 +4754,6 @@ export default function InvestimentoPage() {
                   </div>
                 )}
 
-                {/* Histórico de Aprovações por Família */}
-                <div className="pt-3 border-t border-border">
-                  <span className="text-xs text-muted font-bold block mb-2">Histórico de Validações de Famílias ({familyHistory.length})</span>
-                  {familyHistory.length === 0 ? (
-                    <p className="text-[11px] text-muted italic">Nenhuma validação registrada para as famílias desta ação.</p>
-                  ) : (
-                    <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                      {familyHistory.map((hist, idx) => {
-                        const isApp = hist.status_novo === 'APROVADA';
-                        return (
-                          <div key={idx} className="bg-elevated p-2 rounded-lg border border-border/40 text-[11px] space-y-1">
-                            <div className="flex justify-between items-center">
-                              <span className="font-bold text-foreground">
-                                {hist.cm_investimento_familias?.familia || "Família"}
-                              </span>
-                              <span className={`px-1 py-0.5 rounded text-[9px] font-black uppercase ${isApp ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                                {isApp ? 'Aprovada' : 'Reprovada'}
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-muted flex justify-between">
-                              <span>Por: {hist.usuario}</span>
-                              <span>{new Date(hist.data_hora).toLocaleString('pt-BR')}</span>
-                            </div>
-                            {hist.observacao && (
-                              <p className="text-foreground/80 italic mt-0.5 bg-background/50 p-1 rounded border border-border/20">
-                                &quot;{hist.observacao}&quot;
-                              </p>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
 
                 {/* Histórico de Alterações */}
                 <div className="pt-3 border-t border-border">
@@ -4674,117 +4912,48 @@ export default function InvestimentoPage() {
                     </button>
                   )}
 
-                  {(selectedAction.fase_atual || 1) === 2 && (() => {
-                    const familiesToUse = actionFamilies.length > 0 ? actionFamilies : (selectedAction?.familias_detalhes || []);
-                    const totalFamilies = familiesToUse.length;
-                    
-                    const comunicacaoCount = familiesToUse.filter((f: any) => f.checklist_comunicacao).length;
-                    const logisticaCount = familiesToUse.filter((f: any) => f.checklist_logistica).length;
-                    const auditoriaCount = familiesToUse.filter((f: any) => f.checklist_auditoria).length;
-                    const conferenciaCount = familiesToUse.filter((f: any) => f.checklist_conferencia).length;
-
-                    const pctComunicacao = totalFamilies > 0 ? Math.round((comunicacaoCount / totalFamilies) * 100) : 0;
-                    const pctLogistica = totalFamilies > 0 ? Math.round((logisticaCount / totalFamilies) * 100) : 0;
-                    const pctAuditoria = totalFamilies > 0 ? Math.round((auditoriaCount / totalFamilies) * 100) : 0;
-                    const pctConferencia = totalFamilies > 0 ? Math.round((conferenciaCount / totalFamilies) * 100) : 0;
-
-                    return (
-                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
-                        <span className="text-xs font-bold text-foreground">Checklist Comercial & Progresso (Ação Pai)</span>
-                        
-                        {/* Progresso das Famílias - Somente Leitura */}
-                        <div className="space-y-2 bg-background/50 p-2.5 rounded-lg border border-border/40 text-xs">
-                          <span className="text-[9px] uppercase font-bold text-muted block tracking-wider mb-1">
-                            Progresso Operacional das Famílias
-                          </span>
-                          
-                          {/* Comunicação */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between font-semibold">
-                              <span>📢 Comunicação</span>
-                              <span className="text-gold">{pctComunicacao}% ({comunicacaoCount}/{totalFamilies})</span>
-                            </div>
-                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctComunicacao}%` }} />
-                            </div>
-                          </div>
-
-                          {/* Logística */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between font-semibold">
-                              <span>🚚 Logística</span>
-                              <span className="text-gold">{pctLogistica}% ({logisticaCount}/{totalFamilies})</span>
-                            </div>
-                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctLogistica}%` }} />
-                            </div>
-                          </div>
-
-                          {/* Auditoria */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between font-semibold">
-                              <span>🔍 Auditoria</span>
-                              <span className="text-gold">{pctAuditoria}% ({auditoriaCount}/{totalFamilies})</span>
-                            </div>
-                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctAuditoria}%` }} />
-                            </div>
-                          </div>
-
-                          {/* Conferência */}
-                          <div className="space-y-1">
-                            <div className="flex justify-between font-semibold">
-                              <span>⚖️ Conferência Trade</span>
-                              <span className="text-gold">{pctConferencia}% ({conferenciaCount}/{totalFamilies})</span>
-                            </div>
-                            <div className="w-full bg-elevated/40 h-1.5 rounded-full overflow-hidden">
-                              <div className="bg-gold h-full rounded-full transition-all duration-300" style={{ width: `${pctConferencia}%` }} />
-                            </div>
-                          </div>
+                  {/* Checklist Comercial Geral */}
+                  <div className="bg-elevated p-3.5 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
+                    <span className="text-xs font-bold text-foreground">Validações Comerciais Gerais</span>
+                    <div className="grid grid-cols-1 gap-2.5 pt-1">
+                      <label className="flex items-start gap-3 cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                          checked={selectedAction.checklist_garantia || false} 
+                          onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
+                        />
+                        <div>
+                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
+                          <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
                         </div>
-
-                        {/* Checkboxes Comerciais Editáveis */}
-                        <div className="space-y-2 pt-1">
-                          <label className="flex items-start gap-3 cursor-pointer group">
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                              checked={selectedAction.checklist_garantia || false} 
-                              onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
-                            />
-                            <div>
-                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
-                              <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
-                            </div>
-                          </label>
-                          <label className="flex items-start gap-3 cursor-pointer group">
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                              checked={selectedAction.verba_aprovada || false} 
-                              onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
-                            />
-                            <div>
-                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
-                              <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
-                            </div>
-                          </label>
-                          <label className="flex items-start gap-3 cursor-pointer group">
-                            <input 
-                              type="checkbox" 
-                              className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                              checked={selectedAction.contrato_assinado || false} 
-                              onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
-                            />
-                            <div>
-                              <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
-                              <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
-                            </div>
-                          </label>
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                          checked={selectedAction.verba_aprovada || false} 
+                          onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
+                        />
+                        <div>
+                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
+                          <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      </label>
+                      <label className="flex items-start gap-3 cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                          checked={selectedAction.contrato_assinado || false} 
+                          onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
+                        />
+                        <div>
+                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
+                          <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
 
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <div className="flex gap-2">

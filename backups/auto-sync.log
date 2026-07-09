@@ -269,3 +269,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    84f8804..bfb1fb4  main -> main
 [08/07/2026 16:36] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 1bb9a86] auto-save: 08/07/2026 22:25
+ 2 files changed, 151 insertions(+)
+ create mode 100644 supabase/migrations/20260710_sprint1_schema_base.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   bfb1fb4..1bb9a86  main -> main
+[08/07/2026 22:25] ✅ Alterações enviadas com sucesso para o GitHub.
