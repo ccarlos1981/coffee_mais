@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { InvestmentForm } from "./InvestmentForm";
+import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 import { obterRedesMatrizes } from "./actions";
 
 export const metadata = {
@@ -15,13 +16,7 @@ export default async function LancarInvestimentoPage() {
   const redesList = await obterRedesMatrizes();
 
   // Hardcoded product families as requested
-  const familiasList = [
-    "Grão",
-    "Moído",
-    "Drip",
-    "Capsula",
-    "1KG"
-  ];
+  const familiasList = [...PRODUCT_FAMILIES];
 
   // Fetch SKUs
   let skusList: string[] = [];

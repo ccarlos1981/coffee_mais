@@ -28,7 +28,7 @@ function buildWhereClause(filters: Record<string, string | null>, startMonth: st
   if (filters.familia) {
     clauses.push(`tipo_produto IN (${filters.familia.split(',').map(f => escapeSqlValue(f)).join(',')})`);
   } else {
-    clauses.push(`tipo_produto IN ('Grão', 'Moído', 'Cápsula', 'Drip', '1 KG')`);
+    clauses.push(`tipo_produto IN ('Grão', 'Moído', 'Cápsula', 'Drip', '1 KG', 'Café Verde')`);
   }
   
   if (filters.uf) clauses.push(`uf IN (${filters.uf.split(',').map(u => escapeSqlValue(u)).join(',')})`);
@@ -47,7 +47,7 @@ function buildCompanyWhereClause(filters: Record<string, string | null>, startMo
   if (filters.familia) {
     clauses.push(`tipo_produto IN (${filters.familia.split(',').map(f => escapeSqlValue(f)).join(',')})`);
   } else {
-    clauses.push(`tipo_produto IN ('Grão', 'Moído', 'Cápsula', 'Drip', '1 KG')`);
+    clauses.push(`tipo_produto IN ('Grão', 'Moído', 'Cápsula', 'Drip', '1 KG', 'Café Verde')`);
   }
   
   if (filters.product) clauses.push(`product IN (${filters.product.split(',').map(p => escapeSqlValue(p)).join(',')})`);

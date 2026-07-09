@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { InvestmentForm } from "@/app/investimento/lancar/InvestmentForm";
 import { notFound } from "next/navigation";
 import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
+import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 
 export const metadata = {
   title: "Editar Investimento - Coffee Mais",
@@ -32,13 +33,7 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
   const redesList = await obterRedesMatrizes();
 
   // Hardcoded product families as requested
-  const familiasList = [
-    "Grão",
-    "Moído",
-    "Drip",
-    "Capsula",
-    "1KG"
-  ];
+  const familiasList = [...PRODUCT_FAMILIES];
 
   return (
     <div className="min-h-screen bg-background">

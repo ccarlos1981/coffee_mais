@@ -11,11 +11,13 @@ import {
   User,
   Coffee,
   Building2,
-  DollarSign
+  DollarSign,
+  ChevronDown
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { salvarPesquisaLight } from "./actions";
+import { salvarPesquisaLight, obterRedesRecomendadas } from "./actions";
+import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
 
 export default function PesquisaLightPage() {
   const supabase = createClient();
@@ -26,7 +28,12 @@ export default function PesquisaLightPage() {
   const [loading, setLoading] = useState(true);
 
   // Estados do formulário
-  const [rede, setRede] = useState("");
+  const [searchRede, setSearchRede] = useState("");
+  const [isRedeOpen, setIsRedeOpen] = useState(false);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string } | null>(null);
+  const [redes, setRedes] = useState<Array<{ codigo: string; nome: string; canal: string }>>([]);
+  const [recomendadas, setRecomendadas] = useState<Array<{ codigo: string; nome: string; canal: string }>>([]);
+  const [ufPrincipal, setUfPrincipal] = useState<string | null>(null);
   const [precoFlat, setPrecoFlat] = useState("");
   const [tipoFlat, setTipoFlat] = useState<"Moído" | "Grão">("Moído");
   const [precoGourmet, setPrecoGourmet] = useState("");
@@ -36,11 +43,13 @@ export default function PesquisaLightPage() {
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Rede suggestions para facilidade em smartphones
-  const SUGGESTED_NETWORKS = ["Super Nosso", "Verdemar", "Zona Sul", "Prezunic", "Pão de Açúcar", "Carrefour"];
+  const filteredRedes = redes.filter(r => 
+    r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
+    r.codigo.toLowerCase().includes(searchRede.toLowerCase())
+  );
 
   useEffect(() => {
-    async function loadUserData() {
+    async function loadUserDataAndRedes() {
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser();
         if (!authUser) {
@@ -65,13 +74,37 @@ export default function PesquisaLightPage() {
 
           setEmployee(emp);
         }
+
+        // Buscar UF no perfil do usuário
+        const { data: userProfile } = await supabase
+          .from("cm_user_profiles")
+          .select("uf")
+          .eq("id", authUser.id)
+          .maybeSingle();
+
+        let principalUf = null;
+        if (userProfile?.uf) {
+          const ufs = userProfile.uf.split(",").map((x: string) => x.trim().toUpperCase());
+          if (ufs.length > 0 && ufs[0]) {
+            principalUf = ufs[0];
+            setUfPrincipal(principalUf);
+          }
+        }
+
+        // Carregar redes da mesma fonte utilizada no módulo de investimentos
+        const redesList = await obterRedesMatrizes();
+        setRedes(redesList);
+
+        // Carregar as 10 redes recomendadas (baseado no faturamento/estado)
+        const topRedes = await obterRedesRecomendadas(principalUf);
+        setRecomendadas(topRedes);
       } catch (err) {
-        console.error("Erro ao carregar dados do usuário:", err);
+        console.error("Erro ao carregar dados:", err);
       } finally {
         setLoading(false);
       }
     }
-    loadUserData();
+    loadUserDataAndRedes();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -80,6 +113,12 @@ export default function PesquisaLightPage() {
     setSubmitting(true);
 
     try {
+      if (!selectedRede) {
+        setErrorMsg("Por favor, selecione uma rede válida.");
+        setSubmitting(false);
+        return;
+      }
+
       const pFlat = parseFloat(precoFlat.replace(",", "."));
       const pGourmet = parseFloat(precoGourmet.replace(",", "."));
 
@@ -96,7 +135,8 @@ export default function PesquisaLightPage() {
       }
 
       const result = await salvarPesquisaLight({
-        rede,
+        rede: selectedRede.nome,
+        codigoMatriz: selectedRede.codigo,
         precoFlat: pFlat,
         tipoFlat,
         precoGourmet: pGourmet
@@ -105,7 +145,8 @@ export default function PesquisaLightPage() {
       if (result?.success) {
         setSuccess(true);
         // Reset formulário
-        setRede("");
+        setSelectedRede(null);
+        setSearchRede("");
         setPrecoFlat("");
         setPrecoGourmet("");
         setTipoFlat("Moído");
@@ -122,6 +163,8 @@ export default function PesquisaLightPage() {
   const handleReset = () => {
     setSuccess(false);
     setErrorMsg("");
+    setSelectedRede(null);
+    setSearchRede("");
   };
 
   if (loading) {
@@ -220,33 +263,79 @@ export default function PesquisaLightPage() {
             <form onSubmit={handleSubmit} className="p-5 bg-neutral-900/30 border border-neutral-900/60 rounded-2xl flex flex-col gap-4">
               
               {/* Campo: Rede */}
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 relative z-50">
                 <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-amber-500/70" />
                   Rede
                 </label>
-                <input
-                  type="text"
-                  required
-                  value={rede}
-                  onChange={(e) => setRede(e.target.value)}
-                  placeholder="Ex: Super Nosso, Verdemar..."
-                  className="w-full bg-neutral-950 border border-neutral-900 focus:border-amber-500/40 rounded-xl p-3 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none transition"
-                />
-                
-                {/* Sugestões Rápidas */}
-                <div className="flex gap-1.5 mt-1 flex-wrap">
-                  {SUGGESTED_NETWORKS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setRede(n)}
-                      className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[10px] text-neutral-400 transition"
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    placeholder="Digite para buscar a rede..."
+                    className="w-full bg-neutral-950 border border-neutral-900 focus:border-amber-500/40 rounded-xl p-3 pr-10 text-sm text-neutral-100 placeholder-neutral-600 focus:outline-none transition"
+                    value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.codigo} - ${selectedRede.nome}` : "")}
+                    onChange={(e) => {
+                      setSearchRede(e.target.value);
+                      if (!isRedeOpen) setIsRedeOpen(true);
+                    }}
+                    onFocus={() => setIsRedeOpen(true)}
+                    onBlur={() => setTimeout(() => setIsRedeOpen(false), 200)}
+                  />
+                  <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 pointer-events-none" />
                 </div>
+
+                {/* Sugestões Dinâmicas (Top 10) */}
+                {recomendadas.length > 0 && (
+                  <div className="flex flex-col gap-1 mt-1">
+                    <span className="text-[10px] text-neutral-500 font-semibold uppercase tracking-wider">
+                      Sugestões {ufPrincipal ? `(${ufPrincipal})` : "(Nacional)"}
+                    </span>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {recomendadas.map((r) => (
+                        <button
+                          key={r.codigo}
+                          type="button"
+                          onClick={() => {
+                            setSelectedRede(r);
+                            setSearchRede("");
+                            setIsRedeOpen(false);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-[10px] text-neutral-400 transition cursor-pointer"
+                        >
+                          {r.nome}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isRedeOpen && (
+                  <div className="absolute z-[999] w-full left-0 top-[calc(100%+4px)] max-h-60 overflow-auto bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl divide-y divide-neutral-800">
+                    {filteredRedes.length > 0 ? (
+                      filteredRedes.map(r => (
+                        <button
+                          key={r.codigo}
+                          type="button"
+                          className="w-full text-left px-4 py-3 text-sm text-neutral-100 hover:bg-amber-500/10 hover:text-amber-400 transition-colors flex items-center justify-between"
+                          onClick={() => {
+                            setSelectedRede(r);
+                            setSearchRede("");
+                            setIsRedeOpen(false);
+                          }}
+                        >
+                          <div>
+                            <span className="font-semibold text-amber-500 mr-2">{r.codigo}</span>
+                            <span>{r.nome}</span>
+                          </div>
+                          <span className="text-xs text-neutral-500">({r.canal})</span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-4 text-center text-neutral-500 text-sm">Nenhuma rede encontrada.</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Campo: Preço Flat */}
