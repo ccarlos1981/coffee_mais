@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       .single();
 
     const role = profile?.role || "Promotor";
-    const allowedEditRoles = ["Admin", "CEO", "RH"];
+    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
     const isEditor = allowedEditRoles.includes(role);
 
     let query = supabase
@@ -134,7 +134,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    const allowedEditRoles = ["Admin", "CEO", "RH"];
+    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
     if (!profile || !allowedEditRoles.includes(profile.role)) {
       return NextResponse.json({ error: "Sem permissão para criar processos" }, { status: 403 });
     }

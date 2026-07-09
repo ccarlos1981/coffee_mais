@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    const allowedRoles = ["Admin", "CEO", "RH"];
+    const allowedRoles = ["Admin", "CEO", "RH", "TI"];
     if (!profile || !allowedRoles.includes(profile.role)) {
       return NextResponse.json({ error: "Sem permissão para importar processos" }, { status: 403 });
     }

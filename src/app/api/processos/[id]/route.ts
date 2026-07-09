@@ -42,7 +42,7 @@ export async function GET(
       .single();
 
     const role = profile?.role || "Promotor";
-    const allowedEditRoles = ["Admin", "CEO", "RH"];
+    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
     const isEditor = allowedEditRoles.includes(role);
 
     // Se NÃO for editor e o processo não for PUBLICADO, não pode ler
@@ -149,7 +149,7 @@ export async function PUT(
       .eq("id", user.id)
       .single();
 
-    const allowedEditRoles = ["Admin", "CEO", "RH"];
+    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
     if (!profile || !allowedEditRoles.includes(profile.role)) {
       return NextResponse.json({ error: "Sem permissão para alterar processos" }, { status: 403 });
     }
@@ -360,7 +360,7 @@ export async function DELETE(
       .eq("id", user.id)
       .single();
 
-    const allowedEditRoles = ["Admin", "CEO", "RH"];
+    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
     if (!profile || !allowedEditRoles.includes(profile.role)) {
       return NextResponse.json({ error: "Sem permissão para remover processos" }, { status: 403 });
     }

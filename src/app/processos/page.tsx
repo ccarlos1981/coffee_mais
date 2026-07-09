@@ -118,7 +118,7 @@ export default function ProcessosPage() {
           const roleJson = await roleRes.json();
           const roleStr = roleJson.explanation || "";
           setUserRole(roleStr);
-          setIsEditor(["Admin", "CEO", "RH"].some(r => roleStr.includes(r)));
+          setIsEditor(["Admin", "CEO", "RH", "TI"].some(r => roleStr.includes(r)));
         } else {
           // Fallback check if Chat API fails
           setIsEditor(true); // Default to true to let them try edit (backend will enforce rules anyway)
