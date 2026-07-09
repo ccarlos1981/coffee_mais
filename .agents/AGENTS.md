@@ -57,3 +57,29 @@ Qualquer alteração ou novo desenvolvimento deve seguir estritamente as regras 
    - Realizar teste manual fim-a-fim nos fluxos de lançamento, trade e financeiro.
 7. **Mitigação de Riscos**: Qualquer anomalia ou risco arquitetural identificado durante o período de estabilização deve ser registrado e informado de imediato.
 
+---
+
+## 6. Regra Funcional Permanente — Cobertura Comercial
+O dashboard de Investimentos passa a suportar o conceito de Cobertura Comercial da carteira.
+
+### Definições:
+- **Rede com ação**: Possui pelo menos uma ação cadastrada para o período selecionado.
+- **Rede sem ação**: Não possui nenhuma ação cadastrada para o período selecionado, respeitando todos os filtros ativos da tela (gerente, período, região, rede, etc.).
+
+### Objetivos da funcionalidade:
+- Identificar oportunidades não trabalhadas.
+- Medir cobertura comercial da carteira.
+- Apoiar planejamento e fechamento mensal.
+- Facilitar acompanhamento gerencial e definição de metas.
+
+### Indicadores derivados:
+- Redes ativas
+- Redes com ação
+- Redes sem ação
+- Cobertura comercial (%)
+
+### Fórmula oficial:
+Cobertura Comercial (%) = (Redes com ação / Total de redes ativas) * 100
+
+Esta funcionalidade possui caráter analítico e não altera qualquer comportamento operacional, financeiro ou arquitetural do modelo Campanha → Ações Independentes.
+
