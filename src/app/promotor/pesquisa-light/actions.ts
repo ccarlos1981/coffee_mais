@@ -151,16 +151,14 @@ export async function salvarPesquisaLight(data: PesquisaLightData): Promise<Acti
 
         const dateStr = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
-        const textBody = `Foi identificada uma movimentação promocional do produto Gourmet.
+        const textBody = `Nova Pesquisa de Preços (Pesquisa Light) registrada.
 
 Rede: ${data.rede.trim()}
 Preço Flat: R$ ${data.precoFlat.toFixed(2).replace(".", ",")}
 Tipo Flat: ${data.tipoFlat}
 Preço Gourmet: R$ ${data.precoGourmet.toFixed(2).replace(".", ",")}
 Promotor: ${employeeName}
-Data/Hora: ${dateStr}
-
-Favor avaliar a oportunidade comercial e as possíveis ações competitivas.`;
+Data/Hora: ${dateStr}`;
 
         const htmlBody = `
           <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background-color: #ffffff;">
@@ -168,14 +166,14 @@ Favor avaliar a oportunidade comercial e as possíveis ações competitivas.`;
             <div style="background: linear-gradient(135deg, #1f2937, #111827); padding: 24px; text-align: center; border-bottom: 4px solid #bba16e;">
               <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">Coffee Mais</h1>
               <p style="color: #bba16e; margin: 4px 0 0 0; font-size: 11px; text-transform: uppercase; font-weight: 600; letter-spacing: 1.5px;">
-                Alerta de Pesquisa Light - Promoção Gourmet
+                Alerta de Pesquisa Light - Nova Pesquisa Registrada
               </p>
             </div>
             
             <!-- Body -->
             <div style="padding: 24px; color: #374151; line-height: 1.6;">
               <p style="font-size: 15px; margin-top: 0; font-weight: 600; color: #111827;">
-                Foi identificada uma movimentação promocional relevante do produto Gourmet. Veja os detalhes:
+                Uma nova pesquisa de preços (Pesquisa Light) foi registrada. Veja os detalhes:
               </p>
               
               <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px;">
@@ -224,7 +222,7 @@ Favor avaliar a oportunidade comercial e as possíveis ações competitivas.`;
         await transporter.sendMail({
           from: `"Coffee Mais Campo" <${process.env.SMTP_USER}>`,
           to: recipientsList,
-          subject: "Alerta de Pesquisa Light - Promoção Gourmet Identificada",
+          subject: `Alerta de Pesquisa Light - Nova Pesquisa - ${data.rede.trim()}`,
           text: textBody,
           html: htmlBody,
         });

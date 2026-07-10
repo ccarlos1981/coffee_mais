@@ -32,7 +32,10 @@ const CHANNELS = [
   { id: "KA", name: "KA (Key Accounts)" },
   { id: "Inside Sales", name: "Inside Sales" },
   { id: "Ecommerce", name: "Ecommerce" },
-  { id: "Marketplace", name: "Marketplace" }
+  { id: "Marketplace", name: "Marketplace" },
+  { id: "Distribuidor", name: "Distribuidor" },
+  { id: "Amazon 1P", name: "1P" },
+  { id: "Private Label", name: "Private Label" }
 ];
 
 const KA_MANAGERS = [
@@ -122,8 +125,11 @@ export default function MetasPage() {
       const prevYr = year - 1;
       const currYr = year;
 
+      // Map 'Private Label' to 'Marca Própria' for actual sales data query
+      const dbChannel = channel === 'Private Label' ? 'Marca Própria' : channel;
+
       const { data, error: err } = await supabase.rpc('get_actual_sales_v2', {
-        p_channel: channel,
+        p_channel: dbChannel,
         p_manager: manager,
         p_years: [String(prevYr), String(currYr)]
       });
