@@ -175,6 +175,8 @@ interface AcaoInvestimento {
   data_fim_real?: string | null;
   motivo_divergencia_calendario?: string | null;
   observacao_divergencia?: string | null;
+  devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
+  devolvido_em?: string | null;
 }
 
 interface InvestmentPeriod {
@@ -4695,9 +4697,17 @@ export default function InvestimentoPage() {
                     <p className="italic">&quot;{selectedAction.cancel_reason}&quot;</p>
                   </div>
                 )}
-                {selectedAction.rejection_reason && (
+                 {selectedAction.rejection_reason && (
                   <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl text-xs space-y-1">
-                    <span className="font-bold block">⚠️ Devolvida pelo Financeiro:</span>
+                    <span className="font-bold block">
+                      {selectedAction.devolvido_por === 'FINANCEIRO'
+                        ? "⚠️ Devolvida pelo Financeiro:"
+                        : selectedAction.devolvido_por === 'TRADE'
+                          ? "⚠️ Devolvida pelo Trade:"
+                          : selectedAction.trade_conferencia_aprovado === false
+                            ? "⚠️ Devolvida pelo Financeiro:"
+                            : "⚠️ Devolvida pelo Trade:"}
+                    </span>
                     <p className="italic">&quot;{selectedAction.rejection_reason}&quot;</p>
                   </div>
                 )}
@@ -4857,134 +4867,7 @@ export default function InvestimentoPage() {
                                 <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">⚖️ 4) Conferência Fís./Vídeo Alinhada</span>
                               </label>
 
-                              {/* 5º item: Divergência de Calendário */}
-                              <label className="flex items-center gap-2.5 cursor-pointer group">
-                                <input
-                                  type="checkbox"
-                                  className="w-4 h-4 rounded border-amber-500/50 text-amber-500 focus:ring-amber-500/50 cursor-pointer"
-                                  checked={tradeDivergencia.possui}
-                                  onChange={async (e) => {
-                                    const checked = e.target.checked;
-                                    if (checked) {
-                                      setTradeDivergencia(prev => ({ ...prev, possui: true }));
-                                      setTimeout(() => motivoRef.current?.focus(), 50);
-                                    } else {
-                                      // Limpar → ESTADO A puro
-                                      const cleared = { possui: false, motivo: '' as MotivoDivergencia | '', observacao: '' };
-                                      setTradeDivergencia(cleared);
-                                      // Salvar ESTADO A no banco imediatamente
-                                      if (selectedAction) {
-                                        try {
-                                          await atualizarChecklistTrade(selectedAction.id, {
-                                            comunicacao: tradeChecklist.comunicacao,
-                                            logistica: tradeChecklist.logistica,
-                                            auditoria: tradeChecklist.auditoria,
-                                            garantia: selectedAction.checklist_garantia || false,
-                                            conferencia: tradeChecklist.conferencia,
-                                            divergencia: { possui: false }
-                                          });
-                                          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, possui_divergencia_calendario: false, motivo_divergencia_calendario: null, observacao_divergencia: null } : item));
-                                          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, possui_divergencia_calendario: false, motivo_divergencia_calendario: null, observacao_divergencia: null } : prev);
-                                        } catch (err: any) {
-                                          console.error(err);
-                                        }
-                                      }
-                                    }
-                                  }}
-                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                />
-                                <span className="text-xs font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">📅 5) Ação executada com divergência de calendário</span>
-                              </label>
 
-                              {/* Painel âmbar de divergência */}
-                              <div className={`transition-all duration-200 overflow-hidden ${tradeDivergencia.possui ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
-                                <div className="bg-amber-500/8 border border-amber-500/30 rounded-xl p-3 space-y-3">
-                                  <span className="text-[10px] uppercase font-bold text-amber-400 block tracking-wider">Dados da Divergência de Calendário</span>
-
-                                  {/* Motivo */}
-                                  <div className="space-y-1">
-                                    <label className="text-[11px] text-amber-300 font-semibold">Motivo da Divergência *</label>
-                                    <select
-                                      ref={motivoRef}
-                                      value={tradeDivergencia.motivo}
-                                      onChange={(e) => setTradeDivergencia(prev => ({ ...prev, motivo: e.target.value as MotivoDivergencia }))}
-                                      className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 outline-none"
-                                      disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                    >
-                                      <option value="">Selecione o motivo...</option>
-                                      {(Object.entries(MOTIVOS_DIVERGENCIA) as [MotivoDivergencia, string][]).map(([k, v]) => (
-                                        <option key={k} value={k}>{v}</option>
-                                      ))}
-                                    </select>
-                                    {tradeDivergencia.possui && !tradeDivergencia.motivo && (
-                                      <span className="text-[10px] text-red-400">Motivo obrigatório</span>
-                                    )}
-                                  </div>
-
-                                  {/* Observação */}
-                                  <div className="space-y-1">
-                                    <label className="text-[11px] text-amber-300 font-semibold">Observação *</label>
-                                    <textarea
-                                      value={tradeDivergencia.observacao}
-                                      onChange={(e) => setTradeDivergencia(prev => ({ ...prev, observacao: e.target.value }))}
-                                      placeholder="Descreva o contexto da divergência..."
-                                      rows={2}
-                                      className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 outline-none resize-none"
-                                      disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
-                                    />
-                                    {tradeDivergencia.possui && !tradeDivergencia.observacao && (
-                                      <span className="text-[10px] text-red-400">Observação obrigatória</span>
-                                    )}
-                                  </div>
-
-                                  {/* Botão salvar divergência */}
-                                  {['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '') && (
-                                    <button
-                                      onClick={async () => {
-                                        if (!selectedAction) return;
-                                        if (!tradeDivergencia.motivo || !tradeDivergencia.observacao) {
-                                          setFeedback({ type: 'error', msg: 'Preencha o motivo e a observação da divergência antes de salvar.' });
-                                          setTimeout(() => setFeedback(null), 4000);
-                                          return;
-                                        }
-                                        setActionLoading(selectedAction.id);
-                                        try {
-                                          await atualizarChecklistTrade(selectedAction.id, {
-                                            comunicacao: tradeChecklist.comunicacao,
-                                            logistica: tradeChecklist.logistica,
-                                            auditoria: tradeChecklist.auditoria,
-                                            garantia: selectedAction.checklist_garantia || false,
-                                            conferencia: tradeChecklist.conferencia,
-                                            divergencia: {
-                                              possui: true,
-                                              motivo: tradeDivergencia.motivo as MotivoDivergencia,
-                                              observacao: tradeDivergencia.observacao,
-                                            }
-                                          });
-                                          const updates = {
-                                            possui_divergencia_calendario: true,
-                                            motivo_divergencia_calendario: tradeDivergencia.motivo,
-                                            observacao_divergencia: tradeDivergencia.observacao,
-                                          };
-                                          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, ...updates } : item));
-                                          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, ...updates } : prev);
-                                          setFeedback({ type: 'success', msg: 'Divergência de calendário salva!' });
-                                          setTimeout(() => setFeedback(null), 3000);
-                                        } catch (err: any) {
-                                          setFeedback({ type: 'error', msg: err.message });
-                                          setTimeout(() => setFeedback(null), 5000);
-                                        } finally {
-                                          setActionLoading(null);
-                                        }
-                                      }}
-                                      disabled={actionLoading === selectedAction?.id}
-                                      className="w-full py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
-                                    >
-                                      💾 Salvar Divergência
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
                             </div>
                           </div>
 

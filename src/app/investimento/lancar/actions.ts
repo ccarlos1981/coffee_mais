@@ -743,6 +743,13 @@ export async function enviarParaTrade(id: string) {
     .from("cm_acoes_investimento")
     .update({
       fase_atual: 2,
+      devolvido_por: null,
+      devolvido_em: null,
+      rejection_reason: null,
+      is_reopened: false,
+      reopened_reason: null,
+      reopened_by: null,
+      reopened_at: null
     })
     .eq("id", id)
     .eq("fase_atual", 1);
@@ -954,6 +961,12 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
     .update({
       fase_atual: 1, // Retorna para Fase 1 (Planejamento)
       rejection_reason: reason,
+      devolvido_por: 'TRADE',
+      devolvido_em: new Date().toISOString(),
+      is_reopened: true,
+      reopened_by: user.id,
+      reopened_at: new Date().toISOString(),
+      reopened_reason: 'REABERTA_PELO_TRADE',
       checklist_comunicacao: false,
       checklist_logistica: false,
       checklist_auditoria: false,
@@ -1810,6 +1823,9 @@ export async function preencherApuracao(id: string, formData: FormData) {
     .from("cm_acoes_investimento")
     .update({
       fase_atual: 4,
+      devolvido_por: null,
+      devolvido_em: null,
+      rejection_reason: null,
       apuracao_numero_acordo,
       apuracao_qtd_vendida,
       apuracao_valor_realizado,
@@ -1896,6 +1912,8 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
     // Reprovado → volta para Fase 3 (Gerente refaz apuração)
     updateData.fase_atual = 3;
     updateData.rejection_reason = observacao;
+    updateData.devolvido_por = 'FINANCEIRO';
+    updateData.devolvido_em = new Date().toISOString();
     // Limpar dados de apuração para refazer
     updateData.apuracao_preenchida_em = null;
     updateData.apuracao_preenchida_por = null;
