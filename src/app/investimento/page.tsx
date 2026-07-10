@@ -42,6 +42,7 @@ import {
   Paperclip
 } from "lucide-react";
 import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo } from "./lancar/actions";
+import { MotivoDivergencia, MOTIVOS_DIVERGENCIA } from "./divergencia-constants";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
@@ -165,6 +166,12 @@ interface AcaoInvestimento {
   nome_campanha?: string | null;
   status_operacional_campanha?: string | null;
   status_financeiro_campanha?: string | null;
+  // Divergência Operacional de Calendário (Trade Fase 2)
+  possui_divergencia_calendario?: boolean | null;
+  data_inicio_real?: string | null;
+  data_fim_real?: string | null;
+  motivo_divergencia_calendario?: string | null;
+  observacao_divergencia?: string | null;
 }
 
 interface InvestmentPeriod {
@@ -286,6 +293,13 @@ export default function InvestimentoPage() {
   const [filterFase, setFilterFase] = useState<number | null>(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
+  const [tradeDivergencia, setTradeDivergencia] = useState<{
+    possui: boolean;
+    data_inicio_real: string;
+    data_fim_real: string;
+    motivo: MotivoDivergencia | '';
+    observacao: string;
+  }>({ possui: false, data_inicio_real: '', data_fim_real: '', motivo: '', observacao: '' });
   const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
   const [globalSearch, setGlobalSearch] = useState("");
   const [filterMes, setFilterMes] = useState(() => {
@@ -298,6 +312,7 @@ export default function InvestimentoPage() {
   const [parsedAcoes, setParsedAcoes] = useState<any[]>([]);
   const [importFileName, setImportFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const motivoRef = useRef<HTMLSelectElement>(null);
   const [importErrors, setImportErrors] = useState<any[]>([]);
   const [importSummary, setImportSummary] = useState<any>(null);
   const [fileHash, setFileHash] = useState("");
@@ -535,6 +550,14 @@ export default function InvestimentoPage() {
         auditoria: selectedAction.checklist_auditoria || false, 
         garantia: selectedAction.checklist_garantia || false,
         conferencia: selectedAction.checklist_conferencia || false
+      });
+      // Sincronizar divergência de calendário
+      setTradeDivergencia({
+        possui: selectedAction.possui_divergencia_calendario || false,
+        data_inicio_real: selectedAction.data_inicio_real || '',
+        data_fim_real: selectedAction.data_fim_real || '',
+        motivo: (selectedAction.motivo_divergencia_calendario as MotivoDivergencia) || '',
+        observacao: selectedAction.observacao_divergencia || '',
       });
       setApuracaoForm({
         numero_acordo: selectedAction.apuracao_numero_acordo || "",
@@ -1835,7 +1858,14 @@ export default function InvestimentoPage() {
         logistica: fieldName === 'checklist_logistica' ? checked : (selectedAction.checklist_logistica || false),
         auditoria: fieldName === 'checklist_auditoria' ? checked : (selectedAction.checklist_auditoria || false),
         garantia: selectedAction.checklist_garantia || false,
-        conferencia: fieldName === 'checklist_conferencia' ? checked : (selectedAction.checklist_conferencia || false)
+        conferencia: fieldName === 'checklist_conferencia' ? checked : (selectedAction.checklist_conferencia || false),
+        divergencia: {
+          possui: tradeDivergencia.possui,
+          data_inicio_real: tradeDivergencia.data_inicio_real || null,
+          data_fim_real: tradeDivergencia.data_fim_real || null,
+          motivo: (tradeDivergencia.motivo as MotivoDivergencia) || null,
+          observacao: tradeDivergencia.observacao || null,
+        }
       };
 
       await atualizarChecklistTrade(selectedAction.id, updatedChecklist);
@@ -2054,7 +2084,12 @@ export default function InvestimentoPage() {
       "Documento URL",
       "Evidências URLs",
       "Comprovante Pagamento URL",
-      "Boleto URL"
+      "Boleto URL",
+      "Possui Divergência Operacional",
+      "Data Início Real",
+      "Data Fim Real",
+      "Motivo Divergência",
+      "Observação Divergência"
     ];
 
     const escapeCSV = (val: any) => {
@@ -2137,7 +2172,12 @@ export default function InvestimentoPage() {
             escapeCSV(row.documento_url),
             escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
             escapeCSV(row.financeiro_comprovante_url),
-            escapeCSV(row.financeiro_boleto_url)
+            escapeCSV(row.financeiro_boleto_url),
+             escapeCSV(row.possui_divergencia_calendario ? "Sim" : "Não"),
+             escapeCSV(row.data_inicio_real ? formatDate(row.data_inicio_real) : ""),
+             escapeCSV(row.data_fim_real ? formatDate(row.data_fim_real) : ""),
+             escapeCSV(row.motivo_divergencia_calendario ? (MOTIVOS_DIVERGENCIA[row.motivo_divergencia_calendario as MotivoDivergencia] || row.motivo_divergencia_calendario) : ""),
+             escapeCSV(row.observacao_divergencia || "")
           ].join(";"));
         });
       } else if (row.abrangencia === "SKU" && row.skus_detalhes && row.skus_detalhes.length > 0) {
@@ -2202,7 +2242,12 @@ export default function InvestimentoPage() {
             escapeCSV(row.documento_url),
             escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
             escapeCSV(row.financeiro_comprovante_url),
-            escapeCSV(row.financeiro_boleto_url)
+            escapeCSV(row.financeiro_boleto_url),
+             escapeCSV(row.possui_divergencia_calendario ? "Sim" : "Não"),
+             escapeCSV(row.data_inicio_real ? formatDate(row.data_inicio_real) : ""),
+             escapeCSV(row.data_fim_real ? formatDate(row.data_fim_real) : ""),
+             escapeCSV(row.motivo_divergencia_calendario ? (MOTIVOS_DIVERGENCIA[row.motivo_divergencia_calendario as MotivoDivergencia] || row.motivo_divergencia_calendario) : ""),
+             escapeCSV(row.observacao_divergencia || "")
           ].join(";"));
         });
       } else {
@@ -2265,7 +2310,12 @@ export default function InvestimentoPage() {
           escapeCSV(row.documento_url),
           escapeCSV(row.evidencias_urls ? row.evidencias_urls.join(", ") : ""),
           escapeCSV(row.financeiro_comprovante_url),
-          escapeCSV(row.financeiro_boleto_url)
+          escapeCSV(row.financeiro_boleto_url),
+             escapeCSV(row.possui_divergencia_calendario ? "Sim" : "Não"),
+             escapeCSV(row.data_inicio_real ? formatDate(row.data_inicio_real) : ""),
+             escapeCSV(row.data_fim_real ? formatDate(row.data_fim_real) : ""),
+             escapeCSV(row.motivo_divergencia_calendario ? (MOTIVOS_DIVERGENCIA[row.motivo_divergencia_calendario as MotivoDivergencia] || row.motivo_divergencia_calendario) : ""),
+             escapeCSV(row.observacao_divergencia || "")
         ].join(";"));
       }
     });
@@ -3580,6 +3630,17 @@ export default function InvestimentoPage() {
                                         <span className="text-[9px] font-medium text-foreground">
                                           P.Ação: {getPrecoAcaoStr(action)}
                                         </span>
+                                        {action.possui_divergencia_calendario && (
+                                          <div className="relative group inline-flex mt-0.5">
+                                            <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-md text-[9px] font-bold px-1 py-0.5 cursor-help">⚠ Diverg.</span>
+                                            <div className="invisible group-hover:visible absolute bottom-full left-0 mb-1 w-52 bg-popover border border-border rounded-xl p-2 text-xs shadow-xl z-50 space-y-1">
+                                              <p className="font-semibold text-amber-400 mb-1">Divergência de Calendário</p>
+                                              <p><span className="text-muted">📅 Planej.:</span> {formatDate(action.data_inicio)} → {formatDate(action.data_fim)}</p>
+                                              <p><span className="text-muted">🗓 Exec.:</span> {formatDate(action.data_inicio_real || "")} → {formatDate(action.data_fim_real || "")}</p>
+                                              <p><span className="text-muted">❓ Motivo:</span> {action.motivo_divergencia_calendario ? MOTIVOS_DIVERGENCIA[action.motivo_divergencia_calendario as MotivoDivergencia] : '-'}</p>
+                                            </div>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -4463,6 +4524,17 @@ export default function InvestimentoPage() {
                   <div>
                     <h3 className="text-lg font-bold text-foreground">Detalhes da Ação</h3>
                     {selectedAction.codigo && <span className="text-xs font-mono text-muted">Cód. #{selectedAction.codigo}</span>}
+                    {selectedAction.possui_divergencia_calendario && (
+                      <div className="relative group inline-flex mt-0.5">
+                        <span className="bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-md text-[10px] font-bold px-1.5 py-0.5 cursor-help">⚠ Divergência de Calendário</span>
+                        <div className="invisible group-hover:visible absolute top-full left-0 mt-1 w-64 bg-popover border border-border rounded-xl p-3 text-xs shadow-xl z-50 space-y-1.5">
+                          <p><span className="text-muted">📅 Planejado:</span> {formatDate(selectedAction.data_inicio)} → {formatDate(selectedAction.data_fim)}</p>
+                          <p><span className="text-muted">🗓 Executado:</span> {formatDate(selectedAction.data_inicio_real || "")} → {formatDate(selectedAction.data_fim_real || "")}</p>
+                          <p><span className="text-muted">❓ Motivo:</span> {selectedAction.motivo_divergencia_calendario ? MOTIVOS_DIVERGENCIA[selectedAction.motivo_divergencia_calendario as MotivoDivergencia] : '-'}</p>
+                          <p><span className="text-muted">📝 Obs:</span> {selectedAction.observacao_divergencia}</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <button onClick={() => setSelectedAction(null)} className="p-2 hover:bg-border rounded-full transition-colors">
@@ -4680,6 +4752,177 @@ export default function InvestimentoPage() {
                                 />
                                 <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">⚖️ 4) Conferência Fís./Vídeo Alinhada</span>
                               </label>
+
+                              {/* 5º item: Divergência de Calendário */}
+                              <label className="flex items-center gap-2.5 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 rounded border-amber-500/50 text-amber-500 focus:ring-amber-500/50 cursor-pointer"
+                                  checked={tradeDivergencia.possui}
+                                  onChange={async (e) => {
+                                    const checked = e.target.checked;
+                                    if (checked) {
+                                      setTradeDivergencia(prev => ({ ...prev, possui: true }));
+                                      setTimeout(() => motivoRef.current?.focus(), 50);
+                                    } else {
+                                      // Limpar → ESTADO A puro
+                                      const cleared = { possui: false, data_inicio_real: '', data_fim_real: '', motivo: '' as MotivoDivergencia | '', observacao: '' };
+                                      setTradeDivergencia(cleared);
+                                      // Salvar ESTADO A no banco imediatamente
+                                      if (selectedAction) {
+                                        try {
+                                          await atualizarChecklistTrade(selectedAction.id, {
+                                            comunicacao: tradeChecklist.comunicacao,
+                                            logistica: tradeChecklist.logistica,
+                                            auditoria: tradeChecklist.auditoria,
+                                            garantia: selectedAction.checklist_garantia || false,
+                                            conferencia: tradeChecklist.conferencia,
+                                            divergencia: { possui: false }
+                                          });
+                                          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, possui_divergencia_calendario: false, data_inicio_real: null, data_fim_real: null, motivo_divergencia_calendario: null, observacao_divergencia: null } : item));
+                                          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, possui_divergencia_calendario: false, data_inicio_real: null, data_fim_real: null, motivo_divergencia_calendario: null, observacao_divergencia: null } : prev);
+                                        } catch (err: any) {
+                                          console.error(err);
+                                        }
+                                      }
+                                    }
+                                  }}
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-amber-400 group-hover:text-amber-300 transition-colors">📅 5) Ação executada com divergência de calendário</span>
+                              </label>
+
+                              {/* Painel âmbar de divergência */}
+                              <div className={`transition-all duration-200 overflow-hidden ${tradeDivergencia.possui ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                                <div className="bg-amber-500/8 border border-amber-500/30 rounded-xl p-3 space-y-3">
+                                  <span className="text-[10px] uppercase font-bold text-amber-400 block tracking-wider">Dados da Divergência de Calendário</span>
+
+                                  {/* Motivo */}
+                                  <div className="space-y-1">
+                                    <label className="text-[11px] text-amber-300 font-semibold">Motivo da Divergência *</label>
+                                    <select
+                                      ref={motivoRef}
+                                      value={tradeDivergencia.motivo}
+                                      onChange={(e) => setTradeDivergencia(prev => ({ ...prev, motivo: e.target.value as MotivoDivergencia }))}
+                                      className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 outline-none"
+                                      disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                    >
+                                      <option value="">Selecione o motivo...</option>
+                                      {(Object.entries(MOTIVOS_DIVERGENCIA) as [MotivoDivergencia, string][]).map(([k, v]) => (
+                                        <option key={k} value={k}>{v}</option>
+                                      ))}
+                                    </select>
+                                    {tradeDivergencia.possui && !tradeDivergencia.motivo && (
+                                      <span className="text-[10px] text-red-400">Motivo obrigatório</span>
+                                    )}
+                                  </div>
+
+                                  {/* Datas reais */}
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] text-amber-300 font-semibold">Data Início Real *</label>
+                                      <input
+                                        type="date"
+                                        value={tradeDivergencia.data_inicio_real}
+                                        onChange={(e) => setTradeDivergencia(prev => ({ ...prev, data_inicio_real: e.target.value }))}
+                                        className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 outline-none"
+                                        disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                      />
+                                      {tradeDivergencia.possui && !tradeDivergencia.data_inicio_real && (
+                                        <span className="text-[10px] text-red-400">Obrigatório</span>
+                                      )}
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label className="text-[11px] text-amber-300 font-semibold">Data Fim Real *</label>
+                                      <input
+                                        type="date"
+                                        value={tradeDivergencia.data_fim_real}
+                                        onChange={(e) => setTradeDivergencia(prev => ({ ...prev, data_fim_real: e.target.value }))}
+                                        className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 outline-none"
+                                        disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                      />
+                                      {tradeDivergencia.data_fim_real && tradeDivergencia.data_inicio_real && tradeDivergencia.data_fim_real < tradeDivergencia.data_inicio_real && (
+                                        <span className="text-[10px] text-red-400">Fim não pode ser anterior ao início</span>
+                                      )}
+                                      {tradeDivergencia.possui && !tradeDivergencia.data_fim_real && (
+                                        <span className="text-[10px] text-red-400">Obrigatório</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Observação */}
+                                  <div className="space-y-1">
+                                    <label className="text-[11px] text-amber-300 font-semibold">Observação *</label>
+                                    <textarea
+                                      value={tradeDivergencia.observacao}
+                                      onChange={(e) => setTradeDivergencia(prev => ({ ...prev, observacao: e.target.value }))}
+                                      placeholder="Descreva o contexto da divergência..."
+                                      rows={2}
+                                      className="w-full text-xs bg-elevated border border-amber-500/40 rounded-lg px-2 py-1.5 text-foreground focus:border-amber-500 outline-none resize-none"
+                                      disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                    />
+                                    {tradeDivergencia.possui && !tradeDivergencia.observacao && (
+                                      <span className="text-[10px] text-red-400">Observação obrigatória</span>
+                                    )}
+                                  </div>
+
+                                  {/* Botão salvar divergência */}
+                                  {['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '') && (
+                                    <button
+                                      onClick={async () => {
+                                        if (!selectedAction) return;
+                                        if (!tradeDivergencia.data_inicio_real || !tradeDivergencia.data_fim_real || !tradeDivergencia.motivo || !tradeDivergencia.observacao) {
+                                          setFeedback({ type: 'error', msg: 'Preencha todos os campos de divergência antes de salvar.' });
+                                          setTimeout(() => setFeedback(null), 4000);
+                                          return;
+                                        }
+                                        if (tradeDivergencia.data_inicio_real > tradeDivergencia.data_fim_real) {
+                                          setFeedback({ type: 'error', msg: 'A data real de início não pode ser posterior à data real de fim.' });
+                                          setTimeout(() => setFeedback(null), 4000);
+                                          return;
+                                        }
+                                        setActionLoading(selectedAction.id);
+                                        try {
+                                          await atualizarChecklistTrade(selectedAction.id, {
+                                            comunicacao: tradeChecklist.comunicacao,
+                                            logistica: tradeChecklist.logistica,
+                                            auditoria: tradeChecklist.auditoria,
+                                            garantia: selectedAction.checklist_garantia || false,
+                                            conferencia: tradeChecklist.conferencia,
+                                            divergencia: {
+                                              possui: true,
+                                              data_inicio_real: tradeDivergencia.data_inicio_real,
+                                              data_fim_real: tradeDivergencia.data_fim_real,
+                                              motivo: tradeDivergencia.motivo as MotivoDivergencia,
+                                              observacao: tradeDivergencia.observacao,
+                                            }
+                                          });
+                                          const updates = {
+                                            possui_divergencia_calendario: true,
+                                            data_inicio_real: tradeDivergencia.data_inicio_real,
+                                            data_fim_real: tradeDivergencia.data_fim_real,
+                                            motivo_divergencia_calendario: tradeDivergencia.motivo,
+                                            observacao_divergencia: tradeDivergencia.observacao,
+                                          };
+                                          setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, ...updates } : item));
+                                          setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, ...updates } : prev);
+                                          setFeedback({ type: 'success', msg: 'Divergência de calendário salva!' });
+                                          setTimeout(() => setFeedback(null), 3000);
+                                        } catch (err: any) {
+                                          setFeedback({ type: 'error', msg: err.message });
+                                          setTimeout(() => setFeedback(null), 5000);
+                                        } finally {
+                                          setActionLoading(null);
+                                        }
+                                      }}
+                                      disabled={actionLoading === selectedAction?.id}
+                                      className="w-full py-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold transition-all disabled:opacity-50"
+                                    >
+                                      💾 Salvar Divergência
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
 
@@ -4735,8 +4978,8 @@ export default function InvestimentoPage() {
                                   }));
                                 }
                               }}
-                              disabled={actionLoading === selectedAction.id || !(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia)}
-                              title={!(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a ação." : ""}
+                              disabled={actionLoading === selectedAction.id || !(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) || (tradeDivergencia.possui && (!tradeDivergencia.data_inicio_real || !tradeDivergencia.data_fim_real || !tradeDivergencia.motivo || !tradeDivergencia.observacao || tradeDivergencia.data_inicio_real > tradeDivergencia.data_fim_real))}
+                              title={!(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a ação." : (tradeDivergencia.possui && (!tradeDivergencia.data_inicio_real || !tradeDivergencia.data_fim_real || !tradeDivergencia.motivo || !tradeDivergencia.observacao) ? "Preencha todos os campos de divergência de calendário antes de aprovar." : "")}
                               className="flex-1 py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                             >
                               <CheckCircle className="w-4 h-4" />

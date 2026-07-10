@@ -10,6 +10,11 @@ import { ActionResult, ActionErrorCode, successResult, errorResult, handleAction
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 
+// --- Divergência Operacional de Calendário ---
+import { MotivoDivergencia } from "../divergencia-constants";
+export type { MotivoDivergencia };
+// --- fim Divergência ---
+
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
   const cleaned = str.replace(/[R$\s\.]/g, '').replace(',', '.');
@@ -685,9 +690,44 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   auditoria: boolean;
   garantia: boolean;
   conferencia: boolean;
+  divergencia?: {
+    possui: boolean;
+    data_inicio_real?: string | null;
+    data_fim_real?: string | null;
+    motivo?: MotivoDivergencia | null;
+    observacao?: string | null;
+  };
 }) {
   const supabase = await createClient();
-  
+
+  // Validação server-side da divergência (camada 2 de 3)
+  const div = checklist.divergencia;
+  if (div?.possui) {
+    if (!div.data_inicio_real || !div.data_fim_real || !div.motivo || !div.observacao) {
+      throw new Error('Preencha todos os campos de divergência de calendário antes de salvar.');
+    }
+    if (div.data_inicio_real > div.data_fim_real) {
+      throw new Error('A data real de início não pode ser posterior à data real de fim.');
+    }
+  }
+
+  // Monta payload de divergência (garante ESTADO A ou ESTADO B puros)
+  const divergenciaPayload = div?.possui
+    ? {
+        possui_divergencia_calendario: true,
+        data_inicio_real: div.data_inicio_real!,
+        data_fim_real: div.data_fim_real!,
+        motivo_divergencia_calendario: div.motivo!,
+        observacao_divergencia: div.observacao!,
+      }
+    : {
+        possui_divergencia_calendario: false,
+        data_inicio_real: null,
+        data_fim_real: null,
+        motivo_divergencia_calendario: null,
+        observacao_divergencia: null,
+      };
+
   const { error } = await supabase
     .from("cm_acoes_investimento")
     .update({
@@ -695,7 +735,8 @@ export async function atualizarChecklistTrade(id: string, checklist: {
       checklist_logistica: checklist.logistica,
       checklist_auditoria: checklist.auditoria,
       checklist_garantia: checklist.garantia,
-      checklist_conferencia: checklist.conferencia
+      checklist_conferencia: checklist.conferencia,
+      ...divergenciaPayload,
     })
     .eq("id", id);
 
