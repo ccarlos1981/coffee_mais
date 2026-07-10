@@ -290,17 +290,7 @@ export default function InvestimentoPage() {
   const [page, setPage] = useState(0);
   const itemsPerPage = 50;
   const [showFilters, setShowFilters] = useState(false);
-  const [filterFase, setFilterFase] = useState<number | null>(() => {
-    if (typeof window !== "undefined") {
-      const searchParams = new URLSearchParams(window.location.search);
-      const faseParam = searchParams.get("fase");
-      if (faseParam) {
-        const parsed = parseInt(faseParam, 10);
-        if (!isNaN(parsed)) return parsed;
-      }
-    }
-    return 1;
-  });
+  const [filterFase, setFilterFase] = useState<number | null>(1);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
   const [tradeDivergencia, setTradeDivergencia] = useState<{
@@ -360,6 +350,14 @@ export default function InvestimentoPage() {
       if (view === "calendar") {
         setViewMode("calendar");
         setFilterFase(null);
+      } else {
+        const faseParam = searchParams.get("fase");
+        if (faseParam) {
+          const parsed = parseInt(faseParam, 10);
+          if (!isNaN(parsed)) {
+            setFilterFase(parsed);
+          }
+        }
       }
     }
   }, []);
