@@ -311,3 +311,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
  5 files changed, 7937 insertions(+), 104 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [10/07/2026 07:46] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 927a707] auto-save: 10/07/2026 11:54
+ 5 files changed, 383 insertions(+), 9 deletions(-)
+ create mode 100644 src/app/investimento/divergencia-constants.ts
+ create mode 100644 supabase/migrations/20260710_divergencia_calendario_trade.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   d5ae68d..927a707  main -> main
+[10/07/2026 11:54] ✅ Alterações enviadas com sucesso para o GitHub.

@@ -12,7 +12,6 @@ import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 
 // --- Divergência Operacional de Calendário ---
 import { MotivoDivergencia } from "../divergencia-constants";
-export type { MotivoDivergencia };
 // --- fim Divergência ---
 
 function parseCurrency(str: string | null): number | null {
