@@ -301,3 +301,9 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
 To https://github.com/ccarlos1981/coffee_mais.git
    e64b13d..b02b8b3  main -> main
 [09/07/2026 20:16] ✅ Alterações enviadas com sucesso para o GitHub.
+[main d5ae68d] auto-save: 10/07/2026 00:24
+ 3 files changed, 444 insertions(+), 1 deletion(-)
+ create mode 100644 src/app/admin/usuarios/EditUserModal.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   57cd304..d5ae68d  main -> main
+[10/07/2026 00:24] ✅ Alterações enviadas com sucesso para o GitHub.

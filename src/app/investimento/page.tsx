@@ -2508,112 +2508,151 @@ export default function InvestimentoPage() {
 
             {/* Phase Tabs - only in table mode */}
             {viewMode === 'table' && (
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-1">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide py-0.5">
+                <button
+                  onClick={() => setFilterFase(null)}
+                  className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                    filterFase === null ? 'bg-gold/15 text-gold border-gold/30 shadow-sm' : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    Todas <span className="text-xs opacity-70 font-normal">({totalFilteredCount})</span>
+                  </div>
+                  <span className="text-[10px] opacity-60 font-normal mt-0.5">geral</span>
+                </button>
+                {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
+                  const faseNum = Number(key);
+                  const count = faseCounts[faseNum] || 0;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => setFilterFase(faseNum)}
+                      className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
+                        filterFase === faseNum ? `${cfg.bgColor} ${cfg.color} ${cfg.borderColor} shadow-sm` : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-semibold">
+                        <span>{cfg.icon}</span> {cfg.label} <span className="text-xs opacity-70 font-normal">({count})</span>
+                      </div>
+                      <span className="text-[10px] opacity-60 font-normal mt-0.5">{cfg.sublabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Botão de Exibir/Ocultar Filtro ao lado das Fases */}
               <button
-                onClick={() => setFilterFase(null)}
-                className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
-                  filterFase === null ? 'bg-gold/15 text-gold border-gold/30 shadow-sm' : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
+                onClick={() => setShowFilters(!showFilters)}
+                className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all border self-start md:self-auto ${
+                  showFilters ? 'bg-amber-500/10 text-amber-500 border-amber-500/30' : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
                 }`}
               >
-                <div className="flex items-center gap-1.5 font-semibold">
-                  Todas <span className="text-xs opacity-70 font-normal">({totalFilteredCount})</span>
+                <div className="flex items-center gap-1.5">
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>{showFilters ? 'Ocultar Filtro' : 'Exibir Filtro'}</span>
                 </div>
-                <span className="text-[10px] opacity-60 font-normal mt-0.5">geral</span>
+                <span className="text-[9px] opacity-60 font-normal mt-0.5">filtros de busca</span>
               </button>
-              {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
-                const faseNum = Number(key);
-                const count = faseCounts[faseNum] || 0;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setFilterFase(faseNum)}
-                    className={`flex flex-col items-center justify-center px-4 py-1.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all border ${
-                      filterFase === faseNum ? `${cfg.bgColor} ${cfg.color} ${cfg.borderColor} shadow-sm` : 'bg-elevated text-muted border-border hover:bg-border hover:text-foreground'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 font-semibold">
-                      <span>{cfg.icon}</span> {cfg.label} <span className="text-xs opacity-70 font-normal">({count})</span>
-                    </div>
-                    <span className="text-[10px] opacity-60 font-normal mt-0.5">{cfg.sublabel}</span>
-                  </button>
-                );
-              })}
             </div>
             )}
-            <button 
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center justify-between w-full p-3 bg-elevated border border-border rounded-xl text-sm font-medium text-foreground lg:hidden"
-            >
-              <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-gold" />
-                Filtros e Buscas
-              </div>
-              {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
 
-            <div className={`flex-col lg:flex-row gap-3 ${showFilters ? 'flex' : 'hidden lg:flex'}`}>
+            {/* Botão de Filtro para outros Modos de Visualização (Calendário, Redes) */}
+            {viewMode !== 'table' && (
+              <button 
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center justify-between w-full p-3 bg-elevated border border-border rounded-xl text-sm font-semibold text-foreground"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gold" />
+                  <span>{showFilters ? 'Ocultar Filtro' : 'Exibir Filtro'}</span>
+                </div>
+                {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            )}
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5 ${showFilters ? 'grid' : 'hidden'}`}>
               {/* Busca Global */}
-              <div className="flex items-center bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all flex-1 min-w-[240px]">
-                <Search className="w-4 h-4 text-muted mr-2" />
-                <input
-                  type="text"
-                  placeholder="Buscar por código, rede, gerente, campanha, família..."
-                  value={globalSearch}
-                  onChange={(e) => setGlobalSearch(e.target.value)}
-                  className="w-full bg-transparent py-2 text-sm text-foreground focus:outline-none placeholder:text-muted"
-                />
-                {globalSearch && (
-                  <button onClick={() => setGlobalSearch("")} className="text-muted hover:text-foreground">
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
+              <div className="flex flex-col gap-1.5 col-span-1 sm:col-span-2">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Pesquisa</span>
+                <div className="flex items-center bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all h-[38px]">
+                  <Search className="w-4 h-4 text-muted mr-2" />
+                  <input
+                    type="text"
+                    placeholder="Código, rede, gerente, campanha, família..."
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    className="w-full bg-transparent py-2 text-sm text-foreground focus:outline-none placeholder:text-muted"
+                  />
+                  {globalSearch && (
+                    <button onClick={() => setGlobalSearch("")} className="text-muted hover:text-foreground">
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+              {/* Mês Referência */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Mês Ref.</span>
                 <select
                   value={filterMes}
                   onChange={(e) => setFilterMes(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todos os Meses</option>
                   {mesesDisponiveis.map(m => (
                     <option key={m} value={m}>{formatMesReferencia(m)}</option>
                   ))}
                 </select>
+              </div>
 
+              {/* Rede */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Rede</span>
                 <select
                   value={filterRede}
                   onChange={(e) => setFilterRede(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todas as Redes</option>
                   {redesDisponiveis.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
+              </div>
 
+              {/* Família */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Família</span>
                 <select
                   value={filterFamilia}
                   onChange={(e) => setFilterFamilia(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todas as Famílias</option>
                   {familiasDisponiveis.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 flex-1">
+              {/* Gerente */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Gerente</span>
                 <select
                   value={filterGerente}
                   onChange={(e) => setFilterGerente(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todos os Gerentes</option>
                   {gerentesDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
+              </div>
 
+              {/* Status */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Status</span>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none"
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todos os Status</option>
                   <option value="AGENDADA">Agendada</option>
@@ -2623,53 +2662,57 @@ export default function InvestimentoPage() {
                 </select>
               </div>
 
-              <div className="flex gap-3 flex-1">
-                <div className="flex items-center flex-1 bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all">
-                  <span className="text-muted text-xs mr-2">De:</span>
-                  <input
-                    type="date"
-                    value={filterDataInicio}
-                    onChange={(e) => setFilterDataInicio(e.target.value)}
-                    className="w-full bg-transparent py-2 text-sm text-foreground focus:outline-none placeholder:text-muted [color-scheme:dark]"
-                  />
-                </div>
-
-                <div className="flex items-center flex-1 bg-elevated border border-border rounded-xl px-3 focus-within:ring-2 focus-within:ring-gold/50 transition-all">
-                  <span className="text-muted text-xs mr-2">Até:</span>
-                  <input
-                    type="date"
-                    value={filterDataFim}
-                    onChange={(e) => setFilterDataFim(e.target.value)}
-                    className="w-full bg-transparent py-2 text-sm text-foreground focus:outline-none placeholder:text-muted [color-scheme:dark]"
-                  />
-                </div>
+              {/* Data Início */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">De</span>
+                <input
+                  type="date"
+                  value={filterDataInicio}
+                  onChange={(e) => setFilterDataInicio(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all h-[38px] [color-scheme:dark]"
+                />
               </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setFilterRede("");
-                    setFilterFamilia("");
-                    setFilterDataInicio("");
-                    setFilterDataFim("");
-                    setFilterFase(null);
-                    setFilterMes("");
-                    setFilterGerente("");
-                    setFilterStatus("");
-                    setGlobalSearch("");
-                    setExpandedCampaigns({});
-                  }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap"
-                >
-                  Limpar Filtros
-                </button>
+              {/* Data Fim */}
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-bold text-muted uppercase tracking-wider pl-1">Até</span>
+                <input
+                  type="date"
+                  value={filterDataFim}
+                  onChange={(e) => setFilterDataFim(e.target.value)}
+                  className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all h-[38px] [color-scheme:dark]"
+                />
+              </div>
 
-                <button
-                  onClick={() => setIsAuditModalOpen(true)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gold bg-gold/10 hover:bg-gold/20 border border-gold/20 rounded-xl transition-all whitespace-nowrap"
-                >
-                  🔍 Auditar Rede
-                </button>
+              {/* Botões */}
+              <div className="flex flex-col gap-1.5 justify-end col-span-1 sm:col-span-2 md:col-span-1 lg:col-span-2 xl:col-span-1">
+                <span className="hidden sm:inline text-[10px] font-bold text-transparent select-none uppercase tracking-wider pl-1">&nbsp;</span>
+                <div className="flex gap-2 h-[38px]">
+                  <button
+                    onClick={() => {
+                      setFilterRede("");
+                      setFilterFamilia("");
+                      setFilterDataInicio("");
+                      setFilterDataFim("");
+                      setFilterFase(null);
+                      setFilterMes("");
+                      setFilterGerente("");
+                      setFilterStatus("");
+                      setGlobalSearch("");
+                      setExpandedCampaigns({});
+                    }}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-foreground bg-elevated hover:bg-border border border-border rounded-xl transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    Limpar
+                  </button>
+
+                  <button
+                    onClick={() => setIsAuditModalOpen(true)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gold bg-gold/10 hover:bg-gold/20 border border-gold/20 rounded-xl transition-all whitespace-nowrap cursor-pointer"
+                  >
+                    🔍 Auditar
+                  </button>
+                </div>
               </div>
             </div>
 
