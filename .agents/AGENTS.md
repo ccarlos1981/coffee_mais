@@ -83,3 +83,51 @@ Cobertura Comercial (%) = (Redes com ação / Total de redes ativas) * 100
 
 Esta funcionalidade possui caráter analítico e não altera qualquer comportamento operacional, financeiro ou arquitetural do modelo Campanha → Ações Independentes.
 
+---
+
+## 7. Regra Funcional Permanente — Identidade de Redes e Matrizes
+
+### Redes com código de matriz compartilhado
+O sistema deve permitir a coexistência de múltiplas redes utilizando o mesmo `codigo_matriz`, desde que pertençam a contextos operacionais distintos (regional, gerente responsável ou unidade comercial diferente).
+
+Exemplos:
+- ZAFFARI
+- ZAFFARI (CESTO)
+
+Estas entidades são consideradas redes independentes para fins operacionais, comerciais e de planejamento de investimentos.
+
+---
+
+### Chave lógica de identificação operacional
+A identificação operacional de uma rede não deve utilizar exclusivamente o `codigo_matriz`. A identificação deverá considerar o conjunto:
+- código da matriz
+- nome da rede
+- gerente responsável
+- regional (quando aplicável)
+
+---
+
+### Regra de exibição para seleção de redes
+As interfaces de seleção de redes devem exibir informações suficientes para eliminar ambiguidades operacionais, incluindo:
+- UF
+- Regional
+- Gerente responsável
+
+Formato recomendado:
+`[Nome da Rede] (UF - Regional - Gerente)`
+
+Exemplo:
+`ZAFFARI (RS - Sul - Leandro)`
+`ZAFFARI (SP - Sudeste - Julliano)`
+
+---
+
+### Regra de diferenciação visual
+Quando múltiplas redes compartilham o mesmo código de matriz, o sistema poderá utilizar identificadores visuais auxiliares (como incrementos decimais virtuais `.1`, `.2` etc. no código de exibição) para facilitar a seleção do usuário. 
+Esses identificadores possuem finalidade exclusivamente visual e não devem ser utilizados como chave de negócio, chave de integração ou relacionamento financeiro.
+
+---
+
+### Integridade de faturamento
+O `codigo_matriz` original permanece como a referência oficial para integrações de faturamento, BI e sistemas externos, não devendo sofrer alterações físicas ou transformações persistidas.
+
