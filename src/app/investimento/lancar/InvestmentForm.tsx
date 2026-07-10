@@ -441,9 +441,9 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
         });
       }
       if (dates.length > 0) {
-        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
-        calculatedStart = sorted[0].toISOString().slice(0, 10);
-        calculatedEnd = sorted[sorted.length - 1].toISOString().slice(0, 10);
+        const sorted = [...dates].sort();
+        calculatedStart = sorted[0];
+        calculatedEnd = sorted[sorted.length - 1];
       }
     }
 
@@ -539,7 +539,8 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
           if (result.data?.is_planejamento || (result as any).is_planejamento) {
             router.push("/investimento/planejamento");
           } else {
-            router.push("/investimento");
+            const targetFase = initialData?.fase_atual || 1;
+            router.push(`/investimento?fase=${targetFase}`);
           }
         } else if (result) {
           setError(result.message || "Ocorreu um erro ao salvar.");

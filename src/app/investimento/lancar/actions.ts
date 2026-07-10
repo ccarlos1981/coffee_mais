@@ -264,9 +264,9 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
         }
       }
       if (dates.length > 0) {
-        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
-        calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
-        calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+        const sorted = [...dates].sort();
+        calculated_data_inicio = sorted[0];
+        calculated_data_fim = sorted[sorted.length - 1];
       } else {
         return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
       }
@@ -542,9 +542,9 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
         }
       }
       if (dates.length > 0) {
-        const sorted = dates.map(d => new Date(d + "T00:00:00")).sort((a, b) => a.getTime() - b.getTime());
-        calculated_data_inicio = sorted[0].toISOString().slice(0, 10);
-        calculated_data_fim = sorted[sorted.length - 1].toISOString().slice(0, 10);
+        const sorted = [...dates].sort();
+        calculated_data_inicio = sorted[0];
+        calculated_data_fim = sorted[sorted.length - 1];
       } else {
         return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos um item com período definido deve ser selecionado no modo Múltiplas Datas.");
       }
@@ -691,8 +691,6 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   conferencia: boolean;
   divergencia?: {
     possui: boolean;
-    data_inicio_real?: string | null;
-    data_fim_real?: string | null;
     motivo?: MotivoDivergencia | null;
     observacao?: string | null;
   };
@@ -702,11 +700,8 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   // Validação server-side da divergência (camada 2 de 3)
   const div = checklist.divergencia;
   if (div?.possui) {
-    if (!div.data_inicio_real || !div.data_fim_real || !div.motivo || !div.observacao) {
+    if (!div.motivo || !div.observacao) {
       throw new Error('Preencha todos os campos de divergência de calendário antes de salvar.');
-    }
-    if (div.data_inicio_real > div.data_fim_real) {
-      throw new Error('A data real de início não pode ser posterior à data real de fim.');
     }
   }
 
@@ -714,15 +709,11 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   const divergenciaPayload = div?.possui
     ? {
         possui_divergencia_calendario: true,
-        data_inicio_real: div.data_inicio_real!,
-        data_fim_real: div.data_fim_real!,
         motivo_divergencia_calendario: div.motivo!,
         observacao_divergencia: div.observacao!,
       }
     : {
         possui_divergencia_calendario: false,
-        data_inicio_real: null,
-        data_fim_real: null,
         motivo_divergencia_calendario: null,
         observacao_divergencia: null,
       };
@@ -936,6 +927,219 @@ export async function enviarParaTrade(id: string) {
   }
 
   revalidatePath("/investimento");
+}
+
+export async function reprovarAcaoTrade(id: string, reason: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("Usuário não autenticado.");
+
+  if (!reason || !reason.trim()) {
+    throw new Error("Motivo da reprovação é obrigatório.");
+  }
+
+  // 1. Obter estado atual da ação
+  const { data: currentAction } = await supabase
+    .from("cm_acoes_investimento")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (!currentAction) throw new Error("Ação não encontrada.");
+
+  // 2. Atualizar status e limpar checklists do Trade
+  const { error } = await supabase
+    .from("cm_acoes_investimento")
+    .update({
+      fase_atual: 1, // Retorna para Fase 1 (Planejamento)
+      rejection_reason: reason,
+      checklist_comunicacao: false,
+      checklist_logistica: false,
+      checklist_auditoria: false,
+      checklist_garantia: false,
+      checklist_conferencia: false,
+      trade_validado_em: null,
+      trade_validado_por: null,
+    })
+    .eq("id", id)
+    .eq("fase_atual", 2);
+
+  if (error) {
+    console.error("Erro ao reprovar pelo Trade:", error);
+    throw new Error("Falha ao registrar reprovação do Trade.");
+  }
+
+  // 3. Registrar Log
+  await supabase.from("cm_audit_logs").insert({
+    table_name: "cm_acoes_investimento",
+    action: "TRADE_REJECT",
+    user_id: user.id,
+    new_data: { id, rejection_reason: reason }
+  });
+
+  // 4. Enviar e-mail de notificação
+  try {
+    const adminClient = createAdminClient();
+    
+    // Obter detalhes da ação usando a view com gerente
+    const { data: actionView } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      let managerEmail = "";
+      if (actionView.gerente_responsavel) {
+        const { data: profiles } = await adminClient
+          .from("cm_user_profiles")
+          .select("id")
+          .eq("name", actionView.gerente_responsavel);
+
+        if (profiles && profiles.length > 0) {
+          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
+          if (authUser?.user?.email) managerEmail = authUser.user.email;
+        }
+      }
+
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        tls: { rejectUnauthorized: false }
+      });
+
+      const recipientsSet = new Set<string>();
+      recipientsSet.add("trade@coffeemais.com");
+      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
+      const recipients = Array.from(recipientsSet).join(", ");
+
+      const subject = `⚠️ AÇÃO REPROVADA PELO TRADE — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+
+      const formatCurrency = (val: number | null | undefined) => {
+        if (val === null || val === undefined) return "R$ 0,00";
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+      };
+
+      const formatDate = (dateStr: string | null | undefined) => {
+        if (!dateStr) return "-";
+        try { const d = new Date(dateStr); d.setMinutes(d.getMinutes() + d.getTimezoneOffset()); return d.toLocaleDateString('pt-BR'); } catch { return dateStr || "-"; }
+      };
+
+      const formatMesReferencia = (mes: string | null | undefined) => {
+        if (!mes) return "-";
+        const parts = mes.split('-');
+        if (parts.length === 2) {
+          const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+          const idx = parseInt(parts[1]) - 1;
+          if (idx >= 0 && idx < 12) return `${meses[idx]}/${parts[0]}`;
+        }
+        return mes;
+      };
+
+      const getValorTotal = (r: any) => {
+        if (r.abrangencia === "SKU" && r.skus_detalhes) {
+          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
+        }
+        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+      };
+
+      // Se houver divergência de calendário operacional
+      let divergenciaInfoHtml = "";
+      if (currentAction.possui_divergencia_calendario) {
+        const motivoLabel = currentAction.motivo_divergencia_calendario || "Não informado";
+        const observacaoStr = currentAction.observacao_divergencia || "Nenhuma";
+        
+        divergenciaInfoHtml = `
+          <div style="background: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #f59e0b; padding: 14px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; color: #78350f;">
+            <strong style="font-size: 14px; display: block; margin-bottom: 6px;">⚠️ Divergência Operacional de Calendário Detectada</strong>
+            <p style="margin: 4px 0;"><strong>Motivo:</strong> ${motivoLabel}</p>
+            <p style="margin: 4px 0;"><strong>Observação:</strong> ${observacaoStr}</p>
+            <p style="margin: 8px 0 0 0; font-weight: bold; color: #b45309;">👉 Atenção Gerente Responsável: Por favor, revise e corrija as datas planejadas da ação na Fase 1 (Planejamento) antes de enviar novamente para aprovação.</p>
+          </div>
+        `;
+      }
+
+      const htmlBody = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb;">
+          <!-- Header -->
+          <div style="background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); padding: 24px 30px;">
+            <h1 style="margin: 0; font-size: 20px; color: #ffffff; font-weight: 700;">⚠️ Ação Reprovada pelo Trade</h1>
+            <p style="margin: 6px 0 0 0; font-size: 13px; color: #fee2e2;">A ação retornou para a Fase 1 (Planejamento) para correções.</p>
+          </div>
+
+          <div style="padding: 25px 30px;">
+            <!-- Action: what just happened -->
+            <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 12px 16px; border-radius: 0 8px 8px 0; margin-bottom: 20px; font-size: 13px; color: #991b1b;">
+              <strong>Motivo da Reprovação:</strong> ${reason}<br/>
+              <span style="font-size: 11px; color: #7f1d1d; display: block; margin-top: 4px;">Reprovado por: <strong>${user?.email || "—"}</strong> em ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</span>
+            </div>
+
+            <!-- Divergência Info (se aplicável) -->
+            ${divergenciaInfoHtml}
+
+            <!-- Detalhes da Ação -->
+            <h3 style="margin: 0 0 10px 0; font-size: 15px; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px;">Dados do Lançamento</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; margin-bottom: 15px;">
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563; width: 40%;">Rede:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${actionView.rede}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Código da Matriz:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.codigo_matriz || "-"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Mês Referência:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatMesReferencia(actionView.mes_referencia)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Tipo de Ação:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.tipo_acao} ${actionView.tipo_acao_detalhe ? `(${actionView.tipo_acao_detalhe})` : ""}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Família / SKU:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.abrangencia === "SKU" ? "Múltiplos SKUs" : (actionView.familias_detalhes && actionView.familias_detalhes.length > 0 ? actionView.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : (actionView.familia_produto || "-"))}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Período Planejado:</td>
+                <td style="padding: 6px 8px; color: #111827;">${formatDate(actionView.data_inicio)} a ${formatDate(actionView.data_fim)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Valor Investimento:</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${formatCurrency(getValorTotal(actionView))}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 6px 8px; color: #4b5563;">Gerente Responsável:</td>
+                <td style="padding: 6px 8px; color: #111827;">${actionView.gerente_responsavel || "-"}</td>
+              </tr>
+            </table>
+
+            <p style="font-size: 11px; color: #6b7280; margin-top: 30px; text-align: center; border-top: 1px solid #f3f4f6; padding-top: 15px;">
+              Este é um e-mail automático gerado pelo Hub de Investimentos Coffee++. Não responda a este e-mail.
+            </p>
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+        to: recipients,
+        subject,
+        html: htmlBody,
+      });
+
+      console.log(`[Email Reprovação Trade] Notificação enviada para: ${recipients}`);
+    }
+  } catch (mailErr) {
+    console.error("Erro ao enviar e-mail de reprovação do Trade:", mailErr);
+  }
+
+  revalidatePath("/investimento");
+  revalidatePath("/investimento/planejamento");
+  return { success: true };
 }
 
 export async function validarTrade(id: string, checklist: {
