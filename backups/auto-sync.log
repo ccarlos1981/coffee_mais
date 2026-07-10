@@ -295,3 +295,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
  4 files changed, 14 insertions(+), 13 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [09/07/2026 14:24] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main b02b8b3] auto-save: 09/07/2026 20:16
+ 6 files changed, 282 insertions(+), 39 deletions(-)
+ create mode 100644 supabase/migrations/20260709_fix_zaffari_matrix_duplicates.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   e64b13d..b02b8b3  main -> main
+[09/07/2026 20:16] ✅ Alterações enviadas com sucesso para o GitHub.
