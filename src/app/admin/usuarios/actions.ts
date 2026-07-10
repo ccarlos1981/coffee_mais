@@ -241,3 +241,95 @@ export async function updateManagerName(userId: string, managerName: string | nu
     return { error: errorMsg };
   }
 }
+
+export async function updateUser(userId: string, formData: FormData) {
+  try {
+    const adminClient = createAdminClient();
+    
+    let email = formData.get("email") as string;
+    const role = formData.get("role") as string;
+    const managerName = (formData.get("manager_name") as string) || null;
+    const firstName = (formData.get("first_name") as string || "").trim();
+    const lastName = (formData.get("last_name") as string || "").trim();
+    const fullName = `${firstName} ${lastName}`.trim() || null;
+    const phone = (formData.get("phone") as string || "").trim() || null;
+    const uf = (formData.get("uf") as string || "").trim() || null;
+    
+    const receber_pdf_vendas = formData.get("receber_pdf_vendas") === "on";
+    const receber_pdf_investimento = formData.get("receber_pdf_investimento") === "on";
+    
+    if (!userId || !email || !role) {
+      return { error: "ID do usuário, e-mail e função são obrigatórios." };
+    }
+    
+    email = email.trim().toLowerCase();
+
+    // Validação extra de segurança no backend
+    if (!email.endsWith("@coffeemais.com")) {
+      return { error: "Apenas e-mails corporativos @coffeemais.com são permitidos." };
+    }
+
+    // 1. Atualiza os dados no Auth (email e user_metadata)
+    const { error: authError } = await adminClient.auth.admin.updateUserById(userId, {
+      email,
+      user_metadata: {
+        first_name: firstName || undefined,
+        last_name: lastName || undefined,
+        full_name: fullName || undefined,
+      },
+    });
+
+    if (authError) {
+      return { error: authError.message };
+    }
+
+    // 2. Atualiza o perfil na tabela 'cm_user_profiles'
+    const { error: profileError } = await adminClient
+      .from('cm_user_profiles')
+      .update({
+        name: fullName,
+        role: role,
+        manager_name: managerName,
+        phone,
+        uf,
+        receber_pdf_vendas,
+        receber_pdf_investimento
+      })
+      .eq('id', userId);
+
+    if (profileError) {
+      return { error: profileError.message };
+    }
+
+    revalidatePath("/admin/usuarios");
+    return { success: true, message: `Usuário ${email} atualizado com sucesso!` };
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao atualizar usuário.";
+    return { error: errorMsg };
+  }
+}
+
+export async function resetUserPassword(userId: string) {
+  try {
+    const adminClient = createAdminClient();
+    
+    if (!userId) {
+      return { error: "Usuário é obrigatório." };
+    }
+
+    const { error } = await adminClient.auth.admin.updateUserById(userId, {
+      password: "123456",
+    });
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    revalidatePath("/admin/usuarios");
+    return { success: true, message: "Senha redefinida para 123456 com sucesso!" };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Erro interno ao redefinir senha.";
+    return { error: errorMsg };
+  }
+}

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Search } from "lucide-react";
+import { Search, Pencil } from "lucide-react";
 import { DeleteUserButton } from "./DeleteUserButton";
 import { EditUserRoleSelect } from "./EditUserRoleSelect";
 import { EditUserPdfPreferences } from "./EditUserPdfPreferences";
 import { ApproveUserToggle } from "./ApproveUserToggle";
+import { EditUserModal } from "./EditUserModal";
+import { updateUser, resetUserPassword } from "./actions";
 import { User } from "@supabase/supabase-js";
 
 interface UserProfile {
@@ -30,6 +32,7 @@ interface UserListProps {
 export function UserList({ users, profilesMap, roles, deleteAction }: UserListProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [editingUser, setEditingUser] = useState<User | null>(null);
 
   const filteredUsers = users.filter(user => {
     const profile = profilesMap[user.id];
@@ -126,6 +129,16 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
                 
                 <div className="flex items-center gap-3">
                   {profilesMap[user.id] !== undefined && (
+                    <button
+                      type="button"
+                      title="Editar usuário"
+                      className="p-2 rounded-lg text-neutral-500 hover:text-accent-gold hover:bg-accent-gold/10 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 cursor-pointer"
+                      onClick={() => setEditingUser(user)}
+                    >
+                      <Pencil className="w-5 h-5" />
+                    </button>
+                  )}
+                  {profilesMap[user.id] !== undefined && (
                     <ApproveUserToggle 
                       userId={user.id} 
                       initialApproved={profilesMap[user.id].approved || false} 
@@ -138,6 +151,17 @@ export function UserList({ users, profilesMap, roles, deleteAction }: UserListPr
           </ul>
         )}
       </div>
+
+      {editingUser && (
+        <EditUserModal
+          user={editingUser}
+          profile={profilesMap[editingUser.id]}
+          roles={roles}
+          onClose={() => setEditingUser(null)}
+          onSave={updateUser}
+          onResetPassword={resetUserPassword}
+        />
+      )}
     </div>
   );
 }
