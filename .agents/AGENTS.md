@@ -131,3 +131,61 @@ Esses identificadores possuem finalidade exclusivamente visual e não devem ser 
 ### Integridade de faturamento
 O `codigo_matriz` original permanece como a referência oficial para integrações de faturamento, BI e sistemas externos, não devendo sofrer alterações físicas ou transformações persistidas.
 
+---
+
+## 8. Baseline Oficial — Divergência Operacional de Calendário (Trade Fase 2)
+A partir de 10/07/2026, a funcionalidade de **Divergência Operacional de Calendário** torna-se componente oficial do módulo de Investimentos, sob período de estabilização e monitoramento.
+
+### Princípio fundamental
+O calendário comercial planejado permanece **imutável** nos campos originais da ação (`data_inicio`, `data_fim`). Divergências operacionais são registradas **exclusivamente** nos campos de execução real, preservando a rastreabilidade entre planejamento comercial e execução Trade.
+
+### Estrutura de dados oficial
+Colunas em `cm_acoes_investimento` (adicionadas em 10/07/2026):
+- `possui_divergencia_calendario` — `BOOLEAN DEFAULT FALSE`
+- `data_inicio_real` — `DATE NULL`
+- `data_fim_real` — `DATE NULL`
+- `motivo_divergencia_calendario` — `motivo_divergencia_enum NULL`
+- `observacao_divergencia` — `TEXT NULL`
+
+Enum Postgres `motivo_divergencia_enum` com valores controlados:
+`ATRASO_LOGISTICO`, `ALTERACAO_REDE`, `ALTERACAO_COMERCIAL`, `PROBLEMA_OPERACIONAL_LOJA`, `RUPTURA_ESTOQUE`, `ALTERACAO_ENCARTE`, `OUTROS`
+
+Constraint física de integridade: `chk_divergencia_calendario` — garante apenas dois estados válidos em qualquer origem de escrita.
+
+### Dois estados válidos (exclusivos)
+1. **Sem divergência:** `possui_divergencia_calendario = false` e todos os campos de divergência `NULL`.
+2. **Com divergência:** `possui_divergencia_calendario = true` e todos os quatro campos preenchidos, com `data_inicio_real <= data_fim_real`.
+Estados intermediários ou parcialmente preenchidos são rejeitados pela constraint Postgres.
+
+### Validação em três camadas obrigatórias
+1. **Frontend** — erro inline amigável, botão "Aprovar" bloqueado se divergência marcada e incompleta.
+2. **Server Action** (`atualizarChecklistTrade`) — validação programática antes do UPDATE.
+3. **Constraint Postgres** (`chk_divergencia_calendario`) — barreira física, independente da origem da escrita.
+
+### Regras operacionais permanentes
+1. **A divergência é opcional** e não representa erro operacional automaticamente.
+2. **A ausência de divergência não bloqueia aprovação** da ação Trade.
+3. **Divergência marcada e incompleta bloqueia aprovação** até que todos os campos sejam preenchidos.
+4. **Nenhuma alteração em datas planejadas** (`data_inicio`, `data_fim`) deverá ser realizada manualmente após a criação da ação.
+5. **O badge "⚠ Divergência de Calendário"** faz parte da rastreabilidade oficial das ações e deve ser preservado em todas as interfaces que exibam ações da Fase 2+.
+6. **Exportações CSV/Excel** devem sempre incluir as 5 colunas de divergência para fins de auditoria e BI.
+
+### Observabilidade futura (sem dashboard nesta sprint)
+Os dados ficam preservados para análises futuras de:
+- SLA comercial × execução real
+- Produtividade operacional do Trade
+- Causas de replanejamento
+- Taxa de divergência operacional: `taxa_divergencia = acoes_com_divergencia / acoes_aprovadas_trade`
+
+### Arquivos e constantes oficiais
+- Constantes: `src/app/investimento/divergencia-constants.ts` (fora do `use server`)
+- Enum TypeScript: `MotivoDivergencia` (espelho do enum Postgres)
+- Labels amigáveis: `MOTIVOS_DIVERGENCIA` (Record)
+- Migration: `supabase/migrations/20260710_divergencia_calendario_trade.sql`
+
+### Regras para evoluções futuras
+1. **Reutilizar os campos existentes** — não criar estruturas paralelas de datas de execução.
+2. **Qualquer alteração estrutural** nos campos de divergência exige revisão arquitetural explícita e aprovação.
+3. **Novos motivos de divergência** devem ser adicionados ao enum Postgres via migration versionada.
+4. **Compatibilidade reversa obrigatória** — ações existentes não devem ser afetadas por nenhuma evolução.
+5. **A constraint `chk_divergencia_calendario` não deve ser removida ou relaxada** sem aprovação explícita.
