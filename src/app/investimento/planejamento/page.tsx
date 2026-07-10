@@ -83,6 +83,8 @@ interface AcaoInvestimento {
   date_mode?: "single" | "multiple" | null;
   fase_atual?: number;
   apuracao_preenchida_em?: string | null;
+  devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
+  devolvido_em?: string | null;
 }
 
 interface InvestmentPeriod {
