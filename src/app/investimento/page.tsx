@@ -39,7 +39,10 @@ import {
   Sparkles,
   HelpCircle,
   Layers,
-  Paperclip
+  Paperclip,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade } from "./lancar/actions";
 import { MotivoDivergencia, MOTIVOS_DIVERGENCIA } from "./divergencia-constants";
@@ -291,6 +294,8 @@ export default function InvestimentoPage() {
   const itemsPerPage = 50;
   const [showFilters, setShowFilters] = useState(false);
   const [filterFase, setFilterFase] = useState<number | null>(1);
+  const [sortField, setSortField] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
   const [tradeDivergencia, setTradeDivergencia] = useState<{
@@ -1376,6 +1381,25 @@ export default function InvestimentoPage() {
     });
   }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode, filterGerente, filterStatus, globalSearch]);
 
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
+
+  const renderSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3.5 h-3.5 inline ml-1 opacity-40 group-hover:opacity-100 transition-opacity" />;
+    }
+    if (sortDirection === "asc") {
+      return <ArrowUp className="w-3.5 h-3.5 inline ml-1 text-gold" />;
+    }
+    return <ArrowDown className="w-3.5 h-3.5 inline ml-1 text-gold" />;
+  };
+
   const groupedRenderableData = useMemo(() => {
     const items: Array<{
       type: "campaign";
@@ -1451,8 +1475,65 @@ export default function InvestimentoPage() {
       }
     });
 
+    // Ordenar itens se sortField estiver definido
+    if (sortField) {
+      items.sort((a, b) => {
+        let valA: any = "";
+        let valB: any = "";
+
+        if (sortField === "codigo") {
+          valA = a.type === "campaign" ? a.codigo_campanha : a.action.codigo || "";
+          valB = b.type === "campaign" ? b.codigo_campanha : b.action.codigo || "";
+        } else if (sortField === "data_registro") {
+          valA = a.type === "campaign" ? "" : (a.action.data_registro || "");
+          valB = b.type === "campaign" ? "" : (b.action.data_registro || "");
+        } else if (sortField === "rede") {
+          valA = a.type === "campaign" ? a.rede : (a.action.rede || "");
+          valB = b.type === "campaign" ? b.rede : (b.action.rede || "");
+        } else if (sortField === "mes") {
+          valA = a.type === "campaign" ? (a.mes_referencia || "") : (a.action.mes_referencia || "");
+          valB = b.type === "campaign" ? (b.mes_referencia || "") : (b.action.mes_referencia || "");
+        } else if (sortField === "periodo") {
+          if (a.type === "campaign") {
+            const dates = a.acoes.map((ac: any) => ac.data_inicio).filter(Boolean);
+            valA = dates.length > 0 ? [...dates].sort()[0] : "";
+          } else {
+            valA = a.action.data_inicio || "";
+          }
+          if (b.type === "campaign") {
+            const dates = b.acoes.map((ac: any) => ac.data_inicio).filter(Boolean);
+            valB = dates.length > 0 ? [...dates].sort()[0] : "";
+          } else {
+            valB = b.action.data_inicio || "";
+          }
+        } else if (sortField === "tipo") {
+          valA = a.type === "campaign" ? "Campanha" : (a.action.tipo_acao || "");
+          valB = b.type === "campaign" ? "Campanha" : (b.action.tipo_acao || "");
+        } else if (sortField === "fase") {
+          valA = a.type === "campaign" ? 0 : (a.action.fase_atual || 1);
+          valB = b.type === "campaign" ? 0 : (b.action.fase_atual || 1);
+        } else if (sortField === "valor") {
+          valA = a.type === "campaign" ? a.valor_previsto : getValorTotal(a.action);
+          valB = b.type === "campaign" ? b.valor_previsto : getValorTotal(b.action);
+        } else if (sortField === "exp_vol") {
+          valA = a.type === "campaign" ? a.acoes.reduce((sum, ac) => sum + (ac.expectativa_volume || 0), 0) : (a.action.expectativa_volume || 0);
+          valB = b.type === "campaign" ? b.acoes.reduce((sum, ac) => sum + (ac.expectativa_volume || 0), 0) : (b.action.expectativa_volume || 0);
+        }
+
+        if (typeof valA === "number" && typeof valB === "number") {
+          return sortDirection === "asc" ? valA - valB : valB - valA;
+        }
+
+        const strA = String(valA).toLowerCase();
+        const strB = String(valB).toLowerCase();
+        if (strA < strB) return sortDirection === "asc" ? -1 : 1;
+        if (strA > strB) return sortDirection === "asc" ? 1 : -1;
+        return 0;
+      });
+    }
+
     return items;
-  }, [filteredData]);
+  }, [filteredData, sortField, sortDirection]);
 
   // Efeito de auto-expansão ao buscar/filtrar
   useEffect(() => {
@@ -2820,18 +2901,42 @@ export default function InvestimentoPage() {
               <table className="w-full text-left text-sm whitespace-nowrap">
                 <thead className="bg-elevated sticky top-0 z-10 shadow-sm">
                   <tr>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Cód.</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Data Registro</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Rede</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Mês</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Período Ação</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Tipo</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Fase</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Família</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Vlr invest.</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">PPC</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right">Exp. Vol.</th>
-                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-center">Ações</th>
+                    <th onClick={() => handleSort("codigo")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Cód. {renderSortIcon("codigo")}
+                    </th>
+                    <th onClick={() => handleSort("data_registro")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Data Registro {renderSortIcon("data_registro")}
+                    </th>
+                    <th onClick={() => handleSort("rede")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Rede {renderSortIcon("rede")}
+                    </th>
+                    <th onClick={() => handleSort("mes")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Mês {renderSortIcon("mes")}
+                    </th>
+                    <th onClick={() => handleSort("periodo")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Período Ação {renderSortIcon("periodo")}
+                    </th>
+                    <th onClick={() => handleSort("tipo")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Tipo {renderSortIcon("tipo")}
+                    </th>
+                    <th onClick={() => handleSort("fase")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border cursor-pointer hover:text-gold transition-colors select-none group">
+                      Fase {renderSortIcon("fase")}
+                    </th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border select-none">
+                      Família
+                    </th>
+                    <th onClick={() => handleSort("valor")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right cursor-pointer hover:text-gold transition-colors select-none group">
+                      Vlr invest. {renderSortIcon("valor")}
+                    </th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right select-none">
+                      PPC
+                    </th>
+                    <th onClick={() => handleSort("exp_vol")} className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-right cursor-pointer hover:text-gold transition-colors select-none group">
+                      Exp. Vol. {renderSortIcon("exp_vol")}
+                    </th>
+                    <th className="px-3 xl:px-4 py-3 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border text-center select-none">
+                      Ações
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
