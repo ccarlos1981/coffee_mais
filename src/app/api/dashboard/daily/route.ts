@@ -89,7 +89,18 @@ export async function GET(request: Request) {
       ${joinProductSql}
       WHERE f.dt_faturamento >= '${startDateStr}' AND f.dt_faturamento <= '${endDateStr}'
         AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-        AND (f.cod_top IS NULL OR f.cod_top != '1117')
+        AND f.nome_parceiro != 'CAFE UTAM S/A'
+        AND f.nome_parceiro != 'COFFEE MAIS INDUSTRIA DE CAFE LTDA'
+        AND (
+          -- Canais Digitais (Ecommerce e Marketplace)
+          (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
+           AND f.cod_top::numeric IN (1100, 1200, 1201, 1723, 1117, 1703))
+          OR
+          -- Canais B2B e outros
+          (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
+           AND f.cod_top::numeric IN (1100, 1200, 1201, 1713, 1117, 1703)
+           AND (a.manager IS NULL OR a.manager NOT IN ('Ecommerce', 'Marketplace')))
+        )
         ${filterSql}
       GROUP BY f.dt_faturamento
       ORDER BY f.dt_faturamento
