@@ -739,21 +739,27 @@ export default function RpsPage() {
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.VOL.projections[wIdx];
                                 const isFuture = m > todayStr;
+                                const isEditable = m === todayStr;
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    <input
-                                      type="number"
-                                      value={isFuture ? "" : (val === 0 ? "" : val.toString())}
-                                      placeholder="0"
-                                      disabled={m !== todayStr}
-                                      onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "VOL", wIdx })}
-                                      onBlur={() => setFocusedInput(null)}
-                                      onChange={(e) => {
-                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                        handleManagerKpiChange(mIdx, "VOL", wIdx, isNaN(num) ? 0 : num);
-                                      }}
-                                      className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
-                                    />
+                                    {isEditable ? (
+                                      <input
+                                        type="number"
+                                        value={isFuture ? "" : (val === 0 ? "" : val.toString())}
+                                        placeholder="0"
+                                        onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "VOL", wIdx })}
+                                        onBlur={() => setFocusedInput(null)}
+                                        onChange={(e) => {
+                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                          handleManagerKpiChange(mIdx, "VOL", wIdx, isNaN(num) ? 0 : num);
+                                        }}
+                                        className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
+                                      />
+                                    ) : (
+                                      <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
+                                        {isFuture ? "-" : (val === 0 ? "0" : formatNumber(val, 0))}
+                                      </div>
+                                    )}
                                   </td>
                                 );
                               })}
@@ -774,21 +780,27 @@ export default function RpsPage() {
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.FAT.projections[wIdx];
                                 const isFuture = m > todayStr;
+                                const isEditable = m === todayStr;
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    <input
-                                      type="number"
-                                      value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
-                                      placeholder="0"
-                                      disabled={m !== todayStr}
-                                      onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "FAT", wIdx })}
-                                      onBlur={() => setFocusedInput(null)}
-                                      onChange={(e) => {
-                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                        handleManagerKpiChange(mIdx, "FAT", wIdx, isNaN(num) ? 0 : num * 1000);
-                                      }}
-                                      className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
-                                    />
+                                    {isEditable ? (
+                                      <input
+                                        type="number"
+                                        value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
+                                        placeholder="0"
+                                        onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "FAT", wIdx })}
+                                        onBlur={() => setFocusedInput(null)}
+                                        onChange={(e) => {
+                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                          handleManagerKpiChange(mIdx, "FAT", wIdx, isNaN(num) ? 0 : num * 1000);
+                                        }}
+                                        className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
+                                      />
+                                    ) : (
+                                      <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
+                                        {isFuture ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
+                                      </div>
+                                    )}
                                   </td>
                                 );
                               })}
@@ -809,24 +821,32 @@ export default function RpsPage() {
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.INVEST.projections[wIdx];
                                 const isFuture = m > todayStr;
+                                const isEditable = m === todayStr;
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    <div className="flex items-center gap-1 justify-end">
-                                      <input
-                                        type="number"
-                                        value={isFuture ? "" : (val === 0 ? "" : val.toString())}
-                                        placeholder="0"
-                                        disabled={m !== todayStr}
-                                        onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "INVEST", wIdx })}
-                                        onBlur={() => setFocusedInput(null)}
-                                        onChange={(e) => {
-                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                          handleManagerKpiChange(mIdx, "INVEST", wIdx, isNaN(num) ? 0 : num);
-                                        }}
-                                        className="w-12 text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
-                                      />
-                                      <span className="text-[10px] text-foreground-muted">%</span>
-                                    </div>
+                                    {isEditable ? (
+                                      <div className="flex items-center gap-1 justify-end">
+                                        <input
+                                          type="number"
+                                          value={isFuture ? "" : (val === 0 ? "" : val.toString())}
+                                          placeholder="0"
+                                          onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "INVEST", wIdx })}
+                                          onBlur={() => setFocusedInput(null)}
+                                          onChange={(e) => {
+                                            const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                            handleManagerKpiChange(mIdx, "INVEST", wIdx, isNaN(num) ? 0 : num);
+                                          }}
+                                          className="w-12 text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
+                                        />
+                                        <span className="text-[10px] text-foreground-muted">%</span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-1 justify-end opacity-40 cursor-not-allowed select-none min-h-[24px]">
+                                        <span className="text-xs text-blue-400 font-mono">
+                                          {isFuture ? "-" : formatNumber(val, 1)}%
+                                        </span>
+                                      </div>
+                                    )}
                                   </td>
                                 );
                               })}
@@ -867,40 +887,51 @@ export default function RpsPage() {
                                   
                                   {/* META */}
                                   <td className="col-divider text-right">
-                                    <input
-                                      type="number"
-                                      value={cli.meta === 0 ? "" : Math.round(cli.meta / 1000).toString()}
-                                      placeholder="0"
-                                      disabled={!isTodayMonday}
-                                      onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "META", wIdx: 0 })}
-                                      onBlur={() => setFocusedInput(null)}
-                                      onChange={(e) => {
-                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                        handleClientMetaChange(mIdx, cIdx, isNaN(num) ? 0 : num);
-                                      }}
-                                      className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
-                                    />
+                                    {isTodayMonday ? (
+                                      <input
+                                        type="number"
+                                        value={cli.meta === 0 ? "" : Math.round(cli.meta / 1000).toString()}
+                                        placeholder="0"
+                                        onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "META", wIdx: 0 })}
+                                        onBlur={() => setFocusedInput(null)}
+                                        onChange={(e) => {
+                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                          handleClientMetaChange(mIdx, cIdx, isNaN(num) ? 0 : num);
+                                        }}
+                                        className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
+                                      />
+                                    ) : (
+                                      <div className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
+                                        {cli.meta === 0 ? "0" : formatNumber(Math.round(cli.meta / 1000), 0)}
+                                      </div>
+                                    )}
                                   </td>
                                   
                                   {/* PROJEÇÕES SEMANAIS */}
                                   {mondays.map((m, wIdx) => {
                                     const val = cli.projections[wIdx];
                                     const isFuture = m > todayStr;
+                                    const isEditable = m === todayStr;
                                     return (
                                       <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                        <input
-                                          type="number"
-                                          value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
-                                          placeholder="0"
-                                          disabled={m !== todayStr}
-                                          onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "FAT", wIdx })}
-                                          onBlur={() => setFocusedInput(null)}
-                                          onChange={(e) => {
-                                            const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                            handleClientProjChange(mIdx, cIdx, wIdx, isNaN(num) ? 0 : num);
-                                          }}
-                                          className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold disabled:opacity-40 disabled:cursor-not-allowed"
-                                        />
+                                        {isEditable ? (
+                                          <input
+                                            type="number"
+                                            value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
+                                            placeholder="0"
+                                            onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "FAT", wIdx })}
+                                            onBlur={() => setFocusedInput(null)}
+                                            onChange={(e) => {
+                                              const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                              handleClientProjChange(mIdx, cIdx, wIdx, isNaN(num) ? 0 : num);
+                                            }}
+                                            className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
+                                          />
+                                        ) : (
+                                          <div className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
+                                            {isFuture ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
+                                          </div>
+                                        )}
                                       </td>
                                     );
                                   })}
