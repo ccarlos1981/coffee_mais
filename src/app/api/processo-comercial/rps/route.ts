@@ -236,11 +236,7 @@ export async function GET(request: Request) {
       // Faturamento (FAT) do mês anterior (procura a última projeção não-zero)
       const prevFatWeekly = prevMondays.map(date => {
         const totalP = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'FAT');
-        if (totalP) return Number(totalP.projection_value);
-
-        return prevManagerProjs
-          .filter((p: any) => p.client_matrix !== '_TOTAL_' && p.week_start_date === date && p.kpi === 'FAT')
-          .reduce((acc, p) => acc + Number(p.projection_value), 0);
+        return totalP ? Number(totalP.projection_value) : 0;
       });
       const prevFatProj = prevFatWeekly.length > 0
         ? (prevFatWeekly.slice().reverse().find(v => v !== 0) || prevFatWeekly[prevFatWeekly.length - 1] || 0)
@@ -427,17 +423,7 @@ export async function GET(request: Request) {
         });
       }
 
-      // Agora calculamos a projeção de FAT do gerente como a soma das projeções dos clientes
-      // ou mantemos o valor próprio do gerente se a soma for zero.
-      mondays.forEach((_, wIdx) => {
-        const sumClients = clientsList.reduce((acc, c) => acc + c.projections[wIdx], 0);
-        if (sumClients > 0) {
-          kpis.FAT.projections[wIdx] = sumClients;
-        } else {
-          const p = managerProjs.find((p: any) => p.week_start_date === mondays[wIdx] && p.kpi === 'FAT');
-          kpis.FAT.projections[wIdx] = p ? Number(p.projection_value) : 0;
-        }
-      });
+      // A projeção de FAT do gerente é mantida como o valor próprio do gerente (totalmente independente das redes).
 
       return {
         manager: mName,
