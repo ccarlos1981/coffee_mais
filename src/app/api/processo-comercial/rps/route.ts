@@ -89,31 +89,45 @@ export async function GET(request: Request) {
     const prevYearYear = year - 1;
     const prevYearKey = `${prevYearYear}-${String(month).padStart(2, '0')}`;
 
+    // Cálculo dos últimos 3 meses fechados para ranking
+    const closedMonths = [];
+    let tempY = year;
+    let tempM = month;
+    for (let i = 0; i < 3; i++) {
+      tempM--;
+      if (tempM === 0) {
+        tempM = 12;
+        tempY--;
+      }
+      closedMonths.push(`${tempY}-${String(tempM).padStart(2, '0')}`);
+    }
+    const [closedMonth1, closedMonth2, closedMonth3] = closedMonths;
+
     // Obter segundas-feiras do mês
     const mondays = getMondaysOfMonth(year, month);
 
-    // SQL - Faturamento e Volume históricos de gerentes
+    // SQL - Faturamento e Volume históricos de gerentes (unificando Leandro Saffi)
     const sqlManagerHistory = `
       SELECT 
         mes,
-        COALESCE(manager, 'Outros') as manager,
+        CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END as manager,
         SUM(fat) as fat,
         SUM(qty) as qty
       FROM mv_vendas_mensal
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
-      GROUP BY mes, COALESCE(manager, 'Outros')
+      GROUP BY mes, CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END
     `;
 
-    // SQL - Faturamento histórico de clientes (redes/matrizes)
+    // SQL - Faturamento histórico de clientes (redes/matrizes) (unificando Leandro Saffi e incluindo meses fechados)
     const sqlClientHistory = `
       SELECT 
         mes,
-        COALESCE(manager, 'Outros') as manager,
+        CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END as manager,
         COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat
       FROM mv_vendas_cliente_mensal
-      WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+      WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}', '${closedMonth2}', '${closedMonth3}')
+      GROUP BY mes, CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END, COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
     // SQL - Metas (Desafios) dos gerentes
@@ -279,8 +293,18 @@ export async function GET(request: Request) {
       // Obter lista única de clientes
       const allClientNames = Array.from(new Set(managerCliHist.map((c: any) => c.client)));
       
-      // Mapear faturamento máximo por cliente nas três referências para ranqueamento
+      // Mapear faturamento acumulado por cliente nos últimos 3 meses fechados para ranqueamento
       const clientSalesSummary = allClientNames.map(cName => {
+        const salesC1 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth1);
+        const salesC2 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth2);
+        const salesC3 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth3);
+
+        const fatC1 = salesC1.reduce((acc, s) => acc + s.fat, 0);
+        const fatC2 = salesC2.reduce((acc, s) => acc + s.fat, 0);
+        const fatC3 = salesC3.reduce((acc, s) => acc + s.fat, 0);
+
+        const rankingFat = fatC1 + fatC2 + fatC3;
+
         const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
         const pmSales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevMonthKey);
         const pySales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevYearKey);
@@ -294,12 +318,12 @@ export async function GET(request: Request) {
           fatCur,
           fatPm,
           fatPy,
-          maxFat: Math.max(fatCur, fatPm, fatPy)
+          rankingFat
         };
       });
 
-      // Ordenar e separar os Top 10 e o restante sob "OUTROS"
-      clientSalesSummary.sort((a, b) => b.maxFat - a.maxFat);
+      // Ordenar e separar os Top 10 e o restante sob "OUTROS" por rankingFat decrescente
+      clientSalesSummary.sort((a, b) => b.rankingFat - a.rankingFat);
       
       const topClientsSummary = clientSalesSummary.slice(0, 10);
       const otherClientsSummary = clientSalesSummary.slice(10);
