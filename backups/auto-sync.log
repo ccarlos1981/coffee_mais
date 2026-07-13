@@ -374,3 +374,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    5bc3b54..6d75a12  main -> main
 [12/07/2026 19:53] ✅ Alterações enviadas com sucesso para o GitHub.
+[main c6f5f9c] auto-save: 12/07/2026 22:53
+ 28 files changed, 512 insertions(+), 310 deletions(-)
+ create mode 100644 scratch/test_hardening_v2.ts
+ create mode 100644 src/lib/supabase/auth-helpers.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   6d75a12..c6f5f9c  main -> main
+[12/07/2026 22:53] ✅ Alterações enviadas com sucesso para o GitHub.

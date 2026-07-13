@@ -3230,6 +3230,7 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
     }
 
     // 5. Instanciar ExcelJS Workbook
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const ExcelJS = require("exceljs");
     const workbook = new ExcelJS.Workbook();
 
