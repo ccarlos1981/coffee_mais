@@ -3,9 +3,11 @@
  */
 
 /** Formata valor em Reais: R$ 1.234 */
-export function formatCurrency(value: number | null | undefined, decimals = 0): string {
-  if (value == null || isNaN(value)) return decimals > 0 ? `R$ 0,${"0".repeat(decimals)}` : `R$ 0`;
-  return value.toLocaleString("pt-BR", {
+export function formatCurrency(value: number | string | null | undefined, decimals = 0): string {
+  if (value == null) return decimals > 0 ? `R$ 0,${"0".repeat(decimals)}` : `R$ 0`;
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num)) return decimals > 0 ? `R$ 0,${"0".repeat(decimals)}` : `R$ 0`;
+  return num.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
     minimumFractionDigits: decimals,
@@ -14,9 +16,11 @@ export function formatCurrency(value: number | null | undefined, decimals = 0): 
 }
 
 /** Formata valor em milhares: 1.234 (÷1000) */
-export function formatThousands(value: number | null | undefined): string {
-  if (value == null || isNaN(value)) return "0";
-  return (value / 1000).toLocaleString("pt-BR", {
+export function formatThousands(value: number | string | null | undefined): string {
+  if (value == null) return "0";
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num)) return "0";
+  return (num / 1000).toLocaleString("pt-BR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
@@ -24,29 +28,35 @@ export function formatThousands(value: number | null | undefined): string {
 
 /** Formata número genérico: 1.234 */
 export function formatNumber(
-  value: number | null | undefined,
+  value: number | string | null | undefined,
   decimals = 0
 ): string {
-  if (value == null || isNaN(value)) return "0";
-  return value.toLocaleString("pt-BR", {
+  if (value == null) return "0";
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num)) return "0";
+  return num.toLocaleString("pt-BR", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
 }
 
 /** Formata percentual: 98,5% */
-export function formatPercent(value: number | null | undefined): string {
-  if (value == null || isNaN(value)) return "0%";
-  return `${value.toLocaleString("pt-BR", {
+export function formatPercent(value: number | string | null | undefined): string {
+  if (value == null) return "0%";
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num)) return "0%";
+  return `${num.toLocaleString("pt-BR", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
   })}%`;
 }
 
 /** Formata toneladas: 12,5 */
-export function formatTons(value: number | null | undefined): string {
-  if (value == null || isNaN(value)) return "0,0";
-  const tons = value / 1000; // kg → tons
+export function formatTons(value: number | string | null | undefined): string {
+  if (value == null) return "0,0";
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num)) return "0,0";
+  const tons = num / 1000; // kg → tons
   return tons.toLocaleString("pt-BR", {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,
