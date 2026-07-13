@@ -1300,15 +1300,35 @@ export default function InvestimentoPage() {
   }, []);
 
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchUserPreferencesAndRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUserEmail(user.email || null);
         const { data } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
         if (data) setUserRole(data.role);
+
+        // Fetch sort preferences
+        try {
+          const { data: prefData } = await supabase
+            .from('cm_user_preferences')
+            .select('investimento_sort_column, investimento_sort_direction')
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (prefData) {
+            if (prefData.investimento_sort_column) {
+              setSortField(prefData.investimento_sort_column);
+            }
+            if (prefData.investimento_sort_direction) {
+              setSortDirection(prefData.investimento_sort_direction as "asc" | "desc");
+            }
+          }
+        } catch (prefErr) {
+          console.error("Erro ao carregar preferências de ordenação:", prefErr);
+        }
       }
     };
-    fetchUserRole();
+    fetchUserPreferencesAndRole();
     loadData();
   }, [loadData]);
 
@@ -1417,12 +1437,33 @@ export default function InvestimentoPage() {
     });
   }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterFase, filterMes, viewMode, filterGerente, filterStatus, globalSearch]);
 
-  const handleSort = (field: string) => {
+  const handleSort = async (field: string) => {
+    let newDirection: "asc" | "desc" = "asc";
+    let newField = field;
     if (sortField === field) {
-      setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+      newDirection = sortDirection === "asc" ? "desc" : "asc";
     } else {
-      setSortField(field);
-      setSortDirection("asc");
+      newField = field;
+      newDirection = "asc";
+    }
+
+    setSortField(newField);
+    setSortDirection(newDirection);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await supabase
+          .from("cm_user_preferences")
+          .upsert({
+            user_id: user.id,
+            investimento_sort_column: newField,
+            investimento_sort_direction: newDirection,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+      }
+    } catch (err) {
+      console.error("Erro ao salvar preferência de ordenação:", err);
     }
   };
 
