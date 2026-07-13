@@ -1,163 +1,15 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Suspense } from "react";
-import SyncStatusWidget from "@/components/SyncStatusWidget";
 import { redirect } from "next/navigation";
 import {
-  BarChart3,
   Users,
-  History,
-  Upload,
-  Target,
-  TrendingUp,
-  Calendar,
-  Briefcase,
-  Package,
-  PieChart,
-  DollarSign,
-  Layers,
-  Receipt,
-  CheckCircle2,
-  Sparkles,
-  AlertTriangle,
   LogOut,
-  Settings,
-  CalendarDays,
-  ClipboardList,
-  Clock,
-  ShieldCheck,
-  Map,
-  BookOpen,
-  Trophy,
-  Bell,
-  FileText
+  Bell
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { ModuleGroup } from "@/components/ModuleGroup";
+import { DashboardClient } from "@/components/DashboardClient";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-
-interface NavigationItem {
-  title: string;
-  description: string;
-  href: string;
-  icon: any;
-  color: string;
-  ready: boolean;
-  permission?: string;
-  highlight?: boolean;
-  hasRedBorder?: boolean;
-}
-
-interface NavigationGroup {
-  category: string;
-  items: NavigationItem[];
-}
-
-const allModules: NavigationGroup[] = [
-  {
-    category: "Faturamento e Volume",
-    items: [
-      { title: "Vendas", description: "Meta vs Real", href: "/vendas", icon: BarChart3, color: "from-blue-600 to-blue-800", ready: true },
-      { title: "Histórico", description: "Multi-ano", href: "/historico", icon: History, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Hist. Rede", permission: "Hist. Matriz", description: "YoY por Rede", href: "/historico-matriz", icon: History, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Hist. p/ Rede", permission: "Hist. p/ Matriz", description: "Top 10 Redes YoY", href: "/historico-por-matriz", icon: BarChart3, color: "from-sky-600 to-sky-800", ready: true },
-      { title: "Preço", description: "R$/Kg análise", href: "/preco", icon: TrendingUp, color: "from-orange-600 to-orange-800", ready: true },
-      { title: "Dia", description: "Análise diária", href: "/dia", icon: Calendar, color: "from-cyan-600 to-cyan-800", ready: true },
-      { title: "MaCo", description: "Margem contribuição", href: "/vendas?tab=maco", icon: DollarSign, color: "from-green-600 to-green-800", ready: false },
-      { title: "DRE", description: "Demonstrativo de Resultados", href: "/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
-      { title: "DRE Hist.", description: "Histórico anual", href: "/dre/historico", icon: DollarSign, color: "from-teal-700 to-teal-900", ready: true },
-    ],
-  },
-  {
-    category: "Análise",
-    items: [
-      { title: "Rede", permission: "Matriz", description: "Ranking clientes", href: "/matriz", icon: Users, color: "from-emerald-600 to-emerald-800", ready: true },
-      { title: "Positivação", description: "Clientes ativos", href: "/positivacao", icon: CheckCircle2, color: "from-indigo-600 to-indigo-800", ready: true },
-      { title: "Posit. Rede", permission: "Posit. Matriz", description: "Rede e Cliente", href: "/positivacao-matriz", icon: CheckCircle2, color: "from-cyan-600 to-cyan-800", ready: true },
-      { title: "Carteira", description: "Base ativa", href: "/carteira", icon: Briefcase, color: "from-teal-600 to-teal-800", ready: false },
-      { title: "Mix", description: "Composição SKU", href: "/mix", icon: PieChart, color: "from-pink-600 to-pink-800", ready: false },
-    ],
-  },
-  {
-    category: "Processo Comercial",
-    items: [
-      { title: "RPS", description: "Processamento de RPS", href: "/processo-comercial/rps", icon: Receipt, color: "from-blue-600 to-blue-800", ready: true },
-      { title: "RDM", description: "Reunião Mensal", href: "/processo-comercial/rdm", icon: Layers, color: "from-violet-600 to-violet-800", ready: true },
-      { title: "Agenda", description: "Agenda Comercial", href: "/processo-comercial/agenda", icon: CalendarDays, color: "from-emerald-600 to-emerald-800", ready: true },
-      { title: "Follow Up", description: "Acompanhamento", href: "/processo-comercial/follow-up", icon: ClipboardList, color: "from-amber-600 to-amber-800", ready: true },
-    ],
-  },
-  {
-    category: "Investimentos",
-    items: [
-      { title: "Dash Gerencial", description: "Visão global de negócios", href: "/investimento/gerencial", icon: PieChart, color: "from-blue-600 to-blue-800", ready: true },
-      { title: "Dash resumido", description: "Saldo devedor por rede", href: "/investimento/invest-cliente", icon: Users, color: "from-rose-600 to-rose-800", ready: true },
-      { title: "Dash por rede", description: "Visão executiva", href: "/investimento/dashboard", icon: BarChart3, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
-      { title: "Invest. por mês", description: "Consolidado mensal", href: "/investimento/por-mes", icon: CalendarDays, color: "from-cyan-600 to-cyan-800", ready: true },
-      { title: "Calendário de invest.", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
-      { title: "Planej. de Invest.", permission: "Planej. de Invest.", description: "Planejamento de ações", href: "/investimento/planejamento", icon: Target, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Invest. oficial", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-amber-600 to-amber-800", ready: true, hasRedBorder: true },
-    ],
-  },
-  {
-    category: "Trade",
-    items: [
-      { title: "Calendário Anual", description: "Eventos e datas", href: "/trade/calendario-anual", icon: CalendarDays, color: "from-amber-600 to-amber-800", ready: true },
-    ],
-  },
-  {
-    category: "Módulo Promotor",
-    items: [
-      { title: "Ponto Promotor", description: "Registrar jornada", href: "/promotor/ponto", icon: Clock, color: "from-amber-600 to-amber-800", ready: true },
-      { title: "Agenda Promotor", description: "Roteiro e visitas", href: "/promotor/agenda", icon: ClipboardList, color: "from-orange-600 to-orange-850", ready: true },
-      { title: "Painel Supervisor", description: "Aprovar pontos", href: "/supervisor/ponto", icon: Users, color: "from-blue-600 to-blue-800", ready: true },
-      { title: "Central de Rotas e SLAs", description: "Configurar SLAs e rotas", href: "/supervisor/rotas", icon: Map, color: "from-amber-650 to-amber-850", ready: true },
-      { title: "Command Center", description: "Tracking em tempo real", href: "/supervisor/command-center", icon: ShieldCheck, color: "from-red-650 to-red-850", ready: true },
-      { title: "Compliance e KPIs", description: "Auditoria de campo", href: "/trade/dashboard", icon: ShieldCheck, color: "from-red-600 to-red-800", ready: true },
-      { title: "Missões Trade", description: "Checklists de loja", href: "/trade/missoes", icon: Target, color: "from-purple-600 to-purple-800", ready: true },
-      { title: "Desafio Promotor", description: "Campanhas e incentivos", href: "/promotor/desafio", icon: Trophy, color: "from-amber-500 to-orange-600", ready: true },
-      { title: "Pesquisa Light", permission: "Pesquisa Light", description: "Pesquisa rápida de preços", href: "/promotor/pesquisa-light", icon: FileText, color: "from-amber-600 to-amber-800", ready: true },
-    ],
-  },
-  {
-    category: "Gestão",
-    items: [
-      { title: "Meta Cia", description: "Visão Executiva", href: "/meta-cia", icon: Target, color: "from-blue-600 to-blue-800", ready: true },
-      { title: "Metas por área", permission: "Metas", description: "Cadastro metas", href: "/metas", icon: Target, color: "from-violet-600 to-violet-800", ready: true },
-      { title: "Metas promotor", description: "Cadastro metas promotor", href: "/metas-promotor", icon: Target, color: "from-purple-600 to-purple-800", ready: true },
-      { title: "Coffee_IA", description: "Pergunte aos dados", href: "/coffee-ia", icon: Sparkles, color: "from-amber-500 to-yellow-600", ready: true },
-      { title: "Atendimento", description: "Regras PDV e UFs", href: "/atendimento", icon: Users, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
-      { title: "Upload", description: "Importar planilhas", href: "/upload", icon: Upload, color: "from-rose-600 to-rose-800", ready: true },
-      { title: "Tributos", description: "Tributação SKU", href: "/tributos", icon: Receipt, color: "from-sky-600 to-sky-800", ready: true },
-      { title: "Bonif.", description: "Bonificações", href: "/bonif", icon: Package, color: "from-indigo-600 to-indigo-800", ready: false },
-      { title: "Devol.", description: "Devoluções", href: "/devol", icon: Layers, color: "from-slate-600 to-slate-800", ready: false },
-    ],
-  },
-  {
-    category: "Gente e Gestão",
-    items: [
-      { title: "Cadastro", permission: "Cadastro Funcionários", description: "Cadastro de funcionários", href: "/gente-gestao/cadastro", icon: Users, color: "from-teal-600 to-teal-800", ready: true },
-      { title: "Remuneração Promotores", permission: "Remuneração Promotores", description: "Cálculo e auditoria", href: "/gente-gestao/remuneracao-promotor", icon: DollarSign, color: "from-amber-500 to-amber-700", ready: true },
-      { title: "Férias", permission: "Férias", description: "Calendário de Férias", href: "/gente-gestao/ferias", icon: CalendarDays, color: "from-emerald-600 to-emerald-800", ready: true },
-      { title: "Central de Treinamento", permission: "Central de Treinamento", description: "Manuais e Onboarding", href: "/treinamento", icon: BookOpen, color: "from-emerald-600 to-emerald-800", ready: true },
-      { title: "Processos Coffee ++", permission: "Processos Coffee ++", description: "Fluxos e Procedimentos", href: "/processos", icon: Layers, color: "from-purple-600 to-purple-800", ready: true },
-    ],
-  },
-  {
-    category: "Smart Hub",
-    items: [
-      { title: "Alertas", description: "Ações de retenção", href: "/alertas", icon: AlertTriangle, color: "from-red-600 to-red-800", ready: true },
-    ],
-  },
-  {
-    category: "Config financeiro",
-    items: [
-      { title: "Cadastro", description: "Cadastros financeiros", href: "/config-financeiro/cadastro", icon: DollarSign, color: "from-yellow-600 to-yellow-800", ready: true },
-      { title: "Clientes", description: "Gestão de carteira", href: "/config-financeiro/clientes", icon: Users, color: "from-amber-600 to-amber-800", ready: true },
-    ],
-  },
-];
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -207,6 +59,7 @@ export default async function HomePage() {
   let role = 'Vendedor'; // default
   let allowedModuleNames: string[] = [];
   let hasConfigInDb = false;
+  let initialFavorites: string[] = [];
   
   if (user) {
     // Buscar perfil para descobrir a role
@@ -230,63 +83,21 @@ export default async function HomePage() {
       allowedModuleNames = permissions.filter((p: any) => p.has_access).map((p: any) => p.module_name);
       hasConfigInDb = permissions.length > 0;
     }
+
+    // Buscar favoritos do usuário ordenados por display_order (com nulls last) e criados em ordem crescente
+    const { data: favoritesData } = await supabase
+      .from("cm_user_favorites")
+      .select("module_key")
+      .order("display_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true });
+
+    if (favoritesData) {
+      initialFavorites = favoritesData.map(f => f.module_key);
+    }
   }
 
-  // Filtrar os módulos de acordo com as permissões
   const isSuperAdmin = role === 'CEO' && allowedModuleNames.length === 0;
-
-  const filteredModules = allModules.map(group => {
-    return {
-      ...group,
-      items: group.items.filter(item => {
-        if (isSuperAdmin) return true;
-        
-        const modulePermission = item.permission || item.title;
-        
-        // Se houver permissão ativa no banco, permite o acesso
-        if (allowedModuleNames.includes(modulePermission)) return true;
-        
-        // Se a role não possuir NENHUMA permissão configurada no banco (tabela vazia para a role),
-        // usamos os atalhos de visibilidade legados como fallback de segurança
-        if (!hasConfigInDb) {
-          if (item.href.startsWith("/promotor") && (role === "Promotor" || role === "Supervisor" || role === "Trade" || role === "Admin" || role === "CEO")) return true;
-          if (item.href.startsWith("/supervisor") && (role === "Supervisor" || role === "Trade" || role === "Admin" || role === "CEO")) return true;
-          if (item.href.startsWith("/trade") && (role === "Trade" || role === "Admin" || role === "Supervisor" || role === "CEO")) return true;
-          // Treinamento e manuais são públicos por padrão
-          if (item.href.startsWith("/treinamento")) return true;
-        }
-        
-        return false;
-      }).map(({ icon: Icon, ...rest }) => ({
-        ...rest,
-        iconNode: <Icon className="w-3 h-3 text-white" />
-      }))
-    };
-  }).filter(group => group.items.length > 0);
-
   const canManageUsers = isSuperAdmin || allowedModuleNames.includes('Usuários');
-  const canViewLogs = isSuperAdmin || allowedModuleNames.includes('Logs');
-
-  if (role === 'Admin' || role === 'TI') {
-    const adminItems = [
-      { title: "Configurar Acesso", description: "Matriz de permissões", href: "/admin/permissoes", iconNode: <Settings className="w-3 h-3 text-white" />, color: "from-slate-600 to-slate-800", ready: true }
-    ];
-    
-    if (canManageUsers || role === 'Admin' || role === 'TI') {
-      adminItems.push({ title: "Usuários", description: "Gestão de usuários", href: "/admin/usuarios", iconNode: <Users className="w-3 h-3 text-white" />, color: "from-slate-600 to-slate-800", ready: true });
-    }
-    
-    if (canViewLogs || role === 'Admin' || role === 'TI') {
-      adminItems.push({ title: "Logs do Sistema", description: "Auditoria de ações", href: "/admin/logs", iconNode: <History className="w-3 h-3 text-white" />, color: "from-slate-600 to-slate-800", ready: true });
-      adminItems.push({ title: "Ranking Usuários", description: "Quem mais acessa", href: "/admin/ranking-usuarios", iconNode: <Trophy className="w-3 h-3 text-white" />, color: "from-amber-600 to-orange-700", ready: true });
-      adminItems.push({ title: "Ranking Módulos", description: "Funções mais usadas", href: "/admin/ranking-modulos", iconNode: <BarChart3 className="w-3 h-3 text-white" />, color: "from-blue-600 to-indigo-700", ready: true });
-    }
-
-    filteredModules.push({
-      category: "Configuração",
-      items: adminItems
-    });
-  }
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden flex flex-col">
@@ -414,30 +225,12 @@ export default async function HomePage() {
           </p>
         </div>
 
-        {/* BigQuery sync status - Hidden until BigQuery integration is configured
-        {role === 'Admin' && (
-          <Suspense fallback={null}>
-            <SyncStatusWidget />
-          </Suspense>
-        )}
-        */}
-
-        <div className="space-y-8">
-          {filteredModules.length > 0 ? (
-            filteredModules.map((group) => (
-              <ModuleGroup key={group.category} group={group} />
-            ))
-          ) : (
-            <div className="text-center py-16 px-4 rounded-2xl bg-card border border-border/80 shadow-lg max-w-md mx-auto my-12 animate-fade-in">
-              <AlertTriangle className="w-10 h-10 text-muted mx-auto mb-4" />
-              <h3 className="text-lg font-bold font-display text-foreground">Sem Acesso</h3>
-              <p className="text-muted mt-2 text-xs leading-relaxed">
-                Seu perfil atual ({role}) não possui permissões configuradas para nenhum módulo no sistema. 
-                Entre em contato com o suporte ou administrador.
-              </p>
-            </div>
-          )}
-        </div>
+        <DashboardClient
+          role={role}
+          allowedModuleNames={allowedModuleNames}
+          hasConfigInDb={hasConfigInDb}
+          initialFavorites={initialFavorites}
+        />
       </main>
     </div>
   );

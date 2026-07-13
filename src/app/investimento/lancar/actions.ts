@@ -214,6 +214,19 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     const supabase = await createClient();
 
     const codigo_matriz = formData.get("codigo_matriz") as string;
+    const gerenteName = formData.get("gerente") as string;
+    let gerenteId: string | null = null;
+    if (gerenteName) {
+      const { data: mProfile } = await supabase
+        .from("cm_user_profiles")
+        .select("id")
+        .ilike("name", `${gerenteName}%`)
+        .limit(1)
+        .maybeSingle();
+      if (mProfile) {
+        gerenteId = mProfile.id;
+      }
+    }
     const data_fim = formData.get("data_fim") as string;
     const tipo_acao = formData.get("tipo_acao") as string;
     const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
@@ -457,7 +470,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       codigo_matriz: codigo_matriz || null,
       mes_referencia,
       status_operacional: "PLANEJAMENTO",
-      status_financeiro: "ABERTA"
+      status_financeiro: "ABERTA",
+      gerente_id: gerenteId || null
     };
 
     const adminClient = createAdminClient();

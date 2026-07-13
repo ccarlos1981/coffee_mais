@@ -260,3 +260,34 @@ Toda alteração que envolva faturamento, ROI, metas, sell-in, positivação, re
 
 > [!IMPORTANT]
 > Caso qualquer resposta indique uso de fontes não oficiais sem aprovação arquitetural ou desvio financeiro acima de 0,5%, o merge deverá ser bloqueado imediatamente até correção completa.
+
+### Encerramento da Governança Financeira (LOCKED):
+A governança financeira do Coffee++ está oficialmente homologada e consolidada.
+* **Status Oficial**: `FINANCIAL_GOVERNANCE = LOCKED` e `SINGLE_SOURCE_OF_TRUTH = ENABLED`.
+* **Regra Geral**: Qualquer nova divergência financeira deve ser tratada como bug operacional e não como alteração de regra de negócio.
+* **Exceções Homologadas**:
+  - Infraestrutura de importação (`import-service.ts`).
+  - BigQuery Sync (`sync-faturamento/route.ts`).
+  - Trigger de sincronização (`tg_fn_sync_faturamento_sankhya_stmt`).
+  - API Daily (`/api/dashboard/daily/route.ts`), enquanto não existir uma fonte diária oficial.
+
+---
+
+## 11. Governança Oficial — Favoritos do Dashboard
+
+A tabela `cm_user_favorites` passa a ser a única fonte oficial para personalização da Home do Coffee++.
+
+### Diretrizes Obrigatórias:
+1. **Sem armazenamento local**: Nunca persistir favoritos ou sua ordenação em `localStorage`, `sessionStorage` ou cookies.
+2. **Utilizar chave única estável**: Nunca utilizar `href` como chave de persistência. Toda persistência deve utilizar exclusivamente `module_key`.
+3. **Respeito às regras de segurança (RLS)**: Toda leitura e escrita deve respeitar RLS utilizando `createClient()`. É proibido utilizar `createAdminClient()` ou bypass de RLS para favoritos.
+4. **Ordenação Oficial**:
+   - A ordenação dos favoritos é persistida exclusivamente na coluna `display_order` da tabela `cm_user_favorites`.
+   - O fallback oficial para registros antigos é `created_at ASC`.
+   - Toda leitura e escrita deve respeitar as políticas RLS da tabela `cm_user_favorites`.
+   - A reordenação ocorre exclusivamente no escopo do usuário autenticado (`user_id = auth.uid()`).
+5. **Posicionamento**: A seção Favoritos deve ser sempre renderizada antes das demais categorias do dashboard.
+6. **Renderização Condicional**: Caso não existam favoritos, a seção não deve ser renderizada.
+7. **Compatibilidade de Novos Módulos**: Novos módulos adicionados ao dashboard deverão obrigatoriamente possuir `module_key` estável e compatibilidade automática com o mecanismo de favoritos.
+
+

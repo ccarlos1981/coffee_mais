@@ -55,7 +55,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   // Combobox state for Rede
   const [searchRede, setSearchRede] = useState("");
   const [isRedeOpen, setIsRedeOpen] = useState(false);
-  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; displayCode?: string } | null>(initRedeObj || null);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; displayCode?: string; gerente?: string | null; uf?: string | null } | null>(initRedeObj || null);
   const [paymentDisabled, setPaymentDisabled] = useState(false);
   const [globalStart, setGlobalStart] = useState<string>(initialData?.data_inicio || "");
   const [globalEnd, setGlobalEnd] = useState<string>(initialData?.data_fim || "");
@@ -452,6 +452,8 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     const formData = new FormData(e.currentTarget);
     formData.append("rede", selectedRede.nome);
     formData.append("codigo_matriz", selectedRede.codigo);
+    if (selectedRede.gerente) formData.append("gerente", selectedRede.gerente);
+    if (selectedRede.uf) formData.append("uf", selectedRede.uf);
     formData.append("tipo_pagamento", tipoPagamento);
     formData.append("tipo_acao_detalhe", tipoAcaoDetalhe);
     formData.append("abrangencia", calculatedAbrangencia);
