@@ -210,3 +210,53 @@ A partir de 13/07/2026, o indicador **REAL FATURAMENTO** do Coffee++ passa a seg
 * **Sem Intervenção Manual**: A lógica está incorporada permanentemente na definição física das views materializadas (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal`).
 * Toda nova importação realizada pelo Hub de Importação e subsequente refresh (`refresh_materialized_views()`) aplicarão estas regras automaticamente.
 * As views materializadas do banco Supabase mantêm-se como a fonte de verdade para APIs e telas do dashboard (Vendas, Clientes e Positivação).
+
+---
+
+## 10. Governança Financeira Oficial (Coffee++)
+A partir de 13/07/2026, o Coffee++ passa a possuir uma única fonte oficial de faturamento corporativo.
+
+### Escopo de Aplicação:
+Toda funcionalidade existente ou futura que utilize: faturamento, sell-in, metas, ROI, rankings, positivação, remuneração, IA, previsões, DRE, dashboards, supervisão, promotores, exportações ou indicadores comerciais deverá consumir exclusivamente as estruturas homologadas do ecossistema financeiro oficial.
+
+### Fontes Oficiais:
+* `mv_vendas_mensal`
+* `mv_vendas_cliente_mensal`
+* `mv_positivacao_sku_mensal`
+* `public.sales` (alinhada às regras oficiais)
+* `base_atendimento.faturamento_mensal` (alinhado às regras oficiais)
+
+### Restrições e Proibições:
+* **É proibido** utilizar `SUM(vlr_total_liq)` bruto diretamente sobre a tabela física `cm_faturamento`.
+* **É proibido** criar cálculos locais de faturamento, filtros de TOPs próprios ou regras paralelas de descontos.
+* **É proibido** duplicar lógica financeira em frontend, APIs ou Server Actions.
+* **É proibido** criar novas views financeiras paralelas sem aprovação arquitetural formal.
+
+### Fluxo Obrigatório para Novas Funcionalidades:
+Caso uma nova funcionalidade necessite de dados de faturamento, o fluxo obrigatório de implementação será:
+1. **Verificar** se uma das fontes oficiais listadas acima já atende ao caso de uso.
+2. **Reutilizar** a fonte oficial existente.
+3. **Evoluir** a fonte oficial existente caso ela não atenda completamente, em vez de criar outra regra ou estrutura paralela.
+
+### Single Source of Truth Financeira:
+A arquitetura de dados deve fluir estritamente no seguinte sentido:
+`MyMetrics → Views Oficiais → APIs → Frontend`. Nunca o contrário.
+Toda nova implementação financeira deve garantir desvio máximo tolerado de **0,5%** em relação ao MyMetrics.
+
+### Diretrizes de Ação para Evolução:
+Sempre que for identificada uma nova funcionalidade envolvendo indicadores financeiros, é mandatório:
+1. Validar se ela está utilizando a fonte oficial de dados.
+2. Medir impactos financeiros de eventuais divergências encontradas.
+3. Propor ou executar a migração do componente para a fonte oficial.
+4. Preservar contratos de rotas/serviços existentes para garantir retrocompatibilidade.
+
+### Validação Obrigatória para Pull Requests Financeiros:
+Toda alteração que envolva faturamento, ROI, metas, sell-in, positivação, remuneração ou indicadores comerciais deverá obrigatoriamente responder às seguintes perguntas no corpo do PR:
+* **Qual fonte oficial está sendo utilizada?** (Deve ser uma das 5 fontes oficiais listadas acima).
+* **Existe consulta direta em `cm_faturamento`?** (Se sim, justificar a exceção técnica formal).
+* **Existe cálculo local de faturamento?** (Não deve haver lógica aritmética/filtros customizados de TOP no código).
+* **Existe divergência superior a 0,5% em relação ao MyMetrics?** (O limite máximo tolerável de desvio é de 0,5%).
+* **Houve validação de paridade antes do merge?** (Confirmar a execução do teste de paridade e anexar os resultados).
+
+> [!IMPORTANT]
+> Caso qualquer resposta indique uso de fontes não oficiais sem aprovação arquitetural ou desvio financeiro acima de 0,5%, o merge deverá ser bloqueado imediatamente até correção completa.
