@@ -298,11 +298,11 @@ export async function GET(request: Request) {
         };
       });
 
-      // Ordenar e separar os Top 5 e o restante sob "OUTROS"
+      // Ordenar e separar os Top 10 e o restante sob "OUTROS"
       clientSalesSummary.sort((a, b) => b.maxFat - a.maxFat);
       
-      const topClientsSummary = clientSalesSummary.slice(0, 5);
-      const otherClientsSummary = clientSalesSummary.slice(5);
+      const topClientsSummary = clientSalesSummary.slice(0, 10);
+      const otherClientsSummary = clientSalesSummary.slice(10);
 
       // Buscar projeções existentes para os clientes deste gerente
       const clientProjs = dbProjections.filter((p: any) => p.manager === mName && p.client_matrix !== '_TOTAL_');
