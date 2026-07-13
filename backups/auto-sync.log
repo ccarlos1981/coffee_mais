@@ -398,3 +398,17 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
 To https://github.com/ccarlos1981/coffee_mais.git
    9cb31c4..6850d21  main -> main
 [13/07/2026 13:44] ✅ Alterações enviadas com sucesso para o GitHub.
+[main c944c5a] auto-save: 13/07/2026 16:44
+ 15 files changed, 1889 insertions(+), 238 deletions(-)
+ create mode 100644 src/app/actions/favorites.ts
+ create mode 100644 src/app/config-financeiro/multiestado/actions.ts
+ create mode 100644 src/app/config-financeiro/multiestado/page.tsx
+ create mode 100644 src/components/DashboardClient.tsx
+ create mode 100644 src/config/modules.ts
+ create mode 100644 supabase/migrations/20260713_add_display_order_to_favorites.sql
+ create mode 100644 supabase/migrations/20260713_base_atendimento_regional.sql
+ create mode 100644 supabase/migrations/20260713_base_atendimento_regional_hardening.sql
+ create mode 100644 supabase/migrations/20260713_create_user_favorites.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   bb9ee37..c944c5a  main -> main
+[13/07/2026 16:44] ✅ Alterações enviadas com sucesso para o GitHub.
