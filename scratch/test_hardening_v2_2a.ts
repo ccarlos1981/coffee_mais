@@ -60,7 +60,7 @@ async function runTests() {
     dummyFormData.append("mes_referencia", "2026-07");
 
     const res = await criarAcaoInvestimento(dummyFormData);
-    if (!res.success && res.error?.message?.includes("UNAUTHENTICATED")) {
+    if (!res.success && res.message?.includes("UNAUTHENTICATED")) {
       console.log("[PASS] criarAcaoInvestimento - Rejeitado com sucesso (Sem autenticação)");
       results.passed++;
     } else {
