@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
 
 export async function createUser(formData: FormData) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     let email = formData.get("email") as string;
@@ -77,6 +82,10 @@ export async function createUser(formData: FormData) {
 
 export async function deleteUser(userId: string) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     const { error } = await adminClient.auth.admin.deleteUser(userId);
@@ -95,6 +104,10 @@ export async function deleteUser(userId: string) {
 
 export async function updateUserRole(userId: string, newRole: string) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     if (!userId || !newRole) {
@@ -122,6 +135,10 @@ export async function updateUserRole(userId: string, newRole: string) {
 
 export async function updateUserPdfPreferences(userId: string, field: "vendas" | "investimento", value: boolean) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     if (!userId) {
@@ -151,6 +168,10 @@ export async function updateUserPdfPreferences(userId: string, field: "vendas" |
 
 export async function updateUserApproval(userId: string, approved: boolean) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     if (!userId) {

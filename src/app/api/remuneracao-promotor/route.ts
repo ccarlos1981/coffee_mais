@@ -9,16 +9,18 @@ import {
   calculateProportionalFactor 
 } from "@/lib/engines/challenge-engine";
 
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Remuneração Promotores");
 
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const adminClient = createAdminClient();
 
     const { searchParams } = new URL(request.url);
     const month = parseInt(searchParams.get("month") || "7", 10);
@@ -161,18 +163,17 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ success: true, data: result });
   } catch (err: any) {
-    console.error("[REMUNERACAO GET ERROR]", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Remuneração Promotores");
 
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const adminClient = createAdminClient();
 
     const body = await request.json();
     const { records, competency_year, competency_month, quarter, new_status, lock_quarter } = body;
@@ -233,7 +234,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("[REMUNERACAO POST ERROR]", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }

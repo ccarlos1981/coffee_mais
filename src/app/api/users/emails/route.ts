@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from '@/lib/supabase/auth-helpers';
 
 export async function GET() {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, 'E-mails');
+
     const adminClient = createAdminClient();
     const { data: { users }, error } = await adminClient.auth.admin.listUsers();
     
@@ -17,6 +22,6 @@ export async function GET() {
 
     return NextResponse.json(emailMap);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }

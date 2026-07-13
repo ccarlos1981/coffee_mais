@@ -1,9 +1,20 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  if (request.method !== "GET") {
+    return NextResponse.json({ error: "Método não permitido" }, { status: 405 });
+  }
+
   try {
-    const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Vendas");
+
+    const supabase = createAdminClient();
     
     const { data, error } = await supabase
       .from('mv_vendas_mensal')
@@ -29,6 +40,6 @@ export async function GET() {
     
     return NextResponse.json({ success: true, byManager, mvRows: data?.length || 0 });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message });
+    return handleAuthError(e);
   }
 }

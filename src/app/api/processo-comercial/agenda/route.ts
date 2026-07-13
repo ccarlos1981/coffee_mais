@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Admin client (anon key, sem cookies) — usado com RPC execute_readonly_query
+// Admin client real — usado com RPC execute_readonly_query
 function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createAdminClient(supabaseUrl, supabaseKey, {
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
-    },
-  });
+  return createAdminClient();
 }
 
 // Roles com acesso total
@@ -44,22 +39,12 @@ export async function GET(request: Request) {
     const managerFilter = searchParams.get('manager') || 'ALL';
 
     // --- Autenticação via server client (com cookies) ---
-    const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Agenda");
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Buscar perfil do usuário
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, manager_name')
-      .eq('id', user.id)
-      .single();
-
-    const userRole = profile?.role || '';
-    const userManagerName = profile?.manager_name || null;
+    const userRole = profile.role || '';
+    const userManagerName = profile.manager_name || null;
     const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
 
     // Todos veem a de todos
@@ -136,31 +121,21 @@ export async function GET(request: Request) {
       restrictedToManager: null,
     });
   } catch (error: any) {
-    console.error('[Agenda API GET] Erro completo:', error);
-    const message = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return handleAuthError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    // Autenticação
-    const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Agenda");
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, manager_name')
-      .eq('id', user.id)
-      .single();
-
-    const userRole = profile?.role || '';
-    const userManagerName = profile?.manager_name || null;
+    const userRole = profile.role || '';
+    const userManagerName = profile.manager_name || null;
     const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
+
+    const supabaseServer = await createClient();
 
     const body = await request.json();
     const { routes } = body;
@@ -247,8 +222,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, upserted: routesToUpsert.length, deleted: routesToDelete.length });
   } catch (error: any) {
-    console.error('[Agenda API POST] Erro completo:', error);
-    const message = error?.message || (typeof error === 'object' ? JSON.stringify(error) : String(error));
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return handleAuthError(error);
   }
 }

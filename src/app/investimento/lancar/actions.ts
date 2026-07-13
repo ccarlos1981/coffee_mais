@@ -8,6 +8,7 @@ import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } fr
 import { calcularCamposConsolidadosInvestimento } from "@/lib/investimento/consolidacao";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 
 // --- Divergência Operacional de Calendário ---
@@ -206,6 +207,10 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
   const data_inicio = formData.get("data_inicio") as string;
   
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Investimento");
+
     const supabase = await createClient();
 
     const codigo_matriz = formData.get("codigo_matriz") as string;
@@ -455,7 +460,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       status_financeiro: "ABERTA"
     };
 
-    const { data: rpcResult, error: rpcError } = await supabase.rpc("criar_campanha_e_acoes_v2", {
+    const adminClient = createAdminClient();
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_campanha_e_acoes_v2", {
       p_campanha,
       p_acoes: actionsToInsert
     });
@@ -2440,9 +2446,12 @@ export async function importarInvestimentosEmLote(
 ): Promise<ActionResult<{ count: number; batchId?: string }>> {
   let userId: string | null = null;
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Investimento");
+    userId = user.id;
+
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    userId = user?.id || null;
 
     // Consolida os campos usando a regra unificada de negócio antes de salvar no banco
     const processedAcoes = acoes.map(acaoItem => {
@@ -2496,7 +2505,8 @@ export async function importarInvestimentosEmLote(
       ip_address: null
     };
 
-    const { data: jobId, error: rpcError } = await supabase.rpc(
+    const adminClient = createAdminClient();
+    const { data: jobId, error: rpcError } = await adminClient.rpc(
       "importar_lote_investimentos",
       {
         job_data: jobPayload,

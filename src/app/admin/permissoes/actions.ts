@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
 
 export async function togglePermission(role: string, moduleName: string, currentAccess: boolean) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Usuários");
+
     const adminClient = createAdminClient();
     
     // Check if the permission already exists
