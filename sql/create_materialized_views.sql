@@ -67,8 +67,8 @@ WITH sales_enriched AS (
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
@@ -110,11 +110,11 @@ WITH sales_enriched AS (
     AND (
       -- Canais Digitais (Ecommerce e Marketplace)
       (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723, 1117, 1703))
       OR
       -- Canais B2B e outros
       (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713, 1117, 1703)
        AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )
@@ -209,8 +209,8 @@ WITH sales_enriched AS (
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
@@ -249,11 +249,11 @@ WITH sales_enriched AS (
     AND (
       -- Canais Digitais (Ecommerce e Marketplace)
       (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723, 1117, 1703))
       OR
       -- Canais B2B e outros
       (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713, 1117, 1703)
        AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )
@@ -343,8 +343,8 @@ WITH sales_enriched AS (
       'Outros'
     ) as channel,
     CASE 
-      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0))
-      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0) - COALESCE(CAST(f.vlr_desconto AS numeric), 0)
+      WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.vlr_total_liq AS numeric), 0))
+      ELSE COALESCE(CAST(f.vlr_total_liq AS numeric), 0)
     END as net_value,
     CASE 
       WHEN f.cod_top IN ('1200', '1201') THEN -ABS(COALESCE(CAST(f.quantidade AS numeric), 0))
@@ -359,11 +359,11 @@ WITH sales_enriched AS (
     AND (
       -- Canais Digitais (Ecommerce e Marketplace)
       (f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') 
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723))
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1723, 1117, 1703))
       OR
       -- Canais B2B e outros
       (f.nome_vendedor NOT IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI')
-       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713)
+       AND f.cod_top::numeric IN (1100, 1200, 1201, 1713, 1117, 1703)
        AND (b.manager IS NULL OR b.manager NOT IN ('Ecommerce', 'Marketplace')))
     )
 )

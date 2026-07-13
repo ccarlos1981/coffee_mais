@@ -189,3 +189,24 @@ Os dados ficam preservados para análises futuras de:
 3. **Novos motivos de divergência** devem ser adicionados ao enum Postgres via migration versionada.
 4. **Compatibilidade reversa obrigatória** — ações existentes não devem ser afetadas por nenhuma evolução.
 5. **A constraint `chk_divergencia_calendario` não deve ser removida ou relaxada** sem aprovação explícita.
+
+---
+
+## 9. Baseline Oficial — Alinhamento de Real Faturamento (MyMetrics / Sankhya)
+A partir de 13/07/2026, o indicador **REAL FATURAMENTO** do Coffee++ passa a seguir as mesmas diretrizes de cálculo oficiais consolidadas do MyMetrics (Metabase / Sankhya) para garantir paridade absoluta (desvio máximo tolerável de 0,5%).
+
+### Regras Físicas e Lógicas de Consolidação:
+1. **Não deduzir descontos comerciais**: O faturamento líquido real é consolidado diretamente a partir de `vlr_total_liq` sem sofrer subtração de `vlr_desconto`.
+2. **Inclusão de Bonificações**: As remessas em bonificação ou brinde (TOP `1117`) devem ser computadas na receita total e na receita de Key Account.
+3. **Inclusão de Depósitos Digitais**: As remessas digitais para depósitos fechados/armazéns (TOP `1703` - ex: Shopee) são consideradas receita comercial.
+4. **Devoluções Negativas**: As devoluções de vendas (TOPs `1200` e `1201`) reduzem o faturamento líquido através da inversão de sinal (`-ABS(vlr_total_liq)`).
+5. **Filtro de TOPs Permitidas**: Apenas as TOPs `1100`, `1117`, `1200`, `1201`, `1703`, `1713` e `1723` são aceitas para consolidação de receita comercial.
+6. **Exclusões Obrigatórias**:
+   * Operações industriais/encomenda (TOP `1701`) e parceiro `CAFE UTAM S/A` são expurgados.
+   * Notas fiscais canceladas (`status_nfe = 'CANCELADA'`) são expurgadas.
+   * Transferências/remessas internas não comerciais e o parceiro `COFFEE MAIS INDUSTRIA DE CAFE LTDA` são expurgados.
+
+### Diretriz de Processamento Automático:
+* **Sem Intervenção Manual**: A lógica está incorporada permanentemente na definição física das views materializadas (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal`).
+* Toda nova importação realizada pelo Hub de Importação e subsequente refresh (`refresh_materialized_views()`) aplicarão estas regras automaticamente.
+* As views materializadas do banco Supabase mantêm-se como a fonte de verdade para APIs e telas do dashboard (Vendas, Clientes e Positivação).

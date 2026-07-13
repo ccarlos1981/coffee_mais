@@ -1338,6 +1338,40 @@ export default function InvestimentoPage() {
     return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
   };
 
+  const getGerenteAndUF = (row: any) => {
+    let uf = "UF N/D";
+    let manager = "SEM GERENTE";
+    
+    if (row.gerente_responsavel) {
+      manager = row.gerente_responsavel;
+    }
+    
+    // Look up UF in matrizes
+    if (row.codigo_matriz && row.rede) {
+      const cleanRede = row.rede.toUpperCase().trim();
+      const match = matrizes.find((m: any) => m.codigo === row.codigo_matriz && m.nome?.toUpperCase().trim() === cleanRede);
+      if (match) {
+        if (match.uf) uf = match.uf;
+        if (!row.gerente_responsavel && match.gerente) manager = match.gerente;
+      } else {
+        const fallbackMatch = matrizes.find((m: any) => m.codigo === row.codigo_matriz);
+        if (fallbackMatch) {
+          if (fallbackMatch.uf) uf = fallbackMatch.uf;
+          if (!row.gerente_responsavel && fallbackMatch.gerente) manager = fallbackMatch.gerente;
+        }
+      }
+    } else if (row.rede) {
+      const cleanRede = row.rede.toUpperCase().trim();
+      const match = matrizes.find((m: any) => m.nome?.toUpperCase().trim() === cleanRede);
+      if (match) {
+        if (match.uf) uf = match.uf;
+        if (!row.gerente_responsavel && match.gerente) manager = match.gerente;
+      }
+    }
+    
+    return { uf, manager };
+  };
+
   const mesesDisponiveis = useMemo(() => {
     const meses = managerFilteredAcoes.map(d => d.mes_referencia).filter(Boolean) as string[];
     return Array.from(new Set(meses)).sort((a, b) => b.localeCompare(a));
@@ -2989,6 +3023,22 @@ export default function InvestimentoPage() {
                                   {item.codigo_matriz && (
                                     <span className="text-[10px] text-muted block font-mono mt-0.5">{item.codigo_matriz}</span>
                                   )}
+                                  {(() => {
+                                    const fakeRow = {
+                                      rede: item.rede,
+                                      codigo_matriz: item.codigo_matriz,
+                                      gerente_responsavel: item.acoes?.[0]?.gerente_responsavel
+                                    };
+                                    const { uf, manager } = getGerenteAndUF(fakeRow);
+                                    const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                    return (
+                                      <div className="mt-1">
+                                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted/60 border-muted/20'}`}>
+                                          {uf} | {manager}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </td>
                               <td className="px-3 xl:px-4 py-3 text-foreground/80">
@@ -3044,7 +3094,20 @@ export default function InvestimentoPage() {
                                   {new Date(row.created_at).toLocaleDateString('pt-BR')}
                                 </td>
                                 <td className="px-3 xl:px-4 py-2 font-medium text-muted pl-6">
-                                  ↳ {row.familia_produto}
+                                  <div>
+                                    <span>↳ {row.familia_produto}</span>
+                                    {(() => {
+                                      const { uf, manager } = getGerenteAndUF(row);
+                                      const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                      return (
+                                        <div className="mt-0.5">
+                                          <span className={`inline-flex items-center px-1 py-0.2 rounded-[3px] text-[8px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted border-muted/20'}`}>
+                                            {uf} | {manager}
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
                                 </td>
                                 <td className="px-3 xl:px-4 py-2 text-muted">
                                   -
@@ -3156,6 +3219,17 @@ export default function InvestimentoPage() {
                                 {row.codigo_matriz && (
                                   <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
                                 )}
+                                {(() => {
+                                  const { uf, manager } = getGerenteAndUF(row);
+                                  const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                  return (
+                                    <div className="mt-1">
+                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted/60 border-muted/20'}`}>
+                                        {uf} | {manager}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                               </div>
                             </td>
                             <td className="px-3 xl:px-4 py-3 text-foreground/80">
@@ -3336,6 +3410,22 @@ export default function InvestimentoPage() {
                                 <h3 className="font-bold text-foreground text-base leading-tight">
                                   {item.rede}
                                 </h3>
+                                {(() => {
+                                  const fakeRow = {
+                                    rede: item.rede,
+                                    codigo_matriz: item.codigo_matriz,
+                                    gerente_responsavel: item.acoes?.[0]?.gerente_responsavel
+                                  };
+                                  const { uf, manager } = getGerenteAndUF(fakeRow);
+                                  const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                  return (
+                                    <div className="mt-1">
+                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted/60 border-muted/20'}`}>
+                                        {uf} | {manager}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                                 <p className="text-[11px] text-muted mt-1">
                                   Período: {formatDate(minDate)} - {formatDate(maxDate)}
                                 </p>
@@ -3380,7 +3470,18 @@ export default function InvestimentoPage() {
                                     <div className="flex justify-between items-start">
                                       <div>
                                         <h4 className="font-bold text-foreground text-sm">↳ {row.familia_produto}</h4>
-                                        <p className="text-[10px] text-muted">{formatDate(row.data_inicio)} até {formatDate(row.data_fim)}</p>
+                                        {(() => {
+                                          const { uf, manager } = getGerenteAndUF(row);
+                                          const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                          return (
+                                            <div className="mt-0.5">
+                                              <span className={`inline-flex items-center px-1 py-0.2 rounded-[3px] text-[8px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted border-muted/20'}`}>
+                                                {uf} | {manager}
+                                              </span>
+                                            </div>
+                                          );
+                                        })()}
+                                        <p className="text-[10px] text-muted mt-0.5">{formatDate(row.data_inicio)} até {formatDate(row.data_fim)}</p>
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         {(() => {
@@ -3425,6 +3526,17 @@ export default function InvestimentoPage() {
                                   {row.rede}
                                   {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
                                 </h3>
+                                {(() => {
+                                  const { uf, manager } = getGerenteAndUF(row);
+                                  const hasData = uf !== "UF N/D" || manager !== "SEM GERENTE";
+                                  return (
+                                    <div className="mt-1">
+                                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasData ? 'bg-gold/10 text-gold border-gold/20' : 'bg-muted/10 text-muted/60 border-muted/20'}`}>
+                                        {uf} | {manager}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                                 <p className="text-sm text-foreground/80 mt-0.5">{row.abrangencia === "SKU" ? "Múltiplos SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)}</p>
                               </div>
                               <div className="flex items-center gap-2">

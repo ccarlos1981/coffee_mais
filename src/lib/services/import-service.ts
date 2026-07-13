@@ -634,9 +634,17 @@ export class ImportService {
       );
 
       return { success: true, rowsPromoted };
-    } catch (error: unknown) {
+    } catch (error: any) {
       console.error("[ImportService] Error during confirmImport:", error);
-      const message = error instanceof Error ? error.message : String(error);
+      let message = "";
+      if (error instanceof Error) {
+        message = error.message;
+      } else if (error && typeof error === "object") {
+        message = error.message || error.details || JSON.stringify(error);
+      } else {
+        message = String(error);
+      }
+      
       await supabase
         .from("cm_sync_logs")
         .update({
