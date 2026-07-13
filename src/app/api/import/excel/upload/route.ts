@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ImportService } from "@/lib/services/import-service";
+import { requireAuth, requireApprovedProfile, requirePermission, logAuditAction, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  if (request.method !== "POST") {
+    return NextResponse.json({ error: "Método não permitido" }, { status: 405 });
+  }
+
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Upload");
+
+    // Registrar log de auditoria
+    await logAuditAction(user.id, "UPLOAD_EXCEL", "cm_sync_logs");
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const userEmail = formData.get("userEmail") as string || "system";
@@ -30,12 +42,7 @@ export async function POST(request: NextRequest) {
       success: true,
       preview,
     });
-  } catch (error: unknown) {
-    console.error("[API Upload] Error:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, error: message || "Erro durante o processamento do arquivo" },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }

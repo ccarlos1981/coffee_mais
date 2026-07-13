@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,13 +11,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createClient();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Processos Coffee ++");
+
     const adminClient = createAdminClient();
-    
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
 
     const { id } = await params;
     const { searchParams } = new URL(request.url);
@@ -95,8 +94,7 @@ export async function GET(
       }
     });
   } catch (error: any) {
-    console.error("Erro ao obter estatísticas de leitura:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }
 
@@ -105,12 +103,10 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
 
     const { id } = await params;
     const body = await request.json();
@@ -134,7 +130,6 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error("Erro ao registrar leitura de processo:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }

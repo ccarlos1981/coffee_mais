@@ -1,19 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Helper para instanciar o cliente Supabase admin (sem cookies)
+// Helper para instanciar o cliente Supabase admin real
 function getSupabaseAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createAdminClient(supabaseUrl, supabaseKey, {
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
-    },
-  });
+  return createAdminClient();
 }
 
 // Helper para obter as segundas-feiras de um mês (formato YYYY-MM-DD)
@@ -45,22 +40,12 @@ export async function GET(request: Request) {
     const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1));
 
     // --- Identificar o usuário logado e seu gerente vinculado ---
-    const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "RPS");
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Buscar perfil do usuário para obter manager_name e role
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, manager_name')
-      .eq('id', user.id)
-      .single();
-
-    const userRole = profile?.role || '';
-    const userManagerName = profile?.manager_name || null;
+    const userRole = profile.role || '';
+    const userManagerName = profile.manager_name || null;
 
     // Definir quais gerentes este usuário pode ver
     const allManagers = ["Julliano", "Leandro", "Luiz"];
@@ -446,22 +431,21 @@ export async function GET(request: Request) {
       // Indica se este usuário está restrito a um único gerente
       restrictedToManager: (userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[RPS API GET] Erro:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
     // Verificar autenticação
-    const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "RPS");
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const userRole = profile.role || '';
+    const userManagerName = profile.manager_name || null;
+    const isRestricted = userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
 
     const body = await request.json();
     const { year, month, projections } = body;
@@ -469,17 +453,6 @@ export async function POST(request: Request) {
     if (!year || !month || !projections || !Array.isArray(projections)) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
     }
-
-    // Verificar se o usuário tem permissão para salvar as projeções enviadas
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, manager_name')
-      .eq('id', user.id)
-      .single();
-
-    const userRole = profile?.role || '';
-    const userManagerName = profile?.manager_name || null;
-    const isRestricted = userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
 
     // Se restrito, filtrar apenas projeções do seu gerente
     let filteredProjections = projections;
@@ -509,9 +482,7 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, count: rowsToUpsert.length });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[RPS API POST] Erro:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }

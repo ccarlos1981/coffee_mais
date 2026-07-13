@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
-    },
-  });
+  return createAdminClient();
 }
 
 function escapeSqlValue(value: string | null) {
@@ -90,6 +86,10 @@ interface DBManagerMonthlyRow {
 
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Vendas");
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
@@ -305,9 +305,7 @@ export async function GET(request: Request) {
         'Expires': '0',
       }
     });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[SKU por PDV API] Error:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }

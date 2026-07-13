@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
-    },
-  });
+  return createAdminClient();
 }
 
 function escapeSqlValue(value: string | null) {
@@ -21,6 +17,10 @@ function escapeSqlValue(value: string | null) {
 
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Histórico");
+
     const { searchParams } = new URL(request.url);
     const startStr = searchParams.get("startDate");
     const endStr = searchParams.get("endDate");
@@ -138,8 +138,7 @@ export async function GET(request: Request) {
       byClient,
       totals: { fat: totalFat, qty: totalQty, maco: totalMaco }
     });
-  } catch (error: unknown) {
-    console.error("Dashboard history API error:", error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }

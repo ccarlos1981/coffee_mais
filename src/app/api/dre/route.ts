@@ -1,17 +1,28 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requirePermission, logAuditAction, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function getSupabaseClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, key);
+  return createAdminClient();
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
+  if (request.method !== "GET") {
+    return NextResponse.json({ error: "Método não permitido" }, { status: 405 });
+  }
+
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "DRE");
+
+    // Registrar log de auditoria
+    await logAuditAction(user.id, "ACCESS_DRE", "cm_dre_financeiro");
+
+    const { searchParams } = new URL(request.url);
   const ano = Number(searchParams.get("year") || new Date().getFullYear());
   const mes = Number(searchParams.get("month") || new Date().getMonth() + 1);
   const manager = searchParams.get("manager") || "Todos";
@@ -22,8 +33,7 @@ export async function GET(request: Request) {
 
   const supabase = getSupabaseClient();
 
-  try {
-    // 1. Construir query base de faturamento/custos ativos
+  // 1. Construir query base de faturamento/custos ativos
     let q = supabase
       .from("cm_dre_financeiro")
       .select("*")
@@ -219,7 +229,6 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
-    console.error("Erro ao carregar dados do DRE:", error);
-    return NextResponse.json({ error: "Erro interno do servidor.", details: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }
