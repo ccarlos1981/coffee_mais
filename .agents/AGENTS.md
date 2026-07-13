@@ -279,7 +279,7 @@ A tabela `cm_user_favorites` passa a ser a única fonte oficial para personaliza
 
 ### Diretrizes Obrigatórias:
 1. **Sem armazenamento local**: Nunca persistir favoritos ou sua ordenação em `localStorage`, `sessionStorage` ou cookies.
-2. **Utilizar chave única estável**: Nunca utilizar `href` como chave de persistência. Toda persistência deve utilizar exclusivamente `module_key`.
+2. **Utilizar chave única estável**: Nunca utilizar `href` as chave de persistência. Toda persistência deve utilizar exclusivamente `module_key`.
 3. **Respeito às regras de segurança (RLS)**: Toda leitura e escrita deve respeitar RLS utilizando `createClient()`. É proibido utilizar `createAdminClient()` ou bypass de RLS para favoritos.
 4. **Ordenação Oficial**:
    - A ordenação dos favoritos é persistida exclusivamente na coluna `display_order` da tabela `cm_user_favorites`.
@@ -289,5 +289,30 @@ A tabela `cm_user_favorites` passa a ser a única fonte oficial para personaliza
 5. **Posicionamento**: A seção Favoritos deve ser sempre renderizada antes das demais categorias do dashboard.
 6. **Renderização Condicional**: Caso não existam favoritos, a seção não deve ser renderizada.
 7. **Compatibilidade de Novos Módulos**: Novos módulos adicionados ao dashboard deverão obrigatoriamente possuir `module_key` estável e compatibilidade automática com o mecanismo de favoritos.
+
+---
+
+## 12. Baseline Arquitetural Oficial da RPS (Reunião de Planejamento Semanal)
+
+A partir de 13/07/2026, a arquitetura do módulo de RPS passa a seguir um desacoplamento definitivo entre as camadas estratégica (gerente/nacional) e tática (redes/detalhes).
+
+### Diretrizes de Arquitetura:
+1. **Desacoplamento de Projeções (Gerente × Redes)**:
+   - O compromisso comercial consolidado do gerente (`_TOTAL_`) e a linha do `TOTAL BRASIL` são completamente independentes do faturamento projetado nas redes.
+   - As alterações feitas nas células semanais de faturamento das redes NÃO devem somar ou sobrescrever os cabeçalhos dos gerentes.
+   - As alterações feitas no cabeçalho do gerente NÃO devem alterar os valores das redes.
+2. **Cálculo da Dispersão (DISP)**:
+   - A dispersão do gerente (comparação da projeção do mês anterior × execução) utiliza exclusivamente o registro consolidado do gerente (`client_matrix = '_TOTAL_'`). O faturamento das redes não é somado como fallback.
+   - A dispersão das redes utiliza exclusivamente a série histórica da própria rede.
+3. **Mecanismo de Visibilidade (Top 10)**:
+   - O ranking acumulado dos 3 meses fechados (`rankingFat = fatC1 + fatC2 + fatC3`) serve **exclusivamente** como regulador de visibilidade (decidindo quais 10 maiores clientes são listados individualmente e quais são agrupados em `OUTROS`).
+   - O ranking não interfere no preenchimento de metas, projeções, preenchimentos automáticos ou em qualquer lógica matemática/financeira subsequente.
+4. **Padronização da Formatação Numérica (Visual)**:
+   - Todo número inteiro igual ou superior a 1.000 em campos não editáveis (read-only) deve ser exibido com separadores de milhares pt-BR (ex: `1.000`, `125.000`, `1.250.000`).
+   - Decimais nos campos read-only devem utilizar vírgula como separador (ex: `1.234,56`).
+   - A formatação deve ser puramente visual no frontend, sem alterar a tipagem de dados, payloads de API, fórmulas de BI ou dados persistidos no banco.
+   - Percentuais (%) e KPIs baseados em porcentagem (INVEST %, DISP %, %AA, %MA, %DESAFIO) devem continuar sendo renderizados no seu respectivo formato percentual original.
+
+
 
 
