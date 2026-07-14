@@ -382,6 +382,10 @@ export default function DashGerencialPage() {
     };
   }, [rawVendas, rawInvest, filterManager, filterFamilia, filterUf, filterChannel, filterMatriz, filterProduct, monthsInRange, redesMap, codesMap]);
 
+  const visibleRows = useMemo(() => {
+    return tableData.filter(row => row.total.inv > 0);
+  }, [tableData]);
+
   const renderMonthLabel = (YYYYMM: string) => {
     const parts = YYYYMM.split('-');
     if (parts.length !== 2) return YYYYMM;
@@ -395,7 +399,7 @@ export default function DashGerencialPage() {
   };
 
   useEffect(() => {
-    if (!loading && tableData.length > 0) {
+    if (!loading && visibleRows.length > 0) {
       // pequeno delay para o DOM renderizar a tabela
       const timer = setTimeout(() => {
         const currentMonthStr = new Date().toISOString().slice(0, 7);
@@ -411,7 +415,7 @@ export default function DashGerencialPage() {
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [loading, tableData.length]);
+  }, [loading, visibleRows.length]);
 
   return (
     <div className="flex h-screen bg-background font-sans">
@@ -499,7 +503,7 @@ export default function DashGerencialPage() {
           )}
 
           <ExportButton 
-            data={tableData.map(r => ({
+            data={visibleRows.map(r => ({
               Gerente: r.gerente,
               Total_Fat: Number(r.total.fat.toFixed(2)),
               Total_Inv: Number(r.total.inv.toFixed(2)),
@@ -565,17 +569,19 @@ export default function DashGerencialPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {tableData.length === 0 && !loading ? (
+                  {visibleRows.length === 0 && !loading ? (
                     <tr>
                       <td colSpan={3 + (monthsInRange.length * 3)} className="p-8 text-center text-foreground-muted">
-                        Nenhum dado encontrado para os filtros selecionados.
+                        Nenhum investimento encontrado para os filtros selecionados.
                       </td>
                     </tr>
                   ) : (
                     <>
-                      {tableData.map(row => {
+                      {visibleRows.map(row => {
                         const isExpanded = expandedGerentes.has(row.gerente);
-                        const subList = Object.values(row.canais).sort((a, b) => {
+                        const subList = Object.values(row.canais)
+                          .filter(sub => sub.total.inv > 0)
+                          .sort((a, b) => {
                           const pctA = getPct(a.total.inv, a.total.fat);
                           const pctB = getPct(b.total.inv, b.total.fat);
                           if (Math.abs(pctA - pctB) > 0.01) return pctB - pctA;
@@ -649,7 +655,7 @@ export default function DashGerencialPage() {
                     </>
                   )}
                 </tbody>
-                {tableData.length > 0 && (
+                {visibleRows.length > 0 && (
                   <tfoot className="sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
                     <tr className="bg-background-elevated border-t-2 border-border">
                       <td className="p-3 border-r border-border font-bold text-foreground sticky left-0 bg-background-elevated z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] uppercase text-[10px] tracking-widest">
