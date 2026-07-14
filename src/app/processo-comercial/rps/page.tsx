@@ -214,6 +214,8 @@ export default function RpsPage() {
     loadProjectionsData(filterYear, filterMonth);
   }, [filterYear, filterMonth, loadBusinessDays, loadProjectionsData]);
 
+
+
   // Handler para input de faturamento do cliente
   const handleClientProjChange = (mIdx: number, cIdx: number, wIdx: number, val: number) => {
     setManagers(prev => {
@@ -658,7 +660,7 @@ export default function RpsPage() {
             <div className="space-y-6">
               
               {/* Tabela de Projeção Consolidada (Gerentes) */}
-              <div className="glass-card">
+              <div className="glass-card rps-card">
                 <div className="p-4 border-b border-border bg-table-header-bg flex justify-between items-center rounded-t-[6px]">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-accent-gold">
                     Reunião de RPS com as áreas comerciais
@@ -669,7 +671,7 @@ export default function RpsPage() {
                 </div>
                 
                 <div className="overflow-x-auto md:overflow-x-visible">
-                  <table className="data-table">
+                  <table className="data-table rps-table">
                     <thead>
                       <tr>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", textAlign: "left", width: 110 }}>REGIONAL</th>

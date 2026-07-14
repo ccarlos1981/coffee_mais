@@ -312,6 +312,11 @@ A partir de 13/07/2026, a arquitetura do módulo de RPS passa a seguir um desaco
    - Decimais nos campos read-only devem utilizar vírgula como separador (ex: `1.234,56`).
    - A formatação deve ser puramente visual no frontend, sem alterar a tipagem de dados, payloads de API, fórmulas de BI ou dados persistidos no banco.
    - Percentuais (%) e KPIs baseados em porcentagem (INVEST %, DISP %, %AA, %MA, %DESAFIO) devem continuar sendo renderizados no seu respectivo formato percentual original.
+5. **Congelamento de Painéis (Sticky Header)**:
+   - Para garantir usabilidade em reuniões comerciais com grande volume de dados (como a visualização de Top 10 Redes por gerente), a tabela da RPS deve manter obrigatoriamente o congelamento do cabeçalho de colunas (Excel-like "Congelar Painéis") durante o scroll vertical da página.
+   - Os títulos das colunas (`REGIONAL`, `KPI`, `ANO A`, `MÊS A`, `DESAFIO`, as semanas do mês, e os KPIs percentuais `% DISP`, `% DESAFIO`, `%AA` e `%MA`) e os agrupadores superiores (`PROJEÇÃO DE VENDAS PARA O MÊS` e `ANÁLISE`) devem permanecer permanentemente visíveis e perfeitamente alinhados, sem sofrer desalinhamento de colunas ou sobreposição de células em quaisquer níveis de zoom do navegador (de 90% a 125%).
+   - Para evitar conflitos de contêineres de bloco (*containing blocks*), qualquer elemento wrapper (como `.glass-card`) deve ter suas propriedades `transform` e `will-change` desabilitadas na página da RPS.
+   - O congelamento deve ser aplicado diretamente no nível dos elementos `th` individualmente de forma controlada (linha 1 com `top: 56px` e linha 2 com `top: 84px` baseando-se em uma altura padronizada de `28px` por linha de cabeçalho).
 
 ---
 
@@ -598,6 +603,36 @@ Após qualquer carga de faturamento, refresh de MVs ou deployment, é mandatóri
 *   **Status Oficial**: `MANAGER_ID ARCHITECTURE = FROZEN`
 *   **Observation Mode**: `ACTIVE`
 *   **Next Eligible Phase**: `WAVE 2`
+
+---
+
+## 18. Regra Permanente — Dash Gerencial de Investimentos
+
+### Objetivo:
+Manter o Dash Gerencial focado exclusivamente na análise de investimentos ativos, reduzindo ruído visual de canais sem investimento no período.
+
+### Regras Oficiais:
+1. **Filtro de Investimento no Grid**: O grid principal deve exibir apenas gerentes e canais com `INV > 0`.
+2. **Ocultação de Linhas sem Investimento**: Canais ou gerentes com `INV = 0` devem ser ocultados da visualização.
+3. **Escopo de Apresentação**: O filtro atua exclusivamente na camada de apresentação (UI Render).
+4. **Preservação de Totais**: O TOTAL GERAL permanece inalterado e continua considerando:
+   - Todo o faturamento do período;
+   - Todos os investimentos do período;
+   - Inclusive registros ocultados pelo filtro visual.
+5. **Consistência na Exportação**: Exportações do Dash Gerencial devem respeitar exatamente a mesma visualização apresentada ao usuário.
+6. **Mensagem de Estado Vazio**: Caso nenhum gerente ou canal possua investimento no período selecionado, exibir:
+   "Nenhum investimento encontrado para os filtros selecionados."
+
+### Componentes Afetados:
+- Dash Gerencial de Investimentos
+- Exportação do Dash Gerencial
+
+### Restrições de Alteração (Não Alterar):
+- Cálculo do FAT;
+- Cálculo do INV;
+- Cálculo do percentual INV/FAT;
+- Ownership de campanhas;
+- Agregações e agrupamentos internos.
 
 
 

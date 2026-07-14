@@ -886,6 +886,37 @@ body {
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.3) !important;
 }
 
+/* Reset containing block properties of glass-card in RPS page to allow sticky headers */
+.glass-card.rps-card {
+  transform: none !important;
+  will-change: auto !important;
+}
+
+.glass-card.rps-card:hover {
+  transform: none !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(200, 169, 110, 0.08) !important;
+}
+
+/* Sticky Header for RPS Table (Excel-like "Congelar Painéis") */
+.data-table.rps-table thead tr {
+  height: 28px;
+}
+
+.data-table.rps-table th {
+  box-sizing: border-box;
+}
+
+.data-table.rps-table thead tr:first-child th {
+  position: sticky;
+  top: 56px; /* navbar height is 56px */
+  z-index: 31;
+}
+
+.data-table.rps-table thead tr:last-child th {
+  position: sticky;
+  top: 84px; /* 56px navbar + 28px height of first header row */
+  z-index: 30;
+}
 
 /* ═══════════════════════════════════════════
    DRILL-DOWN TABLE

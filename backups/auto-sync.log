@@ -427,3 +427,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    94625d8..68d6211  main -> main
 [14/07/2026 07:59] ✅ Alterações enviadas com sucesso para o GitHub.
+[main c7cb105] auto-save: 14/07/2026 10:59
+ 9 files changed, 1472 insertions(+), 70 deletions(-)
+ create mode 100644 supabase/migrations/20260714_create_vw_faturamento_comercial_oficial.sql
+ create mode 100644 supabase/migrations/20260714_fase2_5_fix_double_write_nulls.sql
+ create mode 100644 supabase/migrations/20260714_fase2_introduce_employee_code.sql
+ create mode 100644 supabase/migrations/20260714_fase3_wave1_views_rpc.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   68d6211..c7cb105  main -> main
+[14/07/2026 10:59] ✅ Alterações enviadas com sucesso para o GitHub.
