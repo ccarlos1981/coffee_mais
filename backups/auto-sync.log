@@ -419,3 +419,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    1ef804f..94625d8  main -> main
 [13/07/2026 19:44] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 68d6211] auto-save: 14/07/2026 07:59
+ 8 files changed, 8681 insertions(+), 56 deletions(-)
+ create mode 100644 src/lib/investimento/getValorTotal.ts
+ create mode 100644 supabase/migrations/20260713_enforce_campaign_manager_ownership.sql
+ create mode 100644 supabase/migrations/20260714_correct_fort_campaign_manager_ownership.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   94625d8..68d6211  main -> main
+[14/07/2026 07:59] ✅ Alterações enviadas com sucesso para o GitHub.

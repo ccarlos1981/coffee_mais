@@ -42,11 +42,11 @@ const PIE_COLORS = [
 
 /* ── Quick Filter Presets ── */
 const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; value: string; color: string }[] = [
-  { label: "Leandro", type: "manager", value: "Leandro", color: "#6366f1" },
-  { label: "Luiz", type: "manager", value: "Luiz", color: "#8b5cf6" },
-  { label: "Julliano", type: "manager", value: "Julliano", color: "#a855f7" },
-  { label: "Luisa", type: "manager", value: "Luisa", color: "#d946ef" },
-  { label: "Inside", type: "manager", value: "Inside Sales", color: "#ec4899" },
+  { label: "Leandro", type: "manager", value: "1001", color: "#6366f1" },
+  { label: "Luiz", type: "manager", value: "1002", color: "#8b5cf6" },
+  { label: "Julliano", type: "manager", value: "1000", color: "#a855f7" },
+  { label: "Luisa", type: "manager", value: "1010", color: "#d946ef" },
+  { label: "Inside", type: "manager", value: "1004", color: "#ec4899" },
   { label: "KA", type: "channel", value: "KA", color: "#f59e0b" },
   { label: "Distrib.", type: "channel", value: "Distribuidor", color: "#10b981" },
   { label: "Inside S.", type: "channel", value: "Inside Sales", color: "#06b6d4" },
@@ -57,6 +57,20 @@ const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; v
   { label: "Cápsula", type: "familia", value: "Cápsula", color: "#5a805a" },
   { label: "Drip", type: "familia", value: "Drip", color: "#6b8fad" },
 ];
+
+const MANAGER_NAME_TO_ID: Record<string, string> = {
+  "Leandro": "1001",
+  "Leandro Saffi": "1001",
+  "Luiz": "1002",
+  "Julliano": "1000",
+  "Luisa": "1010",
+  "Inside Sales": "1004",
+  "Ecommerce": "1005",
+  "Marketplace": "1006",
+  "Distribuidor": "1007",
+  "Amazon 1P": "1008",
+  "Private Label": "1009",
+};
 
 // Canais que mapeiam diretamente para um manager de mesmo nome
 const STANDALONE_CHANNEL_MANAGERS = new Set(['Ecommerce', 'Marketplace', 'Inside Sales', 'Amazon 1P', 'Private Label', 'Distribuidor']);
@@ -79,6 +93,7 @@ interface ClientRow {
 
 interface ManagerData {
   manager: string;
+  manager_id?: string;
   fat: number;
   qty: number;
   maco: number;
@@ -102,6 +117,7 @@ interface FamiliaData {
 
 interface TargetRecord {
   manager: string;
+  manager_id?: string;
   target_revenue: number | null;
   target_tons: number | null;
   target_maco: number | null;
@@ -184,6 +200,20 @@ export default function VendasDashboard() {
       const endDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 
       try {
+        const params: Record<string, string> = {
+          startDate,
+          endDate,
+          investment: "0",
+        };
+        if (filterManager.length > 0) {
+          const mappedIds = filterManager.map(m => MANAGER_NAME_TO_ID[m] || m);
+          params.manager_id = mappedIds.join(',');
+        }
+        if (filterFamilia.length > 0) params.familia = filterFamilia.join(',');
+        if (filterUf.length > 0) params.uf = filterUf.join(',');
+        if (filterChannel.length > 0) params.channel = filterChannel.join(',');
+        if (filterProduct.length > 0) params.product = filterProduct.join(',');
+
         const [bdRes, targetRes, apiRes] = await Promise.all([
           supabase
             .from("business_days")
@@ -196,16 +226,7 @@ export default function VendasDashboard() {
             .select("*")
             .eq("year", filterYear)
             .eq("month", filterMonth),
-          fetch(`/api/dashboard?${new URLSearchParams({
-            startDate,
-            endDate,
-            investment: "0",
-            ...(filterManager.length > 0 && { manager: filterManager.join(',') }),
-            ...(filterFamilia.length > 0 && { familia: filterFamilia.join(',') }),
-            ...(filterUf.length > 0 && { uf: filterUf.join(',') }),
-            ...(filterChannel.length > 0 && { channel: filterChannel.join(',') }),
-            ...(filterProduct.length > 0 && { product: filterProduct.join(',') })
-          })}`, { cache: "no-store" })
+          fetch(`/api/dashboard?${new URLSearchParams(params)}`, { cache: "no-store" })
         ]);
 
         if (!active) return;
@@ -226,32 +247,43 @@ export default function VendasDashboard() {
           const py = json.previousYear || { fat: 0, qty: 0, maco: 0 };
           setPreviousYear({ ...py, maco: 0 });
 
-          const allManagerNames = new Set<string>();
-          allTargets.forEach(t => allManagerNames.add(t.manager));
-          byManager.forEach(m => allManagerNames.add(m.manager));
+          const getManagerId = (t: { manager: string; manager_id?: string | null }) => {
+            if (t.manager_id) return t.manager_id;
+            return MANAGER_NAME_TO_ID[t.manager] || '9999';
+          };
+
+          const allManagerIds = new Set<string>();
+          allTargets.forEach(t => {
+            allManagerIds.add(getManagerId(t));
+          });
+          byManager.forEach(m => {
+            allManagerIds.add(getManagerId(m));
+          });
 
           const rows: ManagerRow[] = [];
-          allManagerNames.forEach(m => {
-            if (filterManager.length > 0 && !filterManager.includes(m)) return;
+          allManagerIds.forEach(mId => {
+            const sales = byManager.find(s => getManagerId(s) === mId);
+            const target = allTargets.find(t => getManagerId(t) === mId);
+            const mName = sales?.manager || target?.manager || 'Outros';
+
+            if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
 
             // Filter by channel selection
             if (filterChannel.length > 0) {
               const isKA = filterChannel.includes("KA");
 
-              if (STANDALONE_CHANNEL_MANAGERS.has(m)) {
+              if (STANDALONE_CHANNEL_MANAGERS.has(mName)) {
                 // Canal que mapeia direto para manager de mesmo nome
-                if (!filterChannel.includes(m)) return;
+                if (!filterChannel.includes(mName)) return;
               } else {
-                // KA managers: Leandro, Julliano, Luiz, etc.
+                // KA managers: Leandro Saffi, Julliano, Luiz, etc.
                 if (!isKA) return;
               }
             }
 
-            const target = allTargets.find(t => t.manager === m);
-            const sales = byManager.find(s => s.manager === m);
-
             rows.push({
-              manager: m,
+              manager: mName,
+              manager_id: mId,
               fat: sales?.fat || 0,
               qty: sales?.qty || 0,
               maco: 0,

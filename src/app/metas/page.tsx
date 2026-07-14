@@ -28,21 +28,21 @@ const MONTHS = [
 ];
 
 const CHANNELS = [
-  { id: "Toda Empresa", name: "Toda Empresa" },
-  { id: "KA", name: "KA (Key Accounts)" },
-  { id: "Inside Sales", name: "Inside Sales" },
-  { id: "Ecommerce", name: "Ecommerce" },
-  { id: "Marketplace", name: "Marketplace" },
-  { id: "Distribuidor", name: "Distribuidor" },
-  { id: "Amazon 1P", name: "1P" },
-  { id: "Private Label", name: "Private Label" }
+  { id: "Toda Empresa", manager_id: "Toda Empresa", manager: "Toda Empresa", name: "Toda Empresa" },
+  { id: "KA", manager_id: "KA", manager: "KA (Key Accounts)", name: "KA (Key Accounts)" },
+  { id: "Inside Sales", manager_id: "1004", manager: "Inside Sales", name: "Inside Sales" },
+  { id: "Ecommerce", manager_id: "1005", manager: "Ecommerce", name: "Ecommerce" },
+  { id: "Marketplace", manager_id: "1006", manager: "Marketplace", name: "Marketplace" },
+  { id: "Distribuidor", manager_id: "1007", manager: "Distribuidor", name: "Distribuidor" },
+  { id: "Amazon 1P", manager_id: "1008", manager: "Amazon 1P", name: "1P" },
+  { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" }
 ];
 
 const KA_MANAGERS = [
-  { id: "Total", name: "KA Total (Somado)" },
-  { id: "Leandro", name: "Leandro" },
-  { id: "Luiz", name: "Luiz" },
-  { id: "Julliano", name: "Julliano" }
+  { id: "Total", manager_id: "Total", manager: "KA Total (Somado)", name: "KA Total (Somado)" },
+  { id: "1001", manager_id: "1001", manager: "Leandro Saffi", name: "Leandro" },
+  { id: "1002", manager_id: "1002", manager: "Luiz", name: "Luiz" },
+  { id: "1000", manager_id: "1000", manager: "Julliano", name: "Julliano" }
 ];
 
 const YEARS = [2024, 2025, 2026, 2027];
@@ -128,9 +128,16 @@ export default function MetasPage() {
       // Map 'Private Label' to 'Marca Própria' for actual sales data query
       const dbChannel = channel === 'Private Label' ? 'Marca Própria' : channel;
 
+      const chOpt = CHANNELS.find(c => c.id === channel);
+      const mgrOpt = channel === 'KA' ? KA_MANAGERS.find(m => m.id === manager) : chOpt;
+
+      const pManagerId = mgrOpt?.manager_id || '';
+      const pManagerName = mgrOpt?.manager || '';
+
       const { data, error: err } = await supabase.rpc('get_actual_sales_v2', {
         p_channel: dbChannel,
-        p_manager: manager,
+        p_manager_id: pManagerId,
+        p_manager_name: pManagerName,
         p_years: [String(prevYr), String(currYr)]
       });
 
@@ -166,15 +173,23 @@ export default function MetasPage() {
         .eq('year', year);
 
       if (channel === 'KA') {
-        let managersToFetch: string[] = [];
         if (manager === 'Total') {
-          managersToFetch = ['Leandro', 'Luiz', 'Julliano'];
+          query = query.in('manager_id', ['1000', '1001', '1002']);
         } else {
-          managersToFetch = [manager];
+          const mgrOpt = KA_MANAGERS.find(m => m.id === manager);
+          if (mgrOpt?.manager_id) {
+            query = query.eq('manager_id', mgrOpt.manager_id);
+          } else if (mgrOpt) {
+            query = query.eq('manager', mgrOpt.manager);
+          }
         }
-        query = query.in('manager', managersToFetch);
       } else if (channel !== 'Toda Empresa') {
-        query = query.in('manager', [channel]);
+        const chOpt = CHANNELS.find(c => c.id === channel);
+        if (chOpt?.manager_id) {
+          query = query.eq('manager_id', chOpt.manager_id);
+        } else if (chOpt) {
+          query = query.eq('manager', chOpt.manager);
+        }
       }
 
       const { data, error: err } = await query;
@@ -244,9 +259,16 @@ export default function MetasPage() {
       setError(null);
       setSuccess(null);
 
-      const targetManager = selectedChannel === 'KA' ? selectedManager : selectedChannel;
+      const chOpt = CHANNELS.find(c => c.id === selectedChannel);
+      const mgrOpt = selectedChannel === 'KA' 
+        ? KA_MANAGERS.find(m => m.id === selectedManager) 
+        : chOpt;
 
-      if (targetManager === 'Total') {
+      if (!mgrOpt) {
+        throw new Error("Opção de gerente inválida.");
+      }
+
+      if (mgrOpt.manager_id === 'Total') {
         throw new Error("Não é possível salvar metas para a soma total do KA. Por favor, edite cada gerente individualmente.");
       }
 
@@ -255,7 +277,8 @@ export default function MetasPage() {
         const mIdx = m - 1;
         
         rowsToUpsert.push({
-          manager: targetManager,
+          manager: mgrOpt.manager,
+          manager_id: mgrOpt.manager_id,
           year: selectedYear,
           month: m,
           target_forecast: gridData.forecast[mIdx],
