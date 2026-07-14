@@ -412,3 +412,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    bb9ee37..c944c5a  main -> main
 [13/07/2026 16:44] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 94625d8] auto-save: 13/07/2026 19:44
+ 4 files changed, 215 insertions(+), 1 deletion(-)
+ create mode 100644 scratch/check_execute_readonly_query.js
+ create mode 100644 scratch/test_rps_api_get.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   1ef804f..94625d8  main -> main
+[13/07/2026 19:44] ✅ Alterações enviadas com sucesso para o GitHub.

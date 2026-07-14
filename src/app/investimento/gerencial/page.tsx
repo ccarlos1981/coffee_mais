@@ -8,6 +8,7 @@ import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
+import { getValorTotal } from "@/lib/investimento/getValorTotal";
 
 const MONTHS_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -62,6 +63,7 @@ export default function DashGerencialPage() {
   const [rawVendas, setRawVendas] = useState<any[]>([]);
   const [rawInvest, setRawInvest] = useState<any[]>([]);
   const [redesMap, setRedesMap] = useState<Record<string, RedeMapInfo>>({});
+  const [codesMap, setCodesMap] = useState<Record<string, RedeMapInfo>>({});
 
   const toggleGerente = (rede: string) => {
     setExpandedGerentes(prev => {
@@ -81,43 +83,86 @@ export default function DashGerencialPage() {
       // 1. Fetch Matrizes details for mapping
       const { data: matrizes, error: mErr } = await supabase
         .from("v_redes_matrizes_detalhes")
-        .select("nome, gerente, uf, canal");
+        .select("nome, gerente, uf, canal, codigo");
       
       if (mErr) throw mErr;
       
       const rMap: Record<string, RedeMapInfo> = {};
+      const cMap: Record<string, RedeMapInfo> = {};
       (matrizes || []).forEach((m: any) => {
+        const info = {
+          nome: m.nome,
+          gerente: m.gerente || "Sem Gerente",
+          uf: m.uf || "N/I",
+          canal: m.canal || "N/I"
+        };
         if (m.nome) {
-          rMap[m.nome.toUpperCase().trim()] = {
-            nome: m.nome,
-            gerente: m.gerente || "Sem Gerente",
-            uf: m.uf || "N/I",
-            canal: m.canal || "N/I"
-          };
+          rMap[m.nome.toUpperCase().trim()] = info;
+        }
+        if (m.codigo) {
+          const cod = String(m.codigo).trim().replace(/\.0$/, "");
+          cMap[cod] = info;
         }
       });
       setRedesMap(rMap);
+      setCodesMap(cMap);
 
-      const { data: vendas, error: vErr } = await supabase
-        .from("mv_vendas_mensal")
-        .select("mes, rede, tipo_produto, fat")
-        .gte("mes", sDate)
-        .lte("mes", eDate)
-        .limit(50000);
+      // 2. Fetch Vendas with range pagination
+      let vendas: any[] = [];
+      let from = 0;
+      let to = 999;
+      let hasMore = true;
+      while (hasMore) {
+        const { data: chunk, error: vErr } = await supabase
+          .from("mv_vendas_mensal")
+          .select("mes, rede, tipo_produto, fat, manager, channel, uf")
+          .gte("mes", sDate)
+          .lte("mes", eDate)
+          .range(from, to);
 
-      if (vErr) throw vErr;
-      setRawVendas(vendas || []);
+        if (vErr) throw vErr;
+        if (!chunk || chunk.length === 0) {
+          hasMore = false;
+        } else {
+          vendas = [...vendas, ...chunk];
+          if (chunk.length < 1000) {
+            hasMore = false;
+          } else {
+            from += 1000;
+            to += 1000;
+          }
+        }
+      }
+      setRawVendas(vendas);
 
-      // 3. Fetch Investimentos
-      const { data: invs, error: iErr } = await supabase
-        .from("cm_acoes_investimento")
-        .select("mes_referencia, rede, valor_investimento")
-        .eq("is_planejamento", false)
-        .gte("mes_referencia", sDate)
-        .lte("mes_referencia", eDate);
-      
-      if (iErr) throw iErr;
-      setRawInvest(invs || []);
+      // 3. Fetch Investimentos with range pagination
+      let invs: any[] = [];
+      from = 0;
+      to = 999;
+      hasMore = true;
+      while (hasMore) {
+        const { data: chunk, error: iErr } = await supabase
+          .from("v_acoes_investimento_com_gerente")
+          .select("mes_referencia, rede, codigo_matriz, valor_investimento, gerente_responsavel, expectativa_volume, abrangencia, familias_detalhes, skus_detalhes, cancel_reason, devolvido_por")
+          .eq("is_planejamento", false)
+          .gte("mes_referencia", sDate)
+          .lte("mes_referencia", eDate)
+          .range(from, to);
+
+        if (iErr) throw iErr;
+        if (!chunk || chunk.length === 0) {
+          hasMore = false;
+        } else {
+          invs = [...invs, ...chunk];
+          if (chunk.length < 1000) {
+            hasMore = false;
+          } else {
+            from += 1000;
+            to += 1000;
+          }
+        }
+      }
+      setRawInvest(invs);
 
     } catch (err) {
       console.error("Erro ao buscar dados:", err);
@@ -200,12 +245,12 @@ export default function DashGerencialPage() {
 
     // 1. Process Vendas
     rawVendas.forEach((v: any) => {
-      const redeNorm = v.rede ? v.rede.toUpperCase().trim() : "";
-      const redeInfo = redesMap[redeNorm] || { gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
-      
-      const gerente = redeInfo.gerente || "Sem Gerente";
-      const canal = redeInfo.canal || "N/I";
-      const uf = redeInfo.uf || "N/I";
+      const mes = v.mes;
+      if (!monthsInRange.includes(mes)) return;
+
+      const gerente = v.manager || "Sem Gerente";
+      const canal = v.channel || "N/I";
+      const uf = v.uf || "N/I";
       const rede = v.rede || "N/I";
       const familia = v.tipo_produto || "N/I";
 
@@ -223,7 +268,6 @@ export default function DashGerencialPage() {
 
       const { row } = getOrCreateGerente(gerente);
       const subRow = getOrCreateCanalSub(row, canal);
-      const mes = v.mes;
       const fat = (Number(v.fat) || 0) / 1000;
 
       if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0 };
@@ -237,10 +281,18 @@ export default function DashGerencialPage() {
 
     // 2. Process Investimentos
     rawInvest.forEach((v: any) => {
+      // Excluir ações canceladas
+      if (v.cancel_reason) return;
+
+      const mes = v.mes_referencia;
+      if (!monthsInRange.includes(mes)) return;
+
+      const codNorm = v.codigo_matriz ? String(v.codigo_matriz).trim().replace(/\.0$/, "") : "";
       const redeNorm = v.rede ? v.rede.toUpperCase().trim() : "";
-      const redeInfo = redesMap[redeNorm] || { gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
       
-      const gerente = redeInfo.gerente || "Sem Gerente";
+      const redeInfo = (codNorm ? codesMap[codNorm] : null) || redesMap[redeNorm] || { gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
+      
+      const gerente = v.gerente_responsavel || "Sem Gerente";
       const canal = redeInfo.canal || "N/I";
       const uf = redeInfo.uf || "N/I";
       const rede = v.rede || "N/I";
@@ -257,8 +309,10 @@ export default function DashGerencialPage() {
 
       const { row } = getOrCreateGerente(gerente);
       const subRow = getOrCreateCanalSub(row, canal);
-      const mes = v.mes_referencia;
-      const inv = Number(v.valor_investimento) || 0;
+      
+      // Calcular valor de investimento total e converter para milhares (escala do dashboard)
+      const invTotalBRL = getValorTotal(v);
+      const inv = invTotalBRL / 1000;
 
       if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0 };
       if (!subRow.months[mes]) subRow.months[mes] = { fat: 0, inv: 0 };
@@ -270,16 +324,16 @@ export default function DashGerencialPage() {
     });
 
     let filtered = Object.values(grouped).filter(r => {
-      // Filtrar canais sem investimento
-      let canaisComInv = Object.values(r.canais).filter(c => c.total.inv > 0);
-      if (canaisComInv.length === 0) return false;
+      // Keep channels that have either investments OR sales
+      let activeCanais = Object.values(r.canais).filter(c => c.total.inv > 0 || c.total.fat > 0);
+      if (activeCanais.length === 0) return false;
       
-      // Recalcular os totais do gerente baseados APENAS nos canais que sobraram
+      // Recalculate manager totals based on active channels
       r.canais = {};
       r.months = {};
       r.total = { fat: 0, inv: 0 };
       
-      canaisComInv.forEach(c => {
+      activeCanais.forEach(c => {
         r.canais[c.nome.toUpperCase()] = c;
         Object.keys(c.months).forEach(m => {
           if (!r.months[m]) r.months[m] = { fat: 0, inv: 0 };
@@ -290,7 +344,7 @@ export default function DashGerencialPage() {
         r.total.inv += c.total.inv;
       });
 
-      return r.total.inv > 0;
+      return r.total.inv > 0 || r.total.fat > 0;
     });
 
     const getPctInternal = (inv: number, fat: number) => fat > 0 ? (inv / fat) * 100 : 0;
@@ -299,7 +353,8 @@ export default function DashGerencialPage() {
       const pctA = getPctInternal(a.total.inv, a.total.fat);
       const pctB = getPctInternal(b.total.inv, b.total.fat);
       if (Math.abs(pctA - pctB) > 0.01) return pctB - pctA;
-      return b.total.inv - a.total.inv;
+      if (b.total.inv !== a.total.inv) return b.total.inv - a.total.inv;
+      return b.total.fat - a.total.fat;
     });
 
     let gTotal = { fat: 0, inv: 0, months: {} as Record<string, MonthData> };
@@ -325,7 +380,7 @@ export default function DashGerencialPage() {
         products: []
       }
     };
-  }, [rawVendas, rawInvest, filterManager, filterFamilia, filterUf, filterChannel, filterMatriz, filterProduct, monthsInRange, redesMap]);
+  }, [rawVendas, rawInvest, filterManager, filterFamilia, filterUf, filterChannel, filterMatriz, filterProduct, monthsInRange, redesMap, codesMap]);
 
   const renderMonthLabel = (YYYYMM: string) => {
     const parts = YYYYMM.split('-');
