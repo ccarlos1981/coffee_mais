@@ -313,6 +313,34 @@ A partir de 13/07/2026, a arquitetura do módulo de RPS passa a seguir um desaco
    - A formatação deve ser puramente visual no frontend, sem alterar a tipagem de dados, payloads de API, fórmulas de BI ou dados persistidos no banco.
    - Percentuais (%) e KPIs baseados em porcentagem (INVEST %, DISP %, %AA, %MA, %DESAFIO) devem continuar sendo renderizados no seu respectivo formato percentual original.
 
+---
 
+## 13. Ownership Oficial dos Investimentos (Coffee++)
+A partir de 14/07/2026, as diretrizes de governança e resolução de ownership comercial de investimentos entram em vigor permanentemente:
 
+1. **Origem Única**: A campanha (`cm_campanhas`) é a única fonte oficial de ownership comercial de investimentos.
+2. **Obrigatoriedade de Relacionamento**:
+   - Toda campanha deve possuir `gerente_id` obrigatório (`NOT NULL`).
+   - Toda ação de investimento deve possuir `campanha_id` obrigatório (`NOT NULL`).
+3. **Resolução de Gerente (Sem Fallbacks)**:
+   - Toda ação herda seu gerente exclusivamente da campanha associada.
+   - O campo oficial para identificação do gerente responsável é `gerente_responsavel` da view `public.v_acoes_investimento_com_gerente`.
+   - É expressamente proibido utilizar mapeamentos ou joins baseados em `cm_clientes`, `codigo_matriz`, nome da rede ou `DISTINCT ON` para determinar o gerente responsável de um investimento.
+4. **Imutabilidade Histórica**: Mudanças futuras na carteira comercial de uma rede (ex: troca de gerente comercial no cadastro de clientes) não devem alterar retroativamente o histórico de investimentos já realizados.
+5. **Agrupamento e Integridade**:
+   - Uma ação pertence a exatamente um gerente responsável.
+   - Um investimento nunca poderá ser contabilizado para mais de um gerente.
+   - O Dash Gerencial deve consumir exclusivamente o ownership de gerente originado da campanha (`gerente_responsavel` da view) para cálculo do indicador INV.
+6. **Correção de Ownership Histórico**: Correções de ownership histórico podem ser realizadas diretamente em `cm_campanhas.gerente_id` quando auditorias identificarem campanhas atribuídas ao gerente incorreto durante processos de backfill.
+7. **Ajuste Focado na Campanha**: O ajuste de ownership deve ocorrer exclusivamente no nível da campanha e nunca diretamente nas ações individuais.
+
+---
+
+## 14. Baseline Oficial — Fórmula Oficial de Investimentos (Coffee++)
+A partir de 14/07/2026, o investimento financeiro oficial do sistema Coffee++ é regulado sob as seguintes diretrizes:
+
+1. **Fórmula Única e Centralizada**: O investimento financeiro de uma ação é calculado exclusivamente a partir do helper compartilhado:
+   `src/lib/investimento/getValorTotal.ts`
+2. **Proibição de Alternativas**: É expressamente proibido implementar qualquer cálculo local, fórmula customizada ou lógica paralela de investimento (INV) em dashboards, widgets, relatórios, exportações, RPCs ou views.
+3. **Consistência Operacional e Financeira**: Todos os módulos existentes ou futuros que exibam valores de investimentos planejados ou reais devem consumir obrigatoriamente a função `getValorTotal` para garantir paridade operacional em todo o ecossistema.
 

@@ -51,6 +51,7 @@ import { supabase } from "@/lib/supabase";
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval, isSameMonth, isSameDay, isWithinInterval, addMonths, subMonths, addWeeks, subWeeks, parseISO, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { getValorTotal } from "@/lib/investimento/getValorTotal";
 
 
 const formatCompactCurrency = (value: number) => {
@@ -1348,15 +1349,7 @@ export default function InvestimentoPage() {
     return mesStr;
   };
 
-  const getValorTotal = (r: any) => {
-    if (r.abrangencia === "SKU" && r.skus_detalhes) {
-      return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
-      return r.familias_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-  };
+
 
   const getGerenteAndUF = (row: any) => {
     let uf = "UF N/D";
