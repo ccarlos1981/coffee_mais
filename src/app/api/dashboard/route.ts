@@ -16,6 +16,7 @@ function getSupabaseClient() {
 interface MvRow {
   mes: string;
   manager: string;
+  manager_id: string;
   rede: string;
   tipo_produto: string;
   uf: string;
@@ -32,6 +33,7 @@ interface MvRow {
 interface MvClientRow {
   mes: string;
   manager: string;
+  manager_id: string;
   client: string;
   fat: number;
   qty: number;
@@ -47,7 +49,11 @@ function buildWhereClause(filters: Record<string, string | null>, startMonth: st
   const clauses = ['1=1'];
   if (startMonth) clauses.push(`mes >= ${escapeSqlValue(startMonth)}`);
   if (endMonth) clauses.push(`mes <= ${escapeSqlValue(endMonth)}`);
-  if (filters.manager) clauses.push(`manager IN (${filters.manager.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+  if (filters.manager_id) {
+    clauses.push(`manager_id IN (${filters.manager_id.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+  } else if (filters.manager) {
+    clauses.push(`manager IN (${filters.manager.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+  }
   if (filters.familia) clauses.push(`tipo_produto IN (${filters.familia.split(',').map(f => escapeSqlValue(f)).join(',')})`);
   if (filters.uf) clauses.push(`uf IN (${filters.uf.split(',').map(u => escapeSqlValue(u)).join(',')})`);
   if (filters.channel) clauses.push(`channel IN (${filters.channel.split(',').map(c => escapeSqlValue(c)).join(',')})`);
@@ -62,6 +68,8 @@ function aggregateFromMV(
   pyClientMap?: Map<string, { fat: number; qty: number; maco: number }>
 ) {
   const byManagerMap: Record<string, {
+    managerId: string;
+    managerName: string;
     fat: number; qty: number; maco: number;
     paceFat: number; paceQty: number; paceMaco: number;
     byClient: Record<string, { client: string; fat: number; qty: number; maco: number }>;
@@ -71,7 +79,8 @@ function aggregateFromMV(
   let totalFat = 0, totalQty = 0, totalMaco = 0;
 
   for (const row of rows) {
-    const m = row.manager || 'Outros';
+    const mId = row.manager_id || '9999';
+    const mName = row.manager || 'Outros';
     const familia = row.tipo_produto || 'Outros';
     const fat = Number(row.fat || 0);
     const qty = Number(row.qty || 0);
@@ -84,12 +93,12 @@ function aggregateFromMV(
     totalMaco += maco;
 
     // Manager aggregation
-    if (!byManagerMap[m]) {
-      byManagerMap[m] = { fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
+    if (!byManagerMap[mId]) {
+      byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
     }
-    byManagerMap[m].fat += fat;
-    byManagerMap[m].qty += qty;
-    byManagerMap[m].maco += maco;
+    byManagerMap[mId].fat += fat;
+    byManagerMap[mId].qty += qty;
+    byManagerMap[mId].maco += maco;
 
     // Familia
     if (familia !== 'Outros') {
@@ -102,7 +111,8 @@ function aggregateFromMV(
   // Populate clients from mv_vendas_cliente_mensal
   if (clientRows) {
     for (const row of clientRows) {
-      const m = row.manager || 'Outros';
+      const mId = row.manager_id || '9999';
+      const mName = row.manager || 'Outros';
       const client = row.client || 'Não Mapeado';
       const fat = Number(row.fat || 0);
       const qty = Number(row.qty || 0);
@@ -110,16 +120,16 @@ function aggregateFromMV(
         ? Number(row.maco || 0) - (fat * investmentPct)
         : Number(row.maco || 0);
 
-      if (!byManagerMap[m]) {
-        byManagerMap[m] = { fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
+      if (!byManagerMap[mId]) {
+        byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
       }
 
-      if (!byManagerMap[m].byClient[client]) {
-        byManagerMap[m].byClient[client] = { client, fat: 0, qty: 0, maco: 0 };
+      if (!byManagerMap[mId].byClient[client]) {
+        byManagerMap[mId].byClient[client] = { client, fat: 0, qty: 0, maco: 0 };
       }
-      byManagerMap[m].byClient[client].fat += fat;
-      byManagerMap[m].byClient[client].qty += qty;
-      byManagerMap[m].byClient[client].maco += maco;
+      byManagerMap[mId].byClient[client].fat += fat;
+      byManagerMap[mId].byClient[client].qty += qty;
+      byManagerMap[mId].byClient[client].maco += maco;
     }
   }
 
@@ -130,7 +140,7 @@ function aggregateFromMV(
     mgrData.paceMaco = mgrData.maco;
   }
 
-  const byManager = Object.entries(byManagerMap).map(([manager, data]) => {
+  const byManager = Object.entries(byManagerMap).map(([managerId, data]) => {
     const clients = Object.values(data.byClient)
       .sort((a, b) => b.fat - a.fat)
       .slice(0, 20)
@@ -143,7 +153,8 @@ function aggregateFromMV(
         paceMaco: c.maco,
       }));
     return {
-      manager,
+      manager: data.managerName,
+      manager_id: managerId,
       fat: data.fat,
       qty: data.qty,
       maco: data.maco,
@@ -185,6 +196,7 @@ export async function GET(request: Request) {
     const investmentPct = parseFloat(searchParams.get('investment') || '0') / 100;
 
     const filters: Record<string, string | null> = {
+      manager_id: searchParams.get('manager_id') !== 'all' ? searchParams.get('manager_id') : null,
       manager: searchParams.get('manager') !== 'all' ? searchParams.get('manager') : null,
       familia: searchParams.get('familia') !== 'all' ? searchParams.get('familia') : null,
       uf: searchParams.get('uf') !== 'all' ? searchParams.get('uf') : null,
@@ -230,41 +242,44 @@ export async function GET(request: Request) {
       SELECT 
         mes,
         COALESCE(manager, 'Outros') as manager,
+        COALESCE(manager_id, '9999') as manager_id,
         COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat,
         SUM(qty) as qty,
         SUM(maco) as maco
       FROM mv_vendas_cliente_mensal
       ${whereClause}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
-    const sqlPm = `SELECT mes, manager, fat, qty, maco FROM mv_vendas_mensal ${pmWhereClause}`;
+    const sqlPm = `SELECT mes, manager, manager_id, fat, qty, maco FROM mv_vendas_mensal ${pmWhereClause}`;
     const sqlPmClient = `
       SELECT 
         mes,
         COALESCE(manager, 'Outros') as manager,
+        COALESCE(manager_id, '9999') as manager_id,
         COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat,
         SUM(qty) as qty,
         SUM(maco) as maco
       FROM mv_vendas_cliente_mensal
       ${pmWhereClause}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
-    const sqlPy = `SELECT mes, manager, fat, qty, maco FROM mv_vendas_mensal ${pyWhereClause}`;
+    const sqlPy = `SELECT mes, manager, manager_id, fat, qty, maco FROM mv_vendas_mensal ${pyWhereClause}`;
     const sqlPyClient = `
       SELECT 
         mes,
         COALESCE(manager, 'Outros') as manager,
+        COALESCE(manager_id, '9999') as manager_id,
         COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat,
         SUM(qty) as qty,
         SUM(maco) as maco
       FROM mv_vendas_cliente_mensal
       ${pyWhereClause}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
     console.time("Dashboard-RPC-Queries");

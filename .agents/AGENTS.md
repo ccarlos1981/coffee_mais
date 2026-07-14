@@ -344,3 +344,262 @@ A partir de 14/07/2026, o investimento financeiro oficial do sistema Coffee++ é
 2. **Proibição de Alternativas**: É expressamente proibido implementar qualquer cálculo local, fórmula customizada ou lógica paralela de investimento (INV) em dashboards, widgets, relatórios, exportações, RPCs ou views.
 3. **Consistência Operacional e Financeira**: Todos os módulos existentes ou futuros que exibam valores de investimentos planejados ou reais devem consumir obrigatoriamente a função `getValorTotal` para garantir paridade operacional em todo o ecossistema.
 
+---
+
+## 15. Baseline Oficial — Governança de Faturamento (Coffee++)
+
+Esta arquitetura está oficialmente homologada e passa a ser obrigatória para todo o ecossistema Coffee++.
+
+### 15.1 Camada Operacional
+Fonte Oficial: `cm_faturamento`
+
+Representa todas as movimentações originadas do ERP, Import Hub e BigQuery, sem qualquer exclusão, ajuste comercial ou transformação.
+
+Consumidores autorizados:
+- Hub de Importação
+- BigQuery
+- Auditoria
+- Fiscal
+- Reconciliação Financeira
+- Reprocessamentos
+- Integrações externas
+
+Regra:
+Nenhuma regra comercial poderá ser aplicada nesta camada.
+
+---
+
+### 15.2 Camada Comercial Oficial
+Fonte Oficial: `vw_faturamento_comercial_oficial`
+
+Representa exclusivamente o faturamento utilizado pela gestão comercial e pelos dashboards executivos, mantendo paridade operacional com o MyMetrics.
+
+Regras homologadas:
+- Exclusão de NF canceladas.
+- Exclusão dos parceiros:
+  - `19587`
+  - `1`
+- Exclusão das TOPs:
+  - `1701`
+  - `1719`
+  - `1720`
+  - `1117`
+- Devoluções (`1200` e `1201`) devem possuir sinal negativo.
+
+Consumidores autorizados:
+- Dashboard Comercial
+- Dash Gerencial
+- Ranking
+- ROI Trade
+- Investimentos
+- Positivação
+- Atendimento
+- Indicadores Comerciais
+- Metas Realizadas
+
+Paridade homologada:
+- Coffee++: R$ 3.402.415,71
+- MyMetrics: R$ 3.400.761,34
+- Desvio: 0,048%
+
+---
+
+### 15.3 Camada de Planejamento
+Fonte Oficial: `cm_weekly_projections`
+
+Representa exclusivamente:
+- RPS
+- Forecast
+- Planejamento Comercial
+- Metas Futuras
+- Compromissos dos Regionais
+
+Regra:
+Nenhuma importação do ERP, Excel, BigQuery ou Hub de Importação poderá alterar automaticamente esta camada.
+
+---
+
+### 15.4 Regra de Ouro
+
+Realizado, Comercial e Planejado são conceitos independentes e não poderão ser misturados.
+
+Nenhum dashboard, API, RPC, view, materialized view, indicador ou módulo poderá consumir múltiplas camadas sem aprovação arquitetural explícita.
+
+---
+
+### 15.5 Regra Obrigatória para Novos Desenvolvimentos
+
+Todo novo módulo, dashboard, API, RPC, view materializada ou indicador deverá declarar explicitamente qual camada de faturamento consome:
+
+- OPERACIONAL (`cm_faturamento`)
+- COMERCIAL OFICIAL (`vw_faturamento_comercial_oficial`)
+- PLANEJAMENTO (`cm_weekly_projections`)
+
+Na ausência de declaração explícita, considerar:
+
+- Dashboards comerciais → `vw_faturamento_comercial_oficial`
+- ERP, BigQuery e integrações → `cm_faturamento`
+- Forecast, metas e RPS → `cm_weekly_projections`
+
+Esta regra passa a fazer parte do baseline oficial do Coffee++.
+
+---
+
+### 15.6 Backlog Oficial
+
+Registrar como evolução futura a criação da tabela:
+
+`tb_governanca_comercial`
+
+Objetivo:
+Substituir regras fixas de TOP e parceiros dentro da view comercial por governança parametrizada, auditável e versionável.
+
+---
+
+### 15.7 Status de Estabilização e Observação
+
+* **Status da Arquitetura**: `BASELINE CONGELADO`
+* **Período mínimo de observação**: 1 fechamento mensal completo.
+
+Durante esse período:
+- Não adicionar novas exclusões comerciais.
+- Não alterar TOPs filtradas.
+- Não alterar regras de devolução.
+- Não alterar consumidores das camadas.
+- Apenas monitorar divergências com MyMetrics e registrar ocorrências.
+
+**Objetivo**:
+Validar estabilidade operacional antes de qualquer evolução da governança comercial.
+
+---
+
+## 16. Evolução Arquitetural — Identidade Única de Gerentes (Coffee++)
+
+Durante a auditoria do dashboard comercial foi identificado um problema estrutural de identidade, onde o mesmo gerente pode aparecer múltiplas vezes no sistema devido à utilização de strings como chave de relacionamento.
+
+Exemplo identificado:
+- "Leandro"
+- "Leandro Saffi"
+
+Embora representem a mesma pessoa, os módulos de metas, vendas, carteira e planejamento tratam os nomes como entidades distintas, gerando fragmentação de resultados e inconsistências visuais nos dashboards.
+
+### 16.1 Diretriz Arquitetural Oficial
+Fica definido que, a partir de 14/07/2026, nenhum relacionamento entre módulos poderá utilizar o nome do gerente como chave técnica.
+
+Toda referência deverá utilizar um identificador único e imutável, na seguinte ordem de prioridade:
+1. `employee_code` (identidade de negócio)
+2. UUID do usuário (identidade técnica)
+3. Nome apenas para exibição visual
+
+### 16.2 Modelo Oficial
+*   `manager_id` (`employee_code`) -> chave de relacionamento
+*   `manager_name` -> nome oficial
+*   `display_name` -> nome apresentado no dashboard
+
+Exemplos:
+*   `employee_code`: `1001` \| `manager_name`: `"Leandro Saffi"` \| `display_name`: `"Leandro (Sul)"`
+*   `employee_code`: `1002` \| `manager_name`: `"Leandro Oliveira"` \| `display_name`: `"Leandro (SP)"`
+
+### 16.3 Regra Obrigatória para Novos Desenvolvimentos
+É proibido utilizar:
+*   `name`
+*   `manager_name`
+*   `nome_gerente`
+*   `vendedor_nome`
+*   `regional_nome`
+
+como chave de JOIN, GROUP BY, filtros ou relacionamentos internos. Esses campos passam a ser considerados exclusivamente campos de apresentação (display layer).
+
+### 16.4 Plano de Migração Gradual
+*   **Fase 1**: Auditoria das tabelas que utilizam nome do gerente como relacionamento.
+*   **Fase 2**: Inclusão de `employee_code`/`manager_id` nas tabelas operacionais.
+*   **Fase 3**: Migração gradual dos JOINs e agregações para o identificador único.
+*   **Fase 4**: Descontinuação definitiva dos relacionamentos por nome.
+
+### 16.5 Benefícios
+*   Elimina duplicidade de gerentes.
+*   Permite homônimos sem conflitos.
+*   Evita problemas de apelidos e abreviações.
+*   Permite troca de nome sem impacto histórico.
+*   Facilita integrações com Sankhya, BigQuery e CRM.
+*   Garante escalabilidade para crescimento da operação comercial.
+
+*   **Classificação arquitetural**: `BASELINE OFICIAL APROVADO PARA PRODUÇÃO`
+
+---
+
+## 17. Baseline Oficial — Homologação da Fase 3 Wave 1 (Identidade de Gestores)
+A partir de 14/07/2026, com a aprovação da Wave 1 da migração de Identidade de Gestores, os seguintes componentes entram em regime de **Assisted Production (Change Freeze / Architecture Freeze)**:
+
+- Regras de mapeamento e atribuição de `manager_id`
+- Mapeamento e atribuição de `employee_code`
+- Triggers de dupla escrita de gestores
+- View `vw_matrix_ranking`
+- Materialized Views `mv_vendas_mensal`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal`
+- RPC `get_actual_sales_v2`
+- Regras de agregação dos dashboards Comercial, Metas e Ranking Executivo
+
+### 17.1 Componentes Congelados (Frozen)
+- Mapeamento de `employee_code` e `manager_id`
+- Triggers de dupla escrita e nomes canônicos de gestores
+- Lógica de agregação de vendas e agrupamento do dashboard
+- Lógica de agregação de rankings e persistência de metas (targets)
+- Materialized views que utilizam `manager_id`
+- Assinatura da RPC `get_actual_sales_v2`
+- Comportamento de filtragem de gestores na API
+
+### 17.2 Alterações Permitidas (Allowed)
+- Resoluções de bugs e incidentes em produção
+- Scripts de correção de dados históricos
+- Reparos de integridade física ou lógica
+- Melhorias de observabilidade e logs
+
+### 17.3 Alterações Proibidas (Forbidden)
+- Inclusão de novos apelidos/aliases para gestores
+- Alteração em atribuições de `employee_code` existentes
+- Mudanças em chaves de agrupamento (aggregation keys) ou de negócio
+- Mudanças nas assinaturas ou contratos de RPCs/APIs
+- Mudança na arquitetura de relacionamento de gestores
+
+### 17.4 Critérios de Saída (Exit Criteria)
+A suspensão do congelamento arquitetural requer o preenchimento cumulativo dos seguintes requisitos:
+1. Conclusão de um ciclo de fechamento mensal completo.
+2. Execução de pelo menos um ciclo de importação de faturamento com sucesso.
+3. Ausência total de incidentes de duplicidade de gestores ou registros órfãos.
+4. Ausência total de incidentes operacionais relacionados a identidades de gestores.
+5. Aprovação formal do relatório de observação de produção.
+
+### 17.5 Lista de Validação de Consistência Pós-Importação
+Após qualquer carga de faturamento, refresh de MVs ou deployment, é mandatório executar as seguintes validações de integridade no banco Supabase para garantir ausência de regressões:
+
+1. **Cardinalidade Sales (Identidade de Gestores)**:
+   ```sql
+   SELECT manager_id, COUNT(DISTINCT manager)
+   FROM public.sales
+   GROUP BY manager_id
+   HAVING COUNT(DISTINCT manager) > 1;
+
+   SELECT manager, COUNT(DISTINCT manager_id)
+   FROM public.sales
+   GROUP BY manager
+   HAVING COUNT(DISTINCT manager_id) > 1;
+   ```
+   *Resultado esperado: 0 linhas.*
+
+2. **Consistência de Unicidade em vw_matrix_ranking**:
+   ```sql
+   SELECT matrix_name, COUNT(*) 
+   FROM public.vw_matrix_ranking 
+   GROUP BY matrix_name 
+   HAVING COUNT(*) > 1;
+   ```
+   *Resultado esperado: 0 linhas.*
+
+*   **Status Oficial**: `MANAGER_ID ARCHITECTURE = FROZEN`
+*   **Observation Mode**: `ACTIVE`
+*   **Next Eligible Phase**: `WAVE 2`
+
+
+
+
+
