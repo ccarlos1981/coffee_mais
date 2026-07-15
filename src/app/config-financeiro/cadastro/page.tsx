@@ -6,6 +6,7 @@ import { Search, Loader2, Save, FileText, Banknote, MapPin, Building, ArrowLeft,
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { notificarFinanceiroNovoCliente, notificarTransicaoFase } from "../clientes/actions";
+import { SearchableSelect } from "@/components/SearchableSelect";
 
 export default function ClienteCadastroPage() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function ClienteCadastroPage() {
     matriz: "",
     codigo_matriz: "",
     responsavel: "",
+    manager_id: "",
+    manager_name: "",
     tipo_parceiro: "",
     nome_parceiro: "",
     razao_social: "",
@@ -65,6 +68,26 @@ export default function ClienteCadastroPage() {
     emails_abatimento: "",
   });
   const [tipoCadastro, setTipoCadastro] = useState("novo");
+  const [managers, setManagers] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchManagers = async () => {
+      try {
+        const supabaseClient = createClient();
+        const { data, error } = await supabaseClient
+          .from("cm_user_profiles")
+          .select("id, name, uf, role, employee_code")
+          .not("employee_code", "is", null)
+          .order("name", { ascending: true });
+        if (data) {
+          setManagers(data);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar gerentes:", err);
+      }
+    };
+    fetchManagers();
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -80,6 +103,8 @@ export default function ClienteCadastroPage() {
       matriz: "",
       codigo_matriz: "",
       responsavel: "",
+      manager_id: "",
+      manager_name: "",
       tipo_parceiro: "",
       nome_parceiro: "",
       razao_social: "",
@@ -160,6 +185,8 @@ export default function ClienteCadastroPage() {
         matriz: data.matriz || "",
         codigo_matriz: data.codigo_matriz || "",
         responsavel: data.responsavel || "",
+        manager_id: data.manager_id || "",
+        manager_name: data.manager_name || "",
         tipo_parceiro: data.tipo_parceiro || "",
         nome_parceiro: data.nome_parceiro || "",
         razao_social: data.razao_social || "",
@@ -324,6 +351,13 @@ export default function ClienteCadastroPage() {
       const supabase = createClient();
       const targetPhase = nextPhase || formData.fase || "comercial";
 
+      // Validação do responsável comercial obrigatório para novos cadastros
+      if (tipoCadastro === "novo" && !formData.manager_id) {
+        toast.error("O Responsável pelo Atendimento Comercial é obrigatório para novos cadastros.");
+        setLoading(false);
+        return;
+      }
+
       // Validation before transition
       if (nextPhase === "financeiro") {
         if (!formData.cnpj) {
@@ -356,6 +390,8 @@ export default function ClienteCadastroPage() {
         matriz: formData.matriz,
         codigo_matriz: formData.codigo_matriz || null,
         responsavel: formData.responsavel || null,
+        manager_id: formData.manager_id || null,
+        manager_name: formData.manager_name || null,
         tipo_parceiro: formData.tipo_parceiro,
         nome_parceiro: formData.nome_parceiro,
         razao_social: formData.razao_social,
@@ -437,6 +473,22 @@ export default function ClienteCadastroPage() {
           return;
         }
         
+        // Buscar dados originais do cliente para comparar e registrar log de ownership se alterado
+        const { data: origClient } = await supabase
+          .from("cm_clientes")
+          .select("codigo, responsavel, manager_id, manager_name, uf, tipo_parceiro, codigo_matriz, nome_parceiro, cnpj")
+          .eq("id", selectedClientId)
+          .single();
+
+        const hasManagerChanged = origClient && (origClient.manager_id !== payload.manager_id || origClient.responsavel !== payload.responsavel);
+        let motivoAlteracao: string | null = null;
+        
+        if (hasManagerChanged) {
+          if (typeof window !== "undefined") {
+            motivoAlteracao = window.prompt("Por favor, informe o motivo da alteração do Responsável Comercial (opcional):");
+          }
+        }
+
         const { data, error } = await supabase
           .from("cm_clientes")
           .update(payload)
@@ -445,6 +497,37 @@ export default function ClienteCadastroPage() {
 
         if (error) throw error;
         resultData = data && data[0];
+
+        if (hasManagerChanged && resultData) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            await supabase.from("cm_audit_logs").insert({
+              table_name: "cm_clientes",
+              action: "CUSTOMER_OWNERSHIP_CHANGED",
+              user_id: user?.id || null,
+              new_data: {
+                cliente: {
+                  id: selectedClientId,
+                  codigo: origClient?.codigo,
+                  nome_fantasia: origClient?.nome_parceiro,
+                  cnpj: origClient?.cnpj
+                },
+                codigo_matriz: payload.codigo_matriz || origClient?.codigo_matriz,
+                gerente_anterior: origClient?.responsavel || origClient?.manager_name || null,
+                novo_gerente: payload.responsavel || payload.manager_name || null,
+                gerente_anterior_id: origClient?.manager_id || null,
+                novo_gerente_id: payload.manager_id || null,
+                usuario_responsavel: user?.email || "unknown",
+                motivo_alteracao: motivoAlteracao,
+                timestamp: new Date().toISOString()
+              }
+            });
+          } catch (logErr) {
+            console.error("Falha ao registrar log de alteração de ownership do cliente:", logErr);
+          }
+        }
+
+
         
         toast.success("Dados do cliente atualizados com sucesso!");
 
@@ -717,23 +800,39 @@ export default function ClienteCadastroPage() {
                 </div>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-                    Responsável (Gerente)
+                    Responsável pelo Atendimento Comercial *
                   </label>
-                  <select
-                    name="responsavel"
-                    value={formData.responsavel}
-                    onChange={handleInputChange}
+                  <SearchableSelect
+                    options={Array.from(new Set(managers.map(m => `${m.name} - ${m.uf || "Nacional"} - ${m.role}`)))}
+                    value={
+                      (() => {
+                        const sel = managers.find(m => m.employee_code === formData.manager_id);
+                        return sel ? `${sel.name} - ${sel.uf || "Nacional"} - ${sel.role}` : formData.responsavel || "";
+                      })()
+                    }
+                    placeholder="Selecione o Responsável"
+                    searchPlaceholder="Pesquisar gerente..."
                     disabled={isCommercialDisabled}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <option value="">Selecione o Gerente</option>
-                    <option value="Luiz">Luiz</option>
-                    <option value="Leandro">Leandro</option>
-                    <option value="Julliano">Julliano</option>
-                    <option value="Inside Sales">Inside Sales</option>
-                    <option value="Ecommerce">Ecommerce</option>
-                    <option value="Marketplace">Marketplace</option>
-                  </select>
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[38px]"
+                    onChange={(val) => {
+                      const sel = managers.find(m => `${m.name} - ${m.uf || "Nacional"} - ${m.role}` === val);
+                      if (sel) {
+                        setFormData((prev) => ({
+                          ...prev,
+                          responsavel: sel.name,
+                          manager_id: sel.employee_code,
+                          manager_name: sel.name
+                        }));
+                      } else {
+                        setFormData((prev) => ({
+                          ...prev,
+                          responsavel: "",
+                          manager_id: "",
+                          manager_name: ""
+                        }));
+                      }
+                    }}
+                  />
                 </div>
               </div>
 

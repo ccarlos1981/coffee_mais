@@ -215,18 +215,77 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
 
     const codigo_matriz = formData.get("codigo_matriz") as string;
     const gerenteName = formData.get("gerente") as string;
+
     let gerenteId: string | null = null;
-    if (gerenteName) {
-      const { data: mProfile } = await supabase
+    let isFallbackManager = false;
+    let clientManagerId: string | null = null;
+    let clientManagerName: string | null = null;
+
+    if (codigo_matriz) {
+      const { data: clientData } = await supabase
+        .from("cm_clientes")
+        .select("manager_id, manager_name, responsavel")
+        .eq("codigo_matriz", codigo_matriz)
+        .not("manager_id", "is", null)
+        .limit(1);
+
+      if (clientData && clientData.length > 0) {
+        clientManagerId = clientData[0].manager_id;
+        clientManagerName = clientData[0].manager_name || clientData[0].responsavel;
+      } else {
+        const { data: anyClient } = await supabase
+          .from("cm_clientes")
+          .select("manager_id, manager_name, responsavel")
+          .eq("codigo_matriz", codigo_matriz)
+          .limit(1);
+        if (anyClient && anyClient.length > 0) {
+          clientManagerId = anyClient[0].manager_id;
+          clientManagerName = anyClient[0].manager_name || anyClient[0].responsavel;
+        }
+      }
+    }
+
+    if (clientManagerId) {
+      const { data: profileByCode } = await supabase
+        .from("cm_user_profiles")
+        .select("id")
+        .eq("employee_code", clientManagerId)
+        .limit(1)
+        .maybeSingle();
+      if (profileByCode) {
+        gerenteId = profileByCode.id;
+      }
+    }
+
+    if (!gerenteId && clientManagerName) {
+      const { data: profileByName } = await supabase
+        .from("cm_user_profiles")
+        .select("id")
+        .ilike("name", `${clientManagerName}%`)
+        .limit(1)
+        .maybeSingle();
+      if (profileByName) {
+        gerenteId = profileByName.id;
+      }
+    }
+
+    if (!gerenteId && gerenteName) {
+      const { data: profileByForm } = await supabase
         .from("cm_user_profiles")
         .select("id")
         .ilike("name", `${gerenteName}%`)
         .limit(1)
         .maybeSingle();
-      if (mProfile) {
-        gerenteId = mProfile.id;
+      if (profileByForm) {
+        gerenteId = profileByForm.id;
       }
     }
+
+    if (!gerenteId) {
+      gerenteId = "77777777-7777-7777-7777-777777777777";
+      isFallbackManager = true;
+    }
+
     const data_fim = formData.get("data_fim") as string;
     const tipo_acao = formData.get("tipo_acao") as string;
     const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
@@ -483,6 +542,25 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     if (rpcError) {
       console.error("Erro na transação de criação de campanha/ações:", rpcError);
       throw rpcError;
+    }
+
+    if (isFallbackManager) {
+      try {
+        await supabase.from("cm_audit_logs").insert({
+          table_name: "cm_campanhas",
+          action: "CAMPAIGN_MANAGER_FALLBACK",
+          user_id: user.id,
+          new_data: {
+            campanha_id: (rpcResult as any)?.campanha_id,
+            rede,
+            codigo_matriz,
+            gerente_id: gerenteId,
+            detalhe: "Ownership comercial de investimento criado via fallback automático (Inside Sales) devido a ausência de gerente no cadastro mestre."
+          }
+        });
+      } catch (logErr) {
+        console.error("Falha ao registrar log de auditoria de fallback de gerente:", logErr);
+      }
     }
 
     revalidatePath("/investimento");
