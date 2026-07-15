@@ -11,9 +11,10 @@ interface SearchableSelectProps {
   searchPlaceholder?: string;
   showTodos?: boolean;
   className?: string;
+  disabled?: boolean;
 }
 
-export function SearchableSelect({ value, onChange, options, placeholder = "Selecione...", searchPlaceholder = "Pesquisar...", showTodos = false, className = "" }: SearchableSelectProps) {
+export function SearchableSelect({ value, onChange, options, placeholder = "Selecione...", searchPlaceholder = "Pesquisar...", showTodos = false, className = "", disabled }: SearchableSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -52,10 +53,12 @@ export function SearchableSelect({ value, onChange, options, placeholder = "Sele
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          cursor: "pointer",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.5 : 1,
           userSelect: "none"
         }}
         onClick={() => {
+          if (disabled) return;
           setIsOpen(!isOpen);
           if (!isOpen) setSearchTerm("");
         }}
@@ -130,9 +133,9 @@ export function SearchableSelect({ value, onChange, options, placeholder = "Sele
                 Nenhum resultado
               </div>
             ) : (
-              filteredOptions.map((option) => (
+              filteredOptions.map((option, index) => (
                 <div
-                  key={option}
+                  key={`${option}-${index}`}
                   onClick={(e) => handleSelect(option, e)}
                   style={{
                     padding: "8px 12px",

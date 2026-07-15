@@ -38,3 +38,4 @@ Error fetching page for network_matrix: TypeError: fetch failed
 Error fetching page for cm_clientes: TypeError: fetch failed
 Error fetching page for base_atendimento: TypeError: fetch failed
 Error fetching page for cm_faturamento_sankhya: TypeError: terminated
+Error fetching page for cm_faturamento_sankhya: TypeError: terminated

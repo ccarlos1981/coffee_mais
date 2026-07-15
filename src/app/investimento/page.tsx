@@ -5362,47 +5362,49 @@ export default function InvestimentoPage() {
                   )}
 
                   {/* Checklist Comercial Geral */}
-                  <div className="bg-elevated p-3.5 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
-                    <span className="text-xs font-bold text-foreground">Validações Comerciais Gerais</span>
-                    <div className="grid grid-cols-1 gap-2.5 pt-1">
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                          checked={selectedAction.checklist_garantia || false} 
-                          onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
-                          <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                          checked={selectedAction.verba_aprovada || false} 
-                          onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
-                          <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-3 cursor-pointer group">
-                        <input 
-                          type="checkbox" 
-                          className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                          checked={selectedAction.contrato_assinado || false} 
-                          onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
-                          <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
-                        </div>
-                      </label>
+                  {selectedAction.fase_atual === 2 && (
+                    <div className="bg-elevated p-3.5 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
+                      <span className="text-xs font-bold text-foreground">Validações Comerciais Gerais</span>
+                      <div className="grid grid-cols-1 gap-2.5 pt-1">
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                            checked={selectedAction.checklist_garantia || false} 
+                            onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
+                          />
+                          <div>
+                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
+                            <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                            checked={selectedAction.verba_aprovada || false} 
+                            onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
+                          />
+                          <div>
+                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
+                            <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer group">
+                          <input 
+                            type="checkbox" 
+                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                            checked={selectedAction.contrato_assinado || false} 
+                            onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
+                          />
+                          <div>
+                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
+                            <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
+                          </div>
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <div className="flex gap-2">

@@ -634,7 +634,80 @@ Manter o Dash Gerencial focado exclusivamente na análise de investimentos ativo
 - Ownership de campanhas;
 - Agregações e agrupamentos internos.
 
+---
 
+## Regra Permanente — Ownership Automático para Clientes Sem Carteira
 
+Toda campanha de investimento do Coffee++ deve possuir obrigatoriamente um `gerente_id` válido.
+
+Quando um cliente não possuir gerente, regional ou responsável comercial definido no momento da criação do investimento, o sistema deverá atribuir automaticamente a campanha ao perfil institucional "Inside Sales" utilizando o UUID oficial:
+
+77777777-7777-7777-7777-777777777777
+
+Diretrizes obrigatórias:
+
+- É proibido criar campanhas com `gerente_id = NULL`.
+- É proibido remover a constraint `NOT NULL` da coluna `cm_campanhas.gerente_id`.
+- O fallback para Inside Sales deve ocorrer exclusivamente durante a criação da campanha.
+- Toda utilização do fallback deverá gerar auditoria em `cm_audit_logs` utilizando a ação `CAMPAIGN_MANAGER_FALLBACK`.
+- O log deverá registrar:
+  - campanha_id
+  - codigo_matriz
+  - rede
+  - gerente_id atribuído
+  - motivo do fallback
+- A atribuição ao Inside Sales é considerada temporária até a definição do responsável comercial definitivo.
+- Esta regra aplica-se a Server Actions, APIs, importações, integrações e futuras evoluções do módulo de investimentos.
+
+---
+
+## Regra Permanente — Ownership Comercial Oficial
+
+1. O Cadastro Único de Clientes é a única fonte oficial de ownership comercial do Coffee++.
+
+2. O campo `manager_id` é a chave oficial e única para definição de carteira, ownership e relacionamento comercial entre módulos.
+
+3. O campo `manager_name` possui finalidade exclusivamente descritiva e visual, sendo proibida sua utilização para joins, regras de negócio, agrupamentos, ownership ou integrações sistêmicas.
+
+4. Todos os módulos corporativos devem resolver ownership exclusivamente através do `manager_id` oriundo do Cadastro Único de Clientes.
+
+5. É proibida a criação de regras paralelas, fallbacks por nome, mapeamentos locais, `DISTINCT ON`, inferências por rede, matriz, canal ou qualquer outra heurística para definição de gerente responsável.
+
+6. Alterações de ownership comercial exigem:
+   - registro do motivo da alteração;
+   - auditoria completa da mudança;
+   - identificação do usuário executor;
+   - rastreabilidade histórica permanente.
+
+7. O ownership comercial definido no Cadastro Único deve ser automaticamente propagado para todos os módulos dependentes, incluindo:
+   - Investimentos;
+   - Dashboard Gerencial;
+   - RPS;
+   - Faturamento;
+   - Promotor;
+   - DRE por Cliente;
+   - quaisquer futuros módulos corporativos.
+
+---
+
+## Regra Permanente — Validações Comerciais do Workflow de Investimentos
+
+1. As validações comerciais:
+   - Garantia Contratual;
+   - Verba Aprovada;
+   - Contrato Assinado;
+
+   pertencem exclusivamente à Fase 2 (Trade).
+
+2. As validações devem permanecer ocultas nas fases:
+   - Fase 1 — Planejamento GRV;
+   - Fase 3 — Apuração GRV;
+   - Fase 4 — Conferência Financeira;
+   - Fase 5 — Pagamento Financeiro;
+   - Fase 6 — Concluído.
+
+3. A ocultação é exclusivamente visual e nunca deve apagar informações já registradas.
+
+4. Caso a ação retorne para a Fase 2, todas as validações previamente registradas devem reaparecer exatamente como foram salvas originalmente.
 
 
