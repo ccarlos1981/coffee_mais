@@ -855,3 +855,37 @@ Classificação operacional:
 Status:
 *   `ORPHAN_PARTNER_GOVERNANCE = ACTIVE`
 *   `OWNERSHIP_DATA_QUALITY = MONITORED`
+
+---
+
+## 24. Seção 24 — Governança Consolidada e Freeze Arquitetural
+
+As arquiteturas abaixo são consideradas homologadas e congeladas:
+
+- Arquitetura de Faturamento em 3 Camadas;
+- Refresh Assíncrono das Materialized Views;
+- Governança da TOP 1117;
+- Arquitetura de Identidade Única de Gerentes (`manager_id`);
+- Governança de Ownership Comercial e Parceiros Órfãos.
+
+A partir desta data:
+
+1. Nenhuma nova regra arquitetural poderá ser adicionada ao AGENTS.md sem evidência operacional concreta ou incidente recorrente em produção.
+
+2. Novas necessidades deverão ser tratadas preferencialmente:
+   - por parametrização;
+   - por configuração;
+   - por tabelas de governança;
+   - e não por expansão contínua do AGENTS.md.
+
+3. O próximo ciclo evolutivo oficial do Coffee++ passa a ser:
+   - Wave 2 — Carteira;
+   - ROI Trade;
+   - Investimentos;
+   - Positivação;
+   - Automação de Ownership.
+
+Status:
+*   `ARCHITECTURE_GOVERNANCE = FROZEN`
+*   `AGENTS_EXPANSION = RESTRICTED`
+*   `NEXT_PROGRAM_INCREMENT = WAVE_2`
