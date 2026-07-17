@@ -912,3 +912,47 @@ O timeout é armado no instante da execução da instrução externa:
 ```sql
 SELECT confirmar_importacao_faturamento(...)
 ```
+
+---
+
+## Seção 26 — Baseline Oficial — Promoção de Clientes para o Cadastro Único
+
+### 26.1 Single Source of Truth
+O Cadastro Único (`cm_clientes`) permanece como a única fonte oficial para o cadastro comercial de clientes.
+
+Nenhum módulo poderá inserir clientes diretamente em `base_atendimento` ou em outras tabelas cadastrais.
+
+---
+
+### 26.2 Promoção em Tempo Real
+A promoção de novos clientes faturados deverá consumir exclusivamente a View `vw_clientes_faturamento_promocao`.
+
+É proibida qualquer deduplicação, filtragem ou comparação em memória no Next.js.
+
+Toda a identificação de parceiros pendentes deverá ocorrer no PostgreSQL.
+
+---
+
+### 26.3 Ownership Inicial
+Todo cliente promovido sem ownership conhecido deverá ser criado obrigatoriamente com:
+
+- `manager_id = '9999'`
+- `responsavel = NULL`
+
+É proibida qualquer inferência automática de ownership durante a promoção de clientes.
+
+A classificação comercial ocorrerá exclusivamente pelo fluxo oficial de Ownership do Cadastro Único.
+
+---
+
+### 26.4 Performance
+A View `vw_clientes_faturamento_promocao` passa a ser a camada oficial de promoção de clientes.
+
+É proibido consumir diretamente `cm_faturamento` para identificar clientes pendentes em código TypeScript.
+
+---
+
+### 26.5 Critério de Aceitação
+Toda nova importação de faturamento deverá garantir que qualquer parceiro ainda inexistente no Cadastro Único esteja disponível imediatamente para promoção, independentemente da quantidade de registros existentes em `cm_faturamento`.
+
+A limitação de paginação do PostgREST não poderá mais impactar este processo.

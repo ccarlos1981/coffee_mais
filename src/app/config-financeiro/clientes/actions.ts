@@ -365,100 +365,91 @@ export async function notificarTransicaoFase(cliente: any, faseAtual: "comercial
 }
 
 export async function sincronizarClientesSankhya() {
+  console.log("RCA SYNC: Iniciando sincronizarClientesSankhya");
   const supabase = await createClient();
 
-  // 1. Buscar todos os parceiros distintos nas vendas faturadas do Sankhya
-  const { data: faturamentoParceiros, error: fatError } = await supabase
-    .from("cm_faturamento_sankhya")
-    .select("cod_parceiro, nome_parceiro")
-    .not("cod_parceiro", "is", null);
+  // 1. Buscar parceiros não cadastrados na camada de promoção oficial (View em tempo real)
+  const { data: missingPartners, error: queryError } = await supabase
+    .from("vw_clientes_faturamento_promocao")
+    .select("cod_parceiro, nome_parceiro");
 
-  if (fatError) {
-    console.error("Erro ao buscar parceiros do faturamento:", fatError);
-    throw new Error("Erro ao buscar parceiros do faturamento: " + fatError.message);
+  if (queryError) {
+    console.error("RCA SYNC ERROR: Erro ao buscar parceiros não cadastrados para promoção:", queryError);
+    throw new Error("Erro ao buscar parceiros não cadastrados: " + queryError.message);
   }
 
-  // Deduplicar em memória
-  const uniqueFatMap = new Map<string, string>();
-  faturamentoParceiros?.forEach(row => {
-    if (row.cod_parceiro) {
-      uniqueFatMap.set(row.cod_parceiro.trim().replace(/\.0$/, ''), row.nome_parceiro || "");
-    }
-  });
-
-  // 2. Buscar códigos de clientes que já estão na cm_clientes
-  const { data: existingClientes, error: cliError } = await supabase
-    .from("cm_clientes")
-    .select("codigo");
-
-  if (cliError) {
-    console.error("Erro ao buscar clientes cadastrados:", cliError);
-    throw new Error("Erro ao buscar clientes cadastrados: " + cliError.message);
+  console.log("RCA SYNC: Quantidade retornada da View:", missingPartners ? missingPartners.length : 0);
+  if (missingPartners) {
+    const targets = missingPartners.filter(p => p.cod_parceiro === '19838' || p.cod_parceiro === '215610');
+    console.log("RCA SYNC: Parceiros alvo encontrados na View:", targets);
   }
 
-  const existingCodesSet = new Set(existingClientes?.map(c => c.codigo) || []);
-
-  // 3. Descobrir códigos de faturamento que não constam no cadastro
-  const missingCodes: { codigo: number; nome: string }[] = [];
-  for (const [codeStr, name] of uniqueFatMap.entries()) {
-    const codeVal = parseInt(codeStr);
-    if (!isNaN(codeVal) && !existingCodesSet.has(codeVal)) {
-      missingCodes.push({ codigo: codeVal, nome: name });
-    }
-  }
-
-  if (missingCodes.length === 0) {
+  if (!missingPartners || missingPartners.length === 0) {
+    console.log("RCA SYNC: Nenhum parceiro retornado da view para promoção.");
     return { success: true, count: 0 };
   }
 
-  // 4. Buscar informações na base_atendimento para autocompletar o cadastro
-  const missingCodesStr = missingCodes.map(c => String(c.codigo));
-  const { data: bAtendimentoData } = await supabase
-    .from("base_atendimento")
-    .select("cod_parceiro, cnpj, nome_parceiro, rede, manager, uf, canal, regional, ka")
-    .in("cod_parceiro", missingCodesStr);
-
-  const bAtendimentoMap = new Map<string, any>();
-  bAtendimentoData?.forEach(row => {
-    bAtendimentoMap.set(row.cod_parceiro.trim(), row);
-  });
-
-  // 5. Construir registros para inserção
-  const insertRecords = missingCodes.map(item => {
-    const detail = bAtendimentoMap.get(String(item.codigo));
+  // 2. Construir registros para inserção
+  const insertRecords = missingPartners.map(item => {
+    const codeVal = parseInt(item.cod_parceiro);
     return {
-      codigo: item.codigo,
-      nome_parceiro: item.nome || detail?.nome_parceiro || "Sem nome",
-      razao_social: item.nome || detail?.nome_parceiro || "Sem nome",
-      cnpj: detail?.cnpj || null,
-      matriz: detail?.rede || null,
-      tipo_parceiro: detail?.canal || null,
-      responsavel: detail?.manager || null,
-      uf: detail?.uf || null,
-      regional: detail?.regional || null,
-      ka: detail?.ka || null,
+      codigo: codeVal,
+      nome_parceiro: item.nome_parceiro || "Sem nome",
+      razao_social: item.nome_parceiro || "Sem nome",
+      cnpj: null,
+      matriz: null,
+      tipo_parceiro: "Outros",
+      responsavel: null,
+      manager_id: "9999",
+      uf: "SP",
+      regional: null,
+      ka: null,
       status: "ativo",
       fase: "comercial"
     };
   });
 
-  // 6. Inserir no Supabase (o trigger do banco se encarregará de sincronizar com base_atendimento)
+  console.log("RCA SYNC: Quantidade preparada para inserção:", insertRecords.length);
+  const targetInserts = insertRecords.filter(r => r.codigo === 19838 || r.codigo === 215610);
+  console.log("RCA SYNC: Parceiros alvo preparados para inserção:", targetInserts);
+
+  // 3. Inserir no Supabase (os triggers do banco farão a propagação)
   const batchSize = 100;
   let successCount = 0;
   for (let i = 0; i < insertRecords.length; i += batchSize) {
     const batch = insertRecords.slice(i, i + batchSize);
-    const { error: insertErr } = await supabase
+    console.log(`RCA SYNC: Inserindo lote de ${batch.length} registros (índice ${i})`);
+    
+    const { data: insertResult, error: insertErr } = await supabase
       .from("cm_clientes")
-      .insert(batch);
+      .insert(batch)
+      .select("codigo, nome_parceiro");
 
     if (insertErr) {
-      console.error("Erro ao inserir lote de novos clientes:", insertErr);
+      console.error("RCA SYNC ERROR: Erro ao inserir lote de novos clientes:", insertErr);
       throw new Error("Erro ao inserir novos clientes: " + insertErr.message);
+    }
+    
+    console.log(`RCA SYNC: Lote inserido com sucesso. Retornados:`, insertResult ? insertResult.length : 0);
+    if (insertResult) {
+      const insertedTargets = insertResult.filter(r => r.codigo === 19838 || r.codigo === 215610);
+      if (insertedTargets.length > 0) {
+        console.log("RCA SYNC: Parceiros alvo inseridos com sucesso no banco:", insertedTargets);
+      }
     }
     successCount += batch.length;
   }
 
+  // 4. Agendar atualização das views comerciais assíncronas (vendas, etc) pós-sincronização
+  try {
+    console.log("RCA SYNC: Agendando refresh das MVs...");
+    await supabase.rpc("fn_enqueue_mv_refresh");
+  } catch (refreshErr) {
+    console.warn("RCA SYNC WARNING: Erro ao agendar refresh das MVs pós-sincronização:", refreshErr);
+  }
+
   revalidatePath("/config-financeiro/clientes");
+  console.log(`RCA SYNC: Sincronização concluída. Total de inserções: ${successCount}`);
   return { success: true, count: successCount };
 }
 
