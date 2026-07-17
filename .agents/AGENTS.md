@@ -706,8 +706,91 @@ Diretrizes obrigatórias:
    - Fase 5 — Pagamento Financeiro;
    - Fase 6 — Concluído.
 
+---
+
+## 19. Baseline Operacional — Hub de Importação de Faturamento (Coffee++)
+
+Após a instrumentação da RPC confirmar_importacao_faturamento() e da função refresh_materialized_views(), o Hub de Importação executou com sucesso em ambiente de produção utilizando o arquivo CFOP_01 a 15jul.xlsx.
+
+### 19.1 Resultado da Homologação
+*   **Status**: `APROVADO PARA PRODUÇÃO ASSISTIDA`
+*   **Métricas observadas**:
+    *   Linhas processadas: 36.222
+    *   Clientes: 8.435
+    *   Produtos: 78
+    *   Tempo total de processamento: 140,3 segundos
+    *   Faturamento bruto: R$ 7.671.548,41
+    *   Faturamento líquido oficial: R$ 7.671.440,48
+
+### 19.2 Diretrizes Operacionais
+1. **Tempo Esperado**: O tempo esperado de processamento do Hub passa a ser considerado entre 90 e 180 segundos para cargas mensais completas.
+2. **Processamento Assíncrono**: O processamento é assíncrono e tempos superiores a 60 segundos não devem ser tratados automaticamente como falha operacional.
+3. **Telemetria Ativa**: A telemetria implantada em `confirmar_importacao_faturamento()` e `refresh_materialized_views()` deve permanecer habilitada durante pelo menos um ciclo completo de fechamento mensal.
+4. **Tratamento de Timeouts**: Qualquer novo timeout deverá obrigatoriamente ser acompanhado da extração dos logs de telemetria antes de qualquer alteração arquitetural.
+5. **Proibição de Alterações Preventivas**: Fica proibida a remoção preventiva de `refresh_materialized_views()`, triggers de sincronização, recálculo de `faturamento_mensal` e instrumentação de logs sem evidência objetiva proveniente da telemetria.
+6. **Comportamento do Frontend**: O botão de upload passa a operar sob o princípio "Upload iniciado ≠ falha imediata". O frontend deve aguardar explicitamente o término da RPC antes de classificar a operação como sucesso ou erro.
+7. **Canal Oficial**: O Hub de Importação torna-se oficialmente a única porta de entrada manual para faturamento operacional do Coffee++.
+
+### 19.3 Critério de Saída da Produção Assistida
+O Hub será considerado totalmente estabilizado após:
+*   3 importações consecutivas bem sucedidas; OU
+*   1 fechamento mensal completo sem timeout.
+
+
 3. A ocultação é exclusivamente visual e nunca deve apagar informações já registradas.
 
 4. Caso a ação retorne para a Fase 2, todas as validações previamente registradas devem reaparecer exatamente como foram salvas originalmente.
+
+---
+
+## 20. Architecture Hardening — Async Materialized View Refresh (Coffee++)
+
+Esta seção complementa a arquitetura oficial de faturamento em três camadas e estabelece as regras permanentes para o processamento assíncrono das Materialized Views.
+
+### 20.1 Regra de Refresh Único (Single Refresh Rule)
+É proibida a execução concorrente de refresh das Materialized Views. Antes de iniciar qualquer processamento, o sistema deverá verificar se existe algum job com status `RUNNING` na fila `cm_mv_refresh_jobs`.
+*   Se existir, nenhum novo refresh poderá ser iniciado.
+*   O novo pedido deverá permanecer em estado `PENDING`.
+
+### 20.2 Regra de Deduplicação de Fila (Queue Deduplication Rule)
+Somente um refresh pendente ou em execução poderá existir simultaneamente para cada tipo de processamento.
+*   **Implementação recomendada**: Utilizar indexação parcial única (`UNIQUE INDEX`) para status `PENDING` e `RUNNING`, combinando com `INSERT ... ON CONFLICT DO NOTHING`.
+*   **Objetivo**: Evitar cargas redundantes e reduzir estresse no banco de dados.
+
+### 20.3 Regra de Fallback do Agendador (Scheduler Fallback Rule)
+O sistema deve possuir três níveis de execução para refresh de dashboards:
+1.  **Prioridade 1**: `pg_cron` (agendamento assíncrono interno).
+2.  **Fallback**: Endpoint administrativo `/api/process-mv-queue` (acionamento por trigger externa).
+3.  **Último Recurso**: Botão administrativo "Atualizar Dashboards" (acionamento manual direto).
+
+### 20.4 Hierarquia Oficial de Dados (Official Data Hierarchy)
+A hierarquia de verdade do faturamento segue rigorosamente:
+1.  `cm_faturamento`: Fonte operacional absoluta (raw).
+2.  `vw_faturamento_comercial_oficial`: Fonte oficial comercial e financeira (auditoria, ROI, RPS, comissões, metas).
+3.  `mv_vendas_*`: Cache analítico temporário (apenas visualização acelerada).
+*   *As Materialized Views nunca poderão ser usadas como fonte de verdade fiscal ou fechamento financeiro.*
+
+### 20.5 Regra de Monitoramento de Saúde (Health Monitoring Rule)
+Toda execução de refresh assíncrono deve auditar início, fim, duração, contagem de linhas e divergência percentual contra `vw_faturamento_comercial_oficial`. Se a divergência for superior a 0,5%, gerar automaticamente alerta `HEALTH_ALERT` em `cm_audit_logs`.
+
+### 20.6 Regra de Gerenciamento de Órfãos (Orphan Manager Rule)
+Todo faturamento associado ao gerente `manager_id = '9999'` (Outros) deve ser continuamente monitorado através do relatório dinâmico de órfãos (`vw_orphan_partners_report`), recomendando owners baseados no histórico cadastral comercial.
+
+---
+
+## 21. Baseline Oficial — Refresh Assíncrono das Materialized Views (Coffee++)
+
+1. **Obrigatoriedade de Refresh Assíncrono**: O refresh das Materialized Views é obrigatoriamente assíncrono. É proibido executar `REFRESH MATERIALIZED VIEW` durante requisições HTTP síncronas do Next.js.
+2. **Uso Exclusivo da Fila**: Toda atualização das MVs deve ocorrer exclusivamente através da fila `cm_mv_refresh_jobs`.
+3. **Proibição de Execução Concorrente**: É proibida a execução concorrente de refresh. Apenas um job poderá estar em estado `PENDING` ou `RUNNING` simultaneamente.
+4. **Processamento e Fallbacks**: O processamento padrão ocorre via `pg_cron`. Fallbacks autorizados:
+   - API administrativa `/api/admin/process-mv-queue`
+   - Acionamento manual administrativo (botão)
+5. **Status de Cache Analítico**: As Materialized Views (`mv_vendas_*`) são consideradas cache analítico. Elas nunca poderão ser utilizadas como fonte oficial para: auditoria financeira, fechamento comercial, comissões, RPS, ou ROI.
+6. **Fonte Comercial Oficial**: A fonte oficial de faturamento comercial permanece sendo: `vw_faturamento_comercial_oficial`.
+7. **Alerta de Desvio Crítico**: Divergências superiores a 0,5% entre cache analítico e camada comercial devem gerar automaticamente um evento `HEALTH_ALERT` em `cm_audit_logs`.
+8. **Monitoramento de Parceiros Órfãos**: Clientes sem ownership comercial (`manager_id = '9999'`) devem ser monitorados continuamente através do relatório de parceiros órfãos (`vw_orphan_partners_report`).
+
+
 
 
