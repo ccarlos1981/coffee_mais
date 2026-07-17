@@ -797,6 +797,22 @@ Todo faturamento associado ao gerente `manager_id = '9999'` (Outros) deve ser co
     *   `HEALTH MONITORING = ACTIVE`
     *   `ARCHITECTURE FREEZE = ACTIVE`
 
+---
 
+## 22. Baseline Oficial — TOP 1117
 
+Existe atualmente divergência conceitual entre:
+- MyMetrics
+- vw_faturamento_comercial_oficial
+- Materialized Views analíticas
 
+Nenhuma alteração estrutural relacionada à TOP 1117 poderá ser realizada sem definição explícita do conceito oficial de faturamento comercial da companhia.
+
+Até nova deliberação:
+- o refresh assíncrono é considerado saudável;
+- divergências inferiores a 1% decorrentes exclusivamente da TOP 1117 serão classificadas como divergências de governança e não como falha operacional;
+- a prioridade operacional passa a ser a redução dos parceiros classificados sob manager_id = '9999'.
+
+Status:
+*   `TOP_1117_POLICY = PENDING`
+*   `OWNERSHIP_REMEDIATION = PRIORITY_1`
