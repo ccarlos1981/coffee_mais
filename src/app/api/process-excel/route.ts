@@ -665,13 +665,12 @@ export async function POST(request: NextRequest) {
         console.error("Sync error (non-fatal):", syncErr);
       }
 
-      // Refresh materialized views for dashboard performance
+      // Refresh materialized views for dashboard performance (Async Enqueue)
       try {
-        console.log("[process-excel] Refreshing materialized views...");
-        await supabase.rpc("refresh_materialized_views");
-        console.log("[process-excel] Materialized views refreshed successfully");
+        console.log("[process-excel] Enqueuing materialized views refresh...");
+        await supabase.rpc("fn_enqueue_mv_refresh", { p_batch_id: batchId });
       } catch (mvErr) {
-        console.error("MV refresh error (non-fatal):", mvErr);
+        console.error("MV refresh enqueue error (non-fatal):", mvErr);
       }
     }
 

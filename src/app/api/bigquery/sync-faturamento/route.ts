@@ -228,9 +228,9 @@ export async function executeSyncFaturamento(params: {
       }
     }
 
-    // 4. Refresh materialized views if requested
+    // 4. Refresh materialized views if requested (Async Enqueue)
     if (params.refreshMaterializedViews && !partial) {
-      await supabase.rpc("refresh_materialized_views");
+      await supabase.rpc("fn_enqueue_mv_refresh");
     }
 
     // 5. Update sync log: SUCCESS

@@ -616,12 +616,12 @@ export class ImportService {
 
       if (error) throw error;
 
-      // Refresh views
+      // Refresh views (Async Enqueue)
       try {
-        await this.updateLogProgress(batchId, 98, "Atualizando Dashboards");
-        await supabase.rpc("refresh_materialized_views");
+        await this.updateLogProgress(batchId, 98, "Atualizando Dashboards (assíncrono)");
+        await supabase.rpc("fn_enqueue_mv_refresh", { p_batch_id: batchId });
       } catch (mvErr) {
-        console.warn("MV refresh failed (non-fatal):", mvErr);
+        console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
       }
 
       const rowsPromoted = data?.rowsPromoted || 0;
@@ -696,11 +696,11 @@ export class ImportService {
         })
         .eq("id", batchId);
 
-      // 4. Refresh views
+      // 4. Refresh views (Async Enqueue)
       try {
-        await supabase.rpc("refresh_materialized_views");
+        await supabase.rpc("fn_enqueue_mv_refresh");
       } catch (mvErr) {
-        console.warn("MV refresh failed (non-fatal):", mvErr);
+        console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
       }
 
       return { success: true, deletedCount: count || 0 };
