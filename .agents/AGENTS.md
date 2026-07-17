@@ -889,3 +889,26 @@ Status:
 *   `ARCHITECTURE_GOVERNANCE = FROZEN`
 *   `AGENTS_EXPANSION = RESTRICTED`
 *   `NEXT_PROGRAM_INCREMENT = WAVE_2`
+
+---
+
+## 25. Baseline Oficial — Timeout de Promoção do Faturamento
+
+### 25.1 RCA Oficial
+
+O timeout recorrente observado durante a execução de `confirmar_importacao_faturamento()` não é causado por:
+- Materialized Views;
+- refresh assíncrono;
+- locks;
+- triggers;
+- nested loops;
+- ausência de índices;
+- sincronização de ownership.
+
+A causa raiz oficial é:
+> limitação física do `statement_timeout = 8s` aplicado pelo PostgREST/Kong do Supabase para chamadas RPC executadas através do cliente HTTP.
+
+O timeout é armado no instante da execução da instrução externa:
+```sql
+SELECT confirmar_importacao_faturamento(...)
+```
