@@ -452,3 +452,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
    3969cda..cee6191  main -> main
 [14/07/2026 21:03] ✅ Alterações enviadas com sucesso para o GitHub.
 [15/07/2026 10:41] Nenhuma alteração encontrada. Nada a enviar.
+[main bb26f56] auto-save: 16/07/2026 21:00
+ 10 files changed, 9023 insertions(+), 14 deletions(-)
+ create mode 100644 src/app/api/admin/process-mv-queue/route.ts
+ create mode 100644 supabase/migrations/20260716_instrument_importation_rpc.sql
+ create mode 100644 supabase/migrations/20260716_rca_mv_async_refresh.sql
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[16/07/2026 21:00] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
