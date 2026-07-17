@@ -778,18 +778,24 @@ Todo faturamento associado ao gerente `manager_id = '9999'` (Outros) deve ser co
 
 ---
 
-## 21. Baseline Oficial — Refresh Assíncrono das Materialized Views (Coffee++)
+## 21. Baseline Oficial — Refresh Assíncrono das Materialized Views
 
-1. **Obrigatoriedade de Refresh Assíncrono**: O refresh das Materialized Views é obrigatoriamente assíncrono. É proibido executar `REFRESH MATERIALIZED VIEW` durante requisições HTTP síncronas do Next.js.
-2. **Uso Exclusivo da Fila**: Toda atualização das MVs deve ocorrer exclusivamente através da fila `cm_mv_refresh_jobs`.
-3. **Proibição de Execução Concorrente**: É proibida a execução concorrente de refresh. Apenas um job poderá estar em estado `PENDING` ou `RUNNING` simultaneamente.
-4. **Processamento e Fallbacks**: O processamento padrão ocorre via `pg_cron`. Fallbacks autorizados:
-   - API administrativa `/api/admin/process-mv-queue`
-   - Acionamento manual administrativo (botão)
-5. **Status de Cache Analítico**: As Materialized Views (`mv_vendas_*`) são consideradas cache analítico. Elas nunca poderão ser utilizadas como fonte oficial para: auditoria financeira, fechamento comercial, comissões, RPS, ou ROI.
-6. **Fonte Comercial Oficial**: A fonte oficial de faturamento comercial permanece sendo: `vw_faturamento_comercial_oficial`.
-7. **Alerta de Desvio Crítico**: Divergências superiores a 0,5% entre cache analítico e camada comercial devem gerar automaticamente um evento `HEALTH_ALERT` em `cm_audit_logs`.
-8. **Monitoramento de Parceiros Órfãos**: Clientes sem ownership comercial (`manager_id = '9999'`) devem ser monitorados continuamente através do relatório de parceiros órfãos (`vw_orphan_partners_report`).
+1. É proibido executar `REFRESH MATERIALIZED VIEW` dentro de requisições HTTP síncronas do Next.js.
+2. Toda atualização das Materialized Views deverá ocorrer exclusivamente através da fila `cm_mv_refresh_jobs`.
+3. Apenas um refresh poderá estar ativo simultaneamente. É proibida a execução concorrente de refresh das MVs.
+4. A fila deverá respeitar deduplicação física, permitindo no máximo um job nos estados `PENDING` ou `RUNNING`.
+5. O mecanismo oficial de processamento é:
+   - Nível 1: `pg_cron`
+   - Nível 2: `/api/admin/process-mv-queue`
+   - Nível 3: acionamento administrativo manual
+6. As Materialized Views (`mv_vendas_*`) são consideradas exclusivamente cache analítico e nunca poderão ser utilizadas como fonte oficial para: auditoria financeira, comissões, ROI, fechamento comercial, RPS, ou metas.
+7. A única fonte oficial de faturamento comercial do ecossistema Coffee++ permanece sendo: `vw_faturamento_comercial_oficial`.
+8. Divergências superiores a 0,5% entre a camada comercial oficial e o cache analítico deverão gerar automaticamente um evento `HEALTH_ALERT` em `cm_audit_logs`.
+9. Parceiros sem ownership comercial (`manager_id = '9999'`) deverão ser monitorados continuamente através do relatório de parceiros órfãos.
+10. O status atual desta arquitetura é:
+    *   `MV ASYNC REFRESH = PRODUCTION APPROVED`
+    *   `HEALTH MONITORING = ACTIVE`
+    *   `ARCHITECTURE FREEZE = ACTIVE`
 
 
 
