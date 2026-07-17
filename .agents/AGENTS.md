@@ -816,3 +816,42 @@ Até nova deliberação:
 Status:
 *   `TOP_1117_POLICY = PENDING`
 *   `OWNERSHIP_REMEDIATION = PRIORITY_1`
+
+---
+
+## 23. Baseline Oficial — Ownership Comercial e Parceiros Órfãos
+
+A arquitetura de faturamento e refresh assíncrono é considerada estável e homologada.
+
+A principal fonte remanescente de divergência operacional passa a ser a ausência de ownership comercial para parceiros classificados sob `manager_id = '9999'`.
+
+Diretrizes obrigatórias:
+
+1. Todo novo parceiro importado sem ownership comercial definido deverá ser automaticamente classificado como `manager_id = '9999'`.
+
+2. Todo processo de importação deverá registrar:
+   - quantidade de parceiros órfãos;
+   - faturamento associado aos parceiros órfãos;
+   - percentual do faturamento total representado pelos órfãos.
+
+3. Sempre que o faturamento órfão ultrapassar 1% do faturamento mensal consolidado, deverá ser gerado automaticamente um registro `HEALTH_ALERT` em `cm_audit_logs`.
+
+4. Todo parceiro classificado como `manager_id = '9999'` deverá aparecer automaticamente no relatório `vw_orphan_partners_report` com:
+   - código do parceiro;
+   - nome do parceiro;
+   - faturamento mensal;
+   - UF;
+   - sugestão de ownership comercial.
+
+5. O objetivo operacional permanente do Coffee++ é manter:
+   - percentual de faturamento órfão inferior a 1%;
+   - percentual de clientes órfãos inferior a 1%.
+
+Classificação operacional:
+- <= 0,5% -> HEALTHY
+- 0,5% a 1,0% -> WARNING
+- > 1,0% -> CRITICAL
+
+Status:
+*   `ORPHAN_PARTNER_GOVERNANCE = ACTIVE`
+*   `OWNERSHIP_DATA_QUALITY = MONITORED`
