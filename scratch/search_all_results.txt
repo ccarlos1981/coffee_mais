@@ -1,0 +1,77 @@
+src/app/treinamento/manuais/manual_investimento.md:18 (transfer): * **Formulário de Cadastro (Lançamento)**: Acesse a tela de Lançamento e selecione a Rede, tipo de ação (Sell Out/Sell In), tipo de pagamento (Abatimento, Transferência ou Bonificação), período e vigência.
+src/app/treinamento/manuais/manual_investimento.md:18 (transferência): * **Formulário de Cadastro (Lançamento)**: Acesse a tela de Lançamento e selecione a Rede, tipo de ação (Sell Out/Sell In), tipo de pagamento (Abatimento, Transferência ou Bonificação), período e vigência.
+src/app/treinamento/manuais/manual_investimento.md:20 (mover): * **Ativação (Promover)**: Enquanto a ação está em elaboração, ela reside apenas no rascunho. Ao clicar em **Promover**, ela se torna oficialmente um investimento ativo e segue para a esteira de auditoria.
+src/app/treinamento/manuais/manual_investimento.md:84 (mover): * **`Promover`**: Transforma o rascunho de planejamento em um investimento comercial ativo na esteira.
+src/app/treinamento/manuais/manual_executivo_comercial.md:293 (mover): ### Q22: Qual a definição de "Slow Mover"?
+src/app/treinamento/manuais/manual_promotor.md:594 (mover): | [IMAGEM 63 — ALERTA DE BAIXO GIRO DE SKU NO PDV (Slow Mover)]     |
+src/app/treinamento/manuais/manual_trade_operacoes.md:328 (mover): * **Slow Mover**: Sinaliza SKUs que estão sem venda há mais de 10 dias no PDV para ações promocionais de trade (degustação).
+src/app/treinamento/manuais/manual_trade_operacoes.md:421 (mover): ### Q13: O que é um alerta de "Slow Mover"?
+src/app/dre/historico/lancar/ExcelParser.tsx:249 (transfer): const file = e.dataTransfer.files[0];
+src/app/dre/historico/lancar/ExcelParser.tsx:323 (mover): <button className="dre-reset-btn" onClick={reset} title="Remover arquivo">
+src/app/dre/historico/lancar/actions.ts:176 (mover): if (error) throw new Error("Falha ao remover lançamento.");
+src/app/dre/upload/page.tsx:192 (transfer): const file = e.dataTransfer.files[0];
+src/app/historico-matriz/page.tsx:462 (mover): message="Nenhuma venda registrada com os filtros selecionados para 2025 e 2026. Tente remover alguns filtros."
+src/app/config-financeiro/cadastro/page.tsx:1021 (transfer): <option value="Transferência">Transferência</option>
+src/app/config-financeiro/cadastro/page.tsx:1021 (transferência): <option value="Transferência">Transferência</option>
+src/app/cadastros/pdv/page.tsx:337 (vincular): <label className="text-sm font-medium text-white/60">Vincular Matriz (Consolidador)*</label>
+src/app/historico/page.tsx:292 (mover): message="Nenhuma venda registrada com os filtros selecionados. Tente expandir o período ou remover filtros."
+src/app/admin/pdv-import/page.tsx:73 (transfer): if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+src/app/admin/pdv-import/page.tsx:74 (transfer): const droppedFile = e.dataTransfer.files[0];
+src/app/historico-por-matriz/page.tsx:405 (mover): message="Nenhuma venda registrada com os filtros selecionados para 2025 e 2026. Tente remover alguns filtros."
+src/app/preco/page.tsx:462 (mover): message="Nenhum preço ou venda registrada com os filtros selecionados para este ano. Tente remover alguns filtros."
+src/app/dia/page.tsx:372 (mover): message="Nenhuma venda registrada com os filtros selecionados para este mês. Tente mudar o período ou remover filtros."
+src/app/api/processos/[id]/route.ts:365 (mover): return NextResponse.json({ error: "Sem permissão para remover processos" }, { status: 403 });
+src/app/api/trade/boletos/importar/route.ts:150 (transfer): // Update client terms (condições de pagamento) in cm_clientes dynamically based on imported tipo_titulo (Boleto/Transferência)
+src/app/api/trade/boletos/importar/route.ts:150 (transferência): // Update client terms (condições de pagamento) in cm_clientes dynamically based on imported tipo_titulo (Boleto/Transferência)
+src/app/api/trade/boletos/importar/route.ts:156 (transfer): // Capitalize: "BOLETO" -> "Boleto", "TRANSFERÊNCIA" -> "Transferência"
+src/app/api/trade/boletos/importar/route.ts:156 (transferência): // Capitalize: "BOLETO" -> "Boleto", "TRANSFERÊNCIA" -> "Transferência"
+src/app/api/supervisor/sellout-kpis/route.ts:58 (mover): slow_mover,
+src/app/api/supervisor/sellout-kpis/route.ts:92 (mover): // 5. Aggregate 2: Slow Movers
+src/app/api/supervisor/sellout-kpis/route.ts:93 (mover): const slowMovers = items
+src/app/api/supervisor/sellout-kpis/route.ts:94 (mover): .filter((a: any) => a.slow_mover === true)
+src/app/api/supervisor/sellout-kpis/route.ts:184 (mover): top_slow_movers: slowMovers,
+src/app/investimento/page.tsx:4819 (transfer): {selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'BOLETO' : 'TRANSFERÊNCIA'}
+src/app/investimento/page.tsx:4819 (transferência): {selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'BOLETO' : 'TRANSFERÊNCIA'}
+src/app/investimento/page.tsx:4896 (transfer): {selectedAction.tipo_pagamento ? (selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'Boleto' : 'Transferência') : "—"}
+src/app/investimento/page.tsx:4896 (transferência): {selectedAction.tipo_pagamento ? (selectedAction.tipo_pagamento.toLowerCase().includes('abatimento') || selectedAction.tipo_pagamento.toLowerCase().includes('boleto') ? 'Boleto' : 'Transferência') : "—"}
+src/app/investimento/page.tsx:5517 (mover): title="Remover este boleto"
+src/app/investimento/lancar/actions.ts:2971 (mover): export async function promoverPlanejamento(id: string) {
+src/app/investimento/lancar/actions.ts:2984 (mover): console.error("Erro ao promover planejamento para investimento oficial:", error);
+src/app/investimento/lancar/actions.ts:2985 (mover): throw new Error("Falha ao promover investimento.");
+src/app/investimento/planejamento/page.tsx:46 (mover): import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, promoverPlanejamento, obterPlanilhaModelo } from "../lancar/actions";
+src/app/investimento/planejamento/page.tsx:480 (mover): await promoverPlanejamento(id);
+src/app/investimento/planejamento/page.tsx:1232 (mover): title="Promover para Oficial"
+src/app/investimento/planejamento/page.tsx:1746 (mover): Confirmar e Promover p/ Oficial
+src/app/investimento/por-mes/page.tsx:351 (mover): // Filtro de família precisa ser aplicado dentro das redes, ou remover a rede se não sobrar família
+src/app/investimento/ajuda/page.tsx:48 (mover): Enquanto a ação está em elaboração, ela reside apenas na tela de Planejamento. Ao clicar em <strong>Promover</strong>, ela se torna oficialmente um investimento e segue para a Fase 1 da esteira de auditoria.
+src/app/investimento/ajuda/page.tsx:95 (mover): Na aba de planejamento, a verba fica listada como rascunho. Para ativá-la no fluxo e enviá-la para validação do Trade Marketing, clique em <span className="font-semibold text-foreground">Promover</span> na linha correspondente da tabela.
+src/app/investimento/ajuda/page.tsx:152 (vincular): Após a promoção terminar, o <strong>Gerente Regional</strong> deve apurar os dados reais de sell-out nos portais do cliente, anexar as fotos de gôndola e vincular o boleto bancário de cobrança enviado pela rede.
+src/app/investimento/ajuda/page.tsx:232 (transfer): A equipe <strong>Financeira</strong> executa a transferência bancária ou abate o valor do boleto vinculado no ERP da Coffee Mais. Em seguida, anexa o comprovante.
+src/app/investimento/ajuda/page.tsx:232 (transferência): A equipe <strong>Financeira</strong> executa a transferência bancária ou abate o valor do boleto vinculado no ERP da Coffee Mais. Em seguida, anexa o comprovante.
+src/app/investimento/ajuda/page.tsx:420 (mover): <MousePointerClick className="w-3 h-3" /> Promover (ou Promover Selecionadas)
+src/app/metas-promotor/page.tsx:1551 (mover): title="Remover Rede da Meta"
+src/app/metas-promotor/page.tsx:1554 (mover): Remover
+src/app/metas-promotor/page.tsx:1683 (vincular): <h3 className="text-sm font-black text-white">Vincular Rede à Meta</h3>
+src/app/upload/page.tsx:198 (transfer): const f = e.dataTransfer.files[0];
+src/app/supervisor/command-center/page.tsx:5259 (mover): {/* KPI 2: Slow Movers Board */}
+src/app/supervisor/command-center/page.tsx:5262 (mover): KPI 2 — Slow Movers Board (Baixo Giro)
+src/app/supervisor/command-center/page.tsx:5274 (mover): {(selloutKpis.top_slow_movers || []).length === 0 ? (
+src/app/supervisor/command-center/page.tsx:5279 (mover): (selloutKpis.top_slow_movers || []).map((item: any, idx: number) => (
+src/app/supervisor/rotas/page.tsx:872 (mover): title={v.pdv?.is_star ? "Remover de Estrela" : "Marcar como Estrela"}
+src/app/supervisor/rotas/page.tsx:1380 (mover): title={isStar ? "Remover de Estrela" : "Marcar como Estrela"}
+src/app/promotor/visitas/[id]/page.tsx:333 (mover): // Remover foto (Soft Delete)
+src/app/promotor/visitas/[id]/page.tsx:335 (mover): if (!confirm("Tem certeza que deseja remover esta foto?")) {
+src/app/promotor/visitas/[id]/page.tsx:355 (mover): setFeedback({ type: "error", message: data.error || "Erro ao remover foto." });
+src/components/ModuleGroup.tsx:48 (transfer): e.dataTransfer.effectAllowed = "move";
+src/components/ModuleGroup.tsx:49 (transfer): e.dataTransfer.setData("text/plain", index.toString());
+src/components/ModuleGroup.tsx:169 (mover): title={isFavorited ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+src/lib/ai/sellout-engine.ts:10 (mover): slow_mover: boolean;
+src/lib/ai/sellout-engine.ts:109 (mover): // 3.7. Slow Mover and Dead Stock detection (placeholder first, filled in step 4)
+src/lib/ai/sellout-engine.ts:116 (mover): slow_mover: false,
+src/lib/ai/sellout-engine.ts:122 (mover): // 4. Category-wide comparison for Slow Mover detection
+src/lib/ai/sellout-engine.ts:162 (mover): // Slow mover if: velocity < 40% of category average
+src/lib/ai/sellout-engine.ts:163 (mover): res.slow_mover = res.sellout_velocity < (catAvg * 0.40);
+src/lib/ai/sellout-engine.ts:184 (mover): slow_mover: res.slow_mover,
+src/lib/ai/sellout-engine.ts:221 (mover): // Alert 2: SLOW_MOVER (velocity < 40% category avg)
+src/lib/ai/sellout-engine.ts:223 (mover): "SLOW_MOVER",
+src/lib/ai/sellout-engine.ts:225 (mover): res.slow_mover

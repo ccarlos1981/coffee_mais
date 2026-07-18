@@ -463,3 +463,8 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
  4 files changed, 8264 insertions(+), 12 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [17/07/2026 08:25] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 4d53a72] auto-save: 17/07/2026 17:17
+ 4 files changed, 134 insertions(+), 65 deletions(-)
+ create mode 100644 supabase/migrations/20260717_clientes_faturamento_promocao_realtime.sql
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[17/07/2026 17:17] ❌ Erro ao enviar para o GitHub. Verifique a conexão.

@@ -42,21 +42,14 @@ export default function ClientesListPage() {
   const [searchGeneral, setSearchGeneral] = useState("");
   const [filterFase, setFilterFase] = useState<string | null>(null);
   const [filterCondicao, setFilterCondicao] = useState<string>("todos");
+  const [uniqueCondicoes, setUniqueCondicoes] = useState<string[]>([]);
 
-  const uniqueCondicoes = Array.from(
-    new Set(
-      clientes
-        .map(c => c.condicao_pagamento)
-        .filter((c): c is string => !!c)
-    )
-  ).sort();
-
-  const phaseCounts = {
-    comercial: clientes.filter(c => (c.fase || 'comercial') === 'comercial').length,
-    financeiro: clientes.filter(c => c.fase === 'financeiro').length,
-    operacoes: clientes.filter(c => c.fase === 'operacoes').length,
-    concluido: clientes.filter(c => c.fase === 'concluido').length,
-  };
+  const [phaseCounts, setPhaseCounts] = useState({
+    comercial: 0,
+    financeiro: 0,
+    operacoes: 0,
+    concluido: 0
+  });
   
   const [syncing, setSyncing] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -65,18 +58,54 @@ export default function ClientesListPage() {
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
   const itemsPerPage = 20;
 
   // Detail Modal State
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
 
+  const getFilteredQuery = (selectStr = "*", countOptions?: any) => {
+    let query = supabase.from("cm_clientes").select(selectStr, countOptions);
+
+    if (filterFase !== null) {
+      query = query.eq("fase", filterFase);
+    }
+
+    if (filterCondicao !== "todos") {
+      if (filterCondicao === "sem_condicao") {
+        query = query.is("condicao_pagamento", null);
+      } else {
+        query = query.eq("condicao_pagamento", filterCondicao);
+      }
+    }
+
+    if (searchLocal.trim()) {
+      query = query.or(`cidade.ilike.%${searchLocal.trim()}%,uf.ilike.%${searchLocal.trim()}%`);
+    }
+
+    if (searchGeneral.trim()) {
+      const search = searchGeneral.trim();
+      let orString = `nome_parceiro.ilike.%${search}%,razao_social.ilike.%${search}%,matriz.ilike.%${search}%,codigo_matriz.ilike.%${search}%,responsavel.ilike.%${search}%`;
+      const codeVal = parseInt(search);
+      if (!isNaN(codeVal)) {
+        orString += `,codigo.eq.${codeVal}`;
+      }
+      query = query.or(orString);
+    }
+
+    return query;
+  };
+
   const fetchClientes = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("cm_clientes")
-        .select("*")
-        .order("nome_parceiro", { ascending: true });
+      let query = getFilteredQuery("*", { count: "exact" });
+      const from = (currentPage - 1) * itemsPerPage;
+      const to = from + itemsPerPage - 1;
+      
+      const { data, count, error } = await query
+        .order("nome_parceiro", { ascending: true })
+        .range(from, to);
         
       if (error) {
         console.error("Erro ao buscar clientes:", error);
@@ -87,6 +116,9 @@ export default function ClientesListPage() {
           matriz_original: c.matriz || ""
         }));
         setClientes(mapped);
+        if (count !== null) {
+          setTotalItems(count);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -95,9 +127,73 @@ export default function ClientesListPage() {
     }
   };
 
+  const fetchPhaseCounts = async () => {
+    try {
+      const phases = ["comercial", "financeiro", "operacoes", "concluido"] as const;
+      const promises = phases.map(async (phase) => {
+        let query = supabase
+          .from("cm_clientes")
+          .select("id", { count: "exact", head: true })
+          .eq("fase", phase);
+
+        if (filterCondicao !== "todos") {
+          if (filterCondicao === "sem_condicao") {
+            query = query.is("condicao_pagamento", null);
+          } else {
+            query = query.eq("condicao_pagamento", filterCondicao);
+          }
+        }
+
+        if (searchLocal.trim()) {
+          query = query.or(`cidade.ilike.%${searchLocal.trim()}%,uf.ilike.%${searchLocal.trim()}%`);
+        }
+
+        if (searchGeneral.trim()) {
+          const search = searchGeneral.trim();
+          let orString = `nome_parceiro.ilike.%${search}%,razao_social.ilike.%${search}%,matriz.ilike.%${search}%,codigo_matriz.ilike.%${search}%,responsavel.ilike.%${search}%`;
+          const codeVal = parseInt(search);
+          if (!isNaN(codeVal)) {
+            orString += `,codigo.eq.${codeVal}`;
+          }
+          query = query.or(orString);
+        }
+
+        const { count } = await query;
+        return { phase, count: count || 0 };
+      });
+
+      const results = await Promise.all(promises);
+      const counts = { comercial: 0, financeiro: 0, operacoes: 0, concluido: 0 };
+      results.forEach(res => {
+        counts[res.phase] = res.count;
+      });
+      setPhaseCounts(counts);
+    } catch (err) {
+      console.error("Erro ao buscar contagens de fases:", err);
+    }
+  };
+
+  // Carregar condições de pagamento únicas no montante
+  useEffect(() => {
+    const fetchCondicoes = async () => {
+      const { data } = await supabase
+        .from("vw_clientes_condicoes_pagamento")
+        .select("condicao_pagamento");
+      if (data) {
+        setUniqueCondicoes(data.map((r: any) => r.condicao_pagamento));
+      }
+    };
+    fetchCondicoes();
+  }, []);
+
+  // Recarregar contagens das abas e dados quando os filtros mudarem
+  useEffect(() => {
+    fetchPhaseCounts();
+  }, [searchGeneral, searchLocal, filterCondicao]);
+
   useEffect(() => {
     fetchClientes();
-  }, []);
+  }, [currentPage, filterFase, searchGeneral, searchLocal, filterCondicao]);
 
   // Inline edit handler
   const handleMatrizChange = (idx: number, newVal: string) => {
@@ -317,99 +413,119 @@ export default function ClientesListPage() {
   };
 
   // Export Light Action (Only columns displayed on screen)
-  const handleExportLight = () => {
+  const handleExportLight = async () => {
     setExportingLight(true);
-    
-    setTimeout(() => {
-      const headers = [
-        "Código", "Nome", "Código da Matriz", "Nome da Matriz", "UF", "Responsável", "Status"
-      ];
-      const rows = filteredClientes.map(c => [
-        c.codigo || "",
-        c.nome_parceiro || c.razao_social || "",
-        c.codigo_matriz || "",
-        c.matriz || "",
-        c.uf || "",
-        c.responsavel || "",
-        c.status === "ativo" ? "Ativo" : "Inativo"
-      ]);
+    try {
+      let query = getFilteredQuery("codigo, nome_parceiro, razao_social, codigo_matriz, matriz, uf, responsavel, status");
+      const { data, error } = await query.order("nome_parceiro", { ascending: true });
       
-      const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(";"))].join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
+      if (error) throw error;
       
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `carteira_clientes_export_light_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      toast.success("Carteira (Exportação Light) exportada com sucesso!");
+      if (data) {
+        const headers = [
+          "Código", "Nome", "Código da Matriz", "Nome da Matriz", "UF", "Responsável", "Status"
+        ];
+        const rows = (data as any[]).map(c => [
+          c.codigo || "",
+          c.nome_parceiro || c.razao_social || "",
+          c.codigo_matriz || "",
+          c.matriz || "",
+          c.uf || "",
+          c.responsavel || "",
+          c.status === "ativo" ? "Ativo" : "Inativo"
+        ]);
+        
+        const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(";"))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `carteira_clientes_export_light_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast.success("Carteira (Exportação Light) exportada com sucesso!");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao exportar: " + err.message);
+    } finally {
       setExportingLight(false);
-    }, 500);
+    }
   };
 
   // Export Full Action (All columns)
-  const handleExportFull = () => {
+  const handleExportFull = async () => {
     setExportingFull(true);
-    
-    setTimeout(() => {
-      const headers = [
-        "Código", "CNPJ", "Nome do Parceiro", "Razão Social", 
-        "Inscrição Estadual", "CEP", "Endereço", "Número", "Complemento", 
-        "Cidade", "UF", "Código da Matriz", "Nome da Matriz", "Responsável", "Canal", 
-        "Condição de Pagamento", "Classificação ICMS", "Retirar ST", 
-        "Empresa Preferencial", "Tipo Geração Boleto", "Enviar DANFE", 
-        "E-mail para envio", "Banco", "Agência", "Conta", "Desconto Contratual (%)", "Data Vigor", "Status"
-      ];
-      const rows = filteredClientes.map(c => [
-        c.codigo || "",
-        c.cnpj || "",
-        c.nome_parceiro || "",
-        c.razao_social || "",
-        c.inscricao_estadual || "",
-        c.cep || "",
-        c.endereco || "",
-        c.numero || "",
-        c.complemento || "",
-        c.cidade || "",
-        c.uf || "",
-        c.codigo_matriz || "",
-        c.matriz || "",
-        c.responsavel || "",
-        c.tipo_parceiro || "",
-        c.condicao_pagamento || "",
-        c.classificacao_icms || "",
-        c.retirar_st || "",
-        c.empresa_preferencial || "",
-        c.tipo_geracao_boleto || "",
-        c.enviar_danfe || "",
-        c.email_nfe || "",
-        c.banco || "",
-        c.agencia || "",
-        c.conta || "",
-        c.desconto_contratual || "",
-        c.data_vigor || "",
-        c.status === "ativo" ? "Ativo" : "Inativo"
-      ]);
+    try {
+      let query = getFilteredQuery("*");
+      const { data, error } = await query.order("nome_parceiro", { ascending: true });
       
-      const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(";"))].join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
+      if (error) throw error;
       
-      const link = document.createElement("a");
-      link.setAttribute("href", url);
-      link.setAttribute("download", `carteira_clientes_export_full_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      toast.success("Carteira (Exportação Completa) exportada com sucesso!");
+      if (data) {
+        const headers = [
+          "Código", "CNPJ", "Nome do Parceiro", "Razão Social", 
+          "Inscrição Estadual", "CEP", "Endereço", "Número", "Complemento", 
+          "Cidade", "UF", "Código da Matriz", "Nome da Matriz", "Responsável", "Canal", 
+          "Condição de Pagamento", "Classificação ICMS", "Retirar ST", 
+          "Empresa Preferencial", "Tipo Geração Boleto", "Enviar DANFE", 
+          "E-mail para envio", "Banco", "Agência", "Conta", "Desconto Contratual (%)", "Data Vigor", "Status"
+        ];
+        const rows = (data as any[]).map(c => [
+          c.codigo || "",
+          c.cnpj || "",
+          c.nome_parceiro || "",
+          c.razao_social || "",
+          c.inscricao_estadual || "",
+          c.cep || "",
+          c.endereco || "",
+          c.numero || "",
+          c.complemento || "",
+          c.cidade || "",
+          c.uf || "",
+          c.codigo_matriz || "",
+          c.matriz || "",
+          c.responsavel || "",
+          c.tipo_parceiro || "",
+          c.condicao_pagamento || "",
+          c.classificacao_icms || "",
+          c.retirar_st || "",
+          c.empresa_preferencial || "",
+          c.tipo_geracao_boleto || "",
+          c.enviar_danfe || "",
+          c.email_nfe || "",
+          c.banco || "",
+          c.agencia || "",
+          c.conta || "",
+          c.desconto_contratual || "",
+          c.data_vigor || "",
+          c.status === "ativo" ? "Ativo" : "Inativo"
+        ]);
+        
+        const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map(r => r.map(val => `"${String(val).replace(/"/g, '""')}"`).join(";"))].join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `carteira_clientes_export_full_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast.success("Carteira (Exportação Completa) exportada com sucesso!");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao exportar: " + err.message);
+    } finally {
       setExportingFull(false);
-    }, 500);
+    }
   };
 
   // Export complete template with all fields
@@ -434,41 +550,15 @@ export default function ClientesListPage() {
     toast.success("Modelo completo baixado!");
   };
 
-  // Filter local & general & phase & condition
-  const filteredClientes = clientes.filter(cliente => {
-    if (filterFase !== null && (cliente.fase || 'comercial') !== filterFase) {
-      return false;
-    }
-
-    if (filterCondicao !== "todos") {
-      if (filterCondicao === "sem_condicao") {
-        if (cliente.condicao_pagamento) return false;
-      } else {
-        if (cliente.condicao_pagamento !== filterCondicao) return false;
-      }
-    }
-
-    const matchLocal = !searchLocal.trim() || 
-      `${cliente.cidade || ""} ${cliente.uf || ""}`.toLowerCase().includes(searchLocal.toLowerCase());
-
-    const matchGeneral = !searchGeneral.trim() ||
-      `${cliente.codigo || ""} ${cliente.nome_parceiro || ""} ${cliente.razao_social || ""} ${cliente.matriz || ""} ${cliente.codigo_matriz || ""} ${cliente.responsavel || ""}`
-        .toLowerCase()
-        .includes(searchGeneral.toLowerCase());
-
-    return matchLocal && matchGeneral;
-  });
-
-  // Pagination Logic
-  const totalItems = filteredClientes.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedClientes = filteredClientes.slice(startIndex, startIndex + itemsPerPage);
 
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [searchGeneral, searchLocal, filterFase, filterCondicao]);
+
+  const totalClients = phaseCounts.comercial + phaseCounts.financeiro + phaseCounts.operacoes + phaseCounts.concluido;
 
   return (
     <div className="min-h-screen bg-background text-foreground p-6">
@@ -545,7 +635,7 @@ export default function ClientesListPage() {
             {/* Exp. Light Button */}
             <button
               onClick={handleExportLight}
-              disabled={exportingLight || filteredClientes.length === 0}
+              disabled={exportingLight || totalItems === 0}
               className="flex-1 md:flex-none h-10 px-3 bg-accent-gold/10 border border-accent-gold/20 hover:bg-accent-gold hover:text-white text-accent-gold rounded-lg flex items-center justify-center gap-1.5 transition-all font-semibold text-xs disabled:opacity-50"
             >
               {exportingLight ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
@@ -555,7 +645,7 @@ export default function ClientesListPage() {
             {/* Exp. Full Button */}
             <button
               onClick={handleExportFull}
-              disabled={exportingFull || filteredClientes.length === 0}
+              disabled={exportingFull || totalItems === 0}
               className="flex-1 md:flex-none h-10 px-3 bg-accent-gold/10 border border-accent-gold/20 hover:bg-accent-gold hover:text-white text-accent-gold rounded-lg flex items-center justify-center gap-1.5 transition-all font-semibold text-xs disabled:opacity-50"
             >
               {exportingFull ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
@@ -572,7 +662,7 @@ export default function ClientesListPage() {
               filterFase === null ? 'bg-accent-gold/15 text-accent-gold border-accent-gold/30 shadow-sm' : 'bg-background-card text-foreground-secondary border-border hover:bg-background-elevated hover:text-foreground'
             }`}
           >
-            Todas <span className="text-xs opacity-70">({clientes.length})</span>
+            Todas <span className="text-xs opacity-70">({totalClients})</span>
           </button>
           {Object.entries(FASE_CONFIG).map(([key, cfg]) => {
             const count = phaseCounts[key as keyof typeof phaseCounts] || 0;
@@ -673,7 +763,7 @@ export default function ClientesListPage() {
                       Carregando carteira de clientes...
                     </td>
                   </tr>
-                ) : paginatedClientes.length === 0 ? (
+                ) : clientes.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
@@ -682,7 +772,7 @@ export default function ClientesListPage() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedClientes.map((cliente, idx) => {
+                  clientes.map((cliente, idx) => {
                     const globalIdx = (currentPage - 1) * itemsPerPage + idx;
                     return (
                       <tr 

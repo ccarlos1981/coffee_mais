@@ -104,3 +104,36 @@ try {
 
 * **Sem Refatoração em Massa:** Não altere códigos estáveis e homologados que já estão rodando em produção.
 * **Aplicação Incremental:** A adoção é obrigatória para **qualquer nova Server Action** criada no sistema e para **qualquer Server Action existente que receba manutenção ou refatoração**.
+
+---
+
+## 6. Baseline Oficial — Ownership Comercial e Sincronização do Cadastro Único
+
+Fica estabelecido o padrão permanente para a arquitetura de cadastro comercial de clientes e propagação de dados de atendimento no ecossistema Coffee Mais:
+
+### 6.1. Single Source of Truth (SSOT)
+A tabela `cm_clientes` é a única fonte oficial de dados para os campos `manager_id`, `manager_name` e `responsavel`. Nenhuma outra tabela tem autonomia para governar ou alterar prioritariamente esses dados.
+
+### 6.2. Sincronização Unidirecional
+A sincronização lógica dos campos de atendimento/ownership flui obrigatoriamente do Cadastro Único para a tabela secundária:
+`cm_clientes ──► base_atendimento`
+A tabela `base_atendimento` funciona estritamente como uma estrutura derivada de faturamento/visitação e nunca poderá sobrescrever ou reverter as atribuições de gerentes definidas no Cadastro Único.
+
+### 6.3. Natureza de Sugestão/Fallback das Regras Regionais
+As tabelas de regras regionais de território (`cm_base_atendimento_regional` e `manager_uf_mapping`) possuem finalidade exclusiva de sugestão e fallback. Podem ser acionadas no cadastro/promoção inicial ou quando o responsável estiver ausente (`INSERT`), mas **nunca** podem sobrescrever ou forçar valores de forma automática durante atualizações (`UPDATE`) iniciadas manualmente pelo usuário.
+
+### 6.4. Triggers e Propagação de Ownership
+As triggers associadas às tabelas integradas não devem recalcular ou inferir ownership de forma dinâmica durante atualizações de dados. Triggers de sincronização devem limitar-se à propagação passiva de dados e manter paridade exata.
+
+### 6.5. Proteção de Reentrância e pg_trigger_depth
+Todas as triggers de sincronização entre tabelas devem, obrigatoriamente, incluir um mecanismo defensivo explícito de proteção contra recursão/reentrada, utilizando a seguinte cláusula de segurança:
+```sql
+IF pg_trigger_depth() > 1 THEN
+  RETURN NEW;
+END IF;
+```
+Esta salvaguarda é mandatória em qualquer processo de sincronização de dados de cadastro existente ou futuro.
+
+### 6.6. Governança e Impedimento de Regras Concorrentes
+Qualquer nova funcionalidade, script ou módulo do sistema que manipule os campos de ownership comercial (`manager_id`, `manager_name`, `responsavel`) deverá respeitar rigorosamente este baseline. É expressamente proibida a criação de regras automáticas ou triggers que concorram com a autoridade soberana do Cadastro Único.
+
