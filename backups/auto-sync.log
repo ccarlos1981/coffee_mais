@@ -468,3 +468,20 @@ fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could
  create mode 100644 supabase/migrations/20260717_clientes_faturamento_promocao_realtime.sql
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [17/07/2026 17:17] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main b5daa11] auto-save: 18/07/2026 09:08
+ 18 files changed, 9532 insertions(+), 134 deletions(-)
+ create mode 100644 scratch/check_db_state.js
+ create mode 100644 scratch/search_all.py
+ create mode 100644 scratch/search_all_results.txt
+ create mode 100644 scratch/search_supabase.py
+ create mode 100644 scratch/test_base_update.js
+ create mode 100644 scratch/test_client_update.js
+ create mode 100644 scratch/test_pdv_post.js
+ create mode 100644 scratch/test_pdv_put.js
+ create mode 100644 supabase/migrations/20260717_clientes_listagem_paginada.sql
+ create mode 100644 supabase/migrations/20260718_dashboard_ownership_auto_propagation.sql
+ create mode 100644 supabase/migrations/20260718_fix_async_refresh_queue.sql
+ create mode 100644 supabase/migrations/20260718_fix_pdv_transfer_trigger_loop.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   05e4c48..b5daa11  main -> main
+[18/07/2026 09:08] ✅ Alterações enviadas com sucesso para o GitHub.
