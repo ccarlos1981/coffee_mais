@@ -956,3 +956,106 @@ A View `vw_clientes_faturamento_promocao` passa a ser a camada oficial de promo�
 Toda nova importação de faturamento deverá garantir que qualquer parceiro ainda inexistente no Cadastro Único esteja disponível imediatamente para promoção, independentemente da quantidade de registros existentes em `cm_faturamento`.
 
 A limitação de paginação do PostgREST não poderá mais impactar este processo.
+
+---
+
+## Seção 27 — Baseline Oficial — Ownership Comercial e Sincronização do Cadastro Único
+
+### 27.1 Single Source of Truth (SSOT)
+A tabela `cm_clientes` é a única fonte oficial para os campos `manager_id`, `manager_name` e `responsavel`. Nenhuma outra tabela no ecossistema Coffee Mais pode assumir ownership ou controle principal sobre esses campos.
+
+---
+
+### 27.2 Sincronização Unidirecional e Derivação
+A sincronização lógica dos campos de atendimento/ownership deve ser obrigatoriamente unidirecional, fluindo do Cadastro Único para a tabela secundária:
+`cm_clientes ──► base_atendimento`
+A tabela `base_atendimento` é tratada estritamente como uma estrutura derivada e nunca poderá sobrescrever ou reverter as atribuições de gerentes definidas em `cm_clientes`.
+
+---
+
+### 27.3 Natureza de Sugestão/Fallback das Regras Regionais
+As tabelas de regras regionais de território (`cm_base_atendimento_regional` e `manager_uf_mapping`) possuem finalidade exclusiva de sugestão e fallback. Podem ser acionadas no cadastro/promoção inicial ou quando o responsável estiver ausente (`INSERT`), mas **nunca** podem sobrescrever ou forçar valores de forma automática durante atualizações (`UPDATE`) iniciadas manualmente pelo usuário.
+
+---
+
+### 27.4 Triggers e Propagação de Ownership
+As triggers associadas às tabelas integradas não devem recalcular ou inferir ownership de forma dinâmica durante atualizações de dados. Triggers de sincronização devem limitar-se à propagação passiva de dados e manter paridade exata.
+
+---
+
+### 27.5 Proteção de Reentrância e pg_trigger_depth
+Todas as triggers de sincronização entre tabelas devem, obrigatoriamente, incluir um mecanismo defensivo explícito de proteção contra recursão/reentrada, utilizando `IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;` ou lógica equivalente. Esta salvaguarda é mandatória em qualquer processo de sincronização de dados de cadastro existente ou futuro.
+
+---
+
+### 27.6 Governança e Impedimento de Regras Concorrentes
+Qualquer nova funcionalidade, script ou módulo do sistema que manipule os campos de ownership comercial (`manager_id`, `manager_name`, `responsavel`) deverá respeitar rigorosamente este baseline. É expressamente proibida a criação de regras automáticas ou triggers que concorram com a autoridade soberana do Cadastro Único.
+
+---
+
+## Seção 28 — Baseline Permanente: Camada Analítica e Ownership Comercial
+
+### 28.1 Separação entre Fatos e Dimensões
+A arquitetura analítica do Coffee++ segue obrigatoriamente o modelo:
+`FATOS (Materialized Views) ──► DIMENSÕES (Cadastro Único) ──► Dashboards`
+
+### 28.2 Materialized Views e Fatos Físicos
+Materialized Views podem armazenar apenas fatos físicos e imutáveis, tais como: faturamento, quantidade, pedidos, custos, impostos, fretes, SKU, parceiro e período. É expressamente proibido materializar atributos comerciais sujeitos a alteração operacional na view materializada.
+
+### 28.3 Resolução Dinâmica de Atributos Comerciais
+Os seguintes atributos comerciais de atendimento devem ser resolvidos exclusivamente a partir da tabela do Cadastro Único (`cm_clientes`):
+* `manager_id`
+* `manager_name`
+* `responsavel`
+* `rede`
+* `matriz`
+* `canal`
+* `UF`
+* `classificação comercial`
+O Cadastro Único permanece como a única Single Source of Truth (SSOT).
+
+### 28.4 Dashboards
+Todos os dashboards deverão obter ownership comercial dinamicamente por `JOIN` em tempo de execução com `cm_clientes`. É proibido utilizar ownership comercial persistido ou armazenado em: Materialized Views, tabelas agregadas, tabelas de cache ou snapshots analíticos.
+
+### 28.5 Atualização Automática (Zero Latency)
+Qualquer alteração realizada no Cadastro Único deve refletir automaticamente em todos os dashboards e views analíticas do sistema de forma imediata, sem necessidade de refresh manual, scripts SQL, reconstrução de views ou reinicialização de cache de ownership.
+
+### 28.6 Governança Analítica
+Qualquer nova implementação analítica ou alteração no ecossistema Coffee++ deverá respeitar obrigatoriamente este baseline. É vedada a criação de novas estruturas analíticas ou operacionais que armazenem permanentemente ownership comercial fora do Cadastro Único.
+
+### 28.7 Evolução Controlada da Arquitetura
+A partir da homologação da fase de estabilização do sistema (18/07/2026), visando assegurar a perenidade operacional:
+* Evitar refatorações estruturais sem necessidade de negócio ou falha comprovada.
+* Priorizar novas funcionalidades de negócio sobre modificações arquitetônicas.
+* Qualquer proposta de alteração estrutural no ecossistema deve obrigatoriamente documentar: Motivação, Impacto esperado, Riscos, Plano de Rollback e Estratégia de Homologação.
+* Na ausência de benefício técnico ou operacional mensurável, a arquitetura vigente deverá ser preservada.
+
+### 28.8 Prioridade para Evolução de Negócio
+Com a conclusão da fase de estabilização arquitetural, o Coffee++ entra na fase de evolução funcional.
+* Toda nova demanda deve priorizar a geração de valor para o negócio.
+* Prioridades estratégicas de evolução funcional:
+  1. Inteligência Comercial;
+  2. Analytics e Indicadores;
+  3. Produtividade dos usuários;
+  4. Automações operacionais;
+  5. Inteligência Artificial aplicada ao negócio.
+* Mudanças estruturais ou na base de dados só serão permitidas com necessidade comprovada, benefício técnico/de negócio mensurável, eliminação de risco operacional crítico ou ganho notável de performance e escalabilidade.
+* As novas implementações devem priorizar recursos reutilizando a arquitetura vigente (Cockpit Comercial, DRE Comercial, CRM, Indicadores Gerenciais, Planejamento Comercial, Assistentes Inteligentes, Automações de Gestão), consumindo o Cadastro Único (`cm_clientes`) como SSOT e a camada analítica dinâmica, de forma a evitar redundância de regras de negócio.
+
+### 28.9 Qualidade e Regressão
+A partir da homologação da arquitetura, toda nova funcionalidade deverá preservar os baselines do Coffee++.
+* Antes de qualquer entrega em produção, deverão ser verificados obrigatoriamente:
+  1. **Integridade dos dados:** Garantia de consistência numérica e integridade referencial.
+  2. **Compatibilidade com o Cadastro Único (SSOT):** Respeito à sincronização lógica de `cm_clientes`.
+  3. **Compatibilidade com a camada analítica:** Consumo de dados via views unificadas sem materialização de atributos operacionais.
+  4. **Segurança:** Validação de RLS e permissões por perfil.
+  5. **Performance:** Testes sob carga real.
+  6. **Compatibilidade de APIs:** Ausência de breaking changes em rotas ativas.
+  7. **Ausência de Regressões:** Validação de fluxos ponta a ponta.
+* Nenhuma funcionalidade poderá substituir ou contornar componentes homologados quando houver extensão compatível da arquitetura existente. Toda evolução deverá privilegiar reutilização, redução de complexidade e manutenção da consistência sistêmica.
+
+
+
+
+
+
