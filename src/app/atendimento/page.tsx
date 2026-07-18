@@ -22,7 +22,7 @@ import { Users,
   Eye,
   EyeOff,
   Calendar,
-  DollarSign, Package, CheckCircle2 } from "lucide-react";
+  DollarSign, Package, CheckCircle2, Edit } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
@@ -435,75 +435,35 @@ export default function AtendimentoPage() {
       </nav>
 
       <main className="cm-main" style={{ paddingTop: 24, maxWidth: "1200px", margin: "0 auto" }}>
+        {/* AVISO DE GOVERNANÇA COMERCIAL */}
+        <div style={{ 
+          padding: "14px 18px", 
+          marginBottom: 24, 
+          borderRadius: 10, 
+          fontSize: "0.85rem", 
+          display: "flex", 
+          alignItems: "center", 
+          gap: 12, 
+          background: "rgba(184,134,11,0.08)", 
+          color: "var(--accent-gold, #b8860b)", 
+          border: "1px solid rgba(184,134,11,0.25)",
+          fontWeight: 500
+        }}>
+          <AlertCircle style={{ width: 18, height: 18, flexShrink: 0 }} />
+          <span>
+            As informações comerciais (<strong>Gerente</strong>, <strong>Rede</strong> e <strong>Canal</strong>) são administradas exclusivamente pelo <strong>Cadastro Único</strong>.
+          </span>
+        </div>
+
         {/* TOP ACTIONS */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: 24, flexWrap: "wrap", gap: 16 }}>
           <div style={{ display: "flex", gap: 12 }}>
-            {(pdvData.length === 0 && !loading) && (
-              <button 
-                onClick={handleSeed} 
-                disabled={seeding}
-                className="cm-btn-clear" 
-                style={{ background: "rgba(107,143,173,0.1)", color: "#6b8fad", border: "1px solid rgba(107,143,173,0.2)", opacity: seeding ? 0.6 : 1, cursor: seeding ? "wait" : "pointer" }}
-              >
-                {seeding ? (
-                  <><RefreshCw style={{ width: 14, height: 14, animation: "spin 1s linear infinite" }} /> Populando...</>
-                ) : (
-                  <><Download style={{ width: 14, height: 14 }} /> Popular Inicialmente</>
-                )}
-              </button>
-            )}
-            
-            <button 
-              onClick={() => importInputRef.current?.click()} 
-              disabled={importing}
-              className="cm-btn-clear" 
-              style={{ background: "rgba(34,139,34,0.1)", color: "#228b22", border: "1px solid rgba(34,139,34,0.3)", opacity: importing ? 0.5 : 1, cursor: importing ? "wait" : "pointer" }}
-            >
-              <Upload style={{ width: 14, height: 14 }} /> 
-              {importing ? "Importando..." : "Importar Clientes/Time"}
-            </button>
-            <button 
-              onClick={downloadTemplate}
-              className="cm-btn-clear" 
-              style={{ background: "rgba(107,143,173,0.1)", color: "#6b8fad", border: "1px solid rgba(107,143,173,0.2)", cursor: "pointer" }}
-            >
-              <Download style={{ width: 14, height: 14 }} /> Planilha Padrão
-            </button>
             <button 
               onClick={handleExportBase}
               className="cm-btn-clear" 
-              style={{ background: "rgba(107,143,173,0.1)", color: "#6b8fad", border: "1px solid rgba(107,143,173,0.2)", cursor: "pointer" }}
+              style={{ background: "rgba(184,134,11,0.1)", color: "var(--accent-gold)", border: "1px solid rgba(184,134,11,0.25)", cursor: "pointer" }}
             >
               <Download style={{ width: 14, height: 14 }} /> Exportar Base
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".xls,.xlsx,.xlsm,.xlsb"
-              className="hidden"
-              style={{ display: "none" }}
-              onChange={handleImportClientes}
-            />
-
-            <button 
-              onClick={handleSyncHistorical} 
-              disabled={syncing || hasChanges}
-              className="cm-btn-clear" 
-              title={hasChanges ? "Salve as alterações primeiro" : "Aplicar aos dados historicos"}
-              style={{ background: "rgba(184,134,11,0.1)", color: "#b8860b", border: "1px solid rgba(184,134,11,0.3)", opacity: (syncing || hasChanges) ? 0.5 : 1, cursor: (syncing || hasChanges) ? "not-allowed" : "pointer" }}
-            >
-              <History style={{ width: 14, height: 14 }} /> 
-              {syncing ? "Sincronizando..." : "Ler para Trás (Sincronizar Histórico)"}
-            </button>
-
-            <button 
-              onClick={handleSave} 
-              disabled={!hasChanges || saving}
-              className="cm-btn-clear" 
-              style={{ background: "var(--accent-gold)", color: "#fff", opacity: (!hasChanges || saving) ? 0.5 : 1, pointerEvents: (!hasChanges || saving) ? "none" : "auto" }}
-            >
-              <Save style={{ width: 14, height: 14 }} /> 
-              {saving ? "Salvando..." : "Salvar Alterações"}
             </button>
           </div>
         </div>
@@ -578,14 +538,14 @@ export default function AtendimentoPage() {
                      ))}
                    </select>
 
-                   {/* BOTÃO ADICIONAR */}
-                   <button 
-                     onClick={handleAddRow} 
-                     className="cm-btn-clear" 
-                     style={{ background: "var(--accent-gold)", color: "#fff", border: "none", width: "auto", margin: 0, padding: "0 16px", borderRadius: 8, display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", height: "38px", boxSizing: "border-box" }}
-                   >
-                     <Plus style={{ width: 16, height: 16 }} /> Adicionar Parceiro
-                   </button>
+                    {/* BOTÃO ADICIONAR (REDIRECIONADO PARA CADASTRO ÚNICO) */}
+                    <Link 
+                      href="/config-financeiro/cadastro" 
+                      className="cm-btn-clear" 
+                      style={{ background: "var(--accent-gold)", color: "#fff", border: "none", width: "auto", margin: 0, padding: "0 16px", borderRadius: 8, display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", height: "38px", boxSizing: "border-box", textDecoration: "none" }}
+                    >
+                      <Plus style={{ width: 16, height: 16 }} /> Cadastrar Cliente
+                    </Link>
                  </div>
 
                  {/* LINHA 2: PAGINAÇÃO */}
@@ -625,7 +585,7 @@ export default function AtendimentoPage() {
                         <th>UF</th>
                         <th>Canal</th>
                         <th>Gerente</th>
-                        <th style={{ width: 60, textAlign: "center" }}>Ação</th>
+                        <th style={{ width: 80, textAlign: "center" }}>Ação</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -645,63 +605,40 @@ export default function AtendimentoPage() {
                               {isNew ? <span style={{ color: "var(--accent-gold)", fontWeight: "bold" }}>[NOVO]</span> : item.cod_parceiro}
                             </td>
                             <td style={{ width: 220 }}>
-                              <input 
-                                className="dash-filter-select"
-                                style={{ width: "100%", background: "transparent", border: isDirty ? "1px dashed var(--accent-gold)" : "1px solid var(--border)", color: "var(--foreground)", fontWeight: 600, fontSize: "0.8rem", borderRadius: 4, padding: "4px 6px" }}
-                                value={currentNome}
-                                placeholder="Nome da Loja"
-                                onChange={(e) => handlePdvChange(item.cod_parceiro, "nome_parceiro", e.target.value)}
-                              />
+                              <span style={{ fontSize: "0.8rem", color: "var(--foreground)", fontWeight: 600 }}>
+                                {currentNome}
+                              </span>
                             </td>
                             <td style={{ width: 180 }}>
-                              <input 
-                                className="dash-filter-select"
-                                style={{ width: "100%", background: "transparent", border: isDirty ? "1px dashed var(--accent-gold)" : "1px solid var(--border)", color: "var(--foreground-secondary)", fontSize: "0.8rem", borderRadius: 4, padding: "4px 6px" }}
-                                value={currentRede || ""}
-                                placeholder="Rede"
-                                onChange={(e) => handlePdvChange(item.cod_parceiro, "rede", e.target.value)}
-                              />
+                              <span style={{ fontSize: "0.8rem", color: "var(--foreground-secondary)" }}>
+                                {currentRede || "—"}
+                              </span>
                             </td>
-                            <td style={{ width: 90 }}>
-                              <input 
-                                className="dash-filter-select"
-                                style={{ width: "100%", background: "transparent", border: isDirty ? "1px dashed var(--accent-gold)" : "1px solid var(--border)", color: "var(--foreground-muted)", fontSize: "0.8rem", textAlign: "center", borderRadius: 4, padding: "4px 6px" }}
-                                value={currentUf || ""}
-                                placeholder="UF"
-                                maxLength={2}
-                                onChange={(e) => handlePdvChange(item.cod_parceiro, "uf", e.target.value.toUpperCase())}
-                              />
+                            <td style={{ width: 90, textAlign: "center" }}>
+                              <span style={{ fontSize: "0.8rem", color: "var(--foreground-muted)" }}>
+                                {currentUf || "—"}
+                              </span>
                             </td>
                             <td style={{ width: 180 }}>
-                              <select 
-                                className="dash-filter-select"
-                                style={{ width: "100%", background: "var(--background)", color: "var(--foreground)" }}
-                                value={currentCanal || ""}
-                                onChange={(e) => handlePdvChange(item.cod_parceiro, "canal", e.target.value)}
-                              >
-                                <option value="">-- Sem canal --</option>
-                                {Array.from(new Set([...CHANNELS_LIST, item.canal].filter(Boolean))).map(c => (
-                                  <option key={c} value={c}>{c}</option>
-                                ))}
-                              </select>
+                              <span style={{ fontSize: "0.8rem", color: "var(--foreground-secondary)" }}>
+                                {currentCanal || "—"}
+                              </span>
                             </td>
                             <td style={{ width: 180 }}>
-                              <select 
-                                className="dash-filter-select"
-                                style={{ width: "100%", background: "var(--background)", color: "var(--foreground)" }}
-                                value={currentManager || ""}
-                                onChange={(e) => handlePdvChange(item.cod_parceiro, "manager", e.target.value)}
-                              >
-                                <option value="">-- Sem gerente --</option>
-                                {Array.from(new Set([...MANAGERS_LIST, item.manager].filter(Boolean))).map(m => (
-                                  <option key={m} value={m}>{m}</option>
-                                ))}
-                              </select>
+                              <span style={{ fontSize: "0.8rem", color: "var(--foreground)", fontWeight: 600 }}>
+                                {currentManager || "—"}
+                              </span>
                             </td>
                             <td style={{ textAlign: "center" }}>
-                              <button onClick={() => handleDeleteRow(item.cod_parceiro)} style={{ padding: "4px 8px", color: "var(--error-color, #ef4444)", opacity: 0.7 }} className="hover:opacity-100 hover:bg-red-500/10 rounded">
-                                <Trash2 style={{ width: 14, height: 14 }} />
-                              </button>
+                              <Link 
+                                href={`/config-financeiro/cadastro?codigo=${item.cod_parceiro}`}
+                                style={{ padding: "4px 8px", color: "var(--accent-gold, #bba16e)", display: "inline-flex", alignItems: "center", textDecoration: "none" }}
+                                className="hover:opacity-100 hover:bg-amber-500/10 rounded"
+                                title="Editar Cadastro (Cadastro Único)"
+                              >
+                                <Edit style={{ width: 14, height: 14 }} />
+                                <span style={{ fontSize: "0.75rem", marginLeft: 4, fontWeight: 500 }}>Editar</span>
+                              </Link>
                             </td>
                           </tr>
                         );
