@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { TipoInconsistencia } from "@/lib/governance/constants";
 
 export interface MetricData {
@@ -46,6 +46,27 @@ export interface Pagination {
   total_pages: number;
 }
 
+export interface RequestData {
+  id: string;
+  cliente_codigo: number;
+  uf_proposta: string | null;
+  codigo_matriz_proposto: string | null;
+  responsavel_proposto: string | null;
+  justificativa: string;
+  status: "RASCUNHO" | "PENDENTE_APROVACAO" | "APROVADO" | "REJEITADO" | "CANCELADO";
+  versao: number;
+  created_at: string;
+  created_by: string;
+  updated_at: string;
+  updated_by: string;
+  cm_clientes?: {
+    nome_parceiro: string;
+    uf: string;
+    codigo_matriz: string | null;
+    responsavel: string | null;
+  } | null;
+}
+
 interface QualityContextType {
   metrics: { loading: boolean; error: string | null; data: MetricData | null; refresh: () => Promise<void> };
   settings: {
@@ -71,6 +92,24 @@ interface QualityContextType {
     setSearch: (s: string) => void;
     setTipo: (t: string) => void;
     setSorting: (field: string) => void;
+    refresh: () => Promise<void>;
+  };
+  requests: {
+    loading: boolean;
+    error: string | null;
+    data: RequestData[] | null;
+    pagination: Pagination | null;
+    page: number;
+    limit: number;
+    search: string;
+    status: string;
+    setPage: (p: number) => void;
+    setLimit: (l: number) => void;
+    setSearch: (s: string) => void;
+    setStatus: (st: string) => void;
+    createRequest: (body: any) => Promise<any>;
+    updateRequest: (id: string, body: any) => Promise<boolean>;
+    transitionRequest: (id: string, next_status: string, notes?: string) => Promise<boolean>;
     refresh: () => Promise<void>;
   };
 }
@@ -102,6 +141,17 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
   // Sort State
   const [sortBy, setSortBy] = useState("cliente_codigo");
   const [sortDesc, setSortDesc] = useState(false);
+
+  // Requests State
+  const [reqsLoading, setReqsLoading] = useState(true);
+  const [reqsError, setReqsError] = useState<string | null>(null);
+  const [requests, setRequests] = useState<RequestData[] | null>(null);
+  const [reqsPagination, setReqsPagination] = useState<Pagination | null>(null);
+
+  const [reqPage, setReqPage] = useState(1);
+  const [reqLimit, setReqLimit] = useState(20);
+  const [reqSearch, setReqSearch] = useState("");
+  const [reqStatus, setReqStatus] = useState("");
 
   // API Call: Metrics
   const fetchMetrics = useCallback(async () => {
@@ -152,9 +202,7 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
       });
       const json = await res.json();
       if (json.success) {
-        // Refetch settings to keep local state updated
         await fetchSettings();
-        // Also refresh metrics and inconsistencies in case settings change B2C filter
         await Promise.all([fetchMetrics(), fetchInconsistencies()]);
         return true;
       } else {
@@ -191,7 +239,98 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
     }
   }, [page, limit, tipo, search]);
 
-  // Sorting Helper
+  // API Call: Fetch Requests
+  const fetchRequests = useCallback(async () => {
+    try {
+      let url = `/api/governance/requests?page=${reqPage}&limit=${reqLimit}`;
+      if (reqStatus) url += `&status=${encodeURIComponent(reqStatus)}`;
+      if (reqSearch) url += `&search=${encodeURIComponent(reqSearch)}`;
+
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Erro ao carregar solicitações.");
+      const json = await res.json();
+      if (json.success) {
+        setRequests(json.data);
+        setReqsPagination(json.meta.pagination);
+        setReqsError(null);
+      } else {
+        throw new Error(json.errors?.[0]?.message || "Erro desconhecido.");
+      }
+    } catch (err: any) {
+      setReqsError(err.message || "Falha de comunicação.");
+    } finally {
+      setReqsLoading(false);
+    }
+  }, [reqPage, reqLimit, reqStatus, reqSearch]);
+
+  // API Call: Create Request
+  const createRequest = useCallback(async (body: any): Promise<any> => {
+    try {
+      const res = await fetch("/api/governance/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchRequests();
+        return json.data;
+      } else {
+        alert(`Erro ao criar solicitação: ${json.errors?.[0]?.message || "Verifique os dados."}`);
+        return null;
+      }
+    } catch (err: any) {
+      alert(`Falha ao conectar com o servidor: ${err.message}`);
+      return null;
+    }
+  }, [fetchRequests]);
+
+  // API Call: Update Request (Draft)
+  const updateRequest = useCallback(async (id: string, body: any): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/governance/requests/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const json = await res.json();
+      if (json.success) {
+        await fetchRequests();
+        return true;
+      } else {
+        alert(`Erro ao editar rascunho: ${json.errors?.[0]?.message || "Verifique os dados."}`);
+        return false;
+      }
+    } catch (err: any) {
+      alert(`Falha ao conectar com o servidor: ${err.message}`);
+      return false;
+    }
+  }, [fetchRequests]);
+
+  // API Call: Transition Request Status
+  const transitionRequest = useCallback(async (id: string, next_status: string, notes?: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/governance/requests/${id}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ next_status, notes })
+      });
+      const json = await res.json();
+      if (json.success) {
+        // Trigger all refreshes immediately for absolute consistency
+        await Promise.all([fetchRequests(), fetchMetrics(), fetchInconsistencies()]);
+        return true;
+      } else {
+        alert(`Erro na transição: ${json.errors?.[0]?.message || "Permissão negada."}`);
+        return false;
+      }
+    } catch (err: any) {
+      alert(`Falha ao conectar com o servidor: ${err.message}`);
+      return false;
+    }
+  }, [fetchRequests, fetchMetrics, fetchInconsistencies]);
+
+  // Sorting Helper for Inconsistencies
   const setSorting = (field: string) => {
     if (sortBy === field) {
       setSortDesc(!sortDesc);
@@ -201,7 +340,7 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Sort client-side (or extend API route in future)
+  // Sort client-side
   const sortedInconsistencies = React.useMemo(() => {
     if (!inconsistencies) return null;
     return [...inconsistencies].sort((a: any, b: any) => {
@@ -218,25 +357,29 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
     });
   }, [inconsistencies, sortBy, sortDesc]);
 
-  // Polling management: 60 seconds auto-refresh (only for KPIs/Alerts)
+  // Polling management: 60 seconds auto-refresh (only for KPIs/Alerts/Requests)
   useEffect(() => {
-    // Initial fetches
     fetchMetrics();
     fetchSettings();
-  }, [fetchMetrics, fetchSettings]);
+  }, [fetchMetrics]);
 
   useEffect(() => {
     fetchInconsistencies();
   }, [fetchInconsistencies]);
 
   useEffect(() => {
+    fetchRequests();
+  }, [fetchRequests]);
+
+  useEffect(() => {
     const timer = setInterval(() => {
       fetchMetrics();
       fetchInconsistencies();
+      fetchRequests();
     }, 60000); // 60s auto refresh
 
     return () => clearInterval(timer);
-  }, [fetchMetrics, fetchInconsistencies]);
+  }, [fetchMetrics, fetchInconsistencies, fetchRequests]);
 
   const value = {
     metrics: { loading: metricsLoading, error: metricsError, data: metricsData, refresh: fetchMetrics },
@@ -259,6 +402,24 @@ export function QualityProvider({ children }: { children: React.ReactNode }) {
       setSorting,
       refresh: fetchInconsistencies,
     },
+    requests: {
+      loading: reqsLoading,
+      error: reqsError,
+      data: requests,
+      pagination: reqsPagination,
+      page: reqPage,
+      limit: reqLimit,
+      search: reqSearch,
+      status: reqStatus,
+      setPage: setReqPage,
+      setLimit: setReqLimit,
+      setSearch: setReqSearch,
+      setStatus: setReqStatus,
+      createRequest,
+      updateRequest,
+      transitionRequest,
+      refresh: fetchRequests
+    }
   };
 
   return <QualityContext.Provider value={value}>{children}</QualityContext.Provider>;
@@ -280,4 +441,10 @@ export function useGovernanceInconsistencies() {
   const ctx = useContext(QualityContext);
   if (!ctx) throw new Error("useGovernanceInconsistencies must be used within a QualityProvider");
   return ctx.inconsistencies;
+}
+
+export function useGovernanceRequests() {
+  const ctx = useContext(QualityContext);
+  if (!ctx) throw new Error("useGovernanceRequests must be used within a QualityProvider");
+  return ctx.requests;
 }

@@ -558,3 +558,28 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    867f7ef..a46c33a  main -> main
 [19/07/2026 08:34] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 13d0df6] auto-save: 19/07/2026 16:34
+ 22 files changed, 1866 insertions(+)
+ create mode 100644 src/app/admin/qualidade/components/GovernanceSettingsPanel.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityAlertsTable.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityHeader.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityKpiCards.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityTrendChart.tsx
+ create mode 100644 src/app/admin/qualidade/hooks.ts
+ create mode 100644 src/app/admin/qualidade/page.tsx
+ create mode 100644 src/app/api/governance/quality/inconsistencies/route.ts
+ create mode 100644 src/app/api/governance/quality/metrics/route.ts
+ create mode 100644 src/app/api/governance/settings/route.ts
+ create mode 100644 src/lib/governance/auth.ts
+ create mode 100644 src/lib/governance/constants.ts
+ create mode 100644 src/lib/governance/governance.ts
+ create mode 100644 src/lib/governance/logging.ts
+ create mode 100644 src/lib/governance/response.ts
+ create mode 100644 src/lib/governance/validation.ts
+ create mode 100644 supabase/migrations/20260719161607_fase3_sprint3.1_infra.sql
+ create mode 100644 supabase/migrations/20260719162039_fase3_sprint3.2_auditoria.sql
+ create mode 100644 supabase/migrations/20260719_centralize_ownership_logic.sql
+ create mode 100644 supabase/migrations/20260719_fase2_lote06_revisao_manager_uf_mapping.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   a46c33a..13d0df6  main -> main
+[19/07/2026 16:34] ✅ Alterações enviadas com sucesso para o GitHub.
