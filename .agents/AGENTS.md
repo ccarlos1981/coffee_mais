@@ -1147,3 +1147,136 @@ Caso os cenários de evolução descritos acima sejam disparados, os seguintes r
 * **Regra Soberana**: Nunca manter simultaneamente versões legadas e novas de RPCs com assinaturas compatíveis (overloading) quando essas funções são consumidas pelo frontend via PostgREST/Supabase RPC.
 * **Ações em Migrations**: Sempre que houver alteração de tipos de parâmetros em uma função, a migration correspondente deverá conter comandos explícitos de `DROP FUNCTION` para as assinaturas antigas, evitando ambiguidades de resolução de funções no Postgres.
 * **Validação de Deploy**: É obrigatório validar, antes da aprovação de qualquer deploy de banco, que existe apenas uma única assinatura ativa para cada RPC consumida pelo frontend, prevenindo erros de resolução de candidatos no gateway API Rest.
+
+---
+
+## Seção 32 — Governança Comercial e Workflows de Alteração (Fase 4)
+
+### 32.1 Regras Permanentes de Alteração de Ownership
+1. **Canal Oficial de Ownership**: Toda alteração de ownership comercial (responsável, gerente, matriz e UF) deve ocorrer exclusivamente pelo workflow oficial de solicitações da Fase 4.
+2. **Vedação de Escrita Direta**: É expressamente proibido que qualquer componente de frontend ou API execute atualizações diretas (`UPDATE`) de gerência ou UF diretamente na tabela `cm_clientes`.
+3. **Máquina de Estados**: Toda mudança de status nas solicitações deve ocorrer exclusivamente por meio da chamada à função de banco `public.transition_ownership_request()`, que valida a transição de estado da máquina.
+4. **Auditoria Obrigatória**: Toda alteração comercial homologada ou em transição deve gerar e persistir automaticamente trilhas de auditoria detalhadas na tabela `cm_audit_ownership_log`, contendo os estados anteriores e novos valores.
+5. **SSOT Como Único Validador**: A função de banco `public.calcular_responsavel_cliente` permanece como a única fonte de verdade (Single Source of Truth) para o cálculo do gerente responsável pelo cliente, não devendo haver recálculos ou fallback duplicados nas telas ou rotas de API.
+
+---
+
+## Seção 33 — Baseline Oficial da Plataforma (v1.1.0)
+
+### 33.1 Referência Arquitetural Obrigatória
+1. **Referência Permanente**: Fica homologada a Baseline Arquitetural Unificada `v1.1.0` (detalhada no arquivo `baseline_oficial_plataforma.md`) como a especificação soberana da engenharia de dados, qualidade analítica e controle cadastral do Coffee Mais.
+2. **Conformidade em Evoluções**: Qualquer novo módulo, API, dashboard ou automação a ser desenvolvido no Hub de Importação deve aderir de forma estrita e obrigatória aos princípios e componentes descritos nesta baseline.
+3. **Garantia de Não-Regressão**: Alterações nas Fases 1, 2, 3 ou 4 que violem as restrições físicas de banco de dados, RLS ou triggers de lock de status serão rejeitadas imediatamente.
+4. **Exclusões de Escopo**: Dados de homologação comercial e correções operacionais extraordinárias de TI (ex: Lote 05B) não constituem extensão permanente do modelo de dados da baseline e permanecem sob tratamento transicional.
+
+---
+
+# BASELINE ARQUITETURAL OFICIAL
+
+A Baseline Arquitetural Unificada v1.1.0 torna-se a referência obrigatória para qualquer implementação futura.
+
+Toda nova funcionalidade deverá preservar obrigatoriamente:
+- Arquitetura Aditiva;
+- Single Source of Truth (SSOT);
+- Workflow Oficial da Fase 4;
+- APIs como camada oficial de integração;
+- Auditoria obrigatória;
+- Compatibilidade retroativa.
+
+É vedado ao AG:
+- sugerir bypass da SSOT;
+- duplicar regras de negócio no frontend;
+- criar novos cálculos paralelos de ownership;
+- alterar diretamente `cm_clientes`;
+- alterar diretamente o status de `cm_ownership_requests`;
+- contornar RLS;
+- substituir componentes oficiais por implementações alternativas.
+
+Sempre que uma nova funcionalidade impactar governança comercial, o AG deverá verificar previamente a aderência à Baseline v1.1.0 antes de propor qualquer implementação.
+
+Caso uma solicitação do usuário entre em conflito com a baseline homologada, o AG deverá:
+1. identificar explicitamente o conflito;
+2. explicar qual princípio arquitetural seria violado;
+3. propor uma solução compatível com a baseline;
+4. somente sugerir alteração da arquitetura caso seja realmente necessária, caracterizando uma nova versão oficial da baseline.
+
+Mudanças incompatíveis deverão ser tratadas como evolução arquitetural formal (Baseline v1.2.0 ou superior) e nunca como alteração pontual.
+
+Esta diretriz possui caráter permanente e deverá prevalecer sobre implementações futuras, salvo substituição formal da Baseline Arquitetural Unificada.
+
+---
+
+## Seção 34 — Governança da Documentação
+
+### 34.1 Regras Permanentes de Documentação e Versionamento
+1. **Atualização da Baseline:** Toda evolução arquitetural deverá ser devidamente registrada e consolidada na Baseline Oficial.
+2. **Entregáveis Obrigatórios de Fase:** Toda fase executada no projeto deverá possuir, obrigatoriamente:
+   * **Checklist** (trilha de tarefas ativas);
+   * **Walkthrough** (evidências e documentação das entregas);
+   * **Closure Report** (relatório de encerramento homologado).
+3. **Sincronismo Obrigatório:** Nenhuma alteração estrutural poderá ser implementada em produção sem a respectiva atualização e homologação da documentação técnica correspondente.
+4. **Finalidade do Roadmap:** O Roadmap Executivo contém apenas a visão de negócio estratégica do projeto e não autoriza, por si só, qualquer tipo de implementação técnica.
+5. **Finalidade do Changelog:** O Changelog do projeto registra exclusivamente alterações arquiteturais homologadas.
+6. **Finalidade do Backlog Arquitetural:** O Backlog Arquitetural registra exclusivamente oportunidades e propostas de evolução futura do sistema, não representando sob qualquer hipótese funcionalidades aprovadas para desenvolvimento.
+
+---
+
+## Seção 35 — Governança de Implementação da Fase 6
+
+### 35.1 Regras de Planejamento e Execução da Fase 6
+1. **Documentação Oficial de Referência:** A Fase 6 possui documentação de planejamento oficial e homologada composta por:
+   * **Discovery Executivo** (`discovery_executivo_fase6.md`);
+   * **Especificação Funcional** (`documento_funcional_fase6.md`);
+   * **Arquitetura de Referência** (`arquitetura_fase6.md`);
+   * **Plano Oficial de Implementação** (`plano_implementacao_fase6.md`).
+   Estes documentos constituem a única referência técnica e conceitual soberana para qualquer desenvolvimento da Fase 6.
+2. **Rastreabilidade de Alterações:** Qualquer mudança funcional ou de arquitetura proposta para a Fase 6 durante a execução deverá ser precedida por uma revisão e atualização formal desta documentação.
+3. **Sequenciamento Obrigatório:** A implementação das sprints lógicas da Fase 6 deve seguir estritamente a sequência definida no Plano Oficial de Implementação (começando pela Sprint 6.1 e avançando sequencialmente até a Sprint 6.7). Fica proibido antecipar de forma alguma funcionalidades previstas para as sprints posteriores sem a homologação prévia da sprint corrente.
+
+### 35.2 Conclusão e Homologação Final da Fase 6
+A Fase 6 (Inteligência de Alocação e Auditoria Pós-Faturamento) está oficialmente concluída e homologada (Ata de Encerramento em 19/07/2026).
+1. **Conclusão das Sprints:** Todas as sete sprints (6.1 a 6.7) foram integralmente implementadas, testadas e validadas, cobrindo o Orquestrador, Motor de Conciliação, Motor de Auditoria, Motor de Alertas, Dashboard Executivo, Relatórios de Exportação e Caching Analítico.
+2. **Nova Baseline Oficial:** A Arquitetura de Referência e os contratos públicos da Fase 6 passam a integrar a Baseline Oficial estável do sistema Coffee Mais.
+3. **Governança de Evolução:** Qualquer alteração, refinamento ou evolução futura de conciliação ou auditoria pós-faturamento deverá ocorrer exclusivamente por meio de novas fases, RFCs (Request for Comments) ou Change Requests formais, mantendo retrocompatibilidade estrita com os contratos públicos estabelecidos.
+
+---
+
+## Seção 36 — Baseline Oficial — Conciliação Coffee++ × MyMetrics
+
+O documento "Relatório de Auditoria e Conciliação Comercial (Coffee++ × MyMetrics) v1.0" é considerado a referência oficial da auditoria financeira do projeto.
+
+Todas as conclusões nele contidas permanecem congeladas até que surja uma nova evidência objetiva proveniente do ambiente MyMetrics, tais como:
+- SQL da Question do Metabase;
+- Card utilizado pelo OnePage;
+- View utilizada;
+- Procedure;
+- Endpoint/API;
+- documentação oficial;
+- confirmação formal da equipe responsável pelo MyMetrics.
+
+Nenhuma hipótese deverá ser promovida a fato sem nova evidência.
+
+Nenhuma conclusão comprovada deverá ser alterada sem nova auditoria técnica.
+
+Qualquer futura revisão deverá:
+- criar uma nova versão do relatório (v1.1, v1.2, etc.);
+- preservar integralmente a versão 1.0;
+- registrar claramente a origem da nova evidência.
+
+---
+
+## Seção 37 — Metodologia Oficial de Conciliação Financeira
+
+A Bridge Sankhya → OnePage passa a ser a metodologia oficial de reconciliação financeira do projeto.
+
+Qualquer futura análise deverá utilizar esta sequência:
+1. Total bruto do Excel
+2. Exclusão de Parceiros Industriais
+3. Exclusão de Canceladas
+4. Exclusão de Devoluções
+5. Ajuste Residual
+6. Total OnePage
+
+Nenhuma nova bridge deverá ser criada sem nova evidência objetiva.
+
+Mudanças futuras deverão gerar nova versão (v1.1, v1.2...) preservando integralmente a v1.0.

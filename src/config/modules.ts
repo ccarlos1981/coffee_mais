@@ -155,6 +155,7 @@ export const allModules: NavigationGroup[] = [
       { key: "admin_configurar_acesso", title: "Configurar Acesso", description: "Matriz de permissões", href: "/admin/permissoes", icon: Settings, color: "from-slate-600 to-slate-800", ready: true },
       { key: "admin_usuarios", title: "Usuários", description: "Gestão de usuários", href: "/admin/usuarios", icon: Users, color: "from-slate-600 to-slate-800", ready: true },
       { key: "admin_qualidade_cadastral", title: "Qualidade Cadastral", description: "Auditoria preventiva", href: "/admin/qualidade", icon: ShieldCheck, color: "from-amber-600 to-amber-800", ready: true },
+      { key: "admin_cadastro_mestre", title: "Cadastro Mestre Comercial", description: "Redes, Matrizes e Filiais", href: "/admin/cadastro-mestre", icon: ClipboardList, color: "from-amber-500 to-yellow-600", ready: true },
       { key: "admin_logs", title: "Logs do Sistema", description: "Auditoria de ações", href: "/admin/logs", icon: History, color: "from-slate-600 to-slate-800", ready: true },
       { key: "admin_ranking_usuarios", title: "Ranking Usuários", description: "Quem mais acessa", href: "/admin/ranking-usuarios", icon: Trophy, color: "from-amber-600 to-orange-700", ready: true },
       { key: "admin_ranking_modulos", title: "Ranking Módulos", description: "Funções mais usadas", href: "/admin/ranking-modulos", icon: BarChart3, color: "from-blue-600 to-indigo-700", ready: true },
