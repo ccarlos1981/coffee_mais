@@ -3,6 +3,7 @@ import { ImportService } from "@/lib/services/import-service";
 import { requireAuth, requireApprovedProfile, requirePermission, logAuditAction, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // 5 minutes max duration for background batching on Vercel Pro
 
 export async function POST(request: NextRequest) {
   if (request.method !== "POST") {

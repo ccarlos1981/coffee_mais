@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       rede: string;
       uf: string;
       canal: string;
-      manager: string;
+      manager: string | null;
     }[] = [];
 
     for (const row of jsonData) {
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
         rede: rede ? String(rede) : "",
         uf: uf ? String(uf).toUpperCase().trim() : "",
         canal: canal ? String(canal) : "VAREJO F OUT",
-        manager: gerente ? String(gerente) : "Inside Sales",
+        manager: gerente ? String(gerente) : null,
       });
     }
 

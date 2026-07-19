@@ -1054,8 +1054,96 @@ A partir da homologação da arquitetura, toda nova funcionalidade deverá prese
   7. **Ausência de Regressões:** Validação de fluxos ponta a ponta.
 * Nenhuma funcionalidade poderá substituir ou contornar componentes homologados quando houver extensão compatível da arquitetura existente. Toda evolução deverá privilegiar reutilização, redução de complexidade e manutenção da consistência sistêmica.
 
+---
 
+## Seção 29 — Baseline Oficial — Batch Import Engine (BIE) v1
 
+### 29.1 Princípio de Execução Particionada
+A partir de 19/07/2026, com a homologação e ativação do **Batch Import Engine (BIE) v1**, toda promoção de dados de faturamento da tabela staging (`cm_faturamento_staging`) para a tabela física oficial (`cm_faturamento`) deve ocorrer obrigatoriamente através do processamento segmentado em lotes controlados (batches de tamanho parametrizado, padrão 5.000 registros).
 
+### 29.2 Proibição de Promoção Monolítica
+Fica expressamente proibido o uso de RPCs ou instruções SQL de statement único (ex.: `confirmar_importacao_faturamento(...)`) que realizem a promoção de toda a staging de uma única vez para produção. Esta restrição visa anular de forma definitiva o estouro do limite físico de `statement_timeout` da role do banco de dados (8 segundos).
 
+### 29.3 Centralização e Orquestração no Backend
+Toda a lógica de paginação, controle de offsets, cálculo de limites de lote e sequenciamento dos sub-lotes deve residir e ser orquestrada exclusivamente no backend (TypeScript/Next.js). O frontend não deve sob nenhuma circunstância gerenciar offsets ou offsets parciais de persistência. A rota do frontend apenas inicia a ação no servidor e acompanha o andamento de forma passiva através de polling de progresso.
 
+### 29.4 Preservação de Integridade e Telemetria
+Todo pipeline de importação em lotes deve garantir obrigatoriamente:
+* **Preservação de Staging e Batch ID**: Utilização de chaves de vinculação de lote (`batch_id`) padronizadas durante toda a vida do upload até a confirmação física.
+* **Auditabilidade e Telemetria**: Gravação do estado e progressão das sub-etapas na tabela `cm_sync_logs` para acompanhamento e auditoria de auditoria física.
+* **Rollback Automático**: Em caso de falha física ou lógica em qualquer batch do loop, o backend deve reverter todas as inserções parciais daquele lote em `cm_faturamento` e limpar as estruturas auxiliares automaticamente, retornando a base ao estado imediatamente anterior.
+* **Idempotência**: Garantia de re-processamento seguro de lotes idênticos sem geração de duplicidade física de dados em produção.
+
+---
+
+## Seção 30 — Baseline de Congelamento e Versionamento — Batch Import Engine v1.0.0
+
+### 30.1 Estado de Congelamento Arquitetural (Frozen)
+A partir de 19/07/2026, com o encerramento oficial da sprint, o módulo **Batch Import Engine (BIE) v1** entra em regime de **Architecture Freeze**. Nenhuma alteração de infraestrutura, rotinas de paginação, contratos de banco ou fluxos de rollback pode ser efetuada sem a emissão e aprovação prévia de uma RFC (Request for Change). Melhorias ou manutenções futuras devem preservar rigorosamente o contrato público das RPCs do BIE.
+
+### 30.2 Reutilização Mandatória
+Qualquer nova origem de importação manual ou automática de dados de faturamento (novas planilhas, integrações com Sankhya, importação de BigQuery ou novas APIs comerciais) deve reutilizar obrigatoriamente a estrutura particionada do BIE para sua persistência.
+
+### 30.3 Metadados da Versão 1.0.0
+* **Nome**: Batch Import Engine v1.0.0
+* **Data de Entrada em Produção**: 19/07/2026
+* **Status**: `PRODUCTION = ACTIVE` (Architecture Frozen)
+* **Migrations Integradas**:
+  * `supabase/migrations/20260719_batch_import_engine_functions.sql`
+* **Arquivos Principais da Aplicação**:
+  * `src/lib/services/import-service.ts` (Método `confirmImport`)
+  * `src/app/api/import/excel/confirm/route.ts` (Endpoint e duração da Vercel)
+* **RPCs Oficiais do Banco de Dados**:
+  * `public.preparar_importacao_faturamento(uuid, text)`
+  * `public.promover_lote_faturamento(uuid, integer, integer)`
+  * `public.finalizar_importacao_faturamento(uuid)`
+* **Tabela de Controle**:
+  * `public.cm_import_affected_partners`
+
+---
+
+## Seção 31 — Baseline Permanente e Roadmap do BIE v1.0.0
+
+### 31.1 Compatibilidade e Reutilização
+O **Batch Import Engine v1.0.0** passa a ser o mecanismo oficial de importação do Coffee Mais. Ele é projetado para ser compatível e reutilizado por:
+* Importação Excel.
+* Importação BigQuery.
+* Integrações futuras via API.
+* Novas origens de dados.
+* Processamento por `batch_id`.
+* Telemetria centralizada.
+* Rollback transacional.
+* Idempotência.
+
+### 31.2 Baseline Arquitetural Permanente
+A partir da liberação da versão v1.0.0, passam a ser regras permanentes de governança da arquitetura:
+1. Toda importação de faturamento comercial deverá utilizar obrigatoriamente o Batch Import Engine.
+2. É terminantemente proibida a promoção monolítica de dados da staging para `cm_faturamento`.
+3. Toda importação deverá possuir e associar um `batch_id` válido.
+4. Toda importação deverá atualizar progressivamente a tabela de telemetria `cm_sync_logs`.
+5. Toda importação deverá possuir mecanismos de rollback transacional automático em caso de exceções.
+6. Toda importação deverá preservar auditoria e telemetria física.
+7. Alterações arquiteturais neste componente somente poderão ocorrer mediante RFC formalmente aprovada.
+
+### 31.3 Critérios para Evolução Arquitetural
+O Batch Import Engine v1.0.0 entra permanentemente em modo de manutenção. Evoluções na arquitetura básica do BIE somente deverão ser consideradas caso ocorra um ou mais dos seguintes cenários de negócio ou infraestrutura:
+* crescimento significativo do volume de importações mensais;
+* necessidade comprovada de processamento distribuído;
+* necessidade de filas de execução dedicadas (ex: Inngest/BullMQ);
+* necessidade de cancelamento ou retomada automática (auto-resume) de jobs;
+* limitação de processamento comprovada da arquitetura atual em ambiente de produção.
+
+Na ausência dos cenários listados acima, qualquer nova funcionalidade ou integração deverá reutilizar o Batch Import Engine existente, preservando de forma estrita o seu contrato público e assinaturas de RPC.
+
+### 31.4 Roadmap de Evoluções Futuras (Backlog de Negócio)
+Caso os cenários de evolução descritos acima sejam disparados, os seguintes recursos secundários estão mapeados no backlog para implementação futura:
+1. **Dashboard Operacional do BIE**: Painel administrativo para monitoramento de saúde de imports.
+2. **Estimativa de Conclusão (ETA)**: Cálculo do tempo restante de execução do lote.
+3. **Métricas Históricas**: Logs estatísticos comparativos de faturamento.
+4. **Cancelamento de Importação**: Recurso para abortar e reverter a importação em tempo de execução.
+5. **Retomada Automática (Auto-Resume)**: Retomada a partir do último offset válido.
+
+### 31.5 Política de Prevenção de Sobrecarga (Overloading)
+* **Regra Soberana**: Nunca manter simultaneamente versões legadas e novas de RPCs com assinaturas compatíveis (overloading) quando essas funções são consumidas pelo frontend via PostgREST/Supabase RPC.
+* **Ações em Migrations**: Sempre que houver alteração de tipos de parâmetros em uma função, a migration correspondente deverá conter comandos explícitos de `DROP FUNCTION` para as assinaturas antigas, evitando ambiguidades de resolução de funções no Postgres.
+* **Validação de Deploy**: É obrigatório validar, antes da aprovação de qualquer deploy de banco, que existe apenas uma única assinatura ativa para cada RPC consumida pelo frontend, prevenindo erros de resolução de candidatos no gateway API Rest.

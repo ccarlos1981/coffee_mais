@@ -605,18 +605,59 @@ export class ImportService {
    */
   static async confirmImport(batchId: string, mode: "replace" | "append"): Promise<{ success: boolean; rowsPromoted: number }> {
     const startTime = Date.now();
-    await this.updateLogProgress(batchId, 95, "Persistindo na Tabela Oficial");
+    await this.updateLogProgress(batchId, 90, "Preparando Importação");
 
     try {
-      // Call transaction-safe RPC
-      const { data, error } = await supabase.rpc("confirmar_importacao_faturamento", {
+      // 1. Preparar importação (captura parceiros afetados e executa delete replace se necessário)
+      const { error: prepError } = await supabase.rpc("preparar_importacao_faturamento", {
         p_batch_id: batchId,
         p_mode: mode,
       });
+      if (prepError) throw prepError;
 
-      if (error) throw error;
+      // 2. Obter total de registros a processar na staging
+      const { count, error: countError } = await supabase
+        .from("cm_faturamento_staging")
+        .select("id", { count: "exact", head: true })
+        .eq("batch_id", batchId);
+      if (countError) throw countError;
 
-      // Refresh views (Async Enqueue)
+      const totalRows = count || 0;
+      let rowsPromoted = 0;
+      const BATCH_SIZE = 5000;
+      let offset = 0;
+
+      // 3. Processar em batches sequenciais no backend
+      while (offset < totalRows) {
+        const currentLimit = BATCH_SIZE;
+        const progressPercent = Math.min(95, Math.round(90 + (5 * (offset / totalRows))));
+        
+        await this.updateLogProgress(
+          batchId,
+          progressPercent,
+          `Persistindo na Tabela Oficial (${offset} de ${totalRows} registros)`
+        );
+
+        const { data: insertedCount, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
+          p_batch_id: batchId,
+          p_offset: offset,
+          p_limit: currentLimit,
+        });
+
+        if (promoError) throw promoError;
+
+        rowsPromoted += (insertedCount || 0);
+        offset += BATCH_SIZE;
+      }
+
+      // 4. Finalizar importação (atualiza faturamento_mensal em lote e limpa staging)
+      await this.updateLogProgress(batchId, 97, "Finalizando processamento e consolidando dados");
+      const { error: finalizeError } = await supabase.rpc("finalizar_importacao_faturamento", {
+        p_batch_id: batchId,
+      });
+      if (finalizeError) throw finalizeError;
+
+      // 5. Atualizar dashboards de forma assíncrona
       try {
         await this.updateLogProgress(batchId, 98, "Atualizando Dashboards (assíncrono)");
         await supabase.rpc("fn_enqueue_mv_refresh", { p_batch_id: batchId });
@@ -624,7 +665,6 @@ export class ImportService {
         console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
       }
 
-      const rowsPromoted = data?.rowsPromoted || 0;
       await this.updateLogProgress(
         batchId,
         100,
@@ -635,7 +675,20 @@ export class ImportService {
 
       return { success: true, rowsPromoted };
     } catch (error: any) {
-      console.error("[ImportService] Error during confirmImport:", error);
+      console.error("[ImportService] Error during confirmImport, executing rollback:", error);
+      
+      // Executar rollback completo por batch_id
+      try {
+        // Deleta dados parciais inseridos na oficial
+        await supabase.from("cm_faturamento").delete().eq("batch_id", batchId);
+        // Limpa lista temporária de parceiros afetados
+        await supabase.from("cm_import_affected_partners").delete().eq("batch_id", batchId);
+        // Limpa staging para este batch
+        await supabase.from("cm_faturamento_staging").delete().eq("batch_id", batchId);
+      } catch (rollbackErr) {
+        console.error("[ImportService] Rollback query failed:", rollbackErr);
+      }
+
       let message = "";
       if (error instanceof Error) {
         message = error.message;
@@ -653,9 +706,6 @@ export class ImportService {
           error_message: message,
         })
         .eq("id", batchId);
-
-      // Clean staging for this batch to avoid clutter
-      await supabase.from("cm_faturamento_staging").delete().eq("batch_id", batchId);
 
       throw error;
     }
