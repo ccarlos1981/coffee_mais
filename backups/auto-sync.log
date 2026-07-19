@@ -490,3 +490,71 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    b5daa11..867f7ef  main -> main
 [18/07/2026 19:34] ✅ Alterações enviadas com sucesso para o GitHub.
+[main a46c33a] auto-save: 19/07/2026 08:34
+ 70 files changed, 9044 insertions(+), 5543 deletions(-)
+ create mode 100644 CHANGELOG.md
+ delete mode 100644 scratch/apply_migration.js
+ delete mode 100644 scratch/audit_views.js
+ delete mode 100644 scratch/check_1kg_products.js
+ delete mode 100644 scratch/check_api.js
+ delete mode 100644 scratch/check_db_env.js
+ delete mode 100644 scratch/check_db_state.js
+ delete mode 100644 scratch/check_execute_readonly_query.js
+ delete mode 100644 scratch/check_id_matching.js
+ delete mode 100644 scratch/check_latest_imports.js
+ delete mode 100644 scratch/check_recent_uploads.js
+ delete mode 100644 scratch/check_rls.js
+ delete mode 100644 scratch/check_table_exists.js
+ delete mode 100644 scratch/debug_setup.js
+ delete mode 100644 scratch/find_tables.js
+ delete mode 100644 scratch/inspect_all_tops.js
+ delete mode 100644 scratch/inspect_b2b_sales.js
+ delete mode 100644 scratch/inspect_digital_top.js
+ delete mode 100644 scratch/inspect_ecommerce.js
+ delete mode 100644 scratch/inspect_inside_sales.js
+ delete mode 100644 scratch/inspect_marketplace.js
+ delete mode 100644 scratch/inspect_meli.js
+ delete mode 100644 scratch/inspect_users.js
+ delete mode 100644 scratch/list_all_tables.js
+ delete mode 100644 scratch/monitor_faturamento_imports.js
+ delete mode 100644 scratch/poll_faturamento_imports.js
+ delete mode 100644 scratch/query_filters.js
+ delete mode 100644 scratch/query_latest_logs.js
+ delete mode 100644 scratch/query_meta_network_schema.js
+ delete mode 100644 scratch/query_metas_schema.js
+ delete mode 100644 scratch/query_products_map.js
+ delete mode 100644 scratch/query_products_schema.js
+ delete mode 100644 scratch/query_sales_schema.js
+ delete mode 100644 scratch/reset_user.js
+ delete mode 100644 scratch/search_all.py
+ delete mode 100644 scratch/search_all_results.txt
+ delete mode 100644 scratch/search_supabase.py
+ delete mode 100644 scratch/simulate_valid_top.js
+ delete mode 100644 scratch/stress_test.ts
+ delete mode 100644 scratch/test_admin_insert.js
+ delete mode 100644 scratch/test_ai_governance.js
+ delete mode 100644 scratch/test_ai_learning.js
+ delete mode 100644 scratch/test_ai_shelf.js
+ delete mode 100644 scratch/test_base_update.js
+ delete mode 100644 scratch/test_client_update.js
+ delete mode 100644 scratch/test_endpoints.js
+ delete mode 100644 scratch/test_execute_sql_rpc.js
+ delete mode 100644 scratch/test_hardening_v2.ts
+ delete mode 100644 scratch/test_hardening_v2_2a.ts
+ delete mode 100644 scratch/test_june_faturamento.js
+ delete mode 100644 scratch/test_kpi_engine.js
+ delete mode 100644 scratch/test_order_engine.js
+ delete mode 100644 scratch/test_pdv_post.js
+ delete mode 100644 scratch/test_pdv_put.js
+ delete mode 100644 scratch/test_prescriptive_ai.js
+ delete mode 100644 scratch/test_price_ocr.js
+ delete mode 100644 scratch/test_route_intelligence.js
+ delete mode 100644 scratch/test_rps_api_get.js
+ delete mode 100644 scratch/test_sellout.js
+ delete mode 100644 scratch/top_inside_sales.js
+ create mode 100644 supabase/migrations/20260719_batch_import_engine_functions.sql
+ create mode 100644 supabase/migrations/20260719_optimize_dashboard_filters_and_import_triggers.sql
+ create mode 100644 supabase/migrations/20260719_prevent_manager_fallback_overwrite.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   867f7ef..a46c33a  main -> main
+[19/07/2026 08:34] ✅ Alterações enviadas com sucesso para o GitHub.
