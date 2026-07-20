@@ -1280,3 +1280,73 @@ Qualquer futura análise deverá utilizar esta sequência:
 Nenhuma nova bridge deverá ser criada sem nova evidência objetiva.
 
 Mudanças futuras deverão gerar nova versão (v1.1, v1.2...) preservando integralmente a v1.0.
+
+---
+
+## Seção 38 — Lições Aprendidas — Conciliação Financeira
+
+A reconciliação financeira entre o ERP Sankhya e o indicador Receita Mês do OnePage deverá utilizar exclusivamente a metodologia documentada na "Metodologia Oficial de Conciliação Financeira – Sankhya → OnePage (v1.0)".
+
+É vedada a criação de novas bridges ou regras alternativas sem evidências objetivas que justifiquem uma nova versão da metodologia.
+
+Qualquer alteração deverá:
+- preservar integralmente a versão anterior;
+- gerar uma nova versão (v1.1, v1.2...);
+- documentar claramente as novas evidências que motivaram a mudança.
+
+### 38.1 Lições Aprendidas de Auditoria
+- A comparação entre ERP e dashboards gerenciais deve ser realizada por meio de uma bridge financeira baseada em regras globais de negócio, e não por diferenças isoladas entre documentos fiscais.
+- A metodologia deve distinguir claramente:
+  - fatos comprovados;
+  - critérios observados;
+  - hipóteses residuais;
+  - limitações da auditoria.
+- Toda etapa da bridge deve ser:
+  - matematicamente demonstrável;
+  - auditável;
+  - mutuamente exclusiva.
+- Nenhuma conclusão deve atribuir comportamento ao MyMetrics sem evidência objetiva de sua implementação.
+
+---
+
+## Seção 39 — Baseline Oficial — Autoassociação Inteligente de Responsável Comercial (v1.0)
+
+A funcionalidade de Autoassociação Inteligente de Responsável Comercial (v1.0) passa a compor oficialmente a Baseline do Coffee++, sendo considerada estável para uso em produção.
+
+### 39.1 Componentes Estáveis
+* **Banco de Dados:** Tabelas `cm_responsavel_regras`, `cm_responsavel_sugestoes` e a RPC `fn_save_suggestions_transactional`.
+* **Domínio:** `clienteMatching.ts`, `motorResponsavel.ts`, `scoreConfianca.ts` e `autoAssociacaoService.ts`.
+* **Aplicação/UI:** Server Actions em `actions.ts` e a interface do usuário em `page.tsx`.
+
+### 39.2 Diretrizes Arquiteturais e de Governança
+* **Aprovação Manual:** Nenhuma sugestão altera o cadastro do cliente automaticamente; toda atribuição requer aprovação e confirmação humana na interface de usuário.
+* **Auditabilidade:** Todas as decisões (incluindo aprovações, rejeições com motivos, score calculado, fatores, executor e data) devem ser persistidas nas tabelas de auditoria.
+* **Desacoplamento:** A separação limpa entre os motores de pareamento (matching), de avaliação de regras e de cálculo de score de confiança deve ser permanentemente preservada.
+* **Evolução:** Alterações futuras na estrutura de banco, na lógica de negócio ou na RPC devem manter compatibilidade reversa estrita com a versão 1.0 ou resultar no lançamento de uma nova versão de especificação (v1.1+).
+
+---
+
+## Seção 40 — Baseline Oficial — Indicador de Atividade Comercial (v1.3)
+
+A funcionalidade de Indicador de Atividade Comercial no Cadastro Mestre de Clientes (v1.3) passa a compor oficialmente a Baseline do Coffee++, sendo considerada estável para uso em produção.
+
+### 40.1 Componentes Estáveis
+* **Banco de Dados:** Tabela física de cache `cm_clientes_atividade`, com índices de busca por situação e chave primária vinculada a `cm_clientes(id)`.
+* **Serviços / RPCs:** RPC isolada de cálculo `refresh_clientes_atividade()` e RPC orquestradora `refresh_materialized_views()`.
+* **Interface (UI):** Checkboxes de filtragem ("Clientes com venda e sem responsável" e "Clientes ativos sem responsável"), cards de resumo operacional superior, colunas adicionadas no grid e badges de situação coloridos.
+
+### 40.2 Diretrizes Arquiteturais e de Governança
+* **Desacoplamento de Leitura:** A UI consulta sempre a tabela mestre `cm_clientes`, realizando junção com a tabela física de cache `cm_clientes_atividade` (1:1). As consultas e a interface continuam agnósticas ao método de atualização (lote vs incremental).
+* **Refresh e Atualização:** A atualização ocorre automaticamente após sincronizações do Sankhya, importação de faturamento ou manual via RPC administrativa. Lógica de atualização e telemetria permanecem isolados na RPC de atividade.
+* **Métricas Estendidas:** Além da última compra, a tabela física de cache já preenche de forma nativa a primeira compra, o volume de faturamento e a quantidade de notas fiscais dos últimos 12 meses para futuras integrações comerciais.
+* **Timezone Safety:** Toda renderização de datas na interface deve utilizar tratamento timezone-safe para evitar inconsistências durante a renderização no servidor (SSR).
+
+### 40.3 Complemento Arquitetural — Correção RLS (v1.3.1)
+* **Sintoma de Falha Identificado:** A relação `atividade` na listagem de clientes do Supabase retornava `null` no frontend (consultando com a role `anon`), fazendo com que todos os registros exibissem a última compra como "Nunca", dias sem comprar como "-" e situação como "Sem vendas".
+* **Correção RLS Efetuada:** Ajustada a política de segurança RLS da tabela `cm_clientes_atividade`. A política única para `authenticated` foi removida e substituída por políticas granulares separadas:
+  * **SELECT:** Liberado para a role `public` (permitindo consultas tanto de usuários autenticados quanto de visitantes/anon, equiparando-se ao comportamento da tabela principal `cm_clientes`).
+  * **INSERT / UPDATE / DELETE:** Mantidos exclusivamente para a role `authenticated` (e service role) para garantir a integridade dos dados inseridos/modificados pelo sistema.
+* **Diretiva de Governança Complementar:** Para tabelas auxiliares que servem de relacionamento (`LEFT JOIN` / PostgREST) com tabelas principais (como `cm_clientes`), as políticas RLS de leitura (SELECT) devem obrigatoriamente manter compatibilidade e equivalência de acesso com a tabela pai. Isso evita que falhas silenciosas de permissão façam relacionamentos retornarem `null` no cliente.
+
+
+

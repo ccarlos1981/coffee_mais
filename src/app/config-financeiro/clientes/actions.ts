@@ -468,3 +468,77 @@ export async function importarClientesEmLote(records: any[]) {
   revalidatePath("/config-financeiro/clientes");
   return { success: true, count: records.length };
 }
+
+export async function gerarSugestoesResponsavel() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado");
+  }
+
+  const { AutoAssociacaoService } = await import("@/lib/associacao/autoAssociacaoService");
+  const res = await AutoAssociacaoService.gerarSugestoes('faturamento', 12, 90);
+  
+  revalidatePath("/config-financeiro/clientes");
+  return { success: true, stats: res.stats };
+}
+
+export async function obterSugestoesPendentes() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado");
+  }
+
+  const { data, error } = await supabase
+    .from("cm_responsavel_sugestoes")
+    .select(`
+      id,
+      cliente_id,
+      responsavel_sugerido,
+      origem_sugestao,
+      confianca,
+      motivo,
+      status,
+      created_at,
+      cliente:cm_clientes (
+        codigo,
+        nome_parceiro,
+        razao_social,
+        cidade,
+        uf
+      )
+    `)
+    .eq("status", "pendente")
+    .order("confianca", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  // Map to align with interface expected structure
+  const mapped = (data || []).map((item: any) => ({
+    ...item,
+    cliente_codigo: item.cliente?.codigo,
+    cliente_nome: item.cliente?.nome_parceiro || item.cliente?.razao_social || "Sem nome",
+    cliente_local: `${item.cliente?.cidade || ""} - ${item.cliente?.uf || ""}`
+  }));
+
+  return { success: true, sugestoes: mapped };
+}
+
+export async function processarSugestao(sugestaoId: string, acao: 'aprovar' | 'rejeitar', motivoRejeicao?: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error("Usuário não autenticado");
+  }
+
+  const executor = user.email || "Usuário";
+  const { AutoAssociacaoService } = await import("@/lib/associacao/autoAssociacaoService");
+  const res = await AutoAssociacaoService.processarSugestao(sugestaoId, acao, executor, motivoRejeicao);
+
+  revalidatePath("/config-financeiro/clientes");
+  return res;
+}
+
