@@ -614,3 +614,24 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    13d0df6..efd2ef8  main -> main
 [19/07/2026 19:48] ✅ Alterações enviadas com sucesso para o GitHub.
+[main a2450d8] auto-save: 20/07/2026 02:02
+ 20 files changed, 2218 insertions(+), 92 deletions(-)
+ create mode 100644 scratch/check_matching_stats.js
+ create mode 100644 scratch/inspect_faturamento_columns.js
+ create mode 100644 scratch/run_integration_tests.ts
+ create mode 100644 scratch/test_exact_query.js
+ create mode 100644 scratch/verify_atividade_comercial.js
+ create mode 100644 scratch/verify_auto_associacao_flow.js
+ create mode 100644 scratch/verify_canal_filter.js
+ create mode 100644 scratch/verify_db_setup.js
+ create mode 100644 src/lib/associacao/autoAssociacaoService.ts
+ create mode 100644 src/lib/associacao/clienteMatching.ts
+ create mode 100644 src/lib/associacao/motorResponsavel.ts
+ create mode 100644 src/lib/associacao/scoreConfianca.ts
+ create mode 100644 supabase/migrations/20260719_clientes_auto_association.sql
+ create mode 100644 supabase/migrations/20260720_clientes_atividade_comercial.sql
+error: RPC failed; curl 56 Recv failure: Operation timed out
+send-pack: unexpected disconnect while reading sideband packet
+fatal: the remote end hung up unexpectedly
+Everything up-to-date
+[20/07/2026 02:02] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
