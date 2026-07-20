@@ -152,7 +152,7 @@ export default function ClientesListPage() {
   const fetchClientes = async () => {
     setLoading(true);
     try {
-      let query = getFilteredQuery("*", { count: "exact" });
+      let query = getFilteredQuery(undefined, { count: "exact" });
       const from = (currentPage - 1) * itemsPerPage;
       const to = from + itemsPerPage - 1;
       
