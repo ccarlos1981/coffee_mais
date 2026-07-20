@@ -635,3 +635,9 @@ send-pack: unexpected disconnect while reading sideband packet
 fatal: the remote end hung up unexpectedly
 Everything up-to-date
 [20/07/2026 02:02] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 7d9e4ed] auto-save: 20/07/2026 11:38
+ 5 files changed, 8289 insertions(+), 44 deletions(-)
+ delete mode 100644 scratch/test_exact_query.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   a2450d8..7d9e4ed  main -> main
+[20/07/2026 11:38] ✅ Alterações enviadas com sucesso para o GitHub.

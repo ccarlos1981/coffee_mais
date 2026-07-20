@@ -590,7 +590,7 @@ export default function ClientesListPage() {
   const handleExportFull = async () => {
     setExportingFull(true);
     try {
-      let query = getFilteredQuery("*");
+      let query = getFilteredQuery(undefined);
       const { data, error } = await query.order("nome_parceiro", { ascending: true });
       
       if (error) throw error;
