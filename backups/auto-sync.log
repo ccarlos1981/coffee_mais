@@ -583,3 +583,34 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    a46c33a..13d0df6  main -> main
 [19/07/2026 16:34] ✅ Alterações enviadas com sucesso para o GitHub.
+[main efd2ef8] auto-save: 19/07/2026 19:48
+ 30 files changed, 5176 insertions(+), 17 deletions(-)
+ create mode 100644 src/app/admin/auditoria/page.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/components/RedesManager.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/components/RegionalManager.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/components/TerritoryManager.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/components/TransferFilialDialog.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/components/UnifiedSearch.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/hooks.tsx
+ create mode 100644 src/app/admin/cadastro-mestre/page.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityApprovalQueue.tsx
+ create mode 100644 src/app/admin/qualidade/components/QualityRequestsList.tsx
+ rename src/app/admin/qualidade/{hooks.ts => hooks.tsx} (59%)
+ create mode 100644 src/app/api/governance/master/conciliar/justificar/route.ts
+ create mode 100644 src/app/api/governance/master/conciliar/route.ts
+ create mode 100644 src/app/api/governance/master/redes/route.ts
+ create mode 100644 src/app/api/governance/master/regional/route.ts
+ create mode 100644 src/app/api/governance/master/territory/route.ts
+ create mode 100644 src/app/api/governance/requests/[id]/route.ts
+ create mode 100644 src/app/api/governance/requests/[id]/transition/route.ts
+ create mode 100644 src/app/api/governance/requests/route.ts
+ create mode 100644 src/lib/governance/fase6/alerts.ts
+ create mode 100644 src/lib/governance/fase6/audit.ts
+ create mode 100644 src/lib/governance/fase6/cache.ts
+ create mode 100644 src/lib/governance/fase6/conciliation.ts
+ create mode 100644 src/lib/governance/fase6/orchestrator.ts
+ create mode 100644 supabase/migrations/20260719163617_fase4_sprint4.1_workflow.sql
+ create mode 100644 supabase/migrations/20260719163812_fase4_sprint4.2_saneamento_lote05b.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   13d0df6..efd2ef8  main -> main
+[19/07/2026 19:48] ✅ Alterações enviadas com sucesso para o GitHub.

@@ -19,11 +19,18 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  CreditCard
+  CreditCard,
+  Tag
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
-import { sincronizarClientesSankhya, importarClientesEmLote } from "./actions";
+import { 
+  sincronizarClientesSankhya, 
+  importarClientesEmLote,
+  gerarSugestoesResponsavel,
+  obterSugestoesPendentes,
+  processarSugestao
+} from "./actions";
 
 const FASE_CONFIG: Record<string, { label: string; color: string; bgColor: string; borderColor: string; icon: string }> = {
   comercial: { label: "Comercial", color: "text-amber-500", bgColor: "bg-amber-500/10", borderColor: "border-amber-500/20", icon: "📋" },
@@ -43,6 +50,8 @@ export default function ClientesListPage() {
   const [filterFase, setFilterFase] = useState<string | null>(null);
   const [filterCondicao, setFilterCondicao] = useState<string>("todos");
   const [uniqueCondicoes, setUniqueCondicoes] = useState<string[]>([]);
+  const [filterCanal, setFilterCanal] = useState<string>("todos");
+  const [uniqueCanais, setUniqueCanais] = useState<string[]>([]);
 
   const [phaseCounts, setPhaseCounts] = useState({
     comercial: 0,
@@ -55,7 +64,22 @@ export default function ClientesListPage() {
   const [importing, setImporting] = useState(false);
   const [exportingLight, setExportingLight] = useState(false);
   const [exportingFull, setExportingFull] = useState(false);
+  
+  // Sugestoes State
+  const [sugestoesModalOpen, setSugestoesModalOpen] = useState(false);
+  const [sugestoesList, setSugestoesList] = useState<any[]>([]);
+  const [loadingSugestoes, setLoadingSugestoes] = useState(false);
+  const [sugestoesStats, setSugestoesStats] = useState<any>(null);
 
+  // Atividade State e Filtros
+  const [filterComVendaSemResponsavel, setFilterComVendaSemResponsavel] = useState(false);
+  const [filterAtivosSemResponsavel, setFilterAtivosSemResponsavel] = useState(false);
+  const [activityStats, setActivityStats] = useState({
+    ativosSemResp: 0,
+    atencaoSemResp: 0,
+    inativosSemResp: 0,
+    semVendas: 0
+  });
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
@@ -64,8 +88,15 @@ export default function ClientesListPage() {
   // Detail Modal State
   const [selectedClient, setSelectedClient] = useState<any | null>(null);
 
-  const getFilteredQuery = (selectStr = "*", countOptions?: any) => {
-    let query = supabase.from("cm_clientes").select(selectStr, countOptions);
+  const getFilteredQuery = (selectStr?: string, countOptions?: any) => {
+    let defaultSelect = "*, atividade:cm_clientes_atividade(*)";
+    const needsInner = filterComVendaSemResponsavel || filterAtivosSemResponsavel;
+    if (needsInner) {
+      defaultSelect = "*, atividade:cm_clientes_atividade!inner(*)";
+    }
+
+    const select = selectStr ? selectStr : defaultSelect;
+    let query = supabase.from("cm_clientes").select(select, countOptions);
 
     if (filterFase !== null) {
       query = query.eq("fase", filterFase);
@@ -76,6 +107,14 @@ export default function ClientesListPage() {
         query = query.is("condicao_pagamento", null);
       } else {
         query = query.eq("condicao_pagamento", filterCondicao);
+      }
+    }
+
+    if (filterCanal !== "todos") {
+      if (filterCanal === "sem_canal") {
+        query = query.is("tipo_parceiro", null);
+      } else {
+        query = query.eq("tipo_parceiro", filterCanal);
       }
     }
 
@@ -91,6 +130,20 @@ export default function ClientesListPage() {
         orString += `,codigo.eq.${codeVal}`;
       }
       query = query.or(orString);
+    }
+
+    // Filtro: Mostrar somente clientes COM venda e SEM responsável
+    if (filterComVendaSemResponsavel) {
+      query = query
+        .or("responsavel.is.null,responsavel.eq.,responsavel.eq.Não associado")
+        .not("atividade.ultima_compra", "is", null);
+    }
+
+    // Filtro: Mostrar somente clientes ativos sem responsável
+    if (filterAtivosSemResponsavel) {
+      query = query
+        .or("responsavel.is.null,responsavel.eq.,responsavel.eq.Não associado")
+        .eq("atividade.situacao_comercial", "Ativo");
     }
 
     return query;
@@ -131,9 +184,15 @@ export default function ClientesListPage() {
     try {
       const phases = ["comercial", "financeiro", "operacoes", "concluido"] as const;
       const promises = phases.map(async (phase) => {
+        let selectStr = "id";
+        const needsInner = filterComVendaSemResponsavel || filterAtivosSemResponsavel;
+        if (needsInner) {
+          selectStr = "id, atividade:cm_clientes_atividade!inner(ultima_compra, situacao_comercial)";
+        }
+        
         let query = supabase
           .from("cm_clientes")
-          .select("id", { count: "exact", head: true })
+          .select(selectStr, { count: "exact", head: true })
           .eq("fase", phase);
 
         if (filterCondicao !== "todos") {
@@ -141,6 +200,14 @@ export default function ClientesListPage() {
             query = query.is("condicao_pagamento", null);
           } else {
             query = query.eq("condicao_pagamento", filterCondicao);
+          }
+        }
+
+        if (filterCanal !== "todos") {
+          if (filterCanal === "sem_canal") {
+            query = query.is("tipo_parceiro", null);
+          } else {
+            query = query.eq("tipo_parceiro", filterCanal);
           }
         }
 
@@ -158,6 +225,18 @@ export default function ClientesListPage() {
           query = query.or(orString);
         }
 
+        if (filterComVendaSemResponsavel) {
+          query = query
+            .or("responsavel.is.null,responsavel.eq.,responsavel.eq.Não associado")
+            .not("atividade.ultima_compra", "is", null);
+        }
+
+        if (filterAtivosSemResponsavel) {
+          query = query
+            .or("responsavel.is.null,responsavel.eq.,responsavel.eq.Não associado")
+            .eq("atividade.situacao_comercial", "Ativo");
+        }
+
         const { count } = await query;
         return { phase, count: count || 0 };
       });
@@ -173,7 +252,6 @@ export default function ClientesListPage() {
     }
   };
 
-  // Carregar condições de pagamento únicas no montante
   useEffect(() => {
     const fetchCondicoes = async () => {
       const { data } = await supabase
@@ -183,19 +261,77 @@ export default function ClientesListPage() {
         setUniqueCondicoes(data.map((r: any) => r.condicao_pagamento));
       }
     };
+    
+    const fetchCanais = async () => {
+      const { data } = await supabase
+        .from("cm_clientes")
+        .select("tipo_parceiro")
+        .not("tipo_parceiro", "is", null)
+        .not("tipo_parceiro", "eq", "");
+      if (data) {
+        const unique = Array.from(new Set(data.map((r: any) => r.tipo_parceiro))).filter(Boolean) as string[];
+        setUniqueCanais(unique.sort());
+      }
+    };
+
     fetchCondicoes();
+    fetchCanais();
   }, []);
 
-  // Recarregar contagens das abas e dados quando os filtros mudarem
   useEffect(() => {
     fetchPhaseCounts();
-  }, [searchGeneral, searchLocal, filterCondicao]);
+  }, [searchGeneral, searchLocal, filterCondicao, filterComVendaSemResponsavel, filterAtivosSemResponsavel, filterCanal]);
 
   useEffect(() => {
     fetchClientes();
-  }, [currentPage, filterFase, searchGeneral, searchLocal, filterCondicao]);
+  }, [currentPage, filterFase, searchGeneral, searchLocal, filterCondicao, filterComVendaSemResponsavel, filterAtivosSemResponsavel, filterCanal]);
 
-  // Inline edit handler
+  const fetchActivityStats = async () => {
+    try {
+      const selectStr = filterComVendaSemResponsavel || filterAtivosSemResponsavel
+        ? "responsavel, atividade:cm_clientes_atividade!inner(situacao_comercial)"
+        : "responsavel, atividade:cm_clientes_atividade(situacao_comercial)";
+
+      const { data, error } = await getFilteredQuery(selectStr);
+      if (error) throw error;
+      
+      let ativosSemResp = 0;
+      let atencaoSemResp = 0;
+      let inativosSemResp = 0;
+      let semVendas = 0;
+
+      (data || []).forEach((c: any) => {
+        const hasNoResp = !c.responsavel || c.responsavel === "Não associado" || c.responsavel === "";
+        const sit = c.atividade?.situacao_comercial || "Sem vendas";
+        
+        if (sit === "Ativo" && hasNoResp) {
+          ativosSemResp++;
+        } else if (sit === "Atenção" && hasNoResp) {
+          atencaoSemResp++;
+        } else if (sit === "Inativo" && hasNoResp) {
+          inativosSemResp++;
+        }
+        
+        if (sit === "Sem vendas") {
+          semVendas++;
+        }
+      });
+
+      setActivityStats({
+        ativosSemResp,
+        atencaoSemResp,
+        inativosSemResp,
+        semVendas
+      });
+    } catch (err) {
+      console.error("Erro ao calcular indicadores de atividade:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchActivityStats();
+  }, [filterFase, searchGeneral, searchLocal, filterCondicao, filterComVendaSemResponsavel, filterAtivosSemResponsavel, filterCanal]);
+
   const handleMatrizChange = (idx: number, newVal: string) => {
     const updated = [...clientes];
     updated[idx].matriz = newVal;
@@ -239,7 +375,6 @@ export default function ClientesListPage() {
     }
   };
 
-  // Sync Action
   const handleSyncSankhya = async () => {
     setSyncing(true);
     try {
@@ -260,7 +395,6 @@ export default function ClientesListPage() {
     }
   };
 
-  // Import Action
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -281,7 +415,6 @@ export default function ClientesListPage() {
           return;
         }
 
-        // Mapear cabeçalhos de todos os campos
         const headerMapping: Record<string, string> = {
           "código do cliente": "codigo",
           "cod. parceiro": "codigo",
@@ -345,7 +478,6 @@ export default function ClientesListPage() {
           if (headerMapping[cleanCol]) {
             mappedCols[col] = headerMapping[cleanCol];
           } else {
-            // Tenta match parcial
             for (const [key, dbField] of Object.entries(headerMapping)) {
               if (cleanCol.includes(key) || key.includes(cleanCol)) {
                 mappedCols[col] = dbField;
@@ -355,7 +487,6 @@ export default function ClientesListPage() {
           }
         });
 
-        // Verificar colunas obrigatórias
         const targetFields = Object.values(mappedCols);
         if (!targetFields.includes("codigo")) {
           toast.error("Coluna 'Código do Cliente' ou 'Cód. Parceiro' é obrigatória.");
@@ -412,7 +543,6 @@ export default function ClientesListPage() {
     reader.readAsBinaryString(file);
   };
 
-  // Export Light Action (Only columns displayed on screen)
   const handleExportLight = async () => {
     setExportingLight(true);
     try {
@@ -457,7 +587,6 @@ export default function ClientesListPage() {
     }
   };
 
-  // Export Full Action (All columns)
   const handleExportFull = async () => {
     setExportingFull(true);
     try {
@@ -528,7 +657,6 @@ export default function ClientesListPage() {
     }
   };
 
-  // Export complete template with all fields
   const handleDownloadTemplate = () => {
     const headers = [
       "Código do Cliente", "CNPJ", "Nome do Parceiro", "Razão Social", 
@@ -550,13 +678,64 @@ export default function ClientesListPage() {
     toast.success("Modelo completo baixado!");
   };
 
+  const handleSugestoesClick = async () => {
+    setLoadingSugestoes(true);
+    try {
+      const res = await gerarSugestoesResponsavel();
+      if (res.success && res.stats) {
+        setSugestoesStats(res.stats);
+        
+        const listRes = await obterSugestoesPendentes();
+        if (listRes.success) {
+          setSugestoesList(listRes.sugestoes);
+        }
+        
+        setSugestoesModalOpen(true);
+        toast.success("Sugestões comerciais geradas com sucesso!");
+        fetchClientes();
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao gerar sugestões: " + (err.message || "Erro desconhecido"));
+    } finally {
+      setLoadingSugestoes(false);
+    }
+  };
+
+  const handleProcessar = async (sugestaoId: string, acao: 'aprovar' | 'rejeitar') => {
+    try {
+      let motivoRejeicao = "";
+      if (acao === 'rejeitar') {
+        const reason = prompt("Digite o motivo da rejeição (opcional):");
+        if (reason === null) return;
+        motivoRejeicao = reason;
+      }
+
+      const res = await processarSugestao(sugestaoId, acao, motivoRejeicao);
+      if (res.success) {
+        toast.success(acao === 'aprovar' ? "Sugestão aprovada!" : "Sugestão rejeitada!");
+        setSugestoesList(prev => prev.filter(item => item.id !== sugestaoId));
+        setSugestoesStats((prev: any) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            pendentesRevisao: Math.max(0, prev.pendentesRevisao - 1)
+          };
+        });
+        fetchClientes();
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Erro ao processar sugestão: " + (err.message || "Erro desconhecido"));
+    }
+  };
+
   const totalPages = Math.ceil(totalItems / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchGeneral, searchLocal, filterFase, filterCondicao]);
+  }, [searchGeneral, searchLocal, filterFase, filterCondicao, filterComVendaSemResponsavel, filterAtivosSemResponsavel, filterCanal]);
 
   const totalClients = phaseCounts.comercial + phaseCounts.financeiro + phaseCounts.operacoes + phaseCounts.concluido;
 
@@ -564,7 +743,6 @@ export default function ClientesListPage() {
     <div className="min-h-screen bg-background text-foreground p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Breadcrumb / Back */}
         <button 
           onClick={() => router.back()} 
           className="flex items-center gap-2 text-foreground-secondary hover:text-foreground transition-colors font-medium text-sm w-fit"
@@ -573,7 +751,6 @@ export default function ClientesListPage() {
           Voltar
         </button>
 
-        {/* Header Section */}
         <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -586,7 +763,6 @@ export default function ClientesListPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-            {/* Cadastrar Cliente Button */}
             <button
               onClick={() => router.push("/config-financeiro/cadastro")}
               className="flex-1 md:flex-none h-10 px-4 bg-accent-gold hover:brightness-110 text-white rounded-lg flex items-center justify-center gap-2 transition-all font-bold text-sm shadow-[0_4px_14px_rgba(200,169,110,0.3)]"
@@ -595,7 +771,6 @@ export default function ClientesListPage() {
               Cadastrar Cliente
             </button>
 
-            {/* Sync Sankhya Button */}
             <button
               onClick={handleSyncSankhya}
               disabled={syncing}
@@ -605,7 +780,19 @@ export default function ClientesListPage() {
               Sincronizar Sankhya
             </button>
 
-            {/* Import Button */}
+            <button
+              onClick={handleSugestoesClick}
+              disabled={loadingSugestoes}
+              className="flex-1 md:flex-none h-10 px-4 bg-background-elevated border border-border hover:border-accent-gold/50 text-foreground rounded-lg flex items-center justify-center gap-2 transition-all font-semibold text-sm disabled:opacity-50"
+            >
+              {loadingSugestoes ? (
+                <Loader2 className="w-4 h-4 animate-spin text-accent-gold" />
+              ) : (
+                <Users className="w-4 h-4 text-accent-gold" />
+              )}
+              Sugerir Responsáveis
+            </button>
+
             <button
               onClick={() => document.getElementById('import-file')?.click()}
               disabled={importing}
@@ -622,7 +809,6 @@ export default function ClientesListPage() {
               onChange={handleImportExcel}
             />
 
-            {/* Template Button */}
             <button
               onClick={handleDownloadTemplate}
               className="h-10 px-3 bg-background-elevated border border-border hover:border-accent-gold/30 text-foreground rounded-lg flex items-center justify-center gap-1.5 transition-all text-xs font-semibold"
@@ -632,7 +818,6 @@ export default function ClientesListPage() {
               Modelo Completo
             </button>
             
-            {/* Exp. Light Button */}
             <button
               onClick={handleExportLight}
               disabled={exportingLight || totalItems === 0}
@@ -642,7 +827,6 @@ export default function ClientesListPage() {
               Exp. Light
             </button>
 
-            {/* Exp. Full Button */}
             <button
               onClick={handleExportFull}
               disabled={exportingFull || totalItems === 0}
@@ -654,7 +838,6 @@ export default function ClientesListPage() {
           </div>
         </header>
 
-        {/* Phase Tabs */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <button
             onClick={() => setFilterFase(null)}
@@ -680,65 +863,143 @@ export default function ClientesListPage() {
           })}
         </div>
 
-        {/* Filters */}
-        <div className="bg-background-card border border-border rounded-xl p-4 flex flex-col md:flex-row gap-4 shadow-sm">
-          <div className="flex-1 space-y-1.5">
-            <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-              Busca Geral
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
-              <input
-                type="text"
-                value={searchGeneral}
-                onChange={(e) => setSearchGeneral(e.target.value)}
-                placeholder="Código, Nome, Matriz ou Responsável..."
-                className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
-              />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-background-card border border-border/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">Ativos Sem Resp.</span>
+            <div className="flex items-baseline justify-between mt-2">
+              <span className="text-2xl font-extrabold text-green-500 font-mono">{activityStats.ativosSemResp}</span>
+              <span className="text-xs text-green-500/80 bg-green-500/10 px-1.5 py-0.5 rounded-full font-bold">🟢 Ativo</span>
             </div>
           </div>
-          <div className="flex-1 space-y-1.5">
-            <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-              Localização (Cidade / UF)
-            </label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
-              <input
-                type="text"
-                value={searchLocal}
-                onChange={(e) => setSearchLocal(e.target.value)}
-                placeholder="Ex: Belo Horizonte, SP, RS..."
-                className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
-              />
+          <div className="bg-background-card border border-border/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">Atenção Sem Resp.</span>
+            <div className="flex items-baseline justify-between mt-2">
+              <span className="text-2xl font-extrabold text-amber-500 font-mono">{activityStats.atencaoSemResp}</span>
+              <span className="text-xs text-amber-500/80 bg-amber-500/10 px-1.5 py-0.5 rounded-full font-bold">🟡 Atenção</span>
             </div>
           </div>
-          <div className="flex-1 space-y-1.5">
-            <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
-              Condição de Pagamento
-            </label>
-            <div className="relative">
-              <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
-              <select
-                value={filterCondicao}
-                onChange={(e) => setFilterCondicao(e.target.value)}
-                className="w-full bg-background border border-border rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors appearance-none cursor-pointer text-foreground"
-              >
-                <option value="todos">Todas as Condições</option>
-                <option value="sem_condicao">Sem Condição</option>
-                {uniqueCondicoes.map(cond => (
-                  <option key={cond} value={cond}>{cond}</option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-foreground-dim">
-                <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                </svg>
-              </div>
+          <div className="bg-background-card border border-border/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">Inativos Sem Resp.</span>
+            <div className="flex items-baseline justify-between mt-2">
+              <span className="text-2xl font-extrabold text-red-500 font-mono">{activityStats.inativosSemResp}</span>
+              <span className="text-xs text-red-500/80 bg-red-500/10 px-1.5 py-0.5 rounded-full font-bold">🔴 Inativo</span>
+            </div>
+          </div>
+          <div className="bg-background-card border border-border/60 rounded-xl p-4 shadow-sm flex flex-col justify-between">
+            <span className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">Sem Vendas</span>
+            <div className="flex items-baseline justify-between mt-2">
+              <span className="text-2xl font-extrabold text-foreground-secondary font-mono">{activityStats.semVendas}</span>
+              <span className="text-xs text-foreground-secondary bg-foreground-secondary/15 px-1.5 py-0.5 rounded-full font-bold">⚪ Sem vendas</span>
             </div>
           </div>
         </div>
 
-        {/* Listing Table */}
+        <div className="bg-background-card border border-border rounded-xl p-4 flex flex-col gap-4 shadow-sm">
+          <div className="flex flex-col md:flex-row gap-4 w-full">
+            <div className="flex-1 space-y-1.5">
+              <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                Busca Geral
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
+                <input
+                  type="text"
+                  value={searchGeneral}
+                  onChange={(e) => setSearchGeneral(e.target.value)}
+                  placeholder="Código, Nome, Matriz ou Responsável..."
+                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                />
+              </div>
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                Localização (Cidade / UF)
+              </label>
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
+                <input
+                  type="text"
+                  value={searchLocal}
+                  onChange={(e) => setSearchLocal(e.target.value)}
+                  placeholder="Ex: Belo Horizonte, SP, RS..."
+                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors"
+                />
+              </div>
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                Condição de Pagamento
+              </label>
+              <div className="relative">
+                <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
+                <select
+                  value={filterCondicao}
+                  onChange={(e) => setFilterCondicao(e.target.value)}
+                  className="w-full bg-background border border-border rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors appearance-none cursor-pointer text-foreground"
+                >
+                  <option value="todos">Todas as Condições</option>
+                  <option value="sem_condicao">Sem Condição</option>
+                  {uniqueCondicoes.map(cond => (
+                    <option key={cond} value={cond}>{cond}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-foreground-dim">
+                  <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-1 space-y-1.5">
+              <label className="text-xs font-semibold text-foreground-secondary uppercase tracking-wider">
+                Canal / Tipo de Parceiro
+              </label>
+              <div className="relative">
+                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-dim" />
+                <select
+                  value={filterCanal}
+                  onChange={(e) => setFilterCanal(e.target.value)}
+                  className="w-full bg-background border border-border rounded-lg pl-9 pr-8 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors appearance-none cursor-pointer text-foreground"
+                >
+                  <option value="todos">Todos os Canais</option>
+                  <option value="sem_canal">Sem Canal</option>
+                  {uniqueCanais.map(canal => (
+                    <option key={canal} value={canal}>{canal}</option>
+                  ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-foreground-dim">
+                  <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex flex-wrap gap-6 pt-2 border-t border-border/40">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
+              <input
+                type="checkbox"
+                checked={filterComVendaSemResponsavel}
+                onChange={(e) => setFilterComVendaSemResponsavel(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-accent-gold focus:ring-accent-gold/30 accent-accent-gold"
+              />
+              Mostrar somente clientes COM venda e SEM responsável
+            </label>
+            
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-foreground select-none">
+              <input
+                type="checkbox"
+                checked={filterAtivosSemResponsavel}
+                onChange={(e) => setFilterAtivosSemResponsavel(e.target.checked)}
+                className="w-4 h-4 rounded border-border text-accent-gold focus:ring-accent-gold/30 accent-accent-gold"
+              />
+              Mostrar somente clientes ativos sem responsável
+            </label>
+          </div>
+        </div>
+
         <div className="bg-background-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm whitespace-nowrap">
@@ -751,6 +1012,9 @@ export default function ClientesListPage() {
                   <th className="px-3.5 py-3">Cond. Pagamento</th>
                   <th className="px-3.5 py-3 text-center">UF</th>
                   <th className="px-3.5 py-3">Responsável</th>
+                  <th className="px-3.5 py-3">Última Compra</th>
+                  <th className="px-3.5 py-3">Dias sem Comprar</th>
+                  <th className="px-3.5 py-3 text-center">Situação</th>
                   <th className="px-3.5 py-3">Fase</th>
                   <th className="px-3.5 py-3 text-center">Status</th>
                 </tr>
@@ -758,14 +1022,14 @@ export default function ClientesListPage() {
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="px-3.5 py-12 text-center text-foreground-secondary">
+                    <td colSpan={12} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-accent-gold" />
                       Carregando carteira de clientes...
                     </td>
                   </tr>
                 ) : clientes.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3.5 py-12 text-center text-foreground-secondary">
+                    <td colSpan={12} className="px-3.5 py-12 text-center text-foreground-secondary">
                       <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 opacity-20" />
                       <p className="text-base font-medium text-foreground">Nenhum cliente encontrado.</p>
                       <p className="text-sm mt-1">Experimente mudar o filtro de busca ou sincronizar com o Sankhya.</p>
@@ -780,12 +1044,10 @@ export default function ClientesListPage() {
                         onClick={() => setSelectedClient(cliente)}
                         className="hover:bg-background-elevated/50 transition-colors cursor-pointer group"
                       >
-                        {/* Código do Cliente */}
                         <td className="px-3.5 py-3 font-semibold text-foreground font-mono">
                           #{cliente.codigo || "-"}
                         </td>
                         
-                        {/* Nome do Cliente */}
                         <td className="px-3.5 py-3">
                           <div className="font-semibold text-foreground max-w-[180px] xl:max-w-[240px] truncate" title={cliente.nome_parceiro}>
                             {cliente.nome_parceiro || cliente.razao_social || "Sem nome"}
@@ -793,12 +1055,10 @@ export default function ClientesListPage() {
                           <div className="text-xs text-foreground-secondary max-w-[180px] xl:max-w-[240px] truncate">{cliente.cidade || "-"}</div>
                         </td>
                         
-                        {/* Código da Matriz */}
                         <td className="px-3.5 py-3 font-mono text-foreground font-semibold">
                           {cliente.codigo_matriz || <span className="text-foreground-secondary italic text-xs font-normal">Sem código</span>}
                         </td>
                         
-                        {/* Nome da Matriz (Input Inline Edit) */}
                         <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="text"
@@ -815,7 +1075,6 @@ export default function ClientesListPage() {
                           />
                         </td>
 
-                        {/* Condição de Pagamento */}
                         <td className="px-3.5 py-3">
                           {cliente.condicao_pagamento ? (
                             <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 text-xs font-bold border border-purple-500/20">
@@ -826,19 +1085,61 @@ export default function ClientesListPage() {
                           )}
                         </td>
                         
-                        {/* UF */}
                         <td className="px-3.5 py-3 text-center font-bold text-foreground">
                           {cliente.uf || cliente.cidade?.split("-")?.[1]?.trim() || "-"}
                         </td>
                         
-                        {/* Responsável */}
                         <td className="px-3.5 py-3 font-medium text-foreground">
                           {cliente.responsavel || (
                             <span className="text-foreground-secondary italic text-xs font-normal">Não associado</span>
                           )}
                         </td>
-                        
-                        {/* Fase */}
+
+                        <td className="px-3.5 py-3 font-mono text-foreground text-xs">
+                          {cliente.atividade?.ultima_compra ? (
+                            (() => {
+                              const parts = cliente.atividade.ultima_compra.split('-');
+                              return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : cliente.atividade.ultima_compra;
+                            })()
+                          ) : (
+                            <span className="text-foreground-secondary italic text-xs font-normal">Nunca</span>
+                          )}
+                        </td>
+
+                        <td className="px-3.5 py-3 font-mono text-foreground text-xs">
+                          {cliente.atividade?.dias_sem_comprar !== null && cliente.atividade?.dias_sem_comprar !== undefined ? (
+                            `${cliente.atividade.dias_sem_comprar} dias`
+                          ) : (
+                            <span className="text-foreground-secondary font-normal">—</span>
+                          )}
+                        </td>
+
+                        <td className="px-3.5 py-3 text-center">
+                          {(() => {
+                            const sit = cliente.atividade?.situacao_comercial || 'Sem vendas';
+                            let badgeColor = "bg-foreground-secondary/15 text-foreground-secondary border-foreground-secondary/20";
+                            let dotColor = "bg-foreground-secondary";
+                            
+                            if (sit === "Ativo") {
+                              badgeColor = "bg-green-500/10 text-green-500 border-green-500/20";
+                              dotColor = "bg-green-500";
+                            } else if (sit === "Atenção") {
+                              badgeColor = "bg-amber-500/10 text-amber-500 border-amber-500/20";
+                              dotColor = "bg-amber-500";
+                            } else if (sit === "Inativo") {
+                              badgeColor = "bg-red-500/10 text-red-500 border-red-500/20";
+                              dotColor = "bg-red-500";
+                            }
+
+                            return (
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${badgeColor}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
+                                {sit}
+                              </span>
+                            );
+                          })()}
+                        </td>
+
                         <td className="px-3.5 py-3">
                           {(() => {
                             const f = cliente.fase || 'comercial';
@@ -852,7 +1153,6 @@ export default function ClientesListPage() {
                           })()}
                         </td>
 
-                        {/* Status */}
                         <td 
                           className="px-3.5 py-3 text-center" 
                           onClick={(e) => {
@@ -1179,6 +1479,159 @@ export default function ClientesListPage() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Sugestões de Responsáveis */}
+        {sugestoesModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div 
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm transition-opacity duration-300"
+              onClick={() => setSugestoesModalOpen(false)}
+            />
+            
+            {/* Modal Body */}
+            <div className="relative w-full max-w-4xl bg-background border border-border rounded-2xl overflow-hidden shadow-2xl z-10 flex flex-col max-h-[85vh]">
+              {/* Header */}
+              <div className="bg-background-elevated px-6 py-4 border-b border-border flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-accent-gold/10 flex items-center justify-center border border-accent-gold/20">
+                    <Users className="w-5 h-5 text-accent-gold" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-foreground">Autoassociação de Responsáveis Comerciais</h3>
+                    <p className="text-xs text-foreground-secondary">
+                      Preview e validação de sugestões geradas a partir do histórico de faturamento e base de atendimento
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSugestoesModalOpen(false)}
+                  className="p-1.5 hover:bg-background rounded-lg text-foreground-secondary hover:text-foreground transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Statistics Grid */}
+              {sugestoesStats && (
+                <div className="bg-background-elevated/40 border-b border-border p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+                  <div className="bg-background border border-border/60 rounded-xl p-3">
+                    <span className="text-xs text-foreground-secondary block">Clientes Analisados</span>
+                    <span className="text-lg font-bold text-foreground font-mono">{sugestoesStats.analisados}</span>
+                  </div>
+                  <div className="bg-background border border-border/60 rounded-xl p-3">
+                    <span className="text-xs text-foreground-secondary block">{"Auto-associados (>=90%)"}</span>
+                    <span className="text-lg font-bold text-green-500 font-mono">{sugestoesStats.autoSugeridos}</span>
+                  </div>
+                  <div className="bg-background border border-border/60 rounded-xl p-3">
+                    <span className="text-xs text-foreground-secondary block">Pendentes de Revisão</span>
+                    <span className="text-lg font-bold text-amber-500 font-mono">{sugestoesStats.pendentesRevisao}</span>
+                  </div>
+                  <div className="bg-background border border-border/60 rounded-xl p-3">
+                    <span className="text-xs text-foreground-secondary block">Sem Correspondência</span>
+                    <span className="text-lg font-bold text-foreground-secondary font-mono">{sugestoesStats.semCorrespondencia}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Scrollable details */}
+              <div className="p-6 space-y-6 overflow-y-auto flex-1 text-sm leading-relaxed">
+                {sugestoesList.length === 0 ? (
+                  <div className="py-12 text-center text-foreground-secondary">
+                    <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                    <p className="text-base font-semibold text-foreground">Nenhuma sugestão pendente para revisão manual.</p>
+                    <p className="text-xs mt-1">Todos os clientes qualificados possuem responsáveis ou foram auto-associados.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-accent-gold text-xs uppercase tracking-wider border-b border-border pb-1">
+                      Sugestões com Baixa Confiança (Revisão Manual)
+                    </h4>
+                    
+                    <div className="space-y-3">
+                      {sugestoesList.map((item) => {
+                        let parsedMotivo: any = {};
+                        try {
+                          parsedMotivo = JSON.parse(item.motivo);
+                        } catch(e) {}
+
+                        return (
+                          <div key={item.id} className="p-4 bg-background-elevated/40 border border-border rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:border-border/80 transition-all">
+                            <div className="space-y-1.5 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-mono font-bold text-foreground">#{item.cliente_codigo}</span>
+                                <span className="font-semibold text-foreground">{item.cliente_nome}</span>
+                                <span className="text-xs text-foreground-secondary font-mono">({item.cliente_local})</span>
+                              </div>
+                              
+                              <div className="text-xs space-y-1 text-foreground-secondary">
+                                <p>
+                                  <span className="font-semibold text-foreground-secondary">Sugestão:</span>{" "}
+                                  <span className="text-foreground font-bold bg-accent-gold/10 border border-accent-gold/20 px-1.5 py-0.5 rounded">
+                                    {item.responsavel_sugerido}
+                                  </span>{" "}
+                                  | <span className="font-semibold text-foreground-secondary">Origem:</span> {item.origem_sugestao}
+                                </p>
+                                <p>
+                                  <span className="font-semibold text-foreground-secondary">Motivo:</span>{" "}
+                                  {parsedMotivo.regra_motivo || item.motivo}
+                                </p>
+                                {parsedMotivo.fatores && parsedMotivo.fatores.length > 0 && (
+                                  <div className="mt-1.5 bg-background/50 rounded-lg p-2 border border-border/40 text-[11px] leading-normal font-mono">
+                                    <span className="font-semibold block text-foreground-secondary mb-1">Fatores de Score:</span>
+                                    <ul className="list-disc pl-4 space-y-0.5">
+                                      {parsedMotivo.fatores.map((f: string, i: number) => (
+                                        <li key={i}>{f}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 w-full md:w-auto justify-end">
+                              <div className="text-right">
+                                <span className="text-[10px] text-foreground-secondary block uppercase font-semibold">Confiança</span>
+                                <span className="text-lg font-extrabold text-amber-500 font-mono">{item.confianca}%</span>
+                              </div>
+
+                              <button
+                                onClick={() => handleProcessar(item.id, 'aprovar')}
+                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white border border-green-500/20 rounded-lg text-xs font-bold transition-all shadow-[0_2px_8px_rgba(34,197,94,0.1)] cursor-pointer"
+                              >
+                                Aprovar
+                              </button>
+                              
+                              <button
+                                onClick={() => handleProcessar(item.id, 'rejeitar')}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 rounded-lg text-xs font-bold transition-all shadow-[0_2px_8px_rgba(239,68,68,0.1)] cursor-pointer"
+                              >
+                                Rejeitar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions Footer */}
+              <div className="bg-background-elevated px-6 py-4 border-t border-border flex items-center justify-between text-xs text-foreground-secondary">
+                <span>
+                  Tempo de execução: <span className="font-bold text-foreground font-mono">{sugestoesStats?.tempoTotalMs}ms</span>
+                </span>
+                <button
+                  onClick={() => setSugestoesModalOpen(false)}
+                  className="h-10 px-5 bg-background border border-border hover:bg-background-elevated text-foreground rounded-lg font-semibold text-sm transition-all"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         )}
