@@ -65,7 +65,7 @@ BEGIN
     vlr_total_st, cod_cr, centro_resultado, valor_venda_futura
   )
   SELECT 
-    'EXCEL', p_batch_id, cod_cfop, cfop_desc, dt_faturamento, nro_unico, nro_nota,
+    'EXCEL', p_batch_id::uuid, cod_cfop, cfop_desc, dt_faturamento, nro_unico, nro_nota,
     cod_parceiro, nome_parceiro, cod_produto, desc_produto, quantidade,
     vlr_unitario, vlr_desconto, vlr_total_liq, cod_top, desc_top,
     custo_icms, cod_vendedor, nome_vendedor, controle, custo_total,
@@ -74,7 +74,7 @@ BEGIN
   FROM (
     SELECT *
     FROM public.cm_faturamento_staging
-    WHERE batch_id = p_batch_id
+    WHERE batch_id = p_batch_id::uuid
     ORDER BY id
     LIMIT p_limit
     OFFSET p_offset
@@ -86,51 +86,7 @@ BEGIN
 END;
 $function$;
 
--- Overload para p_batch_id uuid (caso chamado via uuid)
-CREATE OR REPLACE FUNCTION public.promover_lote_faturamento(p_batch_id uuid, p_offset integer, p_limit integer)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- AS $function$
-DECLARE
-  v_rows_inserted integer := 0;
-BEGIN
-  ALTER TABLE public.cm_faturamento DISABLE TRIGGER USER;
 
-  INSERT INTO public.cm_faturamento (
-    origem, batch_id, cod_cfop, cfop_desc, dt_faturamento, nro_unico, nro_nota,
-    cod_parceiro, nome_parceiro, cod_produto, desc_produto, quantidade,
-    vlr_unitario, vlr_desconto, vlr_total_liq, cod_top, desc_top,
-    custo_icms, cod_vendedor, nome_vendedor, controle, custo_total,
-    cod_natureza, desc_natureza, status_nfe, vlr_frete, vlr_substituicao,
-    vlr_total_st, cod_cr, centro_resultado, valor_venda_futura
-  )
-  SELECT 
-    'EXCEL', p_batch_id, cod_cfop, cfop_desc, dt_faturamento, nro_unico, nro_nota,
-    cod_parceiro, nome_parceiro, cod_produto, desc_produto, quantidade,
-    vlr_unitario, vlr_desconto, vlr_total_liq, cod_top, desc_top,
-    custo_icms, cod_vendedor, nome_vendedor, controle, custo_total,
-    cod_natureza, desc_natureza, status_nfe, vlr_frete, vlr_substituicao,
-    vlr_total_st, cod_cr, centro_resultado, COALESCE(valor_venda_futura, 0)
-  FROM (
-    SELECT *
-    FROM public.cm_faturamento_staging
-    WHERE batch_id = p_batch_id
-    ORDER BY id
-    LIMIT p_limit
-    OFFSET p_offset
-  ) sub;
-
-  GET DIAGNOSTICS v_rows_inserted = ROW_COUNT;
-
-  ALTER TABLE public.cm_faturamento ENABLE TRIGGER USER;
-
-  RETURN v_rows_inserted;
-EXCEPTION WHEN OTHERS THEN
-  ALTER TABLE public.cm_faturamento ENABLE TRIGGER USER;
-  RAISE;
-END;
-$function$;
 
 -- 4. Recriar mv_vendas_agg (Materialized View base com valor_venda_futura)
 DROP MATERIALIZED VIEW IF EXISTS public.mv_vendas_agg CASCADE;

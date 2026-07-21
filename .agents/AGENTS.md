@@ -1582,6 +1582,65 @@ Esta arquitetura garante:
 
 **Esta baseline possui caráter permanente e normativo para toda a plataforma Coffee++.**
 
+---
+
+## Seção 48 — Baseline Oficial — Venda Futura no Pipeline de Faturamento
+
+**Status:** BASELINE OFICIAL CONGELADA
+
+### Objetivo
+
+Estabelecer a governança permanente do tratamento da Venda Futura em todo o pipeline oficial de faturamento do Coffee++, garantindo consistência entre Import Hub, banco de dados, agregações analíticas, APIs, Dashboard Comercial e processo de homologação.
+
+### Diretrizes Permanentes
+
+1. **Modelo de Dados**
+   - O campo oficial para persistência é `valor_venda_futura`.
+   - O nome "Venda Entrega Futura" permanece restrito ao layout do Excel e não deverá ser utilizado como nome interno do modelo de dados.
+
+2. **Retrocompatibilidade**
+   - Arquivos que não contenham a coluna "Venda Entrega Futura" continuam sendo importados normalmente.
+   - O sistema deverá preencher `valor_venda_futura = 0`.
+   - O Preview deverá registrar um `WARNING`, sem impedir a importação.
+
+3. **Auditoria do Pipeline**
+   - Toda importação deverá manter consistência entre:
+     - Excel;
+     - Staging;
+     - `cm_faturamento`;
+     - Views Materializadas;
+     - Dashboard Comercial;
+     - My Metrics.
+   - Divergências superiores a R$ 0,01 impedem a homologação.
+
+4. **Regra Financeira**
+   - A Venda Futura não altera o cálculo do faturamento líquido.
+   - Permanece vigente a fórmula oficial:
+     - Faturamento Líquido = Bruto − Devoluções − Bonificações.
+   - Venda Futura é um indicador complementar.
+
+5. **Dashboard Comercial**
+   - A estrutura oficial da tabela de Faturamento passa a ser:
+     - Meta;
+     - Real;
+     - %;
+     - Pace;
+     - Venda Fut.;
+     - Fat + Venda Fut.;
+     - % Ating.
+   - As fórmulas oficiais permanecem:
+     - Fat + Venda Fut. = Real + Venda Fut.
+     - % Ating. = (Real + Venda Fut.) ÷ Meta.
+
+6. **Governança**
+   - O My Metrics permanece como referência oficial para homologação financeira.
+   - Evoluções futuras do pipeline de faturamento deverão preservar integralmente esta baseline ou registrar formalmente uma nova versão da governança.
+
+### Status Final
+
+Esta baseline passa a integrar permanentemente a arquitetura oficial do Coffee++, servindo como referência obrigatória para todas as futuras evoluções do pipeline de faturamento e do Dashboard Comercial.
+
+
 
 
 

@@ -667,3 +667,23 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    74004a4..51686a2  main -> main
 [21/07/2026 10:02] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 6ba9ab3] auto-save: 21/07/2026 13:50
+ 22 files changed, 1670 insertions(+), 39 deletions(-)
+ create mode 100644 scratch/apply_vw_redes_migration.js
+ create mode 100644 scratch/audit_channels_and_tables.js
+ create mode 100644 scratch/audit_cm_clientes_details.js
+ create mode 100644 scratch/audit_cm_clientes_matrizes.js
+ create mode 100644 scratch/audit_database_deep.js
+ create mode 100644 scratch/audit_direct_supabase.js
+ create mode 100644 scratch/audit_redes_schema.js
+ create mode 100644 scratch/test_base_atendimento_ownership.js
+ create mode 100644 scratch/test_base_managers.js
+ create mode 100644 scratch/test_rede_clean_portfolio.js
+ create mode 100644 scratch/test_rede_portfolio.js
+ create mode 100644 scratch/test_redes_only.js
+ create mode 100644 scratch/test_vw_redes_query.js
+ create mode 100644 supabase/migrations/20260721_create_vw_redes_planejaveis_oficiais.sql
+ create mode 100644 supabase/migrations/20260721_venda_entrega_futura.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   51686a2..6ba9ab3  main -> main
+[21/07/2026 13:50] ✅ Alterações enviadas com sucesso para o GitHub.
