@@ -1499,6 +1499,91 @@ Os módulos consumidores (RPS, Dashboard, Relatórios e futuros módulos) devem 
 A identificação de gerentes deve utilizar a camada oficial de normalização (`src/lib/domain/canonical.ts`), priorizando `manager_id` como identificador canônico.
 Nenhuma regra de negócio pode depender de nomes literais ou hardcodes de aliases.
 
+---
+
+## Seção 46 — Baseline Permanente — Carteira Comercial Completa da RPS
+
+Status: **OFICIAL — CONGELADA**.
+
+### 1. Carteira Comercial
+A RPS passa a exibir integralmente a carteira comercial de cada gerente.
+É proibida a utilização de limites artificiais de exibição (Top N, `slice()`, `LIMIT` fixo ou qualquer outra restrição equivalente) para composição da carteira comercial.
+A lista deverá representar fielmente todos os clientes ativos pertencentes ao gerente conforme o Ownership Comercial oficial.
+
+### 2. Fonte Oficial
+A composição da carteira deverá utilizar exclusivamente as fontes oficiais homologadas do sistema, respeitando o Ownership Comercial vigente.
+É proibida a utilização de listas estáticas, arrays hardcoded ou cadastros paralelos para formação da carteira.
+
+### 3. Performance
+A expansão da carteira deverá utilizar consultas consolidadas, evitando consultas N+1.
+Sempre que possível:
+- carregar os dados em lote;
+- realizar a consolidação em memória;
+- manter complexidade linear;
+- preservar o tempo de resposta da RPS mesmo com centenas de clientes por gerente.
+
+### 4. Ordenação
+Os clientes deverão permanecer ordenados alfabeticamente pelo nome comercial apresentado ao usuário.
+O agrupador **OUTROS** deverá permanecer obrigatoriamente como o último item da carteira.
+
+### 5. Compatibilidade
+Esta diretriz deve permanecer compatível com:
+- Baseline de Ownership Comercial;
+- Baseline de Normalização Canônica de Domínio;
+- Baseline Single Source of Truth das Metas;
+- Modo Administrativo da RPS.
+
+Nenhuma evolução futura poderá reintroduzir limitações artificiais na carteira comercial.
+
+---
+
+## Seção 47 — Baseline Permanente — Catálogo Oficial de Redes Planejáveis
+
+Status: **BASELINE OFICIAL CONGELADA**
+
+### 1. Objetivo
+A composição da carteira comercial planejável do Coffee++ passa a utilizar uma única camada oficial de domínio.
+
+### 2. Regra Arquitetural
+A camada `vw_redes_planejaveis_oficiais` é a **Single Source of Truth** para identificação das Redes Comerciais Planejáveis da plataforma.
+
+Nenhum módulo deverá construir carteiras comerciais diretamente a partir de tabelas operacionais como:
+- `base_atendimento`
+- `cm_clientes`
+- `cm_acoes_investimento`
+- tabelas de faturamento
+- tabelas de projeções
+- quaisquer outras fontes operacionais
+
+Essas tabelas permanecem como fontes de dados operacionais e de enriquecimento, mas não definem, individualmente, a carteira comercial planejável.
+
+### 3. Consumidores
+Todos os módulos que necessitem da lista oficial de Redes Comerciais deverão consumir exclusivamente a camada oficial de domínio.
+
+Inclui, entre outros:
+- RPS
+- Trade Marketing
+- Dashboard Comercial
+- BI
+- Investimentos
+- futuros módulos comerciais
+
+### 4. Governança
+A elegibilidade das Redes Comerciais Planejáveis permanece centralizada nesta camada de domínio.
+Alterações futuras nos critérios de elegibilidade deverão ocorrer exclusivamente nesta camada, preservando a estabilidade dos módulos consumidores.
+
+### 5. Objetivos Permanentes
+Esta arquitetura garante:
+- Single Source of Truth para Redes Comerciais Planejáveis;
+- eliminação de regras duplicadas entre módulos;
+- desacoplamento entre dados operacionais e regras comerciais;
+- reutilização da mesma definição por toda a plataforma;
+- evolução futura da governança sem impacto nas aplicações consumidoras.
+
+**Esta baseline possui caráter permanente e normativo para toda a plataforma Coffee++.**
+
+
+
 
 
 

@@ -151,26 +151,27 @@ export async function GET(request: Request) {
       GROUP BY mes, manager
     `;
 
-    // SQL - Faturamento histórico de clientes (redes/matrizes)
+    // SQL - Faturamento histórico de REDES COMERCIAIS
     const sqlClientHistory = `
       SELECT 
         mes,
         manager,
-        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as client,
+        TRIM(rede) as client,
         SUM(fat) as fat
       FROM mv_vendas_cliente_mensal
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}', '${closedMonth2}', '${closedMonth3}')
-      GROUP BY mes, manager, COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado')
+        AND rede IS NOT NULL AND TRIM(rede) != ''
+      GROUP BY mes, manager, TRIM(rede)
     `;
 
-    // SQL - Cadastro Base de Atendimento (Ownership Comercial de Clientes/Redes)
+    // SQL - CAMADA OFICIAL DE DOMÍNIO: Redes Comerciais Planejáveis do Coffee++
     const sqlBaseClients = `
       SELECT 
         manager,
-        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as client
-      FROM base_atendimento
-      WHERE manager IS NOT NULL AND (rede IS NOT NULL OR nome_parceiro IS NOT NULL)
-      GROUP BY manager, COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado')
+        manager_id,
+        TRIM(rede) as client
+      FROM vw_redes_planejaveis_oficiais
+      WHERE is_rede_planejavel = TRUE
     `;
 
     // SQL - Metas Oficiais dos gerentes (SSOT: public.targets)
@@ -230,7 +231,7 @@ export async function GET(request: Request) {
     const mgrTargets = (resMgrTargets.data || []) as any[];
     const investHist = (resInvestHist.data || []) as any[];
     
-    // ETAPA 2: Consolidar projeções brutas pela identidade canônica antes da montagem de managerProjs
+    // Consolidar projeções brutas pela identidade canônica antes da montagem de managerProjs
     const dbProjections = consolidateProjectionsByCanonicalManager((resProj.data || []) as any[]);
     const dbPrevProjections = consolidateProjectionsByCanonicalManager((resPrevProj.data || []) as any[]);
 
@@ -341,31 +342,28 @@ export async function GET(request: Request) {
         }
       };
 
-      // --- PROCESSAR CARTEIRA COMPLETA DE CLIENTES DO GERENTE (EXPANSÃO COMPLETA) ---
+      // --- CAMADA OFICIAL DE DOMÍNIO: REDES COMERCIAIS PLANEJÁVEIS VIA VW_REDES_PLANEJAVEIS_OFICIAIS ---
+      const managerBaseCli = baseCli.filter((b: any) => isSameManager(b.manager, mName) || isSameManager(b.manager_id, mName));
       const managerCliHist = cliHist.filter((c: any) => isSameManager(c.manager, mName));
-      const managerBaseCli = baseCli.filter((b: any) => isSameManager(b.manager, mName));
       const clientProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix !== '_TOTAL_');
 
-      // Obter conjunto único de todos os clientes pertencentes à carteira deste gerente
-      const clientSet = new Set<string>([
-        ...managerCliHist.map((c: any) => c.client),
-        ...managerBaseCli.map((b: any) => b.client),
-        ...clientProjs.map((p: any) => p.client_matrix)
-      ]);
+      // Conjunto de redes pertencentes EXCLUSIVAMENTE à camada oficial de redes planejáveis
+      const redeSet = new Set<string>(
+        managerBaseCli.map((b: any) => b.client)
+      );
 
-      // Remover strings vazias ou desmapeadas
-      clientSet.delete('');
-      clientSet.delete('Não Mapeado');
-      clientSet.delete('OUTROS');
+      // Remover desmapeados e a linha especial de agrupamento OUTROS
+      redeSet.delete('');
+      redeSet.delete('Não Mapeado');
+      redeSet.delete('OUTROS');
 
-      // Ordenar clientes em ordem alfabética (pt-BR)
-      const sortedClientNames = Array.from(clientSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      // Ordenar redes comerciais em ordem alfabética (pt-BR)
+      const sortedRedeNames = Array.from(redeSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
-      // Mapear cada cliente pertencente à carteira comercial
-      const clientsList = sortedClientNames.map(cName => {
+      // Mapear cada rede comercial pertencente ao gerente
+      const clientsList = sortedRedeNames.map(cName => {
         const cProj = clientProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase());
         
-        const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
         const pmSales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevMonthKey);
         const pySales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevYearKey);
 
@@ -399,7 +397,7 @@ export async function GET(request: Request) {
         };
       });
 
-      // Adicionar permanentemente "OUTROS" como o último item da carteira
+      // Adicionar permanentemente "OUTROS" como o último item para vendas de PDVs/parceiros sem rede vinculada
       const cProjOutros = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
       const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
       const defaultMetaOutros = Math.max(0, desafioFat - clientsList.reduce((acc, c) => acc + c.meta, 0));

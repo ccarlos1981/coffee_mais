@@ -21,6 +21,7 @@ export interface ImportPreviewResult {
   totalGross: number;
   totalDevolution: number;
   totalNet: number;
+  totalVendaFutura: number;
   warningsCount: number;
   errorsCount: number;
   qualityScore: number;
@@ -256,8 +257,28 @@ export class ImportService {
       let totalGross = 0;
       let totalDevolution = 0;
       let totalNet = 0;
+      let totalVendaFutura = 0;
       let errorsCount = 0;
       let warningsCount = 0;
+
+      // Check if header contains Venda Entrega Futura
+      const sampleRow = jsonData[0] || {};
+      const headerKeys = Object.keys(sampleRow).map(k => k.trim().toLowerCase());
+      const hasVendaFuturaHeader = headerKeys.some(k => 
+        k === "venda entrega futura" || k === "venda futura" || k === "valor_venda_futura"
+      );
+
+      if (!hasVendaFuturaHeader) {
+        warningsCount++;
+        inconsistencies.push({
+          line: headerIndex + 1,
+          field: "Venda Entrega Futura",
+          value: "-",
+          message: "Coluna 'Venda Entrega Futura' ausente no modelo Excel. O valor foi preenchido com 0.00 para retrocompatibilidade.",
+          severity: "WARNING",
+          action: "Para lançar faturamento com entrega futura, utilize o modelo oficial atualizado contendo a coluna B 'Venda Entrega Futura'.",
+        });
+      }
 
       const parseRowDate = (val: any): string | null => {
         if (!val) return null;
@@ -401,6 +422,7 @@ export class ImportService {
 
         const bruto = parseNumber(row["Vlr. Bruto"] || row["Faturamento Bruto"] || (qty * unitPrice));
         const dev = parseNumber(row["Vlr. Devolução"] || row["Devolução"]);
+        const valVendaFutura = parseNumber(row["Venda Entrega Futura"] || row["Venda Futura"] || row["valor_venda_futura"]);
 
         if (netVal === null) {
           netVal = bruto - dev;
@@ -414,6 +436,7 @@ export class ImportService {
         totalGross += bruto;
         totalDevolution += dev;
         totalNet += netVal;
+        totalVendaFutura += valVendaFutura;
 
         stagingRows.push({
           batch_id: batchId,
@@ -447,6 +470,7 @@ export class ImportService {
           vlr_total_st: parseNumber(row["Vlr. Total ST"]),
           cod_cr: row["Cód. CR"] ? String(row["Cód. CR"]).trim() : null,
           centro_resultado: row["Centro de Resultado"] ? String(row["Centro de Resultado"]).trim() : null,
+          valor_venda_futura: valVendaFutura,
           validation_status: rowSeverity || "VALID",
           validation_message: rowMsg || null,
         });
@@ -534,6 +558,7 @@ export class ImportService {
         totalGross,
         totalDevolution,
         totalNet,
+        totalVendaFutura,
         warningsCount,
         errorsCount,
         qualityScore,
@@ -558,6 +583,7 @@ export class ImportService {
           total_gross: totalGross,
           total_devolution: totalDevolution,
           total_net: totalNet,
+          total_venda_futura: totalVendaFutura,
           warnings_count: warningsCount,
           errors_count: errorsCount,
           duration_ms: durationMs,
@@ -656,6 +682,30 @@ export class ImportService {
         p_batch_id: batchId,
       });
       if (finalizeError) throw finalizeError;
+
+      // 4b. Auditoria de integridade em 5 Camadas (Excel -> Staging -> cm_faturamento)
+      const { data: dbAudit, error: auditError } = await supabase
+        .from("cm_faturamento")
+        .select("valor_venda_futura")
+        .eq("batch_id", batchId);
+
+      if (auditError) throw auditError;
+
+      const totalDbVendaFutura = (dbAudit || []).reduce((sum, r) => sum + Number(r.valor_venda_futura || 0), 0);
+
+      const { data: logData } = await supabase
+        .from("cm_sync_logs")
+        .select("metadata")
+        .eq("id", batchId)
+        .single();
+
+      const expectedTotalVendaFutura = Number(logData?.metadata?.total_venda_futura || 0);
+
+      if (Math.abs(totalDbVendaFutura - expectedTotalVendaFutura) > 0.01) {
+        throw new Error(
+          `Falha de auditoria (5 Camadas): Divergência detectada no Total de Venda Entrega Futura (Excel/Staging: R$ ${expectedTotalVendaFutura.toFixed(2)} vs Banco cm_faturamento: R$ ${totalDbVendaFutura.toFixed(2)}). Importação abortada.`
+        );
+      }
 
       // 5. Atualizar dashboards de forma assíncrona
       try {

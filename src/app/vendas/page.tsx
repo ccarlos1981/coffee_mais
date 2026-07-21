@@ -97,6 +97,7 @@ interface ManagerData {
   fat: number;
   qty: number;
   maco: number;
+  vendaFutura?: number;
   paceFat?: number;
   paceQty?: number;
   paceMaco?: number;
@@ -287,6 +288,7 @@ export default function VendasDashboard() {
               fat: sales?.fat || 0,
               qty: sales?.qty || 0,
               maco: 0,
+              vendaFutura: sales?.vendaFutura || 0,
               paceFat: sales?.paceFat || 0,
               paceQty: sales?.paceQty || 0,
               paceMaco: 0,
@@ -445,6 +447,7 @@ export default function VendasDashboard() {
       (acc, r) => ({
         metaFat: acc.metaFat + r.metaFat,
         fat: acc.fat + r.fat,
+        vendaFutura: acc.vendaFutura + (r.vendaFutura || 0),
         metaUnd: acc.metaUnd + r.metaUnd,
         qty: acc.qty + r.qty,
         metaMaco: acc.metaMaco + r.metaMaco,
@@ -453,7 +456,7 @@ export default function VendasDashboard() {
         paceQty: acc.paceQty + (r.paceQty || 0),
         paceMaco: acc.paceMaco + (r.paceMaco || 0),
       }),
-      { metaFat: 0, fat: 0, metaUnd: 0, qty: 0, metaMaco: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0 }
+      { metaFat: 0, fat: 0, vendaFutura: 0, metaUnd: 0, qty: 0, metaMaco: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0 }
     );
   }, [managerRows]);
 
@@ -736,7 +739,7 @@ export default function VendasDashboard() {
                 <thead>
                   <tr>
                     <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
-                    <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento (R$)</th>
+                    <th colSpan={7} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento (R$)</th>
                     <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
                     <th colSpan={4} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MaCo (R$)</th>
                   </tr>
@@ -745,6 +748,9 @@ export default function VendasDashboard() {
                     <th className="col-group-fat">Real</th>
                     <th className="col-group-fat">%</th>
                     <th className="col-group-fat">Pace</th>
+                    <th className="col-group-fat">Venda Fut.</th>
+                    <th className="col-group-fat">Fat + Venda Fut.</th>
+                    <th className="col-group-fat">%Ating.</th>
                     <th className="col-group-und col-divider">Meta</th>
                     <th className="col-group-und">Real</th>
                     <th className="col-group-und">%</th>
@@ -757,7 +763,7 @@ export default function VendasDashboard() {
                 <tbody>
                   {managerRows.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={12} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
+                      <td colSpan={15} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
                         Sem dados para o período selecionado
                       </td>
                     </tr>
@@ -789,6 +795,11 @@ export default function VendasDashboard() {
                             <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                               {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
                             </td>
+                            <td>{formatCurrency((row.vendaFutura || 0) / 1000)}</td>
+                            <td>{formatCurrency((row.fat + (row.vendaFutura || 0)) / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct(row.fat + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
+                              {row.metaFat > 0 ? formatPercent(pct(row.fat + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                            </td>
                             <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
                             <td>{formatNumber(row.qty, 0)}</td>
                             <td className="pct-cell" style={getPctStyle(pUnd, row.metaUnd)}>
@@ -805,7 +816,7 @@ export default function VendasDashboard() {
                           </tr>,
                           isExpanded && (
                             <tr key={`${row.manager}-drill`} className="drill-down-row">
-                              <td colSpan={12}>
+                              <td colSpan={15}>
                                 <div className="drill-down-container">
                                   <p style={{
                                     fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
@@ -872,6 +883,11 @@ export default function VendasDashboard() {
                           <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                             {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
                           </td>
+                          <td>{formatCurrency((totals.vendaFutura || 0) / 1000)}</td>
+                          <td>{formatCurrency((totals.fat + (totals.vendaFutura || 0)) / 1000)}</td>
+                          <td className="pct-cell" style={getPctStyle(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                          </td>
                           <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                           <td>{formatNumber(totals.qty, 0)}</td>
                           <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
@@ -916,12 +932,15 @@ export default function VendasDashboard() {
                       <th>Real</th>
                       <th>%</th>
                       <th>Pace</th>
+                      <th>Venda Fut.</th>
+                      <th>Fat + Vd Fut</th>
+                      <th>%Ating.</th>
                     </tr>
                   </thead>
                   <tbody>
                     {managerRows.length === 0 && !loading ? (
                       <tr>
-                        <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
+                        <td colSpan={8} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
                           Sem dados para o período selecionado
                         </td>
                       </tr>
@@ -950,10 +969,15 @@ export default function VendasDashboard() {
                               <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                                 {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
                               </td>
+                              <td>{formatCurrency((row.vendaFutura || 0) / 1000)}</td>
+                              <td>{formatCurrency((row.fat + (row.vendaFutura || 0)) / 1000)}</td>
+                              <td className="pct-cell" style={getPctStyle(pct(row.fat + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
+                                {row.metaFat > 0 ? formatPercent(pct(row.fat + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                              </td>
                             </tr>,
                             isExpanded && (
                               <tr key={`${row.manager}-drill`} className="drill-down-row">
-                                <td colSpan={5}>
+                                <td colSpan={8}>
                                   <div className="drill-down-container" style={{ padding: 8 }}>
                                     <p style={{
                                       fontSize: "0.65rem", fontWeight: 600, color: "var(--foreground-secondary)",
@@ -1014,6 +1038,11 @@ export default function VendasDashboard() {
                             </td>
                             <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                               {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
+                            </td>
+                            <td>{formatCurrency((totals.vendaFutura || 0) / 1000)}</td>
+                            <td>{formatCurrency((totals.fat + (totals.vendaFutura || 0)) / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
                             </td>
                           </tr>
                         )}
