@@ -24,6 +24,7 @@ interface MvRow {
   fat: number;
   qty: number;
   maco: number;
+  valor_venda_futura?: number;
   total_imposto?: number;
   total_custo?: number;
   total_frete?: number;
@@ -38,6 +39,7 @@ interface MvClientRow {
   fat: number;
   qty: number;
   maco: number;
+  valor_venda_futura?: number;
 }
 
 function escapeSqlValue(value: string | null) {
@@ -70,13 +72,13 @@ function aggregateFromMV(
   const byManagerMap: Record<string, {
     managerId: string;
     managerName: string;
-    fat: number; qty: number; maco: number;
+    fat: number; qty: number; maco: number; vendaFutura: number;
     paceFat: number; paceQty: number; paceMaco: number;
     byClient: Record<string, { client: string; fat: number; qty: number; maco: number }>;
   }> = {};
 
   const byFamiliaMap: Record<string, { fat: number; qty: number }> = {};
-  let totalFat = 0, totalQty = 0, totalMaco = 0;
+  let totalFat = 0, totalQty = 0, totalMaco = 0, totalVendaFutura = 0;
 
   for (const row of rows) {
     const mId = row.manager_id || '9999';
@@ -87,18 +89,21 @@ function aggregateFromMV(
     const maco = investmentPct > 0
       ? Number(row.maco || 0) - (fat * investmentPct)
       : Number(row.maco || 0);
+    const vendaFutura = Number(row.valor_venda_futura || 0);
 
     totalFat += fat;
     totalQty += qty;
     totalMaco += maco;
+    totalVendaFutura += vendaFutura;
 
     // Manager aggregation
     if (!byManagerMap[mId]) {
-      byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
+      byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, vendaFutura: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
     }
     byManagerMap[mId].fat += fat;
     byManagerMap[mId].qty += qty;
     byManagerMap[mId].maco += maco;
+    byManagerMap[mId].vendaFutura += vendaFutura;
 
     // Familia
     if (familia !== 'Outros') {
@@ -121,7 +126,7 @@ function aggregateFromMV(
         : Number(row.maco || 0);
 
       if (!byManagerMap[mId]) {
-        byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
+        byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, qty: 0, maco: 0, vendaFutura: 0, paceFat: 0, paceQty: 0, paceMaco: 0, byClient: {} };
       }
 
       if (!byManagerMap[mId].byClient[client]) {
@@ -158,6 +163,7 @@ function aggregateFromMV(
       fat: data.fat,
       qty: data.qty,
       maco: data.maco,
+      vendaFutura: data.vendaFutura,
       paceFat: data.paceFat,
       paceQty: data.paceQty,
       paceMaco: data.paceMaco,
@@ -178,7 +184,7 @@ function aggregateFromMV(
     byManager,
     byFamilia,
     totals: {
-      fat: totalFat, qty: totalQty, maco: totalMaco,
+      fat: totalFat, qty: totalQty, maco: totalMaco, vendaFutura: totalVendaFutura,
       paceFat: totalFat, paceQty: totalQty, paceMaco: totalMaco,
     },
   };
@@ -246,7 +252,8 @@ export async function GET(request: Request) {
         COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat,
         SUM(qty) as qty,
-        SUM(maco) as maco
+        SUM(maco) as maco,
+        SUM(valor_venda_futura) as valor_venda_futura
       FROM mv_vendas_cliente_mensal
       ${whereClause}
       GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')

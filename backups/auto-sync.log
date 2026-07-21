@@ -656,3 +656,14 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    f3b3a07..74004a4  main -> main
 [20/07/2026 22:48] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 51686a2] auto-save: 21/07/2026 10:02
+ 14 files changed, 9411 insertions(+), 225 deletions(-)
+ create mode 100644 scratch/consolidate_weekly_projections.js
+ create mode 100644 scratch/run_forensic_audit.js
+ create mode 100644 scratch/test_full_client_mapping.js
+ create mode 100644 scratch/test_rps_full_portfolio.js
+ create mode 100644 scratch/test_ssot_functional_validation.js
+ create mode 100644 src/lib/domain/canonical.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   74004a4..51686a2  main -> main
+[21/07/2026 10:02] ✅ Alterações enviadas com sucesso para o GitHub.

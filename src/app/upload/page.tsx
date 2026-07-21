@@ -40,6 +40,7 @@ interface ImportPreview {
   totalGross: number;
   totalDevolution: number;
   totalNet: number;
+  totalVendaFutura: number;
   warningsCount: number;
   errorsCount: number;
   qualityScore: number;
@@ -722,6 +723,12 @@ export default function ImportHubPage() {
                       <span className="text-[10px] text-muted uppercase block">Faturamento Líquido</span>
                       <span className="text-sm font-bold text-emerald-400 block mt-0.5">
                         {preview.totalNet.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
+                    <div className="bg-background/30 p-3 rounded-xl border border-border/40 col-span-2 md:col-span-1">
+                      <span className="text-[10px] text-muted uppercase block">Venda Entrega Futura</span>
+                      <span className="text-sm font-bold text-amber-400 block mt-0.5">
+                        {(preview.totalVendaFutura || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 })}
                       </span>
                     </div>
                     <div className="bg-background/30 p-3 rounded-xl border border-border/40 col-span-2 md:col-span-1">
