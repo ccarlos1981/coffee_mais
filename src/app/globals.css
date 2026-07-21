@@ -422,9 +422,10 @@ body {
   border-right: 1px solid var(--border);
   padding: 16px 14px;
   overflow-y: auto;
-  height: calc(100vh - var(--navbar-height));
   position: sticky;
-  top: var(--navbar-height);
+  top: 16px;
+  height: fit-content;
+  max-height: calc(100vh - 32px);
 }
 
 .dash-sidebar-title {
@@ -898,24 +899,37 @@ body {
 }
 
 /* Sticky Header for RPS Table (Excel-like "Congelar Painéis") */
+.data-table.rps-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
 .data-table.rps-table thead tr {
   height: 28px;
 }
 
 .data-table.rps-table th {
   box-sizing: border-box;
+  background: var(--table-header-bg, var(--background-card, #18181b));
+  border-top: 1px solid var(--border-light, rgba(255, 255, 255, 0.08));
+  border-bottom: 1px solid var(--border-light, rgba(255, 255, 255, 0.08));
 }
 
 .data-table.rps-table thead tr:first-child th {
   position: sticky;
-  top: 56px; /* navbar height is 56px */
-  z-index: 31;
+  top: 0;
+  z-index: 20;
 }
 
 .data-table.rps-table thead tr:last-child th {
   position: sticky;
-  top: 84px; /* 56px navbar + 28px height of first header row */
-  z-index: 30;
+  top: 28px;
+  z-index: 19;
+  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="light"] .data-table.rps-table thead tr:last-child th {
+  box-shadow: 0 4px 10px -2px rgba(0, 0, 0, 0.08);
 }
 
 /* ═══════════════════════════════════════════
