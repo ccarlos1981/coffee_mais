@@ -40,7 +40,7 @@ const CHANNELS = [
 
 const KA_MANAGERS = [
   { id: "Total", manager_id: "Total", manager: "KA Total (Somado)", name: "KA Total (Somado)" },
-  { id: "1001", manager_id: "1001", manager: "Leandro Saffi", name: "Leandro" },
+  { id: "1001", manager_id: "1001", manager: "Leandro", name: "Leandro" },
   { id: "1002", manager_id: "1002", manager: "Luiz", name: "Luiz" },
   { id: "1000", manager_id: "1000", manager: "Julliano", name: "Julliano" }
 ];

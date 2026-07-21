@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,8 +31,39 @@ function getMondaysOfMonth(year: number, month: number): string[] {
   return mondays;
 }
 
+// Helper interno para consolidar projeções semanais por identidade canônica de gerente
+function consolidateProjectionsByCanonicalManager(rawProjections: any[]): any[] {
+  const map = new Map<string, any>();
+  rawProjections.forEach((p: any) => {
+    const canonicalName = resolveCanonicalManager(p.manager).managerName;
+    const clientMatrixKey = (p.client_matrix || '').trim().toUpperCase();
+    const key = `${canonicalName}|${clientMatrixKey}|${p.week_start_date}|${p.kpi}`;
+
+    if (!map.has(key)) {
+      map.set(key, { ...p, manager: canonicalName });
+    } else {
+      const existing = map.get(key);
+      if (Number(p.projection_value) > 0 && Number(existing.projection_value) === 0) {
+        map.set(key, { ...p, manager: canonicalName });
+      }
+    }
+  });
+  return Array.from(map.values());
+}
+
 // Roles com acesso total (enxergam todos os gerentes)
-const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional"];
+const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional", "Admin Master"];
+const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+
+export function checkIsGerenteNacionalAdmin(role?: string | null, email?: string | null): boolean {
+  if (role && FULL_ACCESS_ROLES.includes(role)) {
+    return true;
+  }
+  if (email && GERENTE_NACIONAL_EMAILS.includes(email.toLowerCase().trim())) {
+    return true;
+  }
+  return false;
+}
 
 export async function GET(request: Request) {
   try {
@@ -46,17 +78,18 @@ export async function GET(request: Request) {
 
     const userRole = profile.role || '';
     const userManagerName = profile.manager_name || null;
+    const userEmail = (user.email || '').toLowerCase().trim();
+
+    const isGerenteNacionalAdmin = checkIsGerenteNacionalAdmin(userRole, userEmail);
 
     // Definir quais gerentes este usuário pode ver
     const allManagers = ["Julliano", "Leandro", "Luiz"];
     let activeManagers: string[];
 
-    if (userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) {
-      // Gerente restrito: vê apenas o seu próprio módulo
-      activeManagers = allManagers.filter(m => m === userManagerName);
-    } else {
-      // Admin/CEO/Diretor/GN: vê todos
+    if (isGerenteNacionalAdmin || !userManagerName) {
       activeManagers = allManagers;
+    } else {
+      activeManagers = allManagers.filter(m => isSameManager(m, userManagerName));
     }
 
     const supabase = getSupabaseAdminClient();
@@ -106,33 +139,43 @@ export async function GET(request: Request) {
     // Obter segundas-feiras do mês
     const mondays = getMondaysOfMonth(year, month);
 
-    // SQL - Faturamento e Volume históricos de gerentes (unificando Leandro Saffi)
+    // SQL - Faturamento e Volume históricos de gerentes
     const sqlManagerHistory = `
       SELECT 
         mes,
-        CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END as manager,
+        manager,
         SUM(fat) as fat,
         SUM(qty) as qty
       FROM mv_vendas_mensal
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
-      GROUP BY mes, CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END
+      GROUP BY mes, manager
     `;
 
-    // SQL - Faturamento histórico de clientes (redes/matrizes) (unificando Leandro Saffi e incluindo meses fechados)
+    // SQL - Faturamento histórico de clientes (redes/matrizes)
     const sqlClientHistory = `
       SELECT 
         mes,
-        CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END as manager,
-        COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
+        manager,
+        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as client,
         SUM(fat) as fat
       FROM mv_vendas_cliente_mensal
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}', '${closedMonth2}', '${closedMonth3}')
-      GROUP BY mes, CASE WHEN manager = 'Leandro Saffi' THEN 'Leandro' ELSE COALESCE(manager, 'Outros') END, COALESCE(rede, nome_parceiro, 'Não Mapeado')
+      GROUP BY mes, manager, COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado')
     `;
 
-    // SQL - Metas (Desafios) dos gerentes
+    // SQL - Cadastro Base de Atendimento (Ownership Comercial de Clientes/Redes)
+    const sqlBaseClients = `
+      SELECT 
+        manager,
+        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as client
+      FROM base_atendimento
+      WHERE manager IS NOT NULL AND (rede IS NOT NULL OR nome_parceiro IS NOT NULL)
+      GROUP BY manager, COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado')
+    `;
+
+    // SQL - Metas Oficiais dos gerentes (SSOT: public.targets)
     const sqlManagerTargets = `
-      SELECT manager, target_revenue, target_tons
+      SELECT manager, manager_id, target_revenue, target_tons
       FROM targets
       WHERE year = ${year} AND month = ${month}
     `;
@@ -149,7 +192,7 @@ export async function GET(request: Request) {
       GROUP BY b.manager, a.mes_referencia
     `;
 
-    // SQL - Projeções semanais gravadas no banco
+    // SQL - Projeções semanais gravadas no banco (cm_weekly_projections)
     const sqlWeeklyProjections = `
       SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value
       FROM cm_weekly_projections
@@ -162,10 +205,11 @@ export async function GET(request: Request) {
       WHERE year = ${prevMonthYear} AND month = ${prevMonthVal}
     `;
 
-    // Executar consultas via RPC
-    const [resMgrHist, resCliHist, resMgrTargets, resInvestHist, resProj, resPrevProj] = await Promise.all([
+    // Executar consultas via RPC (Sem N+1, buscando todos em consultas únicas em paralelo)
+    const [resMgrHist, resCliHist, resBaseCli, resMgrTargets, resInvestHist, resProj, resPrevProj] = await Promise.all([
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlClientHistory }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlBaseClients }),
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerTargets }),
       supabase.rpc('execute_readonly_query', { query_text: sqlInvestmentsHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlWeeklyProjections }),
@@ -174,6 +218,7 @@ export async function GET(request: Request) {
 
     if (resMgrHist.error) throw new Error("Erro buscar histórico gerentes: " + resMgrHist.error.message);
     if (resCliHist.error) throw new Error("Erro buscar histórico clientes: " + resCliHist.error.message);
+    if (resBaseCli.error) throw new Error("Erro buscar base clientes: " + resBaseCli.error.message);
     if (resMgrTargets.error) throw new Error("Erro buscar metas: " + resMgrTargets.error.message);
     if (resInvestHist.error) throw new Error("Erro buscar investimento histórico: " + resInvestHist.error.message);
     if (resProj.error) throw new Error("Erro buscar projeções: " + resProj.error.message);
@@ -181,43 +226,51 @@ export async function GET(request: Request) {
 
     const mgrHist = (resMgrHist.data || []) as any[];
     const cliHist = (resCliHist.data || []) as any[];
+    const baseCli = (resBaseCli.data || []) as any[];
     const mgrTargets = (resMgrTargets.data || []) as any[];
     const investHist = (resInvestHist.data || []) as any[];
-    const dbProjections = (resProj.data || []) as any[];
-    const dbPrevProjections = (resPrevProj.data || []) as any[];
+    
+    // ETAPA 2: Consolidar projeções brutas pela identidade canônica antes da montagem de managerProjs
+    const dbProjections = consolidateProjectionsByCanonicalManager((resProj.data || []) as any[]);
+    const dbPrevProjections = consolidateProjectionsByCanonicalManager((resPrevProj.data || []) as any[]);
 
     // Estruturar dados consolidados dos gerentes (filtrados por acesso)
     const managersData = activeManagers.map(mName => {
-      // Buscar Metas (Desafios)
-      const target = mgrTargets.find((t: any) => t.manager === mName);
+      const canonicalTargetMgr = resolveCanonicalManager(mName);
+
+      // SSOT: Buscar Metas (Desafios) exclusivamente da tabela public.targets
+      const target = mgrTargets.find((t: any) => {
+        return isSameManager(t.manager, mName) || (t.manager_id && t.manager_id === canonicalTargetMgr.managerId);
+      });
+
       const targetFat = Number(target?.target_revenue || 0);
       const targetVol = Number(target?.target_tons || 0);
-      const targetInvest = 10.0; // Padrão 10.0% conforme fotos
+      const targetInvest = 10.0; // Padrão 10.0%
 
-      // Buscar Históricos Gerente
-      const curHist = mgrHist.find((h: any) => h.manager === mName && h.mes === curMonthKey);
-      const pmHist = mgrHist.find((h: any) => h.manager === mName && h.mes === prevMonthKey);
-      const pyHist = mgrHist.find((h: any) => h.manager === mName && h.mes === prevYearKey);
+      // Buscar Históricos Gerente unificados via isSameManager
+      const curHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === curMonthKey);
+      const pmHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevMonthKey);
+      const pyHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevYearKey);
+
+      const pmFatVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+      const pyFatVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+      const pmQtyVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
+      const pyQtyVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
 
       // Buscar Investimento Histórico Realizado
-      const pmInvest = investHist.find((i: any) => i.manager === mName && i.mes_referencia === prevMonthKey);
-      const pyInvest = investHist.find((i: any) => i.manager === mName && i.mes_referencia === prevYearKey);
+      const pmInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevMonthKey);
+      const pyInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevYearKey);
 
-      const pmInvestVal = Number(pmInvest?.total_invest || 0);
-      const pyInvestVal = Number(pyInvest?.total_invest || 0);
+      const pmInvestVal = pmInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
+      const pyInvestVal = pyInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
 
-      const pmFatVal = Number(pmHist?.fat || 0);
-      const pyFatVal = Number(pyHist?.fat || 0);
-
-      // Calcular % Investimento Histórico Realizado (Investimento / Faturamento)
       const pmInvestPct = pmFatVal > 0 ? (pmInvestVal / pmFatVal) * 100 : 0;
-      const pyInvestPct = pyFatVal > 0 ? (pyInvestVal / pyFatVal) * 100 : 10.0; // Fallback para 10%
+      const pyInvestPct = pyFatVal > 0 ? (pyInvestVal / pyFatVal) * 100 : 10.0;
 
-      // --- CÁLCULO DAS PROJEÇÕES DO MÊS ANTERIOR (DISPERSÃO) ---
+      // Projeções do mês anterior (DISPERSÃO)
       const prevMondays = getMondaysOfMonth(prevMonthYear, prevMonthVal);
-      const prevManagerProjs = dbPrevProjections.filter((p: any) => p.manager === mName);
+      const prevManagerProjs = dbPrevProjections.filter((p: any) => isSameManager(p.manager, mName));
 
-      // Volume (VOL) do mês anterior (procura a última projeção não-zero)
       const prevVolWeekly = prevMondays.map(date => {
         const p = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'VOL');
         return p ? Number(p.projection_value) : 0;
@@ -226,14 +279,12 @@ export async function GET(request: Request) {
         ? (prevVolWeekly.slice().reverse().find(v => v !== 0) || prevVolWeekly[prevVolWeekly.length - 1] || 0)
         : 0;
 
-      // Investimento (INVEST) do mês anterior
       const prevInvestWeekly = prevMondays.map(date => {
         const p = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'INVEST');
         return p ? Number(p.projection_value) : 0;
       });
       const prevInvestProj = prevInvestWeekly.length > 0 ? (prevInvestWeekly.slice().reverse().find(v => v !== 0) || prevInvestWeekly[prevInvestWeekly.length - 1] || 0) : 0;
 
-      // Faturamento (FAT) do mês anterior (procura a última projeção não-zero)
       const prevFatWeekly = prevMondays.map(date => {
         const totalP = prevManagerProjs.find((p: any) => p.client_matrix === '_TOTAL_' && p.week_start_date === date && p.kpi === 'FAT');
         return totalP ? Number(totalP.projection_value) : 0;
@@ -242,102 +293,90 @@ export async function GET(request: Request) {
         ? (prevFatWeekly.slice().reverse().find(v => v !== 0) || prevFatWeekly[prevFatWeekly.length - 1] || 0)
         : 0;
 
-      // Projeções gravadas para este gerente
-      const managerProjs = dbProjections.filter((p: any) => p.manager === mName && p.client_matrix === '_TOTAL_');
+      // Projeções semanais gravadas para este gerente em cm_weekly_projections
+      const managerProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix === '_TOTAL_');
+
+      // REGRA MANTIDA: DESAFIO_VOL e DESAFIO_FAT vêm EXCLUSIVAMENTE da fonte oficial public.targets (SSOT)
+      const desafioVol = targetVol;
+      const desafioFat = targetFat;
+
+      // DESAFIO_INVEST pode consultar cm_weekly_projections para personalização visual ou manter o padrão
+      const customDesafioInvest = managerProjs.find((p: any) => p.kpi === 'DESAFIO_INVEST');
+      const desafioInvest = customDesafioInvest ? Number(customDesafioInvest.projection_value) : targetInvest;
 
       // KPIs estruturados para o gerente
       const kpis = {
         VOL: {
-          ano_a: Number(pyHist?.qty || 0),
-          mes_a: Number(pmHist?.qty || 0),
-          desafio: targetVol,
+          ano_a: pyQtyVal,
+          mes_a: pmQtyVal,
+          desafio: desafioVol,
           prev_month_projection: prevVolProj,
           projections: mondays.map(date => {
-            if (date > todayStr) return 0;
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'VOL');
-            return p ? Number(p.projection_value) : targetVol;
+            if (p) return Number(p.projection_value);
+            return date > todayStr ? 0 : desafioVol;
           })
         },
         FAT: {
           ano_a: pyFatVal,
           mes_a: pmFatVal,
-          desafio: targetFat,
+          desafio: desafioFat,
           prev_month_projection: prevFatProj,
           projections: mondays.map(date => {
-            if (date > todayStr) return 0;
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
-            return p ? Number(p.projection_value) : 0;
+            if (p) return Number(p.projection_value);
+            return 0;
           })
         },
         INVEST: {
           ano_a: pyInvestPct,
           mes_a: pmInvestPct,
-          desafio: targetInvest,
+          desafio: desafioInvest,
           prev_month_projection: prevInvestProj,
           projections: mondays.map(date => {
-            if (date > todayStr) return 0;
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'INVEST');
-            return p ? Number(p.projection_value) : targetInvest;
+            if (p) return Number(p.projection_value);
+            return date > todayStr ? 0 : desafioInvest;
           })
         }
       };
 
-      // --- PROCESSAR CLIENTES (REDES/MATRIZES) DO GERENTE ---
-      // Filtrar histórico de clientes para este gerente
-      const managerCliHist = cliHist.filter((c: any) => c.manager === mName);
-      
-      // Obter lista única de clientes
-      const allClientNames = Array.from(new Set(managerCliHist.map((c: any) => c.client)));
-      
-      // Mapear faturamento acumulado por cliente nos últimos 3 meses fechados para ranqueamento
-      const clientSalesSummary = allClientNames.map(cName => {
-        const salesC1 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth1);
-        const salesC2 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth2);
-        const salesC3 = managerCliHist.filter((c: any) => c.client === cName && c.mes === closedMonth3);
+      // --- PROCESSAR CARTEIRA COMPLETA DE CLIENTES DO GERENTE (EXPANSÃO COMPLETA) ---
+      const managerCliHist = cliHist.filter((c: any) => isSameManager(c.manager, mName));
+      const managerBaseCli = baseCli.filter((b: any) => isSameManager(b.manager, mName));
+      const clientProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix !== '_TOTAL_');
 
-        const fatC1 = salesC1.reduce((acc, s) => acc + s.fat, 0);
-        const fatC2 = salesC2.reduce((acc, s) => acc + s.fat, 0);
-        const fatC3 = salesC3.reduce((acc, s) => acc + s.fat, 0);
+      // Obter conjunto único de todos os clientes pertencentes à carteira deste gerente
+      const clientSet = new Set<string>([
+        ...managerCliHist.map((c: any) => c.client),
+        ...managerBaseCli.map((b: any) => b.client),
+        ...clientProjs.map((p: any) => p.client_matrix)
+      ]);
 
-        const rankingFat = fatC1 + fatC2 + fatC3;
+      // Remover strings vazias ou desmapeadas
+      clientSet.delete('');
+      clientSet.delete('Não Mapeado');
+      clientSet.delete('OUTROS');
 
+      // Ordenar clientes em ordem alfabética (pt-BR)
+      const sortedClientNames = Array.from(clientSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+      // Mapear cada cliente pertencente à carteira comercial
+      const clientsList = sortedClientNames.map(cName => {
+        const cProj = clientProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase());
+        
         const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
         const pmSales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevMonthKey);
         const pySales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevYearKey);
 
-        const fatCur = Number(curSales?.fat || 0);
         const fatPm = Number(pmSales?.fat || 0);
         const fatPy = Number(pySales?.fat || 0);
 
-        return {
-          clientName: cName,
-          fatCur,
-          fatPm,
-          fatPy,
-          rankingFat
-        };
-      });
-
-      // Ordenar e separar os Top 10 e o restante sob "OUTROS" por rankingFat decrescente
-      clientSalesSummary.sort((a, b) => b.rankingFat - a.rankingFat);
-      
-      const topClientsSummary = clientSalesSummary.slice(0, 10);
-      const otherClientsSummary = clientSalesSummary.slice(10);
-
-      // Buscar projeções existentes para os clientes deste gerente
-      const clientProjs = dbProjections.filter((p: any) => p.manager === mName && p.client_matrix !== '_TOTAL_');
-
-      // Montar a lista final de clientes com seus valores estruturados
-      const clientsList = topClientsSummary.map(cli => {
-        const cProj = clientProjs.filter((p: any) => p.client_matrix === cli.clientName);
-        
-        // Carrega a meta customizada gravada, se não houver, calcula uma meta proporcional baseada no faturamento
         const metaProj = cProj.find((p: any) => p.kpi === 'META');
-        const defaultMeta = targetFat > 0 ? (cli.fatPm / pmFatVal) * targetFat : 0;
-        const metaValue = metaProj ? Number(metaProj.projection_value) : (cli.fatPm > 0 ? cli.fatPm : defaultMeta);
+        const defaultMeta = (desafioFat > 0 && pmFatVal > 0) ? (fatPm / pmFatVal) * desafioFat : 0;
+        const metaValue = metaProj ? Number(metaProj.projection_value) : (fatPm > 0 ? fatPm : defaultMeta);
 
-        // Projeção do mês anterior para este cliente (procura a última projeção não-zero do mês anterior)
-        const clientPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === cli.clientName && p.kpi === 'FAT');
+        const clientPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase() && p.kpi === 'FAT');
         const prevCliFatWeekly = prevMondays.map(date => {
           const p = clientPrevProjs.find((p: any) => p.week_start_date === date);
           return p ? Number(p.projection_value) : 0;
@@ -347,83 +386,46 @@ export async function GET(request: Request) {
           : 0;
 
         return {
-          client: cli.clientName,
-          ano_a: cli.fatPy,
-          mes_a: cli.fatPm,
+          client: cName,
+          ano_a: fatPy,
+          mes_a: fatPm,
           meta: metaValue,
           prev_month_projection: prevCliFatProj,
           projections: mondays.map(date => {
-            if (date > todayStr) return 0;
             const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
-            return p ? Number(p.projection_value) : metaValue;
+            if (p) return Number(p.projection_value);
+            return date > todayStr ? 0 : metaValue;
           })
         };
       });
 
-      // Agrupar "OUTROS"
-      if (otherClientsSummary.length > 0) {
-        const cProj = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
-        
-        const sumAnoA = otherClientsSummary.reduce((acc, c) => acc + c.fatPy, 0);
-        const sumMesA = otherClientsSummary.reduce((acc, c) => acc + c.fatPm, 0);
-        
-        const metaProj = cProj.find((p: any) => p.kpi === 'META');
-        const defaultMeta = Math.max(0, targetFat - clientsList.reduce((acc, c) => acc + c.meta, 0));
-        const metaValue = metaProj ? Number(metaProj.projection_value) : defaultMeta;
+      // Adicionar permanentemente "OUTROS" como o último item da carteira
+      const cProjOutros = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
+      const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
+      const defaultMetaOutros = Math.max(0, desafioFat - clientsList.reduce((acc, c) => acc + c.meta, 0));
+      const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : defaultMetaOutros;
 
-        // Projeção do mês anterior para "OUTROS" (procura a última projeção não-zero do mês anterior)
-        const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
-        const prevOtherFatWeekly = prevMondays.map(date => {
-          const p = otherPrevProjs.find((p: any) => p.week_start_date === date);
-          return p ? Number(p.projection_value) : 0;
-        });
-        const prevOtherFatProj = prevOtherFatWeekly.length > 0
-          ? (prevOtherFatWeekly.slice().reverse().find(v => v !== 0) || prevOtherFatWeekly[prevOtherFatWeekly.length - 1] || 0)
-          : 0;
+      const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
+      const prevOtherFatWeekly = prevMondays.map(date => {
+        const p = otherPrevProjs.find((p: any) => p.week_start_date === date);
+        return p ? Number(p.projection_value) : 0;
+      });
+      const prevOtherFatProj = prevOtherFatWeekly.length > 0
+        ? (prevOtherFatWeekly.slice().reverse().find(v => v !== 0) || prevOtherFatWeekly[prevOtherFatWeekly.length - 1] || 0)
+        : 0;
 
-        clientsList.push({
-          client: "OUTROS",
-          ano_a: sumAnoA,
-          mes_a: sumMesA,
-          meta: metaValue,
-          prev_month_projection: prevOtherFatProj,
-          projections: mondays.map(date => {
-            if (date > todayStr) return 0;
-            const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
-            return p ? Number(p.projection_value) : metaValue;
-          })
-        });
-      } else {
-        // Adicionar linha de "OUTROS" zerada caso não existam outros clientes, apenas para manter a consistência do layout
-        const cProj = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
-        const metaProj = cProj.find((p: any) => p.kpi === 'META');
-        const metaValue = metaProj ? Number(metaProj.projection_value) : 0;
-
-        // Projeção do mês anterior para "OUTROS" (procura a última projeção não-zero do mês anterior)
-        const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
-        const prevOtherFatWeekly = prevMondays.map(date => {
-          const p = otherPrevProjs.find((p: any) => p.week_start_date === date);
-          return p ? Number(p.projection_value) : 0;
-        });
-        const prevOtherFatProj = prevOtherFatWeekly.length > 0
-          ? (prevOtherFatWeekly.slice().reverse().find(v => v !== 0) || prevOtherFatWeekly[prevOtherFatWeekly.length - 1] || 0)
-          : 0;
-
-        clientsList.push({
-          client: "OUTROS",
-          ano_a: 0,
-          mes_a: 0,
-          meta: metaValue,
-          prev_month_projection: prevOtherFatProj,
-          projections: mondays.map(date => {
-            if (date > todayStr) return 0;
-            const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
-            return p ? Number(p.projection_value) : metaValue;
-          })
-        });
-      }
-
-      // A projeção de FAT do gerente é mantida como o valor próprio do gerente (totalmente independente das redes).
+      clientsList.push({
+        client: "OUTROS",
+        ano_a: 0,
+        mes_a: 0,
+        meta: metaValueOutros,
+        prev_month_projection: prevOtherFatProj,
+        projections: mondays.map(date => {
+          const p = cProjOutros.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
+          if (p) return Number(p.projection_value);
+          return date > todayStr ? 0 : metaValueOutros;
+        })
+      });
 
       return {
         manager: mName,
@@ -438,8 +440,8 @@ export async function GET(request: Request) {
       month,
       mondays,
       managers: managersData,
-      // Indica se este usuário está restrito a um único gerente
-      restrictedToManager: (userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null
+      restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
+      isGerenteNacionalAdmin
     });
   } catch (error: any) {
     return handleAuthError(error);
@@ -448,14 +450,16 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // Verificar autenticação
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
     await requirePermission(profile.role, "RPS");
 
     const userRole = profile.role || '';
     const userManagerName = profile.manager_name || null;
-    const isRestricted = userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
+    const userEmail = (user.email || '').toLowerCase().trim();
+
+    const isGerenteNacionalAdmin = checkIsGerenteNacionalAdmin(userRole, userEmail);
+    const isRestricted = !isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
 
     const body = await request.json();
     const { year, month, projections } = body;
@@ -464,17 +468,50 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
     }
 
-    // Se restrito, filtrar apenas projeções do seu gerente
     let filteredProjections = projections;
     if (isRestricted) {
-      filteredProjections = projections.filter((p: any) => p.manager === userManagerName);
+      filteredProjections = projections.filter((p: any) => isSameManager(p.manager, userManagerName));
     }
 
     const supabase = getSupabaseAdminClient();
 
-    // Mapeia as projeções no formato esperado pelo banco
-    const rowsToUpsert = filteredProjections.map((p: any) => ({
-      manager: p.manager,
+    // 1. Processar edições de Desafios (DESAFIO_FAT e DESAFIO_VOL) salvando diretamente na fonte oficial public.targets
+    const managersInPayload = Array.from(new Set(filteredProjections.map((p: any) => p.manager)));
+    const targetsToUpsert: any[] = [];
+
+    for (const mName of managersInPayload) {
+      const canonical = resolveCanonicalManager(mName as string);
+      const fatItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_FAT');
+      const volItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_VOL');
+
+      if (fatItem || volItem) {
+        targetsToUpsert.push({
+          manager: canonical.managerName,
+          manager_id: canonical.managerId,
+          year: parseInt(year),
+          month: parseInt(month),
+          target_revenue: fatItem ? Number(fatItem.projection_value) : 0,
+          target_tons: volItem ? Number(volItem.projection_value) : 0,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+
+    if (targetsToUpsert.length > 0) {
+      const { error: targetsErr } = await supabase
+        .from('targets')
+        .upsert(targetsToUpsert, { onConflict: 'manager,year,month' });
+      if (targetsErr) throw targetsErr;
+    }
+
+    // 2. PROIBIÇÃO DE DUPLICIDADE: Filtrar rowsToUpsert para NUNCA persistir DESAFIO_FAT ou DESAFIO_VOL em cm_weekly_projections
+    const weeklyProjectionsOnly = filteredProjections.filter((p: any) => {
+      return p.kpi !== 'DESAFIO_FAT' && p.kpi !== 'DESAFIO_VOL';
+    });
+
+    // Converter SEMPRE a propriedade manager para o nome canônico único do gerente antes do UPSERT
+    const rowsToUpsert = weeklyProjectionsOnly.map((p: any) => ({
+      manager: resolveCanonicalManager(p.manager).managerName,
       client_matrix: p.client_matrix,
       year: parseInt(year),
       month: parseInt(month),
@@ -484,14 +521,15 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString()
     }));
 
-    // Realizar upsert
-    const { error } = await supabase
-      .from('cm_weekly_projections')
-      .upsert(rowsToUpsert, { onConflict: 'manager,client_matrix,year,month,week_start_date,kpi' });
+    if (rowsToUpsert.length > 0) {
+      const { error } = await supabase
+        .from('cm_weekly_projections')
+        .upsert(rowsToUpsert, { onConflict: 'manager,client_matrix,year,month,week_start_date,kpi' });
 
-    if (error) throw error;
+      if (error) throw error;
+    }
 
-    return NextResponse.json({ success: true, count: rowsToUpsert.length });
+    return NextResponse.json({ success: true, count: targetsToUpsert.length + rowsToUpsert.length });
   } catch (error: any) {
     return handleAuthError(error);
   }

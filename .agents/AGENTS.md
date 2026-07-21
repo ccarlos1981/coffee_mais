@@ -1348,5 +1348,161 @@ A funcionalidade de Indicador de Atividade Comercial no Cadastro Mestre de Clien
   * **INSERT / UPDATE / DELETE:** Mantidos exclusivamente para a role `authenticated` (e service role) para garantir a integridade dos dados inseridos/modificados pelo sistema.
 * **Diretiva de Governança Complementar:** Para tabelas auxiliares que servem de relacionamento (`LEFT JOIN` / PostgREST) com tabelas principais (como `cm_clientes`), as políticas RLS de leitura (SELECT) devem obrigatoriamente manter compatibilidade e equivalência de acesso com a tabela pai. Isso evita que falhas silenciosas de permissão façam relacionamentos retornarem `null` no cliente.
 
+---
+
+## Seção 41 — Baseline Permanente — Modo Administrativo da RPS (v1.0)
+
+A funcionalidade de Modo Administrativo da RPS passa a compor oficialmente a Baseline do Coffee++, sendo considerada comportamento oficial da plataforma e não poderá ser alterada sem revisão arquitetural formal.
+
+### 41.1 Controle de Acesso (Prioridade de Autorização)
+A autorização para o Modo Administrativo obedece obrigatoriamente à seguinte prioridade:
+1. **Perfil (Role) Autorizado:** `Gerente Nacional`, `Diretor`, `CEO`, `Admin` ou `Admin Master`.
+2. **Fallback por E-mail:** `cristiano@coffeemais.com` ou `cristiano.santos@coffeemais.com`.
+O perfil (role) sempre prevalece sobre a verificação por e-mail.
+
+### 41.2 Capacidades do Modo Administrativo
+Quando ativo, o usuário pode editar:
+* **Desafio:** VOL, FAT e INVEST dos gerentes.
+* **Projeções Semanais:** VOL, FAT e INVEST de todas as semanas do mês (passadas, atual ou futuras) para gerentes e redes.
+* **Metas dos Clientes:** Edição liberada a qualquer tempo.
+Independentemente do dia da semana (segunda-feira ou outros dias), da semana selecionada ou das restrições normais da RPS.
+
+### 41.3 Campos Obrigatoriamente Somente Leitura
+Nunca poderão ser editáveis, mesmo em Modo Administrativo:
+* **ANO A, MÊS A:** Faturamento e volume históricos.
+* **% DISP:** Percentual de dispersão (realizado vs projeção do mês anterior).
+* **% DESAFIO, %AA, %MA:** Indicadores percentuais calculados.
+* **Todos os indicadores históricos e calculados:** Valores sempre derivados exclusivamente dos cálculos do sistema.
+
+### 41.4 Arquitetura e Integridade
+O Modo Administrativo altera apenas permissões de edição no frontend e endpoints da API (`/api/processo-comercial/rps`).
+Não altera: cálculos, regras de negócio, consolidação, ranking, indicadores ou histórico. A lógica matemática da RPS permanece exatamente igual.
+
+### 41.5 Diretriz de Compatibilidade
+Toda evolução futura da RPS deverá preservar este comportamento. Qualquer alteração que impacte estas regras deverá ser tratada como mudança arquitetural e nunca como ajuste de manutenção.
+
+Status: **BASELINE OFICIAL HOMOLOGADA**.
+
+---
+
+## Seção 42 — Política Permanente de Baselines Homologados
+
+Todo baseline oficialmente homologado da plataforma passa a ser considerado imutável.
+
+Qualquer implementação futura que altere um comportamento pertencente a um baseline homologado deverá, obrigatoriamente:
+
+1. **Identificar explicitamente** qual baseline será impactado.
+2. **Justificar tecnicamente** a necessidade da alteração.
+3. **Informar riscos** de regressão.
+4. **Apresentar plano** de compatibilidade ou migração.
+5. **Solicitar aprovação** antes da implementação.
+
+É proibido alterar silenciosamente comportamentos pertencentes a um baseline homologado.
+
+Na ausência de aprovação explícita, o comportamento original deverá ser preservado integralmente.
+
+Status: **REGRA PERMANENTE DE GOVERNANÇA**.
+
+---
+
+## Seção 43 — Baseline Permanente — Padrão de Scroll para Telas Analíticas (Design System)
+
+A partir desta versão, todas as telas analíticas do Coffee++ passam a seguir obrigatoriamente este padrão de navegação e rolagem para garantir consistência de UX, legibilidade e facilidade de manutenção.
+
+### 43.1 Hierarquia de Sticky ("Apenas Um Sticky Principal")
+É obrigatório existir apenas **um elemento sticky principal** durante a navegação pela massa de dados:
+* **Preferencialmente:** O cabeçalho das colunas da tabela.
+* Demais elementos da página (título, subtítulo, breadcrumbs, badges, filtros superiores e informações contextuais) **não devem** permanecer fixos durante o scroll, devendo subir e rolar naturally com a página, salvo justificativa funcional prévia e aprovada.
+
+### 43.2 Cabeçalhos de Tabelas Sticky
+Os cabeçalhos das tabelas devem:
+* Permanecer visualmente estáveis durante a rolagem.
+* Possuir fundo sólido (`var(--table-header-bg)` / `var(--background-card)`).
+* Ocultar completamente o conteúdo que passa por trás (0% de transparência ou vazamento de texto).
+* Manter alinhamento consistente em diferentes níveis de zoom do navegador (90%, 100%, 125%) via `border-collapse: separate; border-spacing: 0;`.
+* Utilizar sombra discreta (`box-shadow`) no limite inferior para separar o cabeçalho congelado da massa de dados em movimento.
+
+### 43.3 Operação via Sidebar Lateral
+Quando existir painel lateral de operação (filtros, ações ou comandos), ele poderá permanecer fixo (`sticky`), desde que:
+* Não sobreponha conteúdo da tabela.
+* Não interfira na leitura dos dados.
+* Mantenha comportamento consistente em diferentes resoluções (notebooks 1366x768, Full HD e Ultrawide).
+
+### 43.4 Performance e Simplicidade
+Implementações de sticky devem priorizar simplicidade CSS e desempenho na GPU, eliminando múltiplos elementos fixos concorrentes, cálculos JS desnecessários no evento de scroll e repaints de layout.
+
+### 43.5 Consistência entre Módulos
+Telas analíticas existentes e futuras devem reutilizar este padrão para garantir experiência uniforme em todo o ecossistema Coffee++:
+* RPS;
+* Faturamento;
+* Atendimento;
+* Investimentos;
+* DRE;
+* Dashboards Analíticos.
+
+Qualquer exceção deverá possuir justificativa técnica formal e aprovação arquitetural prévia.
+
+Status: **BASELINE OFICIAL — DESIGN SYSTEM (SCROLL E TABELAS ANALÍTICAS)**.
+
+---
+
+## Seção 44 — Baseline Permanente — Normalização de Chaves de Domínio
+
+Todas as comparações de entidades de negócio utilizadas como chave lógica deverão ser realizadas utilizando representação canônica.
+
+Aplica-se, entre outras, às entidades:
+- Gerente
+- Cliente
+- Rede
+- Matriz
+- Regional
+
+É proibido depender de:
+- diferenças de maiúsculas/minúsculas;
+- espaços em branco;
+- aliases históricos;
+- nomes legados.
+
+Toda leitura e gravação deverá utilizar uma chave normalizada única.
+
+Quando houver nomes históricos ou aliases, estes deverão ser convertidos para a representação oficial antes de qualquer comparação.
+
+Alterações futuras deverão preservar essa regra em todos os módulos da plataforma.
+
+Status: **BASELINE OFICIAL — NORMALIZAÇÃO DE CHAVES DE DOMÍNIO**.
+
+---
+
+## Seção 45 — Baseline Permanente — Single Source of Truth das Metas
+
+Status: **OFICIAL — CONGELADA**.
+
+### 1. Fonte Oficial
+A tabela `public.targets` é a única fonte oficial para metas e desafios corporativos da empresa.
+Os módulos consumidores (RPS, Dashboard, Relatórios e futuros módulos) devem ler e gravar metas exclusivamente nesta tabela.
+
+### 2. Responsabilidade das Tabelas
+
+#### `public.targets`
+- Metas mensais oficiais
+- Target de faturamento
+- Target de volume
+
+#### `public.cm_weekly_projections`
+- Projeções semanais
+- Forecasts
+- Histórico semanal
+
+É estritamente proibido armazenar os KPIs `DESAFIO_FAT` e `DESAFIO_VOL` na tabela `public.cm_weekly_projections`.
+
+### 3. Normalização
+A identificação de gerentes deve utilizar a camada oficial de normalização (`src/lib/domain/canonical.ts`), priorizando `manager_id` como identificador canônico.
+Nenhuma regra de negócio pode depender de nomes literais ou hardcodes de aliases.
+
+
+
+
+
+
 
 

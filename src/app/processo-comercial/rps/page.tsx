@@ -141,6 +141,7 @@ export default function RpsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [restrictedToManager, setRestrictedToManager] = useState<string | null>(null);
+  const [isGerenteNacionalAdmin, setIsGerenteNacionalAdmin] = useState<boolean>(false);
 
   // Mapeamento estético do nome dos gerentes
   const getManagerDisplayName = (name: string) => {
@@ -165,6 +166,30 @@ export default function RpsPage() {
     if (!businessDays || !businessDays.total_days) return 0;
     return (businessDays.elapsed_days / businessDays.total_days) * 100;
   }, [businessDays]);
+
+  // Checar perfil do usuário autenticado no carregamento da página
+  useEffect(() => {
+    supabase.auth.getUser().then(async (res: any) => {
+      const user = res?.data?.user;
+      if (user) {
+        const userEmail = (user.email || "").toLowerCase().trim();
+        const isAdminEmail = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"].includes(userEmail);
+        
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role")
+          .eq("id", user.id)
+          .maybeSingle();
+          
+        const role = profile?.role || "";
+        const isAdminRole = ["Gerente Nacional", "Diretor", "Admin Master", "Admin", "CEO"].includes(role);
+
+        if (isAdminRole || isAdminEmail) {
+          setIsGerenteNacionalAdmin(true);
+        }
+      }
+    });
+  }, []);
 
   // Carrega dias úteis do banco de dados
   const loadBusinessDays = useCallback(async (year: number, month: number) => {
@@ -197,6 +222,9 @@ export default function RpsPage() {
         setMondays(json.mondays || []);
         setManagers(json.managers || []);
         setRestrictedToManager(json.restrictedToManager || null);
+        if (json.isGerenteNacionalAdmin) {
+          setIsGerenteNacionalAdmin(true);
+        }
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
       }
@@ -284,6 +312,24 @@ export default function RpsPage() {
     });
   };
 
+  // Handler para alteração do Desafio do Gerente (Modo Administrativo)
+  const handleManagerDesafioChange = (mIdx: number, kpi: 'VOL' | 'FAT' | 'INVEST', val: number) => {
+    setManagers(prev => {
+      const next = [...prev];
+      const mgr = { ...next[mIdx] };
+      const kpis = { ...mgr.kpis };
+      const kpiData = { ...kpis[kpi] };
+      
+      // FAT desafio é digitado em milhares (x1000)
+      kpiData.desafio = kpi === 'FAT' ? val * 1000 : val;
+      
+      kpis[kpi] = kpiData;
+      mgr.kpis = kpis;
+      next[mIdx] = mgr;
+      return next;
+    });
+  };
+
   // Alternar visualização dos clientes
   const toggleManagerExpanded = (manager: string) => {
     setExpandedManagers(prev => ({ ...prev, [manager]: !prev[manager] }));
@@ -299,6 +345,31 @@ export default function RpsPage() {
       const payloadProjs: any[] = [];
 
       managers.forEach(mgr => {
+        // 0. Metas (Desafios) do gerente
+        payloadProjs.push({
+          manager: mgr.manager,
+          client_matrix: '_TOTAL_',
+          week_start_date: mondays[0],
+          kpi: 'DESAFIO_VOL',
+          projection_value: mgr.kpis.VOL.desafio
+        });
+
+        payloadProjs.push({
+          manager: mgr.manager,
+          client_matrix: '_TOTAL_',
+          week_start_date: mondays[0],
+          kpi: 'DESAFIO_FAT',
+          projection_value: mgr.kpis.FAT.desafio
+        });
+
+        payloadProjs.push({
+          manager: mgr.manager,
+          client_matrix: '_TOTAL_',
+          week_start_date: mondays[0],
+          kpi: 'DESAFIO_INVEST',
+          projection_value: mgr.kpis.INVEST.desafio
+        });
+
         // 1. Projeções de volume (VOL) do gerente
         mgr.kpis.VOL.projections.forEach((val, idx) => {
           payloadProjs.push({
@@ -534,8 +605,8 @@ export default function RpsPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans transition-colors duration-300">
       
-      {/* Barra de Navegação Superior */}
-      <nav className="cm-topnav border-b border-border flex items-center justify-between px-6 h-14 bg-background-navbar sticky top-0 z-50">
+      {/* Barra de Navegação Superior (Estática) */}
+      <nav className="cm-topnav border-b border-border flex items-center justify-between px-6 h-12 bg-background-navbar">
         <div className="cm-nav-links flex items-center gap-3">
           <button 
             onClick={() => router.back()} 
@@ -544,12 +615,6 @@ export default function RpsPage() {
             <ArrowLeft className="w-3.5 h-3.5" />
             Voltar
           </button>
-        </div>
-        <div className="absolute left-1/2 -translate-x-1/2 text-center">
-          <h1 className="text-sm md:text-base font-bold text-foreground tracking-wider uppercase flex items-center justify-center gap-2">
-            <Receipt className="w-4 h-4 text-accent-gold" />
-            RPS — Reunião de Planejamento Semanal
-          </h1>
         </div>
         <div className="cm-nav-right flex items-center gap-4">
           <ThemeToggle />
@@ -605,7 +670,7 @@ export default function RpsPage() {
           <div className="mt-6">
             <button
               onClick={handleSaveProjections}
-              disabled={saving || loading || managers.length === 0 || !isTodayMonday}
+              disabled={saving || loading || managers.length === 0 || (!isTodayMonday && !isGerenteNacionalAdmin)}
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg disabled:opacity-50 cursor-pointer"
             >
               {saving ? (
@@ -629,6 +694,31 @@ export default function RpsPage() {
         {/* CONTEÚDO PRINCIPAL: Tabelas */}
         <main className="cm-main">
           
+          {/* Cabeçalho da Página (Scrolls naturally com a página) */}
+          <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border/60">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-lg md:text-xl font-bold text-foreground tracking-wide flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-accent-gold" />
+                RPS — Reunião de Planejamento Semanal
+              </h1>
+              <p className="text-xs text-foreground-muted">
+                Reunião de RPS com as áreas comerciais
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {isGerenteNacionalAdmin && (
+                <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1 rounded-lg text-amber-400 text-xs font-bold tracking-wider uppercase shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Modo Administrativo (Gerente Nacional)
+                </div>
+              )}
+              <span className="text-[11px] text-foreground-muted bg-white/5 px-2.5 py-1 rounded-lg border border-white/10 font-mono">
+                *Valores Faturamento /1k
+              </span>
+            </div>
+          </div>
+
           {/* Mensagens de Feedback */}
           {success && (
             <div className="mb-4 p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-semibold animate-fade-in">
@@ -661,15 +751,6 @@ export default function RpsPage() {
               
               {/* Tabela de Projeção Consolidada (Gerentes) */}
               <div className="glass-card rps-card">
-                <div className="p-4 border-b border-border bg-table-header-bg flex justify-between items-center rounded-t-[6px]">
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-accent-gold">
-                    Reunião de RPS com as áreas comerciais
-                  </h2>
-                  <span className="text-[10px] text-foreground-muted bg-white/5 px-2 py-0.5 rounded border border-white/10 font-mono">
-                    *Valores Faturamento /1k
-                  </span>
-                </div>
-                
                 <div className="overflow-x-auto md:overflow-x-visible">
                   <table className="data-table rps-table">
                     <thead>
@@ -737,17 +818,32 @@ export default function RpsPage() {
                               <td className="font-semibold text-xs text-foreground-secondary">VOL</td>
                               <td className="col-divider text-right">{formatNumber(row.kpis.VOL.ano_a, 0)}</td>
                               <td className="text-right">{formatNumber(row.kpis.VOL.mes_a, 0)}</td>
-                              <td className="col-divider text-right font-medium">{formatNumber(row.kpis.VOL.desafio, 0)}</td>
+                              <td className="col-divider text-right font-medium">
+                                {isGerenteNacionalAdmin ? (
+                                  <input
+                                    type="number"
+                                    value={row.kpis.VOL.desafio === 0 ? "" : row.kpis.VOL.desafio.toString()}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                      handleManagerDesafioChange(mIdx, "VOL", isNaN(num) ? 0 : num);
+                                    }}
+                                    className="w-full text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold"
+                                  />
+                                ) : (
+                                  formatNumber(row.kpis.VOL.desafio, 0)
+                                )}
+                              </td>
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.VOL.projections[wIdx];
                                 const isFuture = m > todayStr;
-                                const isEditable = m === todayStr;
+                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
                                     {isEditable ? (
                                       <input
                                         type="number"
-                                        value={isFuture ? "" : (val === 0 ? "" : val.toString())}
+                                        value={val === 0 ? "" : val.toString()}
                                         placeholder="0"
                                         onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "VOL", wIdx })}
                                         onBlur={() => setFocusedInput(null)}
@@ -759,7 +855,7 @@ export default function RpsPage() {
                                       />
                                     ) : (
                                       <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {isFuture ? "-" : (val === 0 ? "0" : formatNumber(val, 0))}
+                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(val, 0))}
                                       </div>
                                     )}
                                   </td>
@@ -778,17 +874,32 @@ export default function RpsPage() {
                               <td className="font-semibold text-xs text-foreground-secondary">FAT</td>
                               <td className="col-divider text-right">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
                               <td className="text-right">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
-                              <td className="col-divider text-right font-medium">{formatCurrency(row.kpis.FAT.desafio / 1000, 0)}</td>
+                              <td className="col-divider text-right font-medium">
+                                {isGerenteNacionalAdmin ? (
+                                  <input
+                                    type="number"
+                                    value={row.kpis.FAT.desafio === 0 ? "" : Math.round(row.kpis.FAT.desafio / 1000).toString()}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                      handleManagerDesafioChange(mIdx, "FAT", isNaN(num) ? 0 : num);
+                                    }}
+                                    className="w-full text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold"
+                                  />
+                                ) : (
+                                  formatCurrency(row.kpis.FAT.desafio / 1000, 0)
+                                )}
+                              </td>
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.FAT.projections[wIdx];
                                 const isFuture = m > todayStr;
-                                const isEditable = m === todayStr;
+                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
                                     {isEditable ? (
                                       <input
                                         type="number"
-                                        value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
+                                        value={val === 0 ? "" : Math.round(val / 1000).toString()}
                                         placeholder="0"
                                         onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "FAT", wIdx })}
                                         onBlur={() => setFocusedInput(null)}
@@ -800,7 +911,7 @@ export default function RpsPage() {
                                       />
                                     ) : (
                                       <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {isFuture ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
+                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
                                       </div>
                                     )}
                                   </td>
@@ -819,18 +930,36 @@ export default function RpsPage() {
                               <td className="font-semibold text-xs text-foreground-secondary">INVEST</td>
                               <td className="col-divider text-right text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.ano_a, 1)}%</td>
                               <td className="text-right text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.mes_a, 1)}%</td>
-                              <td className="col-divider text-right text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.desafio, 1)}%</td>
+                              <td className="col-divider text-right font-mono">
+                                {isGerenteNacionalAdmin ? (
+                                  <div className="flex items-center gap-1 justify-end">
+                                    <input
+                                      type="number"
+                                      value={row.kpis.INVEST.desafio === 0 ? "" : row.kpis.INVEST.desafio.toString()}
+                                      placeholder="0"
+                                      onChange={(e) => {
+                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                        handleManagerDesafioChange(mIdx, "INVEST", isNaN(num) ? 0 : num);
+                                      }}
+                                      className="w-12 text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold font-mono"
+                                    />
+                                    <span className="text-[10px] text-foreground-muted">%</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.desafio, 1)}%</span>
+                                )}
+                              </td>
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.INVEST.projections[wIdx];
                                 const isFuture = m > todayStr;
-                                const isEditable = m === todayStr;
+                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                 return (
                                   <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
                                     {isEditable ? (
                                       <div className="flex items-center gap-1 justify-end">
                                         <input
                                           type="number"
-                                          value={isFuture ? "" : (val === 0 ? "" : val.toString())}
+                                          value={val === 0 ? "" : val.toString()}
                                           placeholder="0"
                                           onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "INVEST", wIdx })}
                                           onBlur={() => setFocusedInput(null)}
@@ -845,7 +974,7 @@ export default function RpsPage() {
                                     ) : (
                                       <div className="flex items-center gap-1 justify-end opacity-40 cursor-not-allowed select-none min-h-[24px]">
                                         <span className="text-xs text-blue-400 font-mono">
-                                          {isFuture ? "-" : formatNumber(val, 1)}%
+                                          {isFuture && val === 0 ? "-" : formatNumber(val, 1)}%
                                         </span>
                                       </div>
                                     )}
@@ -889,7 +1018,7 @@ export default function RpsPage() {
                                   
                                   {/* META */}
                                   <td className="col-divider text-right">
-                                    {isTodayMonday ? (
+                                    {isTodayMonday || isGerenteNacionalAdmin ? (
                                       <input
                                         type="number"
                                         value={cli.meta === 0 ? "" : Math.round(cli.meta / 1000).toString()}
@@ -913,13 +1042,13 @@ export default function RpsPage() {
                                   {mondays.map((m, wIdx) => {
                                     const val = cli.projections[wIdx];
                                     const isFuture = m > todayStr;
-                                    const isEditable = m === todayStr;
+                                    const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                     return (
                                       <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
                                         {isEditable ? (
                                           <input
                                             type="number"
-                                            value={isFuture ? "" : (val === 0 ? "" : Math.round(val / 1000).toString())}
+                                            value={val === 0 ? "" : Math.round(val / 1000).toString()}
                                             placeholder="0"
                                             onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "FAT", wIdx })}
                                             onBlur={() => setFocusedInput(null)}
@@ -931,7 +1060,7 @@ export default function RpsPage() {
                                           />
                                         ) : (
                                           <div className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                            {isFuture ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
+                                            {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
                                           </div>
                                         )}
                                       </td>
@@ -1082,7 +1211,7 @@ export default function RpsPage() {
                   </div>
                 </div>
                 <button
-                  disabled={saving || loading || managers.length === 0 || !isTodayMonday}
+                  disabled={saving || loading || managers.length === 0 || (!isTodayMonday && !isGerenteNacionalAdmin)}
                   onClick={handleSaveProjections}
                   className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white font-bold uppercase tracking-wider text-xs transition-all shadow-lg disabled:opacity-50 cursor-pointer whitespace-nowrap"
                 >
