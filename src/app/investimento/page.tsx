@@ -320,6 +320,7 @@ export default function InvestimentoPage() {
   const [importFileName, setImportFileName] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const motivoRef = useRef<HTMLSelectElement>(null);
+  const modalScrollRef = useRef<HTMLDivElement>(null);
   const [importErrors, setImportErrors] = useState<any[]>([]);
   const [importSummary, setImportSummary] = useState<any>(null);
   const [fileHash, setFileHash] = useState("");
@@ -2015,7 +2016,15 @@ export default function InvestimentoPage() {
 
   const handleActionChecklistChange = async (fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia' | 'checklist_sem_auditoria', checked: boolean) => {
     if (!selectedAction) return;
-    setActionLoading(selectedAction.id);
+
+    // Preserva a posição atual do scroll no container do modal
+    const currentScrollTop = modalScrollRef.current?.scrollTop;
+
+    // Atualização otimista imediata da interface visual
+    setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: checked }));
+    setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
+    setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
+
     try {
       const updatedChecklist = {
         comunicacao: fieldName === 'checklist_comunicacao' ? checked : (selectedAction.checklist_comunicacao || false),
@@ -2032,18 +2041,18 @@ export default function InvestimentoPage() {
       };
 
       await atualizarChecklistTrade(selectedAction.id, updatedChecklist);
-      
-      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
-      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
-      setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: checked }));
-      
-      setFeedback({ type: "success", msg: "Checklist operacional atualizado!" });
-      setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       console.error(err);
+      // Reverte o estado visual em caso de falha na gravação
+      setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: !checked }));
+      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: !checked } : prev);
+      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: !checked } : item));
       alert("Erro ao salvar checklist: " + err.message);
     } finally {
-      setActionLoading(null);
+      // Garante a manutenção perfeita da posição do scroll
+      if (modalScrollRef.current && currentScrollTop !== undefined) {
+        modalScrollRef.current.scrollTop = currentScrollTop;
+      }
     }
   };
 
@@ -4797,7 +4806,7 @@ export default function InvestimentoPage() {
                 </button>
               </div>
               
-              <div className="p-4 sm:p-5 space-y-4 overflow-y-auto">
+              <div ref={modalScrollRef} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
                 <button 
                   onClick={() => setDetailsExpanded(!detailsExpanded)}
                   className="w-full text-left bg-background border border-border p-3 rounded-2xl flex flex-col gap-1 relative shadow-sm cursor-pointer hover:border-gold transition-colors group focus:outline-none"
@@ -5078,12 +5087,13 @@ export default function InvestimentoPage() {
                                     logistica: tradeChecklist.logistica,
                                     auditoria: tradeChecklist.auditoria,
                                     garantia: selectedAction.checklist_garantia || false,
-                                    conferencia: tradeChecklist.conferencia
+                                    conferencia: tradeChecklist.conferencia,
+                                    sem_auditoria: tradeChecklist.sem_auditoria
                                   }));
                                 }
                               }}
-                              disabled={actionLoading === selectedAction.id || !(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) || (tradeDivergencia.possui && (!tradeDivergencia.motivo || !tradeDivergencia.observacao))}
-                              title={!(tradeChecklist.comunicacao && tradeChecklist.logistica && tradeChecklist.auditoria && tradeChecklist.conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a ação." : (tradeDivergencia.possui && (!tradeDivergencia.motivo || !tradeDivergencia.observacao) ? "Preencha o motivo e observação de divergência de calendário antes de aprovar." : "")}
+                              disabled={actionLoading === selectedAction.id || !(tradeChecklist.comunicacao && tradeChecklist.logistica && (tradeChecklist.auditoria || tradeChecklist.sem_auditoria) && tradeChecklist.conferencia) || (tradeDivergencia.possui && (!tradeDivergencia.motivo || !tradeDivergencia.observacao))}
+                              title={!(tradeChecklist.comunicacao && tradeChecklist.logistica && (tradeChecklist.auditoria || tradeChecklist.sem_auditoria) && tradeChecklist.conferencia) ? "Conclua todos os checklists operacionais antes de aprovar a ação." : (tradeDivergencia.possui && (!tradeDivergencia.motivo || !tradeDivergencia.observacao) ? "Preencha o motivo e observação de divergência de calendário antes de aprovar." : "")}
                               className="flex-1 py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                             >
                               <CheckCircle className="w-4 h-4" />
@@ -5386,50 +5396,7 @@ export default function InvestimentoPage() {
                     </button>
                   )}
 
-                  {/* Checklist Comercial Geral */}
-                  {selectedAction.fase_atual === 2 && (
-                    <div className="bg-elevated p-3.5 rounded-xl border border-border flex flex-col gap-3 mb-1 text-foreground">
-                      <span className="text-xs font-bold text-foreground">Validações Comerciais Gerais</span>
-                      <div className="grid grid-cols-1 gap-2.5 pt-1">
-                        <label className="flex items-start gap-3 cursor-pointer group">
-                          <input 
-                            type="checkbox" 
-                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                            checked={selectedAction.checklist_garantia || false} 
-                            onChange={(e) => handleParentChecklistChange('checklist_garantia', e.target.checked)} 
-                          />
-                          <div>
-                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">1) Garantia Contratual</span>
-                            <span className="text-[10px] text-muted block leading-tight">Validação de que as verbas e margens estão acordadas em contrato.</span>
-                          </div>
-                        </label>
-                        <label className="flex items-start gap-3 cursor-pointer group">
-                          <input 
-                            type="checkbox" 
-                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                            checked={selectedAction.verba_aprovada || false} 
-                            onChange={(e) => handleParentChecklistChange('verba_aprovada', e.target.checked)} 
-                          />
-                          <div>
-                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">2) Verba Aprovada</span>
-                            <span className="text-[10px] text-muted block leading-tight">Garantia de orçamento disponível na verba regional.</span>
-                          </div>
-                        </label>
-                        <label className="flex items-start gap-3 cursor-pointer group">
-                          <input 
-                            type="checkbox" 
-                            className="mt-1 w-4 h-4 min-w-4 min-h-4 flex-shrink-0 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
-                            checked={selectedAction.contrato_assinado || false} 
-                            onChange={(e) => handleParentChecklistChange('contrato_assinado', e.target.checked)} 
-                          />
-                          <div>
-                            <span className="font-bold text-xs text-foreground block group-hover:text-gold transition-colors">3) Contrato Assinado</span>
-                            <span className="text-[10px] text-muted block leading-tight">Assinatura digital do acordo de trade executada pela rede.</span>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
-                  )}
+
 
                   {(selectedAction.fase_atual || 1) === 2 && (
                     <div className="flex gap-2">
