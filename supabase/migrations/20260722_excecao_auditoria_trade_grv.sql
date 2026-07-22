@@ -1,13 +1,15 @@
 -- Migration: Exceção Oficial de Auditoria do Trade (GRV)
 -- Data: 2026-07-22
--- Objetivo: Adicionar coluna checklist_sem_auditoria, atualizar view v_acoes_investimento_com_gerente e criar RPC transacional registrar_excecao_auditoria_trade.
+-- Objetivo: Adicionar coluna checklist_sem_auditoria, atualizar view v_acoes_investimento_com_gerente e criar RPC transacional de atualização do checklist do Trade.
 
 -- 1. Adicionar a coluna checklist_sem_auditoria na tabela cm_acoes_investimento (compatibilidade retroativa)
 ALTER TABLE public.cm_acoes_investimento
   ADD COLUMN IF NOT EXISTS checklist_sem_auditoria BOOLEAN DEFAULT FALSE NOT NULL;
 
 -- 2. Atualizar/Recriar a view v_acoes_investimento_com_gerente incluindo checklist_sem_auditoria e campos de divergência
-CREATE OR REPLACE VIEW public.v_acoes_investimento_com_gerente AS
+DROP VIEW IF EXISTS public.v_acoes_investimento_com_gerente CASCADE;
+
+CREATE VIEW public.v_acoes_investimento_com_gerente AS
  SELECT a.id,
     a.data_registro,
     a.rede,
@@ -52,7 +54,7 @@ CREATE OR REPLACE VIEW public.v_acoes_investimento_com_gerente AS
     a.checklist_garantia,
     a.apuracao_numero_acordo,
     a.apuracao_qtd_vendida,
-    a.apuracao_valor_realized,
+    a.apuracao_valor_realizado,
     a.apuracao_evidencias_url,
     a.apuracao_boleto_id,
     a.checklist_conferencia,
@@ -114,14 +116,14 @@ CREATE OR REPLACE VIEW public.v_acoes_investimento_com_gerente AS
 -- 3. Função RPC PostgreSQL Transacional registrar_excecao_auditoria_trade
 CREATE OR REPLACE FUNCTION public.registrar_excecao_auditoria_trade(
   p_acao_id UUID,
-  p_checklist_comunicacao BOOLEAN,
-  p_checklist_logistica BOOLEAN,
-  p_checklist_auditoria BOOLEAN,
-  p_checklist_garantia BOOLEAN,
-  p_checklist_conferencia BOOLEAN,
-  p_checklist_sem_auditoria BOOLEAN,
+  p_checklist_comunicacao BOOLEAN DEFAULT FALSE,
+  p_checklist_logistica BOOLEAN DEFAULT FALSE,
+  p_checklist_auditoria BOOLEAN DEFAULT FALSE,
+  p_checklist_garantia BOOLEAN DEFAULT FALSE,
+  p_checklist_conferencia BOOLEAN DEFAULT FALSE,
+  p_checklist_sem_auditoria BOOLEAN DEFAULT FALSE,
   p_possui_divergencia BOOLEAN DEFAULT FALSE,
-  p_motivo_divergencia public.motivo_divergencia_enum DEFAULT NULL,
+  p_motivo_divergencia TEXT DEFAULT NULL,
   p_observacao_divergencia TEXT DEFAULT NULL,
   p_user_id UUID DEFAULT NULL
 )
@@ -130,25 +132,16 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
 DECLARE
-  v_old_sem_auditoria BOOLEAN;
-  v_transition_triggered BOOLEAN := FALSE;
-  v_codigo TEXT;
-  v_campanha_nome TEXT;
-  v_gerente_responsavel TEXT;
-  v_usuario_nome TEXT := 'Sistema';
+  v_enum_motivo public.motivo_divergencia_enum;
 BEGIN
-  -- 1. Bloqueio pessimista para leitura do valor anterior e garantia de atomicidade
-  SELECT checklist_sem_auditoria
-    INTO v_old_sem_auditoria
-    FROM public.cm_acoes_investimento
-   WHERE id = p_acao_id
-     FOR UPDATE;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Ação de investimento % não encontrada.', p_acao_id;
+  -- Cast seguro de texto para enum apenas se divergencia ativa
+  IF p_possui_divergencia IS TRUE AND p_motivo_divergencia IS NOT NULL AND p_motivo_divergencia <> '' THEN
+    v_enum_motivo := p_motivo_divergencia::public.motivo_divergencia_enum;
+  ELSE
+    v_enum_motivo := NULL;
   END IF;
 
-  -- 2. Atualizar o checklist e divergência na tabela cm_acoes_investimento
+  -- Atualizar o checklist e divergência na tabela cm_acoes_investimento
   UPDATE public.cm_acoes_investimento
      SET checklist_comunicacao        = COALESCE(p_checklist_comunicacao, false),
          checklist_logistica          = COALESCE(p_checklist_logistica, false),
@@ -157,73 +150,17 @@ BEGIN
          checklist_conferencia        = COALESCE(p_checklist_conferencia, false),
          checklist_sem_auditoria      = COALESCE(p_checklist_sem_auditoria, false),
          possui_divergencia_calendario = COALESCE(p_possui_divergencia, false),
-         motivo_divergencia_calendario = CASE WHEN COALESCE(p_possui_divergencia, false) THEN p_motivo_divergencia ELSE NULL END,
+         motivo_divergencia_calendario = v_enum_motivo,
          observacao_divergencia        = CASE WHEN COALESCE(p_possui_divergencia, false) THEN p_observacao_divergencia ELSE NULL END,
          updated_at                   = NOW()
    WHERE id = p_acao_id;
 
-  -- 3. Avaliar transição estrita FALSE -> TRUE
-  IF COALESCE(v_old_sem_auditoria, false) = FALSE AND COALESCE(p_checklist_sem_auditoria, false) = TRUE THEN
-    v_transition_triggered := TRUE;
-
-    -- Obter metadados da ação via view oficial
-    SELECT codigo, nome_campanha, gerente_responsavel
-      INTO v_codigo, v_campanha_nome, v_gerente_responsavel
-      FROM public.v_acoes_investimento_com_gerente
-     WHERE id = p_acao_id;
-
-    -- Obter nome do usuário responsavel
-    IF p_user_id IS NOT NULL THEN
-      SELECT name INTO v_usuario_nome
-        FROM public.cm_user_profiles
-       WHERE id = p_user_id;
-      IF v_usuario_nome IS NULL THEN
-        v_usuario_nome := 'Usuário (' || p_user_id || ')';
-      END IF;
-    END IF;
-
-    -- Inserir registro completo e auditável em cm_audit_logs dentro da mesma transação
-    INSERT INTO public.cm_audit_logs (
-      table_name,
-      action,
-      user_id,
-      old_data,
-      new_data,
-      created_at
-    ) VALUES (
-      'cm_acoes_investimento',
-      'EXCECAO_AUDITORIA_TRADE',
-      p_user_id,
-      jsonb_build_object(
-        'id', p_acao_id,
-        'checklist_sem_auditoria', false
-      ),
-      jsonb_build_object(
-        'id', p_acao_id,
-        'codigo', v_codigo,
-        'campanha_nome', v_campanha_nome,
-        'gerente_responsavel', v_gerente_responsavel,
-        'usuario_responsavel', v_usuario_nome,
-        'data_hora', NOW(),
-        'valor_anterior', false,
-        'valor_novo', true,
-        'evento', 'EXCECAO_AUDITORIA_TRADE',
-        'descricao', 'Exceção de Auditoria autorizada pelo GRV',
-        'checklist_sem_auditoria', true
-      ),
-      NOW()
-    );
-  END IF;
-
-  -- 4. Retornar estrutura JSON padronizada
   RETURN jsonb_build_object(
     'success', true,
-    'transition_triggered', v_transition_triggered,
-    'action_id', p_acao_id,
-    'audit_log_created', v_transition_triggered
+    'action_id', p_acao_id
   );
 END;
 $$;
 
 -- Permissões de execução da RPC
-GRANT EXECUTE ON FUNCTION public.registrar_excecao_auditoria_trade(UUID, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, public.motivo_divergencia_enum, TEXT, UUID) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.registrar_excecao_auditoria_trade(UUID, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, BOOLEAN, TEXT, TEXT, UUID) TO anon, authenticated, service_role;
