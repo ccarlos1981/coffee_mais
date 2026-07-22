@@ -108,6 +108,7 @@ interface AcaoInvestimento {
   checklist_auditoria?: boolean;
   checklist_garantia?: boolean;
   checklist_conferencia?: boolean;
+  checklist_sem_auditoria?: boolean;
   verba_aprovada?: boolean;
   contrato_assinado?: boolean;
   percentual_comunicacao?: number;
@@ -300,7 +301,7 @@ export default function InvestimentoPage() {
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false });
+  const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false, sem_auditoria: false });
   const [tradeDivergencia, setTradeDivergencia] = useState<{
     possui: boolean;
     motivo: MotivoDivergencia | '';
@@ -563,7 +564,8 @@ export default function InvestimentoPage() {
         logistica: selectedAction.checklist_logistica || false, 
         auditoria: selectedAction.checklist_auditoria || false, 
         garantia: selectedAction.checklist_garantia || false,
-        conferencia: selectedAction.checklist_conferencia || false
+        conferencia: selectedAction.checklist_conferencia || false,
+        sem_auditoria: selectedAction.checklist_sem_auditoria || false
       });
       // Sincronizar divergência de calendário
       setTradeDivergencia({
@@ -2011,7 +2013,7 @@ export default function InvestimentoPage() {
     }
   };
 
-  const handleActionChecklistChange = async (fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia', checked: boolean) => {
+  const handleActionChecklistChange = async (fieldName: 'checklist_comunicacao' | 'checklist_logistica' | 'checklist_auditoria' | 'checklist_conferencia' | 'checklist_sem_auditoria', checked: boolean) => {
     if (!selectedAction) return;
     setActionLoading(selectedAction.id);
     try {
@@ -2021,6 +2023,7 @@ export default function InvestimentoPage() {
         auditoria: fieldName === 'checklist_auditoria' ? checked : (selectedAction.checklist_auditoria || false),
         garantia: selectedAction.checklist_garantia || false,
         conferencia: fieldName === 'checklist_conferencia' ? checked : (selectedAction.checklist_conferencia || false),
+        sem_auditoria: fieldName === 'checklist_sem_auditoria' ? checked : (selectedAction.checklist_sem_auditoria || false),
         divergencia: {
           possui: tradeDivergencia.possui,
           motivo: (tradeDivergencia.motivo as MotivoDivergencia) || null,
@@ -5012,6 +5015,16 @@ export default function InvestimentoPage() {
                                 />
                                 <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">⚖️ 4) Conferência Fís./Vídeo Alinhada</span>
                               </label>
+                              <label className="flex items-start gap-2.5 cursor-pointer group pt-1.5 border-t border-border/30">
+                                <input 
+                                  type="checkbox" 
+                                  className="w-4 h-4 mt-0.5 rounded border-border text-gold focus:ring-gold/50 cursor-pointer" 
+                                  checked={tradeChecklist.sem_auditoria || false} 
+                                  onChange={(e) => handleActionChecklistChange('checklist_sem_auditoria', e.target.checked)} 
+                                  disabled={!['admin', 'trade', 'ceo', 'diretor', 'financeiro'].includes(userRole?.toLowerCase() || '')}
+                                />
+                                <span className="text-xs font-semibold text-foreground group-hover:text-gold transition-colors">⚠️ 5) Ação impossibilitada de auditoria pelo Trade. GRV autorizou dar sequência.</span>
+                              </label>
 
 
                             </div>
@@ -5118,6 +5131,12 @@ export default function InvestimentoPage() {
                             <div className="flex items-center gap-2">
                               <span>{selectedAction.checklist_conferencia ? "✅" : "❌"}</span>
                               <span>Conferência Trade</span>
+                            </div>
+                            <div className="flex items-center gap-2 pt-1 border-t border-border/30">
+                              <span>{selectedAction.checklist_sem_auditoria ? "⚠️" : "❌"}</span>
+                              <span className={selectedAction.checklist_sem_auditoria ? "font-bold text-amber-400" : ""}>
+                                {selectedAction.checklist_sem_auditoria ? "Exceção GRV: Auditoria não realizada (Autorizado por GRV)" : "Sem Exceção de Auditoria"}
+                              </span>
                             </div>
                           </div>
                           
@@ -5228,13 +5247,18 @@ export default function InvestimentoPage() {
                           
                           // Build granular diff
                           const diffs: string[] = [];
-                          const fields = ['fase_atual', 'rede', 'tipo_acao', 'tipo_pagamento', 'abrangencia', 'data_inicio', 'data_fim'];
-                          fields.forEach(f => {
-                            if (log.old_data && log.new_data && String(log.old_data[f] ?? '') !== String(log.new_data[f] ?? '')) {
-                              const labels: Record<string, string> = { fase_atual: 'Fase', rede: 'Rede', tipo_acao: 'Tipo', tipo_pagamento: 'Pagamento', abrangencia: 'Abrangência', data_inicio: 'Início', data_fim: 'Fim' };
-                              diffs.push(`${labels[f] || f}: ${log.old_data[f] ?? '–'} → ${log.new_data[f] ?? '–'}`);
-                            }
-                          });
+                          if (log.action === 'EXCECAO_AUDITORIA_TRADE') {
+                            diffs.push(`⚠️ Exceção de Auditoria autorizada pelo GRV: Não → Sim`);
+                          } else {
+                            const fields = ['fase_atual', 'rede', 'tipo_acao', 'tipo_pagamento', 'abrangencia', 'data_inicio', 'data_fim', 'checklist_sem_auditoria'];
+                            fields.forEach(f => {
+                              if (log.old_data && log.new_data && String(log.old_data[f] ?? '') !== String(log.new_data[f] ?? '')) {
+                                const labels: Record<string, string> = { fase_atual: 'Fase', rede: 'Rede', tipo_acao: 'Tipo', tipo_pagamento: 'Pagamento', abrangencia: 'Abrangência', data_inicio: 'Início', data_fim: 'Fim', checklist_sem_auditoria: 'Exceção Auditoria Trade (GRV)' };
+                                const valStr = (v: any) => typeof v === 'boolean' ? (v ? 'Sim' : 'Não') : (v ?? '–');
+                                diffs.push(`${labels[f] || f}: ${valStr(log.old_data[f])} → ${valStr(log.new_data[f])}`);
+                              }
+                            });
+                          }
                           
                           // Diff familias_detalhes granularly
                           if (JSON.stringify(oldFam) !== JSON.stringify(newFam)) {
@@ -5289,8 +5313,9 @@ export default function InvestimentoPage() {
                                   <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                                     log.action === 'INSERT' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
                                     log.action === 'DELETE' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                    log.action === 'EXCECAO_AUDITORIA_TRADE' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
                                     'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                                  }`}>{log.action === 'INSERT' ? 'Criação' : log.action === 'DELETE' ? 'Exclusão' : 'Alteração'}</span>
+                                  }`}>{log.action === 'INSERT' ? 'Criação' : log.action === 'DELETE' ? 'Exclusão' : log.action === 'EXCECAO_AUDITORIA_TRADE' ? 'Exceção GRV' : 'Alteração'}</span>
                                   <span className="text-[10px] text-muted">{log.user_name}</span>
                                 </div>
                                 <span className="text-[10px] text-muted">

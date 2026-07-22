@@ -787,6 +787,7 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   auditoria: boolean;
   garantia: boolean;
   conferencia: boolean;
+  sem_auditoria?: boolean;
   divergencia?: {
     possui: boolean;
     motivo?: MotivoDivergencia | null;
@@ -794,6 +795,9 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   };
 }) {
   const supabase = await createClient();
+  const adminClient = createAdminClient();
+
+  const { data: { user } } = await supabase.auth.getUser();
 
   // Validação server-side da divergência (camada 2 de 3)
   const div = checklist.divergencia;
@@ -803,34 +807,174 @@ export async function atualizarChecklistTrade(id: string, checklist: {
     }
   }
 
-  // Monta payload de divergência (garante ESTADO A ou ESTADO B puros)
-  const divergenciaPayload = div?.possui
-    ? {
-        possui_divergencia_calendario: true,
-        motivo_divergencia_calendario: div.motivo!,
-        observacao_divergencia: div.observacao!,
+  console.log(`[EXCECAO_TRADE] Executando RPC registrar_excecao_auditoria_trade para ação: ${id}`);
+
+  // Invoca a RPC atômica registrar_excecao_auditoria_trade
+  const { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_excecao_auditoria_trade", {
+    p_acao_id: id,
+    p_checklist_comunicacao: checklist.comunicacao,
+    p_checklist_logistica: checklist.logistica,
+    p_checklist_auditoria: checklist.auditoria,
+    p_checklist_garantia: checklist.garantia,
+    p_checklist_conferencia: checklist.conferencia,
+    p_checklist_sem_auditoria: checklist.sem_auditoria ?? false,
+    p_possui_divergencia: div?.possui ?? false,
+    p_motivo_divergencia: div?.possui ? div.motivo : null,
+    p_observacao_divergencia: div?.possui ? div.observacao : null,
+    p_user_id: user?.id ?? null,
+  });
+
+  if (rpcErr) {
+    console.error("[EXCECAO_TRADE] Erro na RPC registrar_excecao_auditoria_trade:", rpcErr);
+    throw new Error("Falha ao salvar checklist do Trade.");
+  }
+
+  console.log("[EXCECAO_TRADE] RPC retornou com sucesso:", rpcRes);
+
+  // Se transição FALSE -> TRUE foi ativada, disparar notificação por e-mail de forma assíncrona pós-commit
+  if (rpcRes && rpcRes.transition_triggered) {
+    console.log(`[EXCECAO_TRADE] Transição FALSE -> TRUE confirmada para ação ${id}. Disparando notificação de e-mail assíncrona...`);
+    dispararNotificacaoExcecaoTradeAssincrona(id, user?.id).catch(err => {
+      console.error("[EXCECAO_TRADE] Erro não-bloqueante ao processar e-mail de notificação de exceção:", err);
+    });
+  }
+}
+
+async function dispararNotificacaoExcecaoTradeAssincrona(actionId: string, userId?: string) {
+  try {
+    const adminClient = createAdminClient();
+
+    // 1. Obter detalhes da ação via view com gerente
+    const { data: actionView } = await adminClient
+      .from("v_acoes_investimento_com_gerente")
+      .select("*")
+      .eq("id", actionId)
+      .single();
+
+    if (!actionView) {
+      console.warn(`[EXCECAO_TRADE_EMAIL] Ação ${actionId} não encontrada na view.`);
+      return;
+    }
+
+    // 2. Resolver e-mail do Gerente Responsável (TO)
+    let managerEmail = "";
+    if (actionView.gerente_responsavel) {
+      const { data: profiles } = await adminClient
+        .from("cm_user_profiles")
+        .select("id")
+        .eq("name", actionView.gerente_responsavel);
+
+      if (profiles && profiles.length > 0) {
+        const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
+        if (authUser?.user?.email) managerEmail = authUser.user.email;
       }
-    : {
-        possui_divergencia_calendario: false,
-        motivo_divergencia_calendario: null,
-        observacao_divergencia: null,
-      };
+    }
 
-  const { error } = await supabase
-    .from("cm_acoes_investimento")
-    .update({
-      checklist_comunicacao: checklist.comunicacao,
-      checklist_logistica: checklist.logistica,
-      checklist_auditoria: checklist.auditoria,
-      checklist_garantia: checklist.garantia,
-      checklist_conferencia: checklist.conferencia,
-      ...divergenciaPayload,
-    })
-    .eq("id", id);
+    // 3. Resolver e-mail do Trade Responsável (CC)
+    let tradeEmail = process.env.TRADE_EMAIL || "trade@coffeemais.com";
+    if (actionView.trade_validado_por) {
+      const { data: tradeProfile } = await adminClient
+        .from("cm_user_profiles")
+        .select("id")
+        .eq("name", actionView.trade_validado_por);
+      if (tradeProfile && tradeProfile.length > 0) {
+        const { data: tradeUser } = await adminClient.auth.admin.getUserById(tradeProfile[0].id);
+        if (tradeUser?.user?.email) tradeEmail = tradeUser.user.email;
+      }
+    }
 
-  if (error) {
-    console.error("Erro ao atualizar checklist do Trade:", error);
-    throw new Error("Falha ao salvar checklist.");
+    // 4. Resolver e-mail institucional de Auditoria (CC)
+    const auditEmail = process.env.AUDIT_CC_EMAIL || process.env.CRISTIANO_EMAIL || "cristiano@coffeemais.com";
+
+    // 5. Configurar destinatários (TO: Gerente | CC: Trade e Auditoria)
+    const toRecipient = managerEmail && managerEmail.includes("@") ? managerEmail : tradeEmail;
+    const ccSet = new Set<string>();
+    if (tradeEmail && tradeEmail.includes("@")) ccSet.add(tradeEmail);
+    if (auditEmail && auditEmail.includes("@")) ccSet.add(auditEmail);
+    ccSet.delete(toRecipient);
+    const ccRecipients = Array.from(ccSet).join(", ");
+
+    console.log(`[EXCECAO_TRADE_EMAIL] Destinatários resolvidos -> TO: ${toRecipient} | CC: ${ccRecipients}`);
+
+    // 6. Enviar e-mail via nodemailer se SMTP configurado
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const transporter = nodemailer.createTransport({
+        host: "smtp.gmail.com",
+        port: 465,
+        secure: true,
+        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+        tls: { rejectUnauthorized: false }
+      });
+
+      const subject = `⚠️ EXCEÇÃO OFICIAL DE AUDITORIA TRADE (GRV) — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
+
+      const htmlBody = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 650px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e7eb; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+          <div style="background: linear-gradient(135deg, #d97706 0%, #b45309 100%); padding: 24px 30px;">
+            <h1 style="margin: 0; font-size: 20px; color: #ffffff; font-weight: 700;">⚠️ Exceção Oficial de Auditoria Autorizada pelo GRV</h1>
+            <p style="margin: 6px 0 0 0; color: #fef3c7; font-size: 13px;">Fase 2 (Trade) — Auditoria não realizada pelo Trade / Responsabilidade assumida pelo GRV</p>
+          </div>
+          <div style="padding: 24px 30px;">
+            <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #d97706; padding: 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; color: #78350f;">
+              <strong>Registro de Exceção Operacional:</strong>
+              <p style="margin: 6px 0 0 0; line-height: 1.5;">Esta ação foi marcada no checklist oficial como impossibilitada de auditoria pelo Trade. O GRV autorizou formalmente dar sequência ao workflow comercial.</p>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600; width: 35%;">Código da Ação:</td>
+                <td style="padding: 10px 0; color: #111827; font-weight: 700;">#${actionView.codigo || actionView.id}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Rede / Cliente:</td>
+                <td style="padding: 10px 0; color: #111827;">${actionView.rede}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Campanha:</td>
+                <td style="padding: 10px 0; color: #111827;">${actionView.nome_campanha || "Não informada"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Gerente Responsável:</td>
+                <td style="padding: 10px 0; color: #111827;">${actionView.gerente_responsavel || "Não atribuído"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Trade Responsável:</td>
+                <td style="padding: 10px 0; color: #111827;">${actionView.trade_validado_por || "Trade"}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #f3f4f6;">
+                <td style="padding: 10px 0; color: #6b7280; font-weight: 600;">Data / Hora do Evento:</td>
+                <td style="padding: 10px 0; color: #111827;">${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}</td>
+              </tr>
+            </table>
+            <div style="margin-top: 24px; padding: 12px; background: #f9fafb; border-radius: 8px; font-size: 12px; color: #6b7280; text-align: center;">
+              Notificação automática enviada pelo Coffee++ Investment Governance System.
+            </div>
+          </div>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: `"Coffee++ Hub" <${process.env.SMTP_USER}>`,
+        to: toRecipient,
+        cc: ccRecipients || undefined,
+        subject,
+        html: htmlBody,
+      });
+
+      console.log(`[EXCECAO_TRADE_EMAIL] E-mail enviado com sucesso via SMTP para ação ${actionId}.`);
+    }
+
+    // 7. Registrar em cm_acoes_email_tracking usando o padrão homologado
+    await adminClient.from("cm_acoes_email_tracking").upsert({
+      acao_id: actionId,
+      item_type: "familia",
+      item_key: "excecao_auditoria_grv",
+      alert_type: "overdue_alert",
+      sent_at: new Date().toISOString(),
+    }, { onConflict: "acao_id,item_type,item_key,alert_type" });
+
+    console.log(`[EXCECAO_TRADE_EMAIL] Registro em cm_acoes_email_tracking concluído para ação ${actionId}.`);
+  } catch (emailErr) {
+    console.error("[EXCECAO_TRADE_EMAIL] Falha não-bloqueante no envio de notificação de e-mail:", emailErr);
   }
 }
 

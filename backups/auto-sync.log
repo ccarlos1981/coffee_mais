@@ -687,3 +687,21 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    51686a2..6ba9ab3  main -> main
 [21/07/2026 13:50] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 70edc16] auto-save: 21/07/2026 17:13
+ 16 files changed, 1519 insertions(+), 46 deletions(-)
+ create mode 100644 scratch/audit_realtime_import.js
+ create mode 100644 scratch/check_migration_and_homologation.js
+ create mode 100644 scratch/generate_channel_report_july.js
+ create mode 100644 scratch/generate_homologation_report.js
+ create mode 100644 scratch/get_channel_kg.js
+ create mode 100644 scratch/get_channel_kg_exact.js
+ create mode 100644 scratch/get_exact_channel_metrics.js
+ create mode 100644 scratch/get_exact_ssot_channel_report.js
+ create mode 100644 scratch/get_final_official_mv_channel_report.js
+ create mode 100644 scratch/print_final_commercial_channel_table.js
+ create mode 100644 scratch/run_full_homologation.js
+ create mode 100644 scratch/test_faturamento_full_sum.js
+ create mode 100644 scratch/test_import_venda_futura_flow.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   6ba9ab3..70edc16  main -> main
+[21/07/2026 17:13] ✅ Alterações enviadas com sucesso para o GitHub.
