@@ -1,5 +1,7 @@
 "use client";
 
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+
 import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { Filter, ChevronRight, BarChart3, Calendar, Layers, DollarSign, ArrowLeft } from "lucide-react";
@@ -104,7 +106,7 @@ export default function InvestimentoPorMesPage() {
 
       // 2. Fetch Vendas
       const { data: vendas, error: vErr } = await supabase
-        .from("mv_vendas_mensal")
+        .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
         .select("mes, rede, tipo_produto, fat")
         .gte("mes", sDate)
         .lte("mes", eDate)

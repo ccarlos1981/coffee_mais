@@ -325,37 +325,11 @@ export default function VendasDashboard() {
   useEffect(() => {
     async function initDefaultPeriod() {
       try {
-        const today = new Date();
-        const currYear = today.getFullYear();
-        const currMonth = today.getMonth() + 1;
-
-        const startStr = `${currYear}-${String(currMonth).padStart(2, "0")}-01`;
-        const endStr = `${currYear}-${String(currMonth).padStart(2, "0")}-31`;
-
-        // Check if there is any data for the current calendar month
-        const { count, error: countErr } = await supabase
-          .from("cm_faturamento_sankhya")
-          .select("id", { count: "exact", head: true })
-          .gte("dt_faturamento", startStr)
-          .lte("dt_faturamento", endStr);
-
-        if (count === 0 || count === null || countErr) {
-          // If no data, find the latest month that has data
-          const { data: latestRecords, error: dateErr } = await supabase
-            .from("cm_faturamento_sankhya")
-            .select("dt_faturamento")
-            .order("dt_faturamento", { ascending: false })
-            .limit(1);
-
-          if (latestRecords && latestRecords.length > 0 && latestRecords[0].dt_faturamento) {
-            const parts = latestRecords[0].dt_faturamento.split("-");
-            if (parts.length === 3) {
-              const latestYear = parseInt(parts[0], 10);
-              const latestMonth = parseInt(parts[1], 10);
-              setFilterYear(latestYear);
-              setFilterMonth(latestMonth);
-            }
-          }
+        const res = await fetch("/api/dashboard/filters");
+        const json = await res.json();
+        if (json.success && json.latestPeriod) {
+          setFilterYear(json.latestPeriod.year);
+          setFilterMonth(json.latestPeriod.month);
         }
       } catch (err) {
         console.error("Error adjusting default period:", err);
