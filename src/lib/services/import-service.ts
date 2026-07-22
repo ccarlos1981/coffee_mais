@@ -496,7 +496,7 @@ export class ImportService {
       const periodStr = `${monthsPt[minDateObj.getUTCMonth()]}/${minDateObj.getUTCFullYear()}`;
 
       // 6. Write parsed rows into the staging table in chunks
-      const chunkSize = 200;
+      const chunkSize = 2500;
       for (let i = 0; i < stagingRows.length; i += chunkSize) {
         const chunk = stagingRows.slice(i, i + chunkSize);
         const { error: stageError } = await supabase
@@ -510,22 +510,24 @@ export class ImportService {
 
       await this.updateLogProgress(batchId, 90, "Finalizando análise");
 
-      // 7. Check if data already exists in the official table for this period, and query statistics
-      const { data: dbStats } = await supabase
-        .from("cm_faturamento")
-        .select("cod_parceiro, cod_produto, vlr_total_liq, nro_unico")
-        .gte("dt_faturamento", periodStart)
-        .lte("dt_faturamento", periodEnd);
+      // 7. Check if data already exists in the official table for this period using ultra-fast RPC
+      const { data: dbStatsRows } = await supabase
+        .rpc("fn_get_import_baseline_stats", {
+          p_period_start: periodStart,
+          p_period_end: periodEnd,
+        });
 
-      const needsConfirmation = (dbStats && dbStats.length > 0) || false;
+      const dbStats = Array.isArray(dbStatsRows) && dbStatsRows.length > 0 ? dbStatsRows[0] : null;
+      const totalDbRows = Number(dbStats?.total_rows || 0);
+      const needsConfirmation = totalDbRows > 0;
 
       let currentBaseStats: ImportPreviewResult["currentBaseStats"] = null;
       if (needsConfirmation && dbStats) {
         currentBaseStats = {
-          totalRows: dbStats.length,
-          uniquePartners: new Set(dbStats.map(r => r.cod_parceiro).filter(Boolean)).size,
-          uniqueProducts: new Set(dbStats.map(r => r.cod_produto).filter(Boolean)).size,
-          totalNet: dbStats.reduce((sum, r) => sum + (Number(r.vlr_total_liq) || 0), 0),
+          totalRows: totalDbRows,
+          uniquePartners: Number(dbStats.unique_partners || 0),
+          uniqueProducts: Number(dbStats.unique_products || 0),
+          totalNet: Number(dbStats.total_net || 0),
         };
       }
 
@@ -629,17 +631,68 @@ export class ImportService {
   /**
    * Promotes the staged rows of a batch into production using a transaction-safe Postgres function
    */
+  /**
+   * Promotes the staged rows of a batch into production using a transaction-safe Postgres function
+   */
   static async confirmImport(batchId: string, mode: "replace" | "append"): Promise<{ success: boolean; rowsPromoted: number }> {
     const startTime = Date.now();
+    const telemetry: {
+      batch_id: string;
+      mode: string;
+      bypass_used: boolean;
+      rpcs_executed: string[];
+      performance_alerts: Array<{ level: "WARNING" | "CRITICAL"; step: string; duration_ms: number; message: string }>;
+      step_durations_ms: Record<string, number>;
+      total_rows_staging?: number;
+      rows_promoted?: number;
+      audit_result?: any;
+      mv_refresh_enqueued?: boolean;
+      total_duration_ms?: number;
+    } = {
+      batch_id: batchId,
+      mode,
+      bypass_used: true,
+      rpcs_executed: [],
+      performance_alerts: [],
+      step_durations_ms: {},
+    };
+
+    const trackStep = async <T>(stepName: string, fn: () => Promise<T>): Promise<T> => {
+      const stepStart = Date.now();
+      try {
+        const res = await fn();
+        const duration = Date.now() - stepStart;
+        telemetry.step_durations_ms[stepName] = duration;
+
+        if (duration > 30000) {
+          const alert = { level: "CRITICAL" as const, step: stepName, duration_ms: duration, message: `ALERTA CRÍTICO: Etapa '${stepName}' levou ${duration}ms (> 30s)` };
+          telemetry.performance_alerts.push(alert);
+          console.warn(`[PERFORMANCE CRITICAL] Batch ${batchId} - ${alert.message}`);
+        } else if (duration > 10000) {
+          const alert = { level: "WARNING" as const, step: stepName, duration_ms: duration, message: `ALERTA WARNING: Etapa '${stepName}' levou ${duration}ms (> 10s)` };
+          telemetry.performance_alerts.push(alert);
+          console.warn(`[PERFORMANCE WARNING] Batch ${batchId} - ${alert.message}`);
+        }
+        return res;
+      } catch (err) {
+        const duration = Date.now() - stepStart;
+        telemetry.step_durations_ms[stepName] = duration;
+        throw err;
+      }
+    };
+
     await this.updateLogProgress(batchId, 90, "Preparando Importação");
 
     try {
-      // 1. Preparar importação (captura parceiros afetados e executa delete replace se necessário)
-      const { error: prepError } = await supabase.rpc("preparar_importacao_faturamento", {
-        p_batch_id: batchId,
-        p_mode: mode,
+      // 1. Preparar importação (com bypass de trigger ativado na RPC SQL)
+      await trackStep("preparar_importacao", async () => {
+        telemetry.rpcs_executed.push("preparar_importacao_faturamento");
+        const { error: prepError } = await supabase.rpc("preparar_importacao_faturamento", {
+          p_batch_id: batchId,
+          p_mode: mode,
+        });
+        if (prepError) throw prepError;
       });
-      if (prepError) throw prepError;
 
       // 2. Obter total de registros a processar na staging
       const { count, error: countError } = await supabase
@@ -649,77 +702,101 @@ export class ImportService {
       if (countError) throw countError;
 
       const totalRows = count || 0;
+      telemetry.total_rows_staging = totalRows;
       let rowsPromoted = 0;
       const BATCH_SIZE = 5000;
       let offset = 0;
 
       // 3. Processar em batches sequenciais no backend
-      while (offset < totalRows) {
-        const currentLimit = BATCH_SIZE;
-        const progressPercent = Math.min(95, Math.round(90 + (5 * (offset / totalRows))));
-        
-        await this.updateLogProgress(
-          batchId,
-          progressPercent,
-          `Persistindo na Tabela Oficial (${offset} de ${totalRows} registros)`
-        );
+      await trackStep("promover_lote", async () => {
+        telemetry.rpcs_executed.push("promover_lote_faturamento");
+        while (offset < totalRows) {
+          const currentLimit = BATCH_SIZE;
+          const progressPercent = Math.min(95, Math.round(90 + (5 * (offset / totalRows))));
+          
+          await this.updateLogProgress(
+            batchId,
+            progressPercent,
+            `Persistindo na Tabela Oficial (${offset} de ${totalRows} registros)`
+          );
 
-        const { data: insertedCount, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
-          p_batch_id: batchId,
-          p_offset: offset,
-          p_limit: currentLimit,
-        });
+          const { data: insertedCount, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
+            p_batch_id: batchId,
+            p_offset: offset,
+            p_limit: currentLimit,
+          });
 
-        if (promoError) throw promoError;
+          if (promoError) throw promoError;
 
-        rowsPromoted += (insertedCount || 0);
-        offset += BATCH_SIZE;
-      }
+          rowsPromoted += (insertedCount || 0);
+          offset += BATCH_SIZE;
+        }
+      });
+      telemetry.rows_promoted = rowsPromoted;
 
       // 4. Finalizar importação (atualiza faturamento_mensal em lote e limpa staging)
       await this.updateLogProgress(batchId, 97, "Finalizando processamento e consolidando dados");
-      const { error: finalizeError } = await supabase.rpc("finalizar_importacao_faturamento", {
-        p_batch_id: batchId,
+      await trackStep("finalizar_importacao", async () => {
+        telemetry.rpcs_executed.push("finalizar_importacao_faturamento");
+        const { error: finalizeError } = await supabase.rpc("finalizar_importacao_faturamento", {
+          p_batch_id: batchId,
+        });
+        if (finalizeError) throw finalizeError;
       });
-      if (finalizeError) throw finalizeError;
 
-      // 4b. Auditoria de integridade em 5 Camadas (Excel -> Staging -> cm_faturamento)
-      const { data: dbAudit, error: auditError } = await supabase
-        .from("cm_faturamento")
-        .select("valor_venda_futura")
-        .eq("batch_id", batchId);
+      // 4b. Auditoria de integridade em 5 Camadas (Excel -> Staging -> cm_faturamento) via RPC fn_validate_import_integrity
+      await trackStep("auditoria_integridade", async () => {
+        telemetry.rpcs_executed.push("fn_validate_import_integrity");
+        const { data: logData } = await supabase
+          .from("cm_sync_logs")
+          .select("metadata")
+          .eq("id", batchId)
+          .single();
 
-      if (auditError) throw auditError;
+        const expectedTotalVendaFutura = Number(logData?.metadata?.total_venda_futura || 0);
 
-      const totalDbVendaFutura = (dbAudit || []).reduce((sum, r) => sum + Number(r.valor_venda_futura || 0), 0);
+        const { data: auditRes, error: auditError } = await supabase.rpc("fn_validate_import_integrity", {
+          p_batch_id: batchId,
+          p_expected_venda_futura: expectedTotalVendaFutura,
+        });
 
-      const { data: logData } = await supabase
-        .from("cm_sync_logs")
-        .select("metadata")
-        .eq("id", batchId)
-        .single();
+        if (auditError) throw auditError;
+        const audit = Array.isArray(auditRes) && auditRes.length > 0 ? auditRes[0] : null;
 
-      const expectedTotalVendaFutura = Number(logData?.metadata?.total_venda_futura || 0);
-
-      if (Math.abs(totalDbVendaFutura - expectedTotalVendaFutura) > 0.01) {
-        throw new Error(
-          `Falha de auditoria (5 Camadas): Divergência detectada no Total de Venda Entrega Futura (Excel/Staging: R$ ${expectedTotalVendaFutura.toFixed(2)} vs Banco cm_faturamento: R$ ${totalDbVendaFutura.toFixed(2)}). Importação abortada.`
-        );
-      }
+        if (!audit || !audit.passed) {
+          throw new Error(
+            audit?.message || "Falha de auditoria (5 Camadas): Divergência detectada no banco de dados. Importação abortada."
+          );
+        }
+        telemetry.audit_result = audit;
+      });
 
       // 5. Atualizar dashboards de forma assíncrona
-      try {
-        await this.updateLogProgress(batchId, 98, "Atualizando Dashboards (assíncrono)");
-        await supabase.rpc("fn_enqueue_mv_refresh", { p_batch_id: batchId });
-      } catch (mvErr) {
-        console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
-      }
+      await trackStep("enqueue_mv_refresh", async () => {
+        try {
+          await this.updateLogProgress(batchId, 98, "Atualizando Dashboards (assíncrono)");
+          telemetry.rpcs_executed.push("fn_enqueue_mv_refresh");
+          await supabase.rpc("fn_enqueue_mv_refresh", { p_batch_id: batchId });
+          telemetry.mv_refresh_enqueued = true;
+        } catch (mvErr) {
+          console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
+          telemetry.mv_refresh_enqueued = false;
+        }
+      });
+
+      const totalDuration = Date.now() - startTime;
+      telemetry.total_duration_ms = totalDuration;
 
       await this.updateLogProgress(
         batchId,
         100,
         "Importação Concluída com Sucesso",
-        { duration_ms: Date.now() - startTime, rows_inserted: rowsPromoted, sub_status: "SUCCESS" },
+        {
+          duration_ms: totalDuration,
+          rows_inserted: rowsPromoted,
+          sub_status: "SUCCESS",
+          telemetry,
+        },
         "SUCCESS"
       );
 

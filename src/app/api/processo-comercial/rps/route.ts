@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
@@ -146,7 +147,7 @@ export async function GET(request: Request) {
         manager,
         SUM(fat) as fat,
         SUM(qty) as qty
-      FROM mv_vendas_mensal
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
       GROUP BY mes, manager
     `;
@@ -158,7 +159,7 @@ export async function GET(request: Request) {
         manager,
         TRIM(rede) as client,
         SUM(fat) as fat
-      FROM mv_vendas_cliente_mensal
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL}
       WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}', '${closedMonth2}', '${closedMonth3}')
         AND rede IS NOT NULL AND TRIM(rede) != ''
       GROUP BY mes, manager, TRIM(rede)

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
@@ -98,7 +99,7 @@ export async function GET(request: Request) {
       supabase.rpc('execute_readonly_query', {
         query_text: `
           SELECT mes, COALESCE(manager,'Outros') as manager, SUM(fat) as fat, SUM(qty) as qty
-          FROM mv_vendas_mensal
+          FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
           WHERE mes IN (${chartMesKeys.map(k => `'${k}'`).join(',')})
           GROUP BY mes, COALESCE(manager,'Outros')
         `
@@ -136,7 +137,7 @@ export async function GET(request: Request) {
           SELECT mes, COALESCE(manager,'Outros') as manager,
                  COALESCE(tipo_produto,'Outros') as tipo_produto,
                  SUM(fat) as fat, SUM(qty) as qty
-          FROM mv_vendas_mensal
+          FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
           WHERE mes IN (${familyQueryKeys.map(k => `'${k}'`).join(',')})
           GROUP BY mes, COALESCE(manager,'Outros'), COALESCE(tipo_produto,'Outros')
         `

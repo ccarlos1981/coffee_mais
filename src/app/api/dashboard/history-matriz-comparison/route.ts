@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { AnalyticsEngine, parseAnalyticsFiltersFromParams } from "@/lib/governance/analytics";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-function getSupabaseClient() {
-  return createAdminClient();
-}
-
-function escapeSqlValue(value: string | null) {
-  if (!value) return "NULL";
-  return "'" + value.replace(/'/g, "''") + "'";
-}
 
 const MONTHS = [
   "Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -33,62 +23,10 @@ export async function GET(request: Request) {
     const startMonthStr = String(startMonth).padStart(2, '0');
     const endMonthStr = String(endMonth).padStart(2, '0');
 
-    const filters = {
-      manager: searchParams.get("manager"),
-      familia: searchParams.get("familia"),
-      uf: searchParams.get("uf"),
-      channel: searchParams.get("channel"),
-      product: searchParams.get("product"),
-      matriz: searchParams.get("matriz"),
-    };
+    const filters = parseAnalyticsFiltersFromParams(searchParams);
+    const result = await AnalyticsEngine.getHistoryMatrizComparisonData(filters, startMonthStr, endMonthStr);
 
-    const hasProductFilter = filters.product && filters.product !== 'all' && filters.product.length > 0;
-    const hasMatrizFilter = filters.matriz && filters.matriz !== 'all' && filters.matriz.length > 0;
-
-    const supabase = getSupabaseClient();
-
-    // Build common filter SQL (excluding matriz for top10 mode since we group by it)
-    let filterSql = '';
-    if (filters.manager && filters.manager !== 'all') {
-      filterSql += ` AND manager IN (${filters.manager.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-    }
-    if (filters.familia && filters.familia !== 'all') {
-      filterSql += ` AND tipo_produto IN (${filters.familia.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-    }
-    if (filters.uf && filters.uf !== 'all') {
-      filterSql += ` AND uf IN (${filters.uf.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-    }
-    if (filters.channel && filters.channel !== 'all') {
-      filterSql += ` AND channel IN (${filters.channel.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-    }
-
-    const tableName = hasProductFilter ? 'mv_positivacao_sku_mensal' : 'mv_vendas_mensal';
-
-    if (hasProductFilter) {
-      filterSql += ` AND product IN (${filters.product!.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-    }
-
-    if (hasMatrizFilter) {
-      // ──── MODE: MONTHLY (specific matrix selected) ────
-      filterSql += ` AND rede IN (${filters.matriz!.split(',').map(m => escapeSqlValue(m)).join(',')})`;
-
-      const sql = `
-        SELECT SUBSTRING(mes, 1, 4) as ano,
-               CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
-               SUM(fat) as fat, SUM(qty) as qty
-        FROM ${tableName}
-        WHERE ((mes >= '2025-${startMonthStr}' AND mes <= '2025-${endMonthStr}')
-           OR (mes >= '2026-${startMonthStr}' AND mes <= '2026-${endMonthStr}'))
-           ${filterSql}
-        GROUP BY SUBSTRING(mes, 1, 4), CAST(SUBSTRING(mes, 6, 2) AS integer)
-      `;
-
-      console.log(`[History Matriz Comparison API] Monthly mode SQL`);
-      const { data: rows, error } = await supabase.rpc('execute_readonly_query', { query_text: sql });
-
-      if (error) throw new Error(error.message);
-
-      // Build monthly data
+    if (result.mode === 'monthly') {
       const monthsData = Array.from({ length: 12 }, (_, i) => ({
         mesNum: i + 1,
         mesLabel: MONTHS[i].slice(0, 3),
@@ -98,7 +36,7 @@ export async function GET(request: Request) {
         fatVar: 0, qtyVar: 0, priceVar: 0,
       }));
 
-      for (const row of (rows || [])) {
+      for (const row of (result.rows || [])) {
         const monthIndex = Number(row.mes_num) - 1;
         if (monthIndex >= 0 && monthIndex < 12) {
           const fat = Number(row.fat || 0);
@@ -131,31 +69,13 @@ export async function GET(request: Request) {
       });
 
     } else {
-      // ──── MODE: TOP 10 (no specific matrix selected) ────
-      const sql = `
-        SELECT SUBSTRING(mes, 1, 4) as ano,
-               COALESCE(rede, 'Não Mapeado') as matriz,
-               SUM(fat) as fat, SUM(qty) as qty
-        FROM ${tableName}
-        WHERE ((mes >= '2025-${startMonthStr}' AND mes <= '2025-${endMonthStr}')
-           OR (mes >= '2026-${startMonthStr}' AND mes <= '2026-${endMonthStr}'))
-           ${filterSql}
-        GROUP BY SUBSTRING(mes, 1, 4), COALESCE(rede, 'Não Mapeado')
-      `;
-
-      console.log(`[History Matriz Comparison API] Top10 mode SQL`);
-      const { data: rows, error } = await supabase.rpc('execute_readonly_query', { query_text: sql });
-
-      if (error) throw new Error(error.message);
-
-      // Aggregate by matriz
       const matrizMap = new Map<string, {
         matriz: string;
         qty2025: number; qty2026: number;
         fat2025: number; fat2026: number;
       }>();
 
-      for (const row of (rows || [])) {
+      for (const row of (result.rows || [])) {
         const matrizName = row.matriz as string;
         if (!matrizMap.has(matrizName)) {
           matrizMap.set(matrizName, {
@@ -178,7 +98,6 @@ export async function GET(request: Request) {
         }
       }
 
-      // Convert to array, calculate variations, sort by total volume (2025+2026), take top 10
       const byMatriz = Array.from(matrizMap.values())
         .map(m => {
           const totalQty = m.qty2025 + m.qty2026;

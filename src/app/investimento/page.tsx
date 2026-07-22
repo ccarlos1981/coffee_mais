@@ -1,5 +1,7 @@
 "use client";
 
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+
 import { useState, useEffect, useCallback, useMemo, useRef, useTransition, Fragment } from "react";
 import Link from "next/link";
 import {
@@ -1275,7 +1277,7 @@ export default function InvestimentoPage() {
 
       // Fetch faturamento for June 2026 onwards
       const { data: salesRows } = await supabase
-        .from("mv_vendas_mensal")
+        .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
         .select("rede, mes, fat")
         .gte("mes", "2026-06");
 

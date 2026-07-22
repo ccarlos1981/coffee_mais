@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     const supabase = createAdminClient();
     
     const { data, error } = await supabase
-      .from('mv_vendas_mensal')
+      .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
       .select('mes, manager, fat, qty, maco')
       .eq('mes', '2026-05');
 

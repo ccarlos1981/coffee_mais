@@ -1,5 +1,6 @@
 "use client";
 
+import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from "react";
 import Link from "next/link";
 import { Filter, ChevronRight, BarChart3, Calendar, Layers, DollarSign, ArrowLeft } from "lucide-react";
@@ -114,7 +115,7 @@ export default function DashGerencialPage() {
       let hasMore = true;
       while (hasMore) {
         const { data: chunk, error: vErr } = await supabase
-          .from("mv_vendas_mensal")
+          .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
           .select("mes, rede, tipo_produto, fat, manager, channel, uf")
           .gte("mes", sDate)
           .lte("mes", eDate)

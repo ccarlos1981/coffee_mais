@@ -1640,6 +1640,155 @@ Estabelecer a governança permanente do tratamento da Venda Futura em todo o pip
 
 Esta baseline passa a integrar permanentemente a arquitetura oficial do Coffee++, servindo como referência obrigatória para todas as futuras evoluções do pipeline de faturamento e do Dashboard Comercial.
 
+---
+
+## Seção 49 — Baseline Oficial — Hardening do Pipeline de Importação de Faturamento
+
+**Status:** BASELINE OFICIAL CONGELADA
+
+### 1. Objetivo
+
+Estabelecer a arquitetura oficial de desempenho, auditoria e resiliência do pipeline de importação de faturamento do Coffee++, eliminando processamentos redundantes, reduzindo o tempo de execução e fortalecendo a observabilidade operacional.
+
+---
+
+### 2. Preparação da Importação
+
+A RPC `preparar_importacao_faturamento` deverá utilizar bypass transacional da trigger de recálculo durante a limpeza do período de importação.
+
+Este bypass:
+
+- possui escopo exclusivo da transação;
+- não altera o resultado funcional do processamento;
+- evita recálculos intermediários sobre estados temporários da base;
+- preserva o estado final consolidado produzido por `finalizar_importacao_faturamento`.
+
+---
+
+### 3. Estatísticas da Base
+
+Consultas estatísticas deverão ser realizadas exclusivamente por RPCs agregadas.
+
+Fica vedado realizar download massivo de registros apenas para cálculo de indicadores no frontend.
+
+As estatísticas oficiais deverão ser obtidas diretamente pelo banco de dados.
+
+---
+
+### 4. Persistência em Staging
+
+A carga em `cm_faturamento_staging` deverá utilizar processamento otimizado em lotes, reduzindo a quantidade de requisições necessárias sem alterar a integridade dos dados.
+
+Toda alteração futura deverá preservar desempenho e consistência da carga.
+
+---
+
+### 5. Auditoria Permanente
+
+Toda importação deverá validar automaticamente:
+
+- quantidade de registros;
+- totais financeiros;
+- Venda Futura;
+- integridade do lote;
+- consistência entre:
+  - Staging;
+  - cm_faturamento;
+  - Views;
+  - Dashboard;
+  - My Metrics.
+
+A importação somente poderá ser considerada concluída quando todas as validações forem aprovadas.
+
+---
+
+### 6. Telemetria
+
+O pipeline deverá registrar, no mínimo:
+
+- tempo de preparação;
+- tempo de promoção;
+- tempo de finalização;
+- tempo de auditoria;
+- tempo total da importação;
+- batch_id;
+- RPCs executadas;
+- alertas de desempenho;
+- status final.
+
+---
+
+### 7. Alertas de Performance
+
+Registrar automaticamente:
+
+- WARNING para etapas superiores a 10 segundos;
+- CRITICAL para etapas superiores a 30 segundos.
+
+Os alertas deverão permanecer disponíveis para auditoria operacional.
+
+---
+
+### 8. Critérios Permanentes
+
+Toda evolução futura do pipeline deverá preservar:
+
+- integridade transacional;
+- equivalência funcional;
+- auditoria automática;
+- telemetria;
+- desempenho;
+- paridade financeira com o My Metrics.
+
+Nenhuma alteração poderá remover ou degradar estes mecanismos sem atualização formal desta baseline.
+
+---
+
+### 9. Evolução Controlada
+
+Qualquer alteração futura nas RPCs de importação, no fluxo de staging, na auditoria de integridade, na telemetria ou na estratégia de processamento em lote deverá:
+
+- preservar as garantias estabelecidas nesta baseline;
+- manter equivalência funcional comprovada;
+- ser acompanhada por testes de regressão;
+- demonstrar ausência de degradação de desempenho;
+- manter paridade financeira com o My Metrics antes da homologação.
+
+Mudanças que alterem essas garantias deverão ser formalmente registradas em uma nova versão da baseline.
+
+---
+
+### Status Final
+
+Esta baseline passa a integrar permanentemente a arquitetura oficial do Coffee++, tornando-se referência obrigatória para todas as futuras evoluções do pipeline de importação de faturamento.
+
+---
+
+### Homologação Operacional — Primeira Importação Pós-Seção 49
+
+**Status:** HOMOLOGADA EM PRODUÇÃO (22/07/2026)
+
+Foi concluída com sucesso a primeira importação operacional após a implantação da Seção 49 — Baseline Oficial — Hardening do Pipeline de Importação de Faturamento.
+
+Resultados da homologação:
+
+- Importação concluída sem ocorrência de statement timeout (tempo de preparação reduzido de > 120s para 0,24s);
+- Pipeline executado integralmente (preparação, staging, promoção, finalização e auditoria);
+- Auditoria de integridade aprovada em 5 camadas (`fn_validate_import_integrity`);
+- Telemetria registrada conforme a baseline em `cm_sync_logs`;
+- Comparação Coffee++ × MyMetrics validada utilizando a mesma janela temporal;
+- Paridade financeira confirmada para os períodos auditados;
+- Desvio financeiro apurado: 0,00%;
+- Nenhuma duplicidade de pedidos ou notas identificada;
+- Nenhuma divergência funcional identificada.
+
+**Conclusão:**
+A arquitetura estabelecida na Seção 49 encontra-se validada operacionalmente para o cenário homologado, permanecendo como referência oficial para futuras importações.
+
+Novas evoluções deverão continuar observando os critérios de desempenho, auditoria, equivalência funcional e governança definidos na baseline.
+
+
+
 
 
 
