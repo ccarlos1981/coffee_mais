@@ -732,3 +732,28 @@ To https://github.com/ccarlos1981/coffee_mais.git
    a57339a..0dac382  main -> main
 [22/07/2026 14:14] ✅ Alterações enviadas com sucesso para o GitHub.
 [23/07/2026 09:58] Nenhuma alteração encontrada. Nada a enviar.
+[main 8fa16f1] auto-save: 23/07/2026 13:10
+ 25 files changed, 4127 insertions(+), 1 deletion(-)
+ create mode 100644 public/images/logo_coffee_mais_official.svg
+ create mode 100644 scratch/audit_channels_reconciliation.js
+ create mode 100644 scratch/audit_full_commercial_channels.js
+ create mode 100644 scratch/print_summary.js
+ create mode 100644 scratch/test_filters_api.js
+ create mode 100644 scripts/apply_carta_anuencia_migration.js
+ create mode 100644 scripts/apply_via_management_api.js
+ create mode 100644 scripts/check_init_carta_anuencia.js
+ create mode 100644 scripts/inspect_role_permissions.js
+ create mode 100644 scripts/seed_carta_anuencia_permissions.js
+ create mode 100644 src/app/investimento/carta-anuencia/CartaPreviewModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/EditarCartaModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/FarolExecutivoView.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/GerenciarCompetenciasModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/NovaCartaModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/TimelineModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/UploadAssinadaModal.tsx
+ create mode 100644 src/app/investimento/carta-anuencia/actions.ts
+ create mode 100644 src/app/investimento/carta-anuencia/page.tsx
+ create mode 100644 supabase/migrations/20260723_carta_anuencia_module.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   20d15b7..8fa16f1  main -> main
+[23/07/2026 13:10] ✅ Alterações enviadas com sucesso para o GitHub.

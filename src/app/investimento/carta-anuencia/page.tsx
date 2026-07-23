@@ -31,6 +31,7 @@ import {
   listarCartasAnuencia,
   obterResumoDashboard,
   obterCompetencias,
+  obterFiltrosGerenteUf,
   cancelarCartaAnuencia,
 } from "./actions";
 import { CartaPreviewModal } from "./CartaPreviewModal";
@@ -48,6 +49,8 @@ export default function CartaAnuenciaPage() {
   // Data States
   const [cartas, setCartas] = useState<CartaAnuenciaItem[]>([]);
   const [competencias, setCompetencias] = useState<CompetenciaItem[]>([]);
+  const [gerentesList, setGerentesList] = useState<string[]>([]);
+  const [ufsList, setUfsList] = useState<string[]>([]);
   const [kpis, setKpis] = useState({
     totalCartas: 0,
     emitidas: 0,
@@ -64,6 +67,8 @@ export default function CartaAnuenciaPage() {
   const [search, setSearch] = useState("");
   const [statusFiltro, setStatusFiltro] = useState("TODAS");
   const [competenciaFiltro, setCompetenciaFiltro] = useState("TODAS");
+  const [gerenteFiltro, setGerenteFiltro] = useState("TODOS");
+  const [ufFiltro, setUfFiltro] = useState("TODAS");
 
   // Modals
   const [previewCarta, setPreviewCarta] = useState<CartaAnuenciaItem | null>(null);
@@ -78,26 +83,31 @@ export default function CartaAnuenciaPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [cartasList, resumenKpis, compList] = await Promise.all([
+      const [cartasList, resumenKpis, compList, metaFiltros] = await Promise.all([
         listarCartasAnuencia({
           status: statusFiltro,
           competencia: competenciaFiltro !== "TODAS" ? competenciaFiltro : undefined,
+          gerente: gerenteFiltro !== "TODOS" ? gerenteFiltro : undefined,
+          uf: ufFiltro !== "TODAS" ? ufFiltro : undefined,
           busca: search || undefined,
         }),
         obterResumoDashboard(),
         obterCompetencias(),
+        obterFiltrosGerenteUf(),
       ]);
 
       setCartas(cartasList);
       setKpis(resumenKpis);
       setCompetencias(compList);
+      setGerentesList(metaFiltros.gerentes);
+      setUfsList(metaFiltros.ufs);
     } catch (err) {
       console.error("Erro ao carregar módulo Carta de Anuência:", err);
       toast.error("Erro ao carregar dados do módulo.");
     } finally {
       setLoading(false);
     }
-  }, [statusFiltro, competenciaFiltro, search]);
+  }, [statusFiltro, competenciaFiltro, gerenteFiltro, ufFiltro, search]);
 
   useEffect(() => {
     fetchData();
@@ -316,9 +326,37 @@ export default function CartaAnuenciaPage() {
                     </option>
                   ))}
                 </select>
+
+                {/* Gerente Filter */}
+                <select
+                  value={gerenteFiltro}
+                  onChange={(e) => setGerenteFiltro(e.target.value)}
+                  className="h-9 px-3 rounded-xl border border-input bg-background text-xs text-foreground focus:ring-2 focus:ring-primary"
+                >
+                  <option value="TODOS">Todos os Gerentes</option>
+                  {gerentesList.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+
+                {/* UF Filter */}
+                <select
+                  value={ufFiltro}
+                  onChange={(e) => setUfFiltro(e.target.value)}
+                  className="h-9 px-3 rounded-xl border border-input bg-background text-xs text-foreground focus:ring-2 focus:ring-primary"
+                >
+                  <option value="TODAS">Todas as UFs</option>
+                  {ufsList.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <span className="text-xs text-muted-foreground font-medium">
+              <span className="text-xs text-muted-foreground font-medium shrink-0">
                 {cartas.length} cartas encontradas
               </span>
             </div>
@@ -346,6 +384,7 @@ export default function CartaAnuenciaPage() {
                       <tr>
                         <th className="py-3 px-4">Número Oficial</th>
                         <th className="py-3 px-4">Rede</th>
+                        <th className="py-3 px-4">Gerente / UF</th>
                         <th className="py-3 px-4">CNPJ</th>
                         <th className="py-3 px-4 text-center">Competência</th>
                         <th className="py-3 px-4 text-center">Emissão</th>
@@ -386,6 +425,18 @@ export default function CartaAnuenciaPage() {
                                   />
                                 )}
                                 {item.rede_nome}
+                              </div>
+                            </td>
+
+                            {/* Gerente / UF */}
+                            <td className="py-3 px-4 text-muted-foreground font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <span>{item.gerente || "—"}</span>
+                                {item.uf && (
+                                  <span className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-muted text-foreground border border-border">
+                                    {item.uf}
+                                  </span>
+                                )}
                               </div>
                             </td>
 

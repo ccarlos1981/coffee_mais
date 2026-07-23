@@ -35,8 +35,10 @@ export interface CartaAnuenciaItem {
   qr_code_hash?: string | null;
   created_at: string;
   updated_at: string;
-  // Campos virtuais de expiração e farol
+  // Campos virtuais de expiração, gerente, uf e farol
   expirada?: boolean;
+  gerente?: string | null;
+  uf?: string | null;
 }
 
 export interface CompetenciaItem {
@@ -155,12 +157,14 @@ export async function obterOuUploadLogoRede(redeId: string, logoUrlInput?: strin
 }
 
 /**
- * 3. Listar Cartas de Anuência com suporte a filtros e cálculo de expiração
+ * 3. Listar Cartas de Anuência com suporte a filtros de gerente, uf, status e competência
  */
 export async function listarCartasAnuencia(filters?: {
   status?: string;
   rede_id?: string;
   competencia?: string;
+  gerente?: string;
+  uf?: string;
   busca?: string;
 }): Promise<CartaAnuenciaItem[]> {
   const adminClient = createAdminClient();
@@ -186,15 +190,48 @@ export async function listarCartasAnuencia(filters?: {
     return [];
   }
 
+  // Mapear Gerente e UF utilizando a AnalyticsEngine (fonte homologada VENDAS_CLIENTE_MENSAL)
+  const redesMeta = await AnalyticsEngine.getMapeamentoRedesMeta();
+
+  const metaMap = new Map<string, { manager: string | null; uf: string | null }>();
+  (redesMeta || []).forEach((row) => {
+    if (row.rede) {
+      const key = row.rede.toLowerCase().trim();
+      if (!metaMap.has(key)) {
+        metaMap.set(key, {
+          manager: row.manager || null,
+          uf: row.uf || null,
+        });
+      }
+    }
+  });
+
   const hoje = new Date().toISOString().substring(0, 10);
 
-  return (data || []).map((item) => {
+  let result = (data || []).map((item) => {
+    const key = (item.rede_nome || item.rede_id || "").toLowerCase().trim();
+    const meta = metaMap.get(key) || { manager: null, uf: null };
     const expirada = !!(item.valida_ate && item.valida_ate < hoje);
     return {
       ...item,
+      gerente: meta.manager,
+      uf: meta.uf,
       expirada,
     };
   });
+
+  if (filters?.gerente && filters.gerente !== "TODOS") {
+    result = result.filter((c) => c.gerente === filters.gerente);
+  }
+  if (filters?.uf && filters.uf !== "TODAS") {
+    result = result.filter((c) => c.uf === filters.uf);
+  }
+
+  return result;
+}
+
+export async function obterFiltrosGerenteUf() {
+  return AnalyticsEngine.getFiltrosGerenteUf();
 }
 
 /**

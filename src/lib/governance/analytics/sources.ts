@@ -36,7 +36,7 @@ export const OFFICIAL_SOURCE_SCHEMAS: Record<OfficialSourceTable, string[]> = {
     'fat', 'qty', 'maco'
   ],
   [OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME]: [
-    'dt_faturamento', 'manager_id', 'manager', 'channel', 'uf', 'rede', 'product', 'fat', 'qty'
+    'dt_faturamento', 'invoice_date', 'ano', 'mes', 'dia', 'ano_mes', 'manager_id', 'manager', 'channel', 'uf', 'rede', 'nome_parceiro', 'product', 'tipo_produto', 'net_value', 'quantity', 'fat', 'qty', 'maco'
   ],
   [OFFICIAL_ANALYTICS_SOURCES.BASE_ATENDIMENTO]: [
     'cod_parceiro', 'nome_parceiro', 'fat', 'qty'

@@ -38,8 +38,8 @@ export function calcPricePerKg(revenue: number, weightKg: number): number {
 }
 
 /**
- * Pace = (Realizado / Meta) × (Dias Úteis Total / Dias Úteis Passados)
- * Projeção de resultado no ritmo atual
+ * @deprecated DESCONTINUADO — O PACE oficial do Coffee++ é calculado exclusivamente via `AnalyticsEngine.calculatePace`
+ * (Projeção Histórica Baseada no Remanescente do Mês Anterior).
  */
 export function calcPace(
   actual: number,
