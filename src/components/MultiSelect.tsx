@@ -1,21 +1,21 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback, memo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo, memo } from "react";
 import { ChevronDown, Search, CheckSquare, Square } from "lucide-react";
 
 interface MultiSelectProps {
-  value: string[];
+  value?: (string | number)[];
   onChange: (val: string[]) => void;
-  options: string[];
+  options?: (string | number)[];
   placeholder?: string;
   className?: string;
   title?: string;
 }
 
 export const MultiSelect = memo(function MultiSelect({ 
-  value, 
+  value = [], 
   onChange, 
-  options, 
+  options = [], 
   placeholder = "Todos", 
   className = "",
   title
@@ -23,6 +23,17 @@ export const MultiSelect = memo(function MultiSelect({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Normalizar array de opções para garantir exclusivamente strings limpas
+  const safeOptions = useMemo<string[]>(() => {
+    return (options || [])
+      .filter((opt) => opt !== null && opt !== undefined)
+      .map((opt) => String(opt));
+  }, [options]);
+
+  const safeValue = useMemo<string[]>(() => {
+    return (value || []).map((v) => String(v));
+  }, [value]);
 
   // Fecha ao clicar fora
   useEffect(() => {
@@ -36,37 +47,40 @@ export const MultiSelect = memo(function MultiSelect({
   }, []);
 
   // Filtro na busca
-  const filteredOptions = options.filter(option =>
-    option.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredOptions = useMemo<string[]>(() => {
+    const term = (searchTerm || "").toLowerCase();
+    return safeOptions.filter((option: string) =>
+      option.toLowerCase().includes(term)
+    );
+  }, [safeOptions, searchTerm]);
 
-  const isAllSelected = value.length === 0;
+  const isAllSelected = safeValue.length === 0;
 
   const toggleAll = useCallback(() => {
     onChange([]);
   }, [onChange]);
 
-  const toggleOption = useCallback((option: string) => {
-    if (value.length === 0) {
+  const toggleOption = useCallback((optionStr: string) => {
+    if (safeValue.length === 0) {
       // Se era "Todos", o primeiro clique num específico desmarca o resto e deixa só ele
-      onChange([option]);
+      onChange([optionStr]);
     } else {
-      if (value.includes(option)) {
-        const next = value.filter(v => v !== option);
+      if (safeValue.includes(optionStr)) {
+        const next = safeValue.filter((v: string) => v !== optionStr);
         onChange(next);
       } else {
-        onChange([...value, option]);
+        onChange([...safeValue, optionStr]);
       }
     }
-  }, [value, onChange]);
+  }, [safeValue, onChange]);
 
   // Label display logic
   let displayValue = placeholder;
   if (!isAllSelected) {
-    if (value.length === 1) {
-      displayValue = value[0];
+    if (safeValue.length === 1) {
+      displayValue = safeValue[0];
     } else {
-      displayValue = `${value.length} itens`;
+      displayValue = `${safeValue.length} itens`;
     }
   }
 
@@ -164,11 +178,11 @@ export const MultiSelect = memo(function MultiSelect({
             
             {filteredOptions.length === 0 ? (
               <div style={{ padding: "8px 12px", fontSize: "0.75rem", color: "var(--foreground-muted)", textAlign: "center" }}>
-                {options.length === 0 ? "Carregando..." : "Nenhum resultado"}
+                {safeOptions.length === 0 ? "Carregando..." : "Nenhum resultado"}
               </div>
             ) : (
-              filteredOptions.map((option) => {
-                const isSelected = isAllSelected || value.includes(option);
+              filteredOptions.map((option: string) => {
+                const isSelected = isAllSelected || safeValue.includes(option);
                 return (
                   <div
                     key={option}

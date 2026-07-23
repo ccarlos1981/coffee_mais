@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "audit:analytics": "ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/audit-analytics.ts",
-    "verify:parity": "ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/verify-parity.ts",
-    "health:analytics": "ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-analytics.ts"
+    "audit:analytics": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/audit-analytics.ts",
+    "verify:parity": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/verify-parity.ts",
+    "health:analytics": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-analytics.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",

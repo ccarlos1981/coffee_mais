@@ -711,3 +711,23 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    70edc16..72fe736  main -> main
 [22/07/2026 10:29] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 0dac382] auto-save: 22/07/2026 14:14
+ 45 files changed, 2768 insertions(+), 2189 deletions(-)
+ create mode 100644 scratch/audit_real_excel_distribution.ts
+ create mode 100644 scratch/confirm_post_hardening_batch.ts
+ create mode 100644 scratch/import_real_excel_file.ts
+ create mode 100644 scratch/run_official_audit_import.ts
+ create mode 100644 scratch/test_import_regression.ts
+ create mode 100644 scripts/audit-analytics.ts
+ create mode 100644 scripts/health-analytics.ts
+ create mode 100644 scripts/verify-parity.ts
+ create mode 100644 src/lib/governance/analytics/engine.ts
+ create mode 100644 src/lib/governance/analytics/filters.ts
+ create mode 100644 src/lib/governance/analytics/index.ts
+ create mode 100644 src/lib/governance/analytics/metrics.ts
+ create mode 100644 src/lib/governance/analytics/query-builder.ts
+ create mode 100644 src/lib/governance/analytics/sources.ts
+ create mode 100644 supabase/migrations/20260722_fix_import_statement_timeout.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   a57339a..0dac382  main -> main
+[22/07/2026 14:14] ✅ Alterações enviadas com sucesso para o GitHub.

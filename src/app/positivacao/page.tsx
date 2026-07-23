@@ -207,10 +207,9 @@ export default function PositivacaoPage() {
 
   const fetchFilters = useCallback(async () => {
     setFiltersLoading(true);
-    const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
-    const startDateStr = stD.toISOString().split("T")[0];
-    const enD = new Date(filterEndYear, filterEndMonth, 0);
-    const endDateStr = enD.toISOString().split("T")[0];
+    const startDateStr = `${filterStartYear}-${String(filterStartMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(filterEndYear, filterEndMonth, 0).getDate();
+    const endDateStr = `${filterEndYear}-${String(filterEndMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
     try {
       const res = await fetch(`/api/dashboard/filters?startDate=${startDateStr}&endDate=${endDateStr}`);
       const json = await res.json();
@@ -224,12 +223,14 @@ export default function PositivacaoPage() {
     setLoading(true);
     setExpandedManagers([]);
     setManagerDetails({});
-    const stD = new Date(filterStartYear, filterStartMonth - 1, 1);
-    const startDate = stD.toISOString().split("T")[0];
-    const enD = new Date(filterEndYear, filterEndMonth, 0);
-    const endDate = enD.toISOString().split("T")[0];
 
-    const params = new URLSearchParams({ startDate, endDate });
+    const startMonth = `${filterStartYear}-${String(filterStartMonth).padStart(2, '0')}`;
+    const endMonth = `${filterEndYear}-${String(filterEndMonth).padStart(2, '0')}`;
+    const startDate = `${startMonth}-01`;
+    const lastDay = new Date(filterEndYear, filterEndMonth, 0).getDate();
+    const endDate = `${endMonth}-${String(lastDay).padStart(2, '0')}`;
+
+    const params = new URLSearchParams({ startDate, endDate, startMonth, endMonth });
     if (filterManager.length > 0) params.set("manager", filterManager.join(","));
     if (filterFamilia.length > 0) params.set("familia", filterFamilia.join(","));
     if (filterUf.length > 0) params.set("uf", filterUf.join(","));

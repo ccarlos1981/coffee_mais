@@ -8,9 +8,9 @@
  */
 
 export const OFFICIAL_ANALYTICS_SOURCES = {
-  VENDAS_MENSAL: 'mv_vendas_mensal',
-  VENDAS_CLIENTE_MENSAL: 'mv_vendas_cliente_mensal',
-  POSITIVACAO_SKU_MENSAL: 'mv_positivacao_sku_mensal',
+  VENDAS_MENSAL: 'public.mv_vendas_mensal',
+  VENDAS_CLIENTE_MENSAL: 'public.mv_vendas_cliente_mensal',
+  POSITIVACAO_SKU_MENSAL: 'public.mv_positivacao_sku_mensal',
   SALES_REALTIME: 'public.sales',
   BASE_ATENDIMENTO: 'base_atendimento.faturamento_mensal',
 } as const;
