@@ -19,6 +19,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { SkeletonChart } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import {
   BarChart,
   Bar,
@@ -170,15 +171,16 @@ export default function HistoricoPorMatrizPage() {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setMode(json.mode);
-        if (json.mode === "top10") {
-          setMatrizData(json.byMatriz || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setMode(rawJson.mode);
+        if (rawJson.mode === "top10") {
+          setMatrizData(payload.byMatriz || rawJson.byMatriz || []);
           setMonthlyData([]);
         } else {
-          setMonthlyData(json.byMonth || []);
+          setMonthlyData(payload.byMonth || rawJson.byMonth || []);
           setMatrizData([]);
         }
       }

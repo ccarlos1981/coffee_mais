@@ -20,6 +20,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { Skeleton, SkeletonChart } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import {
   BarChart,
   Bar,
@@ -129,11 +130,13 @@ export default function HistoricoDashboard() {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
+      const payload = normalizeAnalyticsPayload(rawJson);
+
+      if (payload.success) {
         // Prepare monthly mapping for beautiful axis labels
-        const mappedHistory = (json.monthlyHistory || []).map((h: Record<string, unknown>) => {
+        const mappedHistory = ((rawJson.monthlyHistory || payload.byMonth) || []).map((h: Record<string, unknown>) => {
           const monthNum = parseInt((h.monthKey as string).split("-")[1]);
           const monthLabel = MONTHS[monthNum - 1].slice(0, 3);
           const precoUnid = (h.qty as number) > 0 ? (h.fat as number) / (h.qty as number) : 0;
@@ -147,8 +150,8 @@ export default function HistoricoDashboard() {
           };
         });
         setMonthlyHistory(mappedHistory);
-        setByFamilia(json.byFamilia || []);
-        setByClient(json.byClient || []);
+        setByFamilia(payload.byFamilia);
+        setByClient(rawJson.byClient || payload.byMatriz || []);
       }
     } catch (e) {
       if (requestId === fetchRequestIdRef.current) {

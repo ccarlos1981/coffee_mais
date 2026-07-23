@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 
 import { formatCurrency, formatNumber } from "@/lib/formatters";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 
 // CORES E CONSTANTES
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
@@ -164,22 +165,24 @@ export default function MatrizPage() {
 
     try {
       const res = await fetch(`/api/dashboard/matriz?${params}`);
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setTotals(json.totals || { fat: 0, qty: 0, maco: 0 });
-        setMatrizData(json.byMatriz || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+
+      if (payload.success) {
+        setTotals(payload.totals as any || { fat: 0, qty: 0, maco: 0 });
+        setMatrizData(payload.byMatriz || []);
         setCurrentPage(1);
         
-        setManagerData(json.byManager?.map((m: Record<string, unknown>) => ({
-            name: m.name,
+        setManagerData(payload.byManager?.map((m: Record<string, any>) => ({
+            name: m.name || m.manager,
             size: m.fat,
             pct: m.pct
         })) || []);
         
-        setProductData(json.byProduct || []);
-        setFamiliaData(json.byFamilia || []);
-        setHistoryData(json.byMonth || []);
+        setProductData(rawJson.byProduct || payload.bySku || []);
+        setFamiliaData(payload.byFamilia || []);
+        setHistoryData(payload.byMonth || []);
       }
     } catch(e) {
       if (requestId === fetchRequestIdRef.current) {

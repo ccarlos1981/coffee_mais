@@ -19,6 +19,7 @@ import { ExportButton } from "@/components/ExportButton";
 import { SkeletonChart } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import {
   BarChart,
   Bar,
@@ -196,12 +197,13 @@ export default function HistoricoMatrizDashboard() {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setMonthlyHistory(json.byMonth || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setMonthlyHistory(payload.byMonth);
       } else {
-        console.error("[Client History Matriz] API returned success: false, error:", json.error);
+        console.error("[Client History Matriz] API returned success: false, error:", rawJson.error);
       }
     } catch (e) {
       if (requestId === fetchRequestIdRef.current) {

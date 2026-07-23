@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 
 import { formatCurrency, formatNumber } from "@/lib/formatters";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -240,14 +241,15 @@ export default function PositivacaoPage() {
 
     try {
       const res = await fetch(`/api/dashboard/positivacao?${params}`);
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setTotals(json.totals || { clientes: 0, matrizes: 0, fat: 0, meses: 0 });
-        setByMonth(json.byMonth || []);
-        setByManager(json.byManager || []);
-        setBatalhaNaval(json.batalhaNaval || []);
-        setMonths(json.months || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setTotals(payload.totals as any || { clientes: 0, matrizes: 0, fat: 0, meses: 0 });
+        setByMonth(payload.byMonth || []);
+        setByManager(payload.byManager || []);
+        setBatalhaNaval(rawJson.batalhaNaval || []);
+        setMonths(rawJson.months || []);
       }
     } catch(e) {
       if (requestId === fetchRequestIdRef.current) {

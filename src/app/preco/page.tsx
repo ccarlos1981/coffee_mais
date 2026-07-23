@@ -18,6 +18,7 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { SkeletonTable } from "@/components/Skeleton";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import { EmptyState } from "@/components/EmptyState";
 
 interface FiltersData {
@@ -132,13 +133,14 @@ export default function PrecoDashboardPage() {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       });
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setChannelsData(json.channels || []);
-        setMatrizesData(json.matrizes || []);
-        setFamiliesData(json.families || []);
-        setMatrizFamiliesData(json.matrizFamilies || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setChannelsData(payload.channels);
+        setMatrizesData(payload.matrizes);
+        setFamiliesData(payload.families);
+        setMatrizFamiliesData(payload.matrizFamilies);
         setExpandedChannel(null);
         setExpandedMatriz(null);
       }
