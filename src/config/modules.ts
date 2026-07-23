@@ -88,6 +88,7 @@ export const allModules: NavigationGroup[] = [
       { key: "invest_por_mes", title: "Invest. por mês", description: "Consolidado mensal", href: "/investimento/por-mes", icon: CalendarDays, color: "from-cyan-600 to-cyan-800", ready: true },
       { key: "calendario_invest", title: "Calendário de invest.", description: "Visão mensal", href: "/investimento?view=calendar", icon: Calendar, color: "from-violet-600 to-violet-800", ready: true },
       { key: "planej_invest", title: "Planej. de Invest.", permission: "Planej. de Invest.", description: "Planejamento de ações", href: "/investimento/planejamento", icon: Target, color: "from-amber-600 to-amber-800", ready: true },
+      { key: "carta_anuencia", title: "Carta de Anuência", permission: "Investimento", description: "Gestão de cartas de quitação", href: "/investimento/carta-anuencia", icon: FileText, color: "from-blue-600 to-indigo-800", ready: true },
       { key: "invest_oficial", title: "Invest. oficial", description: "Gestão por cliente", href: "/investimento", icon: TrendingUp, color: "from-amber-600 to-amber-800", ready: true, hasRedBorder: true },
     ],
   },

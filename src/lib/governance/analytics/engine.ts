@@ -667,12 +667,73 @@ export class AnalyticsEngine {
 
     return {
       maxDate: resMaxDate[0]?.max_date || null,
-      managers: resManagers,
+      managers: resManagers.map(r => r.manager),
       familias: resFamilias.map(r => r.familia),
       ufs: resUfs.map(r => r.uf),
       channels: resChannels.map(r => r.channel),
       redes: resRedes.map(r => r.rede),
       products: resProducts.map(r => r.product),
     };
+  }
+
+  /**
+   * 12. Farol de Cartas de Anuência — Média Mensal de Compras (Últimos 12 meses)
+   * 
+   * Filtra redes com média de faturamento mensal dos últimos 12 meses >= R$ 80.000,
+   * utilizando a fonte homologada VENDAS_CLIENTE_MENSAL em estrito respeito à Governança Financeira.
+   */
+  static async getFarolAnuenciaRedes(filters?: { manager?: string; uf?: string; channel?: string; minMedia?: number }) {
+    const targetSource = OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL;
+    const minMedia = filters?.minMedia !== undefined ? filters.minMedia : 80000;
+    
+    let whereConditions: string[] = ["rede IS NOT NULL AND rede != ''"];
+    if (filters?.manager) {
+      whereConditions.push(`manager = ${escapeSqlValue(filters.manager)}`);
+    }
+    if (filters?.uf) {
+      whereConditions.push(`uf = ${escapeSqlValue(filters.uf)}`);
+    }
+    if (filters?.channel) {
+      whereConditions.push(`channel = ${escapeSqlValue(filters.channel)}`);
+    }
+
+    const whereClause = `WHERE ${whereConditions.join(" AND ")}`;
+
+    const sql = `
+      WITH l12m AS (
+        SELECT 
+          COALESCE(rede, nome_parceiro) as rede,
+          MAX(manager) as manager,
+          MAX(uf) as uf,
+          MAX(channel) as channel,
+          SUM(fat) as total_fat_12m,
+          COUNT(DISTINCT mes) as meses_com_venda,
+          (SUM(fat) / 12.0) as media_mensal_12m
+        FROM ${targetSource}
+        ${whereClause}
+        GROUP BY COALESCE(rede, nome_parceiro)
+      )
+      SELECT 
+        rede,
+        manager,
+        uf,
+        channel,
+        total_fat_12m,
+        meses_com_venda,
+        ROUND(media_mensal_12m::numeric, 2) as media_mensal
+      FROM l12m
+      WHERE media_mensal_12m >= ${minMedia}
+      ORDER BY media_mensal_12m DESC
+    `;
+
+    return this.executeSql<{
+      rede: string;
+      manager: string | null;
+      uf: string | null;
+      channel: string | null;
+      total_fat_12m: number;
+      meses_com_venda: number;
+      media_mensal: number;
+    }>(sql);
   }
 }
