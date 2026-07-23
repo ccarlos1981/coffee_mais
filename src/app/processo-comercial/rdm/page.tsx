@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { formatNumber, formatCurrency } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Cell, LabelList,
@@ -2784,18 +2785,17 @@ function SlidePrecoTabela({
         if (managers.length > 0) params.set('manager', managers.join(','));
         if (selFam !== 'Todas') params.set('familia', selFam);
         const res = await fetch(`/api/dashboard/preco-matriz?${params}`);
-        const json = await res.json();
-        if (!json.success) return;
+        const rawJson = await res.json();
+        const payload = normalizeAnalyticsPayload(rawJson);
+        if (!payload.success) return;
 
-         
-        const chRows: PrecoTabelaRow[] = (json.channels || []).map((c: any) => ({
+        const chRows: PrecoTabelaRow[] = payload.channels.map((c: any) => ({
           name: c.channel,
           fatAcum: c.totalFat,
           monthPrices: c.monthPrices,
         }));
 
-         
-        const mRows: PrecoTabelaRow[] = (json.matrizes || []).map((m: any) => ({
+        const mRows: PrecoTabelaRow[] = payload.matrizes.map((m: any) => ({
           name: m.matriz,
           fatAcum: m.totalFat,
           monthPrices: m.monthPrices,

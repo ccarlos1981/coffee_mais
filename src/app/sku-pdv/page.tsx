@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 
 import { formatCurrency, formatNumber } from "@/lib/formatters";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -230,13 +231,14 @@ export default function SkuPdvPage() {
 
     try {
       const res = await fetch(`/api/dashboard/sku-pdv?${params}`);
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setTotals(json.totals || { clientes: 0, matrizes: 0, fat: 0, total_portfolio: 0, avg_skus_per_pdv: 0 });
-        setByMonth(json.byMonth || []);
-        setByManager(json.byManager || []);
-        setMonths(json.months || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setTotals(payload.totals as any || { clientes: 0, matrizes: 0, fat: 0, total_portfolio: 0, avg_skus_per_pdv: 0 });
+        setByMonth(payload.byMonth);
+        setByManager(payload.byManager);
+        setMonths(rawJson.months || []);
       }
     } catch(e) {
       if (requestId === fetchRequestIdRef.current) {

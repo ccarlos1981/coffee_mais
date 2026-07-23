@@ -26,6 +26,7 @@ import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 
 /* ───────────────── constants ───────────────── */
 const MONTHS = [
@@ -235,18 +236,20 @@ export default function VendasDashboard() {
         setBusinessDays(bdRes.data || null);
         const allTargets: TargetRecord[] = targetRes.data || [];
 
-        const json = await apiRes.json();
+        const rawJson = await apiRes.json();
         if (!active) return;
 
-        if (json.success) {
-          const byManager: ManagerData[] = json.byManager || [];
-          setFamiliaData(json.byFamilia || []);
+        const payload = normalizeAnalyticsPayload<ManagerData, FamiliaData>(rawJson);
+
+        if (payload.success) {
+          const byManager: ManagerData[] = payload.byManager;
+          setFamiliaData(payload.byFamilia);
           
-          const pm = json.previousMonth || { fat: 0, qty: 0, maco: 0 };
-          setPreviousMonth({ ...pm, maco: 0 });
+          const pm = payload.previousMonth;
+          setPreviousMonth({ fat: Number(pm.fat || 0), qty: Number(pm.qty || 0), maco: 0 });
           
-          const py = json.previousYear || { fat: 0, qty: 0, maco: 0 };
-          setPreviousYear({ ...py, maco: 0 });
+          const py = payload.previousYear;
+          setPreviousYear({ fat: Number(py.fat || 0), qty: Number(py.qty || 0), maco: 0 });
 
           const getManagerId = (t: { manager: string; manager_id?: string | null }) => {
             if (t.manager_id) return t.manager_id;

@@ -8,6 +8,7 @@ import { Filter, Home, DollarSign,
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { formatNumber } from "@/lib/formatters";
+import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 
 const MONTHS = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -115,13 +116,14 @@ export default function PositivacaoMatrizPage() {
 
     try {
       const res = await fetch(`/api/dashboard/positivacao-matriz?${params}`);
-      const json = await res.json();
+      const rawJson = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;
-      if (json.success) {
-        setTotals(json.totals || { matrizes: 0, clientes: 0, meses: 0 });
-        setByMatriz(json.byMatriz || []);
-        setByCliente(json.byCliente || []);
-        setMonths(json.months || []);
+      const payload = normalizeAnalyticsPayload(rawJson);
+      if (payload.success) {
+        setTotals(payload.totals as any || { matrizes: 0, clientes: 0, meses: 0 });
+        setByMatriz(payload.byMatriz || rawJson.byMatriz || []);
+        setByCliente(rawJson.byCliente || []);
+        setMonths(rawJson.months || []);
         setMatrizPage(1);
         setClientePage(1);
       }

@@ -12,3 +12,4 @@ export * from './filters';
 export * from './metrics';
 export * from './query-builder';
 export * from './engine';
+export * from './adapter';
