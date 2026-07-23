@@ -12,6 +12,7 @@ export interface AnalyticsFilters {
   endDate?: string | null;
   startMonth?: string | null;
   endMonth?: string | null;
+  referenceDate?: string | null;
   manager_id?: string | null;
   manager?: string | null;
   familia?: string | null;

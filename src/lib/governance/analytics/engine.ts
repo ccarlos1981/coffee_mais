@@ -86,18 +86,172 @@ export class AnalyticsEngine {
       GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
-    const [rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient] = await Promise.all([
+    const [rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient, paceResult] = await Promise.all([
       this.executeSql(sqlCur),
       this.executeSql(sqlCurClient),
       this.executeSql(sqlPm),
       this.executeSql(sqlPmClient),
       this.executeSql(sqlPy),
       this.executeSql(sqlPyClient),
+      this.calculatePace(filters),
     ]);
 
     return {
       rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient,
+      paceResult,
       investmentPct: filters.investmentPct || 0,
+    };
+  }
+
+  /**
+   * Função ÚNICA e CENTRALIZADA para cálculo do indicador PACE.
+   * Regras Oficiais Homologadas:
+   * - Mês anterior ao atual: PACE = REAL (remanescente = 0).
+   * - Mês posterior ao atual (mês futuro): REAL = 0, PACE = faturamento total realizado no mês imediatamente anterior (Forecast/Baseline).
+   * - Mês atual: PACE = REAL acumulado (faturamento de 01 até a Data de Referência Oficial) + Remanescente do mês anterior (cutOffDay + 1 até o último dia do mês anterior). Em nenhuma hipótese o PACE utilizará o faturamento total do mês corrente.
+   * - Data de Referência Oficial (refDay): Data de fechamento/processamento da base da AnalyticsEngine.
+   * - Proibição de Recálculo do REAL: O REAL é consumido diretamente do acumulado da linha (mv_vendas_mensal / mv_vendas_cliente_mensal), sem execução de segunda consulta.
+   * - Fórmulas exatas de agregação por segmento:
+   *   paceFat = realFat + remanescenteFat
+   *   paceQty = realQty + remanescenteQty
+   *   paceMaco = realMaco + remanescenteMaco (proibido usar margem média ou percentual).
+   */
+  static async calculatePace(filters: AnalyticsFilters) {
+    const curStartMonth = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : null);
+    if (!curStartMonth) {
+      return {
+        rowsPmRemainderManager: [],
+        rowsPmRemainderClient: [],
+        rowsPmRemainderFamilia: [],
+        refDay: 0,
+        cutOffDay: 0,
+        isPastMonth: false,
+        isFutureMonth: false,
+      };
+    }
+
+    const [sYear, sMonth] = curStartMonth.split('-').map(Number);
+    const now = new Date();
+    const currentRealYear = now.getFullYear();
+    const currentRealMonth = now.getMonth() + 1;
+
+    const pmStartMonth = `${sMonth === 1 ? sYear - 1 : sYear}-${String(sMonth === 1 ? 12 : sMonth - 1).padStart(2, '0')}`;
+    const [pmYear, pmMonth] = pmStartMonth.split('-').map(Number);
+    const lastDayOfPm = new Date(pmYear, pmMonth, 0).getDate();
+
+    const isPastMonth = sYear < currentRealYear || (sYear === currentRealYear && sMonth < currentRealMonth);
+    const isFutureMonth = sYear > currentRealYear || (sYear === currentRealYear && sMonth > currentRealMonth);
+
+    if (isPastMonth) {
+      return {
+        rowsPmRemainderManager: [],
+        rowsPmRemainderClient: [],
+        rowsPmRemainderFamilia: [],
+        refDay: lastDayOfPm,
+        cutOffDay: lastDayOfPm,
+        isPastMonth: true,
+        isFutureMonth: false,
+      };
+    }
+
+    // Determinar a DATA DE REFERÊNCIA OFICIAL da AnalyticsEngine (processamento/fechamento da base).
+    // Proibido depender diretamente de MAX(dia) em public.sales para evitar instabilidade por cargas parciais.
+    let refDay = 0;
+    if (isFutureMonth) {
+      refDay = 0;
+    } else {
+      if (filters.referenceDate) {
+        const refDateObj = new Date(filters.referenceDate);
+        if (!isNaN(refDateObj.getTime())) {
+          refDay = refDateObj.getDate();
+        }
+      }
+
+      if (!refDay) {
+        const sqlOfficialRef = `
+          SELECT MAX(finished_at) as last_refresh 
+          FROM public.cm_mv_refresh_jobs 
+          WHERE status = 'SUCCESS'
+        `;
+        try {
+          const resRef = await this.executeSql<{ last_refresh: string }>(sqlOfficialRef);
+          if (resRef[0]?.last_refresh) {
+            const refreshDate = new Date(resRef[0].last_refresh);
+            if (refreshDate.getFullYear() === sYear && (refreshDate.getMonth() + 1) === sMonth) {
+              refDay = refreshDate.getDate();
+            }
+          }
+        } catch {
+          // ignora fallback
+        }
+      }
+
+      if (!refDay) {
+        refDay = now.getDate();
+      }
+    }
+
+    const cutOffDay = isFutureMonth ? 0 : Math.min(refDay, lastDayOfPm);
+
+    if (!isFutureMonth && cutOffDay >= lastDayOfPm) {
+      return {
+        rowsPmRemainderManager: [],
+        rowsPmRemainderClient: [],
+        rowsPmRemainderFamilia: [],
+        refDay,
+        cutOffDay,
+        isPastMonth: false,
+        isFutureMonth: false,
+      };
+    }
+
+    const dayStartPrev = cutOffDay + 1;
+    const dayEndPrev = lastDayOfPm;
+
+    const pmRemainderFilters = { ...filters, startMonth: pmStartMonth, endMonth: pmStartMonth };
+    const wherePmRemainderBase = buildWhereClause(pmRemainderFilters, OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME);
+
+    const investmentPct = filters.investmentPct || 0;
+    const macoSql = investmentPct > 0
+      ? `SUM(COALESCE(maco, 0) - (COALESCE(net_value, 0) * ${investmentPct}))`
+      : `SUM(COALESCE(maco, 0))`;
+
+    const sqlPmRemainderManager = `
+      SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
+             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros')
+    `;
+
+    const sqlPmRemainderClient = `
+      SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
+             COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
+             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+    `;
+
+    const sqlPmRemainderFamilia = `
+      SELECT COALESCE(tipo_produto, 'Outros') as familia,
+             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      GROUP BY COALESCE(tipo_produto, 'Outros')
+    `;
+
+    const [rowsPmRemainderManager, rowsPmRemainderClient, rowsPmRemainderFamilia] = await Promise.all([
+      this.executeSql(sqlPmRemainderManager).catch(() => []),
+      this.executeSql(sqlPmRemainderClient).catch(() => []),
+      this.executeSql(sqlPmRemainderFamilia).catch(() => []),
+    ]);
+
+    return {
+      rowsPmRemainderManager,
+      rowsPmRemainderClient,
+      rowsPmRemainderFamilia,
+      refDay,
+      cutOffDay,
+      isPastMonth,
+      isFutureMonth,
     };
   }
 
@@ -735,5 +889,39 @@ export class AnalyticsEngine {
       meses_com_venda: number;
       media_mensal: number;
     }>(sql);
+  }
+
+  /**
+   * 13. Mapeamento de Metadados de Redes (Gerente e UF)
+   */
+  static async getMapeamentoRedesMeta() {
+    const targetSource = OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL;
+    const sql = `
+      SELECT DISTINCT 
+        COALESCE(rede, nome_parceiro) as rede, 
+        manager, 
+        uf 
+      FROM ${targetSource} 
+      WHERE rede IS NOT NULL AND rede != ''
+    `;
+    return this.executeSql<{ rede: string; manager: string | null; uf: string | null }>(sql);
+  }
+
+  /**
+   * 14. Filtros Disponíveis de Gerentes e UFs
+   */
+  static async getFiltrosGerenteUf() {
+    const targetSource = OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL;
+    const sql = `
+      SELECT 
+        ARRAY_AGG(DISTINCT manager) FILTER (WHERE manager IS NOT NULL AND manager != '') as gerentes,
+        ARRAY_AGG(DISTINCT uf) FILTER (WHERE uf IS NOT NULL AND uf != '') as ufs
+      FROM ${targetSource}
+    `;
+    const res = await this.executeSql<{ gerentes: string[]; ufs: string[] }>(sql);
+    return {
+      gerentes: (res[0]?.gerentes || []).sort(),
+      ufs: (res[0]?.ufs || []).sort(),
+    };
   }
 }

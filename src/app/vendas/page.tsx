@@ -407,13 +407,7 @@ export default function VendasDashboard() {
           </div>
         )}
 
-        {businessDays && (
-          <div className="sidebar-info-box">
-            <div>Dias Úteis: <strong style={{color:'var(--foreground)'}}>{businessDays.elapsed_days}/{businessDays.total_days}</strong></div>
-            <div>Restam: <strong style={{color:'var(--accent-gold)'}}>{Math.max(0, businessDays.total_days - businessDays.elapsed_days)}</strong></div>
-            <div>Percorrido: <strong style={{color:'var(--foreground)'}}>{formatPercent(timeElapsedPct)}</strong></div>
-          </div>
-        )}
+
       </>
     );
   };
@@ -447,9 +441,10 @@ export default function VendasDashboard() {
 
   const getPctStyle = (valPct: number, metaVal: number) => {
     if (metaVal <= 0) return { color: "var(--foreground-dim)" };
-    if (timeElapsedPct === 0) return { color: pctColor(valPct) };
-    if (valPct >= timeElapsedPct) {
+    if (valPct >= 100) {
       return { backgroundColor: "rgba(34, 197, 94, 0.9)", color: "#000", fontWeight: 700 };
+    } else if (valPct >= 80) {
+      return { backgroundColor: "rgba(234, 179, 8, 0.9)", color: "#000", fontWeight: 700 };
     } else {
       return { backgroundColor: "rgba(239, 68, 68, 0.9)", color: "#fff", fontWeight: 700 };
     }
@@ -690,11 +685,10 @@ export default function VendasDashboard() {
 
         {/* ═══ Pace Row ═══ */}
         <div className="desktop-only">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 10, marginBottom: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
             <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
             <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
             <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
-            <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
             <MiniStat
               label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
               value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
@@ -773,9 +767,9 @@ export default function VendasDashboard() {
                               {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
                             </td>
                             <td>{formatCurrency((row.vendaFutura || 0) / 1000)}</td>
-                            <td>{formatCurrency((row.fat + (row.vendaFutura || 0)) / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct(row.fat + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
-                              {row.metaFat > 0 ? formatPercent(pct(row.fat + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                            <td>{formatCurrency(((row.paceFat || 0) + (row.vendaFutura || 0)) / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
+                              {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
                             </td>
                             <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
                             <td>{formatNumber(row.qty, 0)}</td>
@@ -861,9 +855,9 @@ export default function VendasDashboard() {
                             {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
                           </td>
                           <td>{formatCurrency((totals.vendaFutura || 0) / 1000)}</td>
-                          <td>{formatCurrency((totals.fat + (totals.vendaFutura || 0)) / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
-                            {totals.metaFat > 0 ? formatPercent(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                          <td>{formatCurrency(((totals.paceFat || 0) + (totals.vendaFutura || 0)) / 1000)}</td>
+                          <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
                           </td>
                           <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                           <td>{formatNumber(totals.qty, 0)}</td>
@@ -947,9 +941,9 @@ export default function VendasDashboard() {
                                 {row.paceFat && row.paceFat > 0 ? formatCurrency(row.paceFat / 1000) : "-"}
                               </td>
                               <td>{formatCurrency((row.vendaFutura || 0) / 1000)}</td>
-                              <td>{formatCurrency((row.fat + (row.vendaFutura || 0)) / 1000)}</td>
-                              <td className="pct-cell" style={getPctStyle(pct(row.fat + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
-                                {row.metaFat > 0 ? formatPercent(pct(row.fat + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                              <td>{formatCurrency(((row.paceFat || 0) + (row.vendaFutura || 0)) / 1000)}</td>
+                              <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
+                                {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
                               </td>
                             </tr>,
                             isExpanded && (
@@ -1017,9 +1011,9 @@ export default function VendasDashboard() {
                               {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
                             </td>
                             <td>{formatCurrency((totals.vendaFutura || 0) / 1000)}</td>
-                            <td>{formatCurrency((totals.fat + (totals.vendaFutura || 0)) / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
-                              {totals.metaFat > 0 ? formatPercent(pct(totals.fat + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                            <td>{formatCurrency(((totals.paceFat || 0) + (totals.vendaFutura || 0)) / 1000)}</td>
+                            <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
                             </td>
                           </tr>
                         )}
@@ -1385,7 +1379,6 @@ export default function VendasDashboard() {
                 <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
                 <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
                 <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
-                <MiniStat label="Tempo %" value={formatPercent(timeElapsedPct)} color="var(--foreground-secondary)" />
                 <MiniStat
                   label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
                   value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
