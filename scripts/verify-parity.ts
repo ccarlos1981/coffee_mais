@@ -8,6 +8,26 @@
  * @see Regra de Governança Financeira (Seção 10)
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Carregar variáveis de ambiente do .env.local
+const envPath = path.resolve(process.cwd(), '.env.local');
+if (fs.existsSync(envPath)) {
+  const envConfig = fs.readFileSync(envPath, 'utf-8');
+  for (const line of envConfig.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
+      const idx = trimmed.indexOf('=');
+      const key = trimmed.substring(0, idx).trim();
+      const val = trimmed.substring(idx + 1).trim().replace(/^["']|["']$/g, '');
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  }
+}
+
 import { AnalyticsEngine } from '@/lib/governance/analytics/engine';
 import { OFFICIAL_ANALYTICS_SOURCES } from '@/lib/governance/analytics/sources';
 import { createAdminClient } from '@/lib/supabase/admin';

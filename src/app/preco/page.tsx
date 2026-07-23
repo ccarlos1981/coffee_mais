@@ -128,9 +128,9 @@ export default function PrecoDashboardPage() {
     if (filterMatriz.length > 0) params.set("matriz", filterMatriz.join(","));
 
     try {
-      const res = await fetch(`/api/dashboard/preco-matriz?${params}`, {
+      const res = await fetch(`/api/dashboard/preco-matriz?${params}&_t=${Date.now()}`, {
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' }
+        headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
       });
       const json = await res.json();
       if (requestId !== fetchRequestIdRef.current) return;

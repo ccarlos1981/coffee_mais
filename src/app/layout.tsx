@@ -38,14 +38,6 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <head>
-        <script
-          id="theme-initializer"
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('coffee-theme');document.documentElement.setAttribute('data-theme',t||'light')}catch(e){}})()`,
-          }}
-        />
-      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
         <ThemeProvider>
           {children}

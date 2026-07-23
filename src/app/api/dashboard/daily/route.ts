@@ -18,7 +18,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const year = searchParams.get("year") || "2026";
-    const month = searchParams.get("month") || "6";
+    const month = searchParams.get("month") || "7";
 
     const filters = parseAnalyticsFiltersFromParams(searchParams);
 
@@ -28,25 +28,100 @@ export async function GET(request: Request) {
     const supabase = getSupabaseClient();
 
     const clauses: string[] = [];
+
+    // Gerente / Manager
     if (filters.manager_id) {
-      clauses.push(`a.manager_id IN (${filters.manager_id.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const managers = filters.manager_id.split(',').map(m => escapeSqlValue(m.trim())).join(',');
+      clauses.push(`(
+        (CASE 
+          WHEN f.nome_vendedor = 'AMAZON 1P' THEN '1008'
+          WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN '1007'
+          WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN '1005'
+          WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN '1006'
+          ELSE c.manager_id
+        END) IN (${managers})
+      )`);
     } else if (filters.manager && filters.manager !== 'all') {
-      clauses.push(`a.manager IN (${filters.manager.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const managers = filters.manager.split(',').map(m => escapeSqlValue(m.trim())).join(',');
+      clauses.push(`(
+        (COALESCE(
+          CASE 
+            WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+            WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
+            WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
+            WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
+            ELSE c.responsavel
+          END, 'SEM RESPONSÁVEL'
+        )) IN (${managers})
+      )`);
     }
+
+    // UF
     if (filters.uf && filters.uf !== 'all') {
-      clauses.push(`a.uf IN (${filters.uf.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const ufs = filters.uf.split(',').map(u => escapeSqlValue(u.trim())).join(',');
+      clauses.push(`(
+        COALESCE(
+          CASE WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO', 'AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU') THEN 'SP' ELSE c.uf END,
+          'SP'
+        ) IN (${ufs})
+      )`);
     }
+
+    // Canal
     if (filters.channel && filters.channel !== 'all') {
-      clauses.push(`a.canal IN (${filters.channel.split(',').map(c => escapeSqlValue(c)).join(',')})`);
+      const channels = filters.channel.split(',').map(ch => escapeSqlValue(ch.trim())).join(',');
+      clauses.push(`(
+        COALESCE(
+          CASE 
+            WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+            WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
+            WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
+            WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
+            ELSE c.tipo_parceiro
+          END, 'Outros'
+        ) IN (${channels})
+      )`);
     }
+
+    // Rede / Matriz
     if (filters.matriz && filters.matriz !== 'all') {
-      clauses.push(`a.rede IN (${filters.matriz.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const redes = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      clauses.push(`(
+        COALESCE(
+          CASE 
+            WHEN f.nome_vendedor = 'AMAZON 1P' THEN 'Amazon 1P'
+            WHEN f.nome_vendedor = 'DISTRIBUIDOR' THEN 'Distribuidor'
+            WHEN f.nome_vendedor IN ('SHOPIFY', 'LIVELO') THEN 'Ecommerce'
+            WHEN f.nome_vendedor IN ('AMAZONFBA', 'MELI FULL', 'SHOPEE', 'AMAZONBR', 'ANYMARKET', 'MAGALU', 'MELI') THEN 'Marketplace'
+            ELSE c.matriz
+          END, f.nome_parceiro, 'Não Mapeado'
+        ) IN (${redes})
+      )`);
     }
+
+    // Produto (SKU / Descrição)
     if (hasProductFilter) {
-      clauses.push(`f.cod_produto IN (${filters.product!.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const products = filters.product!.split(',').map(p => escapeSqlValue(p.trim())).join(',');
+      clauses.push(`(f.desc_produto IN (${products}) OR f.desc_produto ILIKE ANY(ARRAY[${filters.product!.split(',').map(p => `'%${p.trim()}%'`).join(',')}]))`);
     }
+
+    // Família de Produto
     if (hasFamilyFilter) {
-      clauses.push(`p.type IN (${filters.familia!.split(',').map(m => escapeSqlValue(m)).join(',')})`);
+      const familias = filters.familia!.split(',').map(f => escapeSqlValue(f.trim())).join(',');
+      clauses.push(`(
+        CASE
+          WHEN (POSITION(('1KG'::text) IN (upper(f.desc_produto))) > 0) THEN '1 KG'::text
+          WHEN ((POSITION(('5KG'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('5 KG'::text) IN (upper(f.desc_produto))) > 0)) THEN '5 KG'::text
+          WHEN ((POSITION(('CAPSULA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('CÁPSULA'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Cápsula'::text
+          WHEN (POSITION(('DRIP'::text) IN (upper(f.desc_produto))) > 0) THEN 'Drip'::text
+          WHEN (POSITION(('GEISHA'::text) IN (upper(f.desc_produto))) > 0) THEN 'Geisha'::text
+          WHEN (POSITION(('VERDE'::text) IN (upper(f.desc_produto))) > 0) THEN 'Café Verde'::text
+          WHEN ((POSITION(('GRAO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('GRÃO'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Grão'::text
+          WHEN ((POSITION(('MOIDO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('MOÍDO'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Moído'::text
+          WHEN ((POSITION(('ACESSORIO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('GARRAFA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('CANECA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('KIT'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Acessório'::text
+          ELSE 'Outros'::text
+        END IN (${familias})
+      )`);
     }
 
     const filterSql = clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '';
@@ -55,28 +130,27 @@ export async function GET(request: Request) {
     const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-    let joinProductSql = '';
-    if (hasFamilyFilter) {
-      joinProductSql = `LEFT JOIN products p ON f.cod_produto = CAST(p.id AS text)`;
-    }
-
     const sql = `
       SELECT 
         f.dt_faturamento::text as date_str,
         SUM(
           CASE 
-            WHEN f.top IN (1200, 1201) THEN -ABS(f.vlr_total_liq)
-            ELSE f.vlr_total_liq
+            WHEN (f.cod_top)::numeric = ANY (ARRAY[1200, 1201]::numeric[]) THEN -ABS(COALESCE(f.vlr_total_liq, 0))
+            ELSE COALESCE(f.vlr_total_liq, 0)
           END
         )::numeric as daily_fat,
-        SUM(f.qtd_neg)::numeric as daily_qty
-      FROM cm_faturamento_sankhya f
-      LEFT JOIN base_atendimento a ON f.cod_parceiro = a.cod_parceiro
-      ${joinProductSql}
+        SUM(
+          CASE 
+            WHEN (f.cod_top)::numeric = ANY (ARRAY[1200, 1201]::numeric[]) THEN -ABS(COALESCE(f.quantidade, 0))
+            ELSE COALESCE(f.quantidade, 0)
+          END
+        )::numeric as daily_qty
+      FROM public.cm_faturamento_sankhya f
+      LEFT JOIN public.cm_clientes c ON c.codigo = f.cod_parceiro::integer
       WHERE f.dt_faturamento >= '${startDateStr}' AND f.dt_faturamento <= '${endDateStr}'
-        AND f.top IN (1100, 1117, 1200, 1201, 1703, 1713, 1723)
-        AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-        AND (f.top != 1701 AND f.cod_parceiro != 99999)
+        AND (f.cod_top)::numeric = ANY (ARRAY[1100, 1117, 1200, 1201, 1703, 1713, 1723]::numeric[])
+        AND ((f.status_nfe IS NULL) OR (f.status_nfe <> 'CANCELADA'::text))
+        AND (f.nome_parceiro <> ALL (ARRAY['CAFE UTAM S/A'::text, 'COFFEE MAIS INDUSTRIA DE CAFE LTDA'::text]))
         ${filterSql}
       GROUP BY f.dt_faturamento::text
       ORDER BY f.dt_faturamento::text ASC
@@ -112,30 +186,12 @@ export async function GET(request: Request) {
       };
     });
 
-    const totalFat = days.reduce((sum, d) => sum + d.fat, 0);
-    const totalQty = days.reduce((sum, d) => sum + d.qty, 0);
-
-    let accum = 0;
-    const daysWithAccum = days.map(d => {
-      accum += d.fat;
-      return {
-        ...d,
-        accumFat: accum,
-      };
-    });
-
     return NextResponse.json({
       success: true,
+      data: days,
       year: Number(year),
       month: Number(month),
-      totalDays: lastDay,
-      totals: {
-        fat: totalFat,
-        qty: totalQty,
-      },
-      days: daysWithAccum,
     });
-
   } catch (error: any) {
     return handleAuthError(error);
   }

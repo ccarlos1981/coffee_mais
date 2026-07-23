@@ -164,7 +164,7 @@ export class AnalyticsEngine {
       this.executeSql(sqlByManager),
       this.executeSql(sqlByFamilia),
       this.executeSql(sqlByMonth),
-      this.executeSql(sqlByProduct),
+      this.executeSql(sqlByProduct).catch(() => []),
     ]);
 
     return {
@@ -209,11 +209,10 @@ export class AnalyticsEngine {
     const whereClause = buildWhereClause(yearFilters, targetSource);
 
     const sql = `
-      SELECT SUBSTRING(mes, 1, 4) as ano,
-             CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
+      SELECT ano, mes_num,
              SUM(fat) as fat, SUM(qty) as qty
       FROM ${targetSource} ${whereClause}
-      GROUP BY SUBSTRING(mes, 1, 4), CAST(SUBSTRING(mes, 6, 2) AS integer)
+      GROUP BY ano, mes_num
     `;
 
     return this.executeSql(sql);
@@ -232,11 +231,10 @@ export class AnalyticsEngine {
       const whereClause = buildWhereClause(yearFilters, targetSource);
 
       const sql = `
-        SELECT SUBSTRING(mes, 1, 4) as ano,
-               CAST(SUBSTRING(mes, 6, 2) AS integer) as mes_num,
+        SELECT ano, mes_num,
                SUM(fat) as fat, SUM(qty) as qty
         FROM ${targetSource} ${whereClause}
-        GROUP BY SUBSTRING(mes, 1, 4), CAST(SUBSTRING(mes, 6, 2) AS integer)
+        GROUP BY ano, mes_num
       `;
       return { mode: 'monthly' as const, rows: await this.executeSql(sql) };
     } else {
@@ -244,11 +242,10 @@ export class AnalyticsEngine {
       const whereClause = buildWhereClause(yearFilters, targetSource, { ignoreProductFilter: false });
 
       const sql = `
-        SELECT rede as matriz,
-               SUBSTRING(mes, 1, 4) as ano,
+        SELECT rede as matriz, ano,
                SUM(fat) as fat, SUM(qty) as qty
         FROM ${targetSource} ${whereClause}
-        GROUP BY rede, SUBSTRING(mes, 1, 4)
+        GROUP BY rede, ano
       `;
       return { mode: 'top10' as const, rows: await this.executeSql(sql) };
     }
@@ -325,7 +322,7 @@ export class AnalyticsEngine {
   /**
    * 6.1 Detalhamento de Positivação
    */
-  static async getPositivacaoDetailData(filters: AnalyticsFilters, selectedManager: string, type: string, limit: number, offset: number) {
+  static async getPositivacaoDetailData(filters: AnalyticsFilters, selectedManager: string, type: string, limit: number, offset: number, page: number = 1) {
     const hasProductFilter = Boolean(filters.product && filters.product !== 'all');
     const clientTable = resolveOfficialSource({ hasProductFilter, hasClientOutput: true });
     
@@ -488,7 +485,7 @@ export class AnalyticsEngine {
   /**
    * 7.1 Detalhamento de SKU PDV
    */
-  static async getSkuPdvDetailData(filters: AnalyticsFilters, selectedManager: string, type: string, limit: number, offset: number) {
+  static async getSkuPdvDetailData(filters: AnalyticsFilters, selectedManager: string, type: string, limit: number, offset: number, page: number = 1) {
     const targetSource = OFFICIAL_ANALYTICS_SOURCES.POSITIVACAO_SKU_MENSAL;
     
     const baseWhere = buildWhereClause(filters, targetSource);
@@ -597,10 +594,13 @@ export class AnalyticsEngine {
     const whereClause = buildWhereClause(filters, targetSource);
 
     const sql = `
-      SELECT mes as month, COALESCE(rede, 'Não Mapeado') as matriz,
+      SELECT mes as month,
+             COALESCE(channel, 'Outros') as channel,
+             COALESCE(rede, 'Não Mapeado') as matriz,
+             COALESCE(tipo_produto, 'Outros') as family,
              SUM(fat) as fat, SUM(qty) as qty
       FROM ${targetSource} ${whereClause}
-      GROUP BY mes, COALESCE(rede, 'Não Mapeado')
+      GROUP BY mes, COALESCE(channel, 'Outros'), COALESCE(rede, 'Não Mapeado'), COALESCE(tipo_produto, 'Outros')
       ORDER BY mes, matriz
     `;
 

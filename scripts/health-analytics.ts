@@ -30,8 +30,8 @@ function main() {
   console.log('🏥 SUÍTE DE SAÚDE ANALÍTICA E COMPILAÇÃO (Health Analytics)');
   console.log('====================================================');
 
-  runStep('1. Auditoria Estática de Governança', 'npx ts-node scripts/audit-analytics.ts');
-  runStep('2. Verificação de Paridade Financeira', 'npx ts-node scripts/verify-parity.ts');
+  runStep('1. Auditoria Estática de Governança', 'npm run audit:analytics');
+  runStep('2. Verificação de Paridade Financeira', 'npm run verify:parity');
   runStep('3. Checagem de Tipos TypeScript', 'npx tsc --noEmit');
   runStep('4. Compilação Oficial Next.js (Build)', 'npm run build');
 
