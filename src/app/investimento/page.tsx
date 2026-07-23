@@ -2561,6 +2561,14 @@ export default function InvestimentoPage() {
               </Link>
             )}
             <Link 
+              href="/investimento/carta-anuencia"
+              className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
+              title="Gestão de Cartas de Anuência e Quitação"
+            >
+              <FileText className="w-3.5 h-3.5 text-amber-500" />
+              Carta de Anuência
+            </Link>
+            <Link 
               href="/investimento/ajuda"
               className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
               title="Guia Passo a Passo"

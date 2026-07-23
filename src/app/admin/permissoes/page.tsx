@@ -76,6 +76,7 @@ const CATEGORIZED_MODULES = [
       "Invest. por mês",
       "Calendário de invest.",
       "Planej. de Invest.",
+      "Carta de Anuência",
       "Invest. oficial"
     ]
   },
