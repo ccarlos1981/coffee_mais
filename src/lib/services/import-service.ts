@@ -710,6 +710,7 @@ export class ImportService {
       // 3. Processar em batches sequenciais no backend
       await trackStep("promover_lote", async () => {
         telemetry.rpcs_executed.push("promover_lote_faturamento");
+        let lastId = "00000000-0000-0000-0000-000000000000";
         while (offset < totalRows) {
           const currentLimit = BATCH_SIZE;
           const progressPercent = Math.min(95, Math.round(90 + (5 * (offset / totalRows))));
@@ -720,15 +721,17 @@ export class ImportService {
             `Persistindo na Tabela Oficial (${offset} de ${totalRows} registros)`
           );
 
-          const { data: insertedCount, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
+          const { data, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
             p_batch_id: batchId,
-            p_offset: offset,
+            p_last_id: lastId,
             p_limit: currentLimit,
           });
 
           if (promoError) throw promoError;
 
-          rowsPromoted += (insertedCount || 0);
+          const promoData = data as any;
+          lastId = promoData?.last_id || lastId;
+          rowsPromoted += (promoData?.inserted || 0);
           offset += BATCH_SIZE;
         }
       });
