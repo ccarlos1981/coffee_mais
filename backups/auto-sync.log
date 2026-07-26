@@ -783,3 +783,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    68a8370..04df22a  main -> main
 [25/07/2026 21:55] ✅ Alterações enviadas com sucesso para o GitHub.
+[main fb72110] auto-save: 26/07/2026 01:13
+ 6 files changed, 297 insertions(+), 29 deletions(-)
+ create mode 100644 inspect_julliano.js
+ create mode 100644 test_real_api_exec.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   04df22a..fb72110  main -> main
+[26/07/2026 01:13] ✅ Alterações enviadas com sucesso para o GitHub.
