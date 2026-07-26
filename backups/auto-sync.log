@@ -800,3 +800,17 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    1bde14b..8d169ca  main -> main
 [26/07/2026 07:13] ✅ Alterações enviadas com sucesso para o GitHub.
+[main edeb0a9] auto-save: 26/07/2026 10:14
+ 17 files changed, 1136 insertions(+), 167 deletions(-)
+ rename test_real_api_exec.js => debug_mismatch.js (74%)
+ create mode 100644 scripts/apply_logo_refactoring_migration.js
+ create mode 100644 src/app/investimento/carta-anuencia/components/LogoUpload.tsx
+ create mode 100644 src/lib/server-image-helpers.ts
+ create mode 100644 src/lib/storage-helpers.ts
+ create mode 100644 supabase/migrations/20260726_carta_anuencia_logo_refactoring.sql
+ create mode 100644 supabase/migrations/20260726_carta_anuencia_logo_separated_history.sql
+ create mode 100644 supabase/migrations/20260726_carta_anuencia_logo_versioning.sql
+ create mode 100644 test_dev_server_response.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   8d169ca..edeb0a9  main -> main
+[26/07/2026 10:14] ✅ Alterações enviadas com sucesso para o GitHub.
