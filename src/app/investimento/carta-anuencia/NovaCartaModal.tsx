@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, FilePlus, Building2, Calendar, AlertCircle, Upload, Check, Loader2, Sparkles } from "lucide-react";
+import { X, FilePlus, Building2, Calendar, AlertCircle, Check, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
-import { gerarCartaAnuencia, obterCompetencias, CompetenciaItem, obterOuUploadLogoRede } from "./actions";
+import { gerarCartaAnuencia, obterCompetencias, CompetenciaItem, obterLogoOficialRede, processarEUploadLogoRede } from "./actions";
+import { LogoUpload } from "./components/LogoUpload";
 
 interface NovaCartaModalProps {
   onClose: () => void;
@@ -24,8 +25,11 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
   const [selectedCompetencia, setSelectedCompetencia] = useState(preselectedCompetencia || "");
   const [cnpj, setCnpj] = useState("");
   const [validaAte, setValidaAte] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // Logo State (Upload & Storage)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
   const [searchingLogo, setSearchingLogo] = useState(false);
 
   useEffect(() => {
@@ -37,7 +41,6 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
           obterCompetencias(),
         ]);
 
-        // Dedup redes por codigo/nome
         const uniqueMap = new Map<string, { codigo: string; nome: string; canal?: string; uf?: string }>();
         (redesData || []).forEach((r) => {
           const key = r.codigo || r.nome;
@@ -73,19 +76,24 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
     loadData();
   }, [preselectedRede, preselectedCompetencia]);
 
-  // Ao selecionar uma rede, buscar logo cadastrada automaticamente
+  // Ao selecionar uma rede, buscar a logo oficial cadastrada em cm_logos_redes
   useEffect(() => {
-    if (!selectedRedeCode) return;
+    if (!selectedRedeCode) {
+      setCurrentStoragePath(null);
+      return;
+    }
 
     async function checkLogo() {
       setSearchingLogo(true);
       try {
-        const logo = await obterOuUploadLogoRede(selectedRedeCode);
-        if (logo?.logo_url) {
-          setLogoUrl(logo.logo_url);
+        const logoRecord = await obterLogoOficialRede(selectedRedeCode);
+        if (logoRecord?.storage_path) {
+          setCurrentStoragePath(logoRecord.storage_path);
+        } else {
+          setCurrentStoragePath(null);
         }
       } catch (e) {
-        console.error("Erro ao obter logo da rede:", e);
+        console.error("Erro ao obter logo oficial da rede:", e);
       } finally {
         setSearchingLogo(false);
       }
@@ -106,12 +114,30 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
       return;
     }
 
+    // A rede precisa de uma logo (arquivo novo selecionado ou logo mestre existente)
+    if (!selectedFile && !currentStoragePath) {
+      toast.error("A logo da rede é obrigatória. Por favor, faça o upload de uma imagem.");
+      return;
+    }
+
     const redeObj = redes.find((r) => r.codigo === selectedRedeCode || r.nome === selectedRedeCode);
     const redeNome = redeObj ? redeObj.nome : selectedRedeCode;
     const competenciaObj = competencias.find((c) => c.competencia === selectedCompetencia);
 
     setSubmitting(true);
     try {
+      let finalStoragePath = currentStoragePath || "";
+
+      // Se houver arquivo novo selecionado, o envio, hashing, validação e storage são processados no Server Action
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("rede_id", selectedRedeCode);
+
+        const resUpload = await processarEUploadLogoRede(formData);
+        finalStoragePath = resUpload.storage_path;
+      }
+
       const novaCarta = await gerarCartaAnuencia({
         rede_id: selectedRedeCode,
         rede_nome: redeNome,
@@ -119,7 +145,7 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
         competencia_id: competenciaObj?.id,
         competencia: selectedCompetencia,
         valida_ate: validaAte || undefined,
-        logo_url: logoUrl || undefined,
+        storage_path: finalStoragePath,
         observacoes,
       });
 
@@ -184,7 +210,10 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
               <div className="relative">
                 <select
                   value={selectedRedeCode}
-                  onChange={(e) => setSelectedRedeCode(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedRedeCode(e.target.value);
+                    setSelectedFile(null);
+                  }}
                   required
                   className="w-full h-10 px-3 pr-8 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none"
                 >
@@ -247,29 +276,13 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
               />
             </div>
 
-            {/* URL da Logo com busca automática */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-foreground">
-                  URL da Logo da Rede
-                </label>
-                {searchingLogo && (
-                  <span className="text-[10px] text-primary flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Buscando logo...
-                  </span>
-                )}
-              </div>
-              <input
-                type="url"
-                placeholder="https://exemplo.com/logo.png"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none"
-              />
-              <p className="text-[10px] text-muted-foreground mt-1">
-                A logo será salva no cadastro mestre para reutilização em futuras cartas.
-              </p>
-            </div>
+            {/* Componente de Upload de Logo (Sem URL textual) */}
+            <LogoUpload
+              currentStoragePath={currentStoragePath}
+              selectedFile={selectedFile}
+              onFileSelect={(file) => setSelectedFile(file)}
+              disabled={submitting || searchingLogo}
+            />
 
             {/* Observações */}
             <div>
@@ -285,11 +298,11 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
               />
             </div>
 
-            {/* Informação sobre Unicidade & Versões */}
+            {/* Informação sobre Processamento Seguro no Backend & Snapshot */}
             <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
               <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
               <div>
-                <strong>Controle de Versão Automático:</strong> Caso a rede já possua uma carta ativa para a competência selecionada, o sistema incria automaticamente a versão (<code className="font-mono font-bold">versao++</code>) vinculando o histórico anterior.
+                <strong>Processamento Seguro Server-Side:</strong> A validação definitiva, o cálculo de hash SHA-256 e a gravação de metadados ocorrem 100% no backend. A carta gerada vincula um snapshot imutável da logo.
               </div>
             </div>
 

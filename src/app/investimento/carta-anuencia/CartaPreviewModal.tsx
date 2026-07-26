@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, Download, Share2, Printer, CheckCircle2, ShieldCheck, Mail, Send, Copy, AlertTriangle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { CartaAnuenciaItem, registrarCompartilhamento } from "./actions";
+import { getStoragePublicUrl } from "@/lib/storage-helpers";
 
 interface CartaPreviewModalProps {
   carta: CartaAnuenciaItem | null;
@@ -15,6 +16,8 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
   const [showShareOptions, setShowShareOptions] = useState(false);
 
   if (!carta) return null;
+
+  const logoRedePublicUrl = getStoragePublicUrl(carta.logo_snapshot_path || carta.logo_rede_url, "logos-redes");
 
   const dataEmissaoFmt = new Date(carta.data_emissao).toLocaleDateString("pt-BR", {
     day: "2-digit",
@@ -161,7 +164,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
             {/* Cabeçalho A4: Logos e Numeração Oficial */}
             <div>
               <div className="flex items-center justify-between border-b-2 border-amber-600 pb-6 mb-8">
-                {/* Logo Coffee Mais Oficial (Idêntico à Imagem 2) */}
+                {/* Logo Coffee Mais Oficial */}
                 <div className="flex items-center gap-3">
                   <div className="h-20 w-44 relative overflow-hidden rounded-xl shadow-lg border border-neutral-800 bg-[#1e1e1e] flex items-center justify-center p-1 hover:scale-105 transition-transform">
                     <img
@@ -190,11 +193,11 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                   </p>
                 </div>
 
-                {/* Logo da Rede */}
+                {/* Logo Snapshot da Rede (Resoluida Dinamicamente) */}
                 <div className="w-24 h-16 border border-neutral-200 rounded-lg p-2 flex items-center justify-center bg-neutral-50">
-                  {carta.logo_rede_url ? (
+                  {logoRedePublicUrl ? (
                     <img
-                      src={carta.logo_rede_url}
+                      src={logoRedePublicUrl}
                       alt={carta.rede_nome}
                       className="max-h-full max-w-full object-contain"
                     />
@@ -297,7 +300,6 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
               {/* QR Code de Validação de Autenticidade */}
               <div className="flex items-center justify-between bg-neutral-50 p-4 border border-neutral-200 rounded-xl text-[10px] text-neutral-500">
                 <div className="flex items-center gap-3">
-                  {/* QR Code SVG simulado visualmente */}
                   <div className="w-12 h-12 bg-neutral-900 p-1 rounded flex flex-wrap gap-0.5 items-center justify-center shrink-0">
                     <div className="w-4 h-4 bg-white rounded-sm"></div>
                     <div className="w-4 h-4 bg-amber-500 rounded-sm"></div>

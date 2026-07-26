@@ -144,6 +144,7 @@ export default function RpsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [restrictedToManager, setRestrictedToManager] = useState<string | null>(null);
   const [isGerenteNacionalAdmin, setIsGerenteNacionalAdmin] = useState<boolean>(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   // Mapeamento estético do nome dos gerentes
   const getManagerDisplayName = (name: string) => {
@@ -185,9 +186,13 @@ export default function RpsPage() {
           
         const role = profile?.role || "";
         const isAdminRole = ["Gerente Nacional", "Diretor", "Admin Master", "Admin", "CEO"].includes(role);
+        const isStrictAdmin = ["Admin", "Admin Master"].includes(role);
 
         if (isAdminRole || isAdminEmail) {
           setIsGerenteNacionalAdmin(true);
+        }
+        if (isStrictAdmin) {
+          setIsAdmin(true);
         }
       }
     });
@@ -226,6 +231,9 @@ export default function RpsPage() {
         setRestrictedToManager(json.restrictedToManager || null);
         if (json.isGerenteNacionalAdmin) {
           setIsGerenteNacionalAdmin(true);
+        }
+        if (json.isAdmin) {
+          setIsAdmin(true);
         }
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
@@ -1030,9 +1038,9 @@ export default function RpsPage() {
                                   {/* MÊS A */}
                                   <td className="text-right text-foreground-dim">{formatCurrency(cli.mes_a / 1000, 0)}</td>
                                   
-                                  {/* META */}
+                                  {/* META (DESAFIO POR REDE - PERMISSÃO EXCLUSIVA ADMIN) */}
                                   <td className="col-divider text-right">
-                                    {isTodayMonday || isGerenteNacionalAdmin ? (
+                                    {isAdmin ? (
                                       <input
                                         type="number"
                                         value={cli.meta === 0 ? "" : Math.round(cli.meta / 1000).toString()}
@@ -1046,8 +1054,8 @@ export default function RpsPage() {
                                         className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
                                       />
                                     ) : (
-                                      <div className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {cli.meta === 0 ? "0" : formatNumber(Math.round(cli.meta / 1000), 0)}
+                                      <div className="w-full text-right bg-background/50 border border-border/40 rounded px-1.5 py-0.5 text-xs text-foreground-muted opacity-60 cursor-not-allowed min-h-[24px] flex items-center justify-end">
+                                        {cli.meta === 0 ? "—" : formatNumber(Math.round(cli.meta / 1000), 0)}
                                       </div>
                                     )}
                                   </td>

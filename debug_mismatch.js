@@ -23,7 +23,7 @@ function isSameManager(a, b) {
   return getCanonicalManagerKey(a) === getCanonicalManagerKey(b);
 }
 
-async function testRealApiExec() {
+async function debugMismatch() {
   const year = 2026;
   const month = 7;
 
@@ -79,6 +79,10 @@ async function testRealApiExec() {
   const managerBaseCli = baseCli.filter((b) => isSameManager(b.manager, mName) || isSameManager(b.manager_id, mName));
   const managerCliHist = cliHist.filter((c) => isSameManager(c.manager, mName));
 
+  console.log("closedMonths:", closedMonths);
+  console.log("managerCliHist count:", managerCliHist.length);
+  console.log("Distinct mes in managerCliHist:", Array.from(new Set(managerCliHist.map(c => c.mes))));
+
   const redeSet = new Set(managerBaseCli.map((b) => b.client));
   redeSet.delete('');
   redeSet.delete('Não Mapeado');
@@ -86,27 +90,11 @@ async function testRealApiExec() {
 
   const redeRollingMap = new Map();
   Array.from(redeSet).forEach(cName => {
-    const r3m = managerCliHist
-      .filter((c) => c.client === cName && closedMonths.includes(c.mes))
-      .reduce((acc, c) => acc + Number(c.fat || 0), 0);
+    const matches = managerCliHist.filter((c) => c.client === cName && closedMonths.includes(c.mes));
+    const r3m = matches.reduce((acc, c) => acc + Number(c.fat || 0), 0);
     redeRollingMap.set(cName, r3m);
+    console.log(`cName: "${cName}" -> matches count: ${matches.length}, r3m: ${r3m}`);
   });
-
-  const sortedRedeNames = Array.from(redeSet).sort((a, b) => {
-    const fatA = redeRollingMap.get(a) || 0;
-    const fatB = redeRollingMap.get(b) || 0;
-    if (fatB !== fatA) return fatB - fatA;
-    return a.localeCompare(b, 'pt-BR');
-  });
-
-  console.log("=== PAYLOAD REAL DO BACKEND (/api/processo-comercial/rps) ===");
-  console.log("Array 'clients' enviado para o Gerente Julliano na ordem exata:\n");
-
-  sortedRedeNames.forEach((cName, idx) => {
-    const r3m = redeRollingMap.get(cName) || 0;
-    console.log(`[Posição ${idx + 1}] client: "${cName}" | Rolling 3M FAT: R$ ${r3m.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
-  });
-  console.log(`[Posição ${sortedRedeNames.length + 1}] client: "OUTROS" | Rolling 3M FAT: N/A`);
 }
 
-testRealApiExec();
+debugMismatch();
