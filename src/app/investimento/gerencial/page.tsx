@@ -1,6 +1,6 @@
 "use client";
 
-import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from "react";
 import Link from "next/link";
 import { Filter, ChevronRight, BarChart3, Calendar, Layers, DollarSign, ArrowLeft } from "lucide-react";
@@ -9,7 +9,7 @@ import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
-import { getValorTotal } from "@/lib/investimento/getValorTotal";
+import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 
 const MONTHS_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -115,7 +115,7 @@ export default function DashGerencialPage() {
       let hasMore = true;
       while (hasMore) {
         const { data: chunk, error: vErr } = await supabase
-          .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
+          .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
           .select("mes, rede, tipo_produto, fat, manager, channel, uf")
           .gte("mes", sDate)
           .lte("mes", eDate)
@@ -312,7 +312,7 @@ export default function DashGerencialPage() {
       const subRow = getOrCreateCanalSub(row, canal);
       
       // Calcular valor de investimento total e converter para milhares (escala do dashboard)
-      const invTotalBRL = getValorTotal(v);
+      const invTotalBRL = getInvestimentoRealizadoOficial(v);
       const inv = invTotalBRL / 1000;
 
       if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0 };

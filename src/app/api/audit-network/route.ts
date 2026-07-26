@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
@@ -277,7 +277,7 @@ export async function GET(request: Request) {
     let faturamento: any[] = [];
     if (includeFaturamento && !isManagerOrComercial && networkNames.length > 0) {
       const { data: fatList } = await supabase
-        .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
         .select('*')
         .in('rede', networkNames);
       if (fatList) faturamento = fatList;

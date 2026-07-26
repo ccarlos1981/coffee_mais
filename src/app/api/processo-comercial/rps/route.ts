@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server';
 import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
+import { resolveSupabaseTableName } from '@/lib/governance/analytics/sources';
+import { getInvestimentoRealizadoOficial } from '@/lib/investimento/getValorTotal';
 
 export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
 
 // Helper para instanciar o cliente Supabase admin real
 function getSupabaseAdminClient() {
@@ -182,16 +183,21 @@ export async function GET(request: Request) {
       WHERE year = ${year} AND month = ${month}
     `;
 
-    // SQL - Investimentos realizados históricos (mês anterior e ano anterior)
+    // SQL - Origem oficial de ações de investimentos (Single Source of Truth, cardinalidade 1:1)
     const sqlInvestmentsHistory = `
       SELECT 
-        b.manager,
-        a.mes_referencia,
-        SUM(a.apuracao_valor_realizado) as total_invest
-      FROM cm_acoes_investimento a
-      JOIN base_atendimento b ON UPPER(a.rede) = UPPER(b.rede)
-      WHERE a.mes_referencia IN ('${prevMonthKey}', '${prevYearKey}') AND a.is_planejamento = false
-      GROUP BY b.manager, a.mes_referencia
+        gerente_responsavel as manager,
+        mes_referencia,
+        apuracao_valor_realizado,
+        valor_investimento,
+        expectativa_volume,
+        abrangencia,
+        skus_detalhes,
+        familias_detalhes
+      FROM v_acoes_investimento_com_gerente
+      WHERE mes_referencia IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
+        AND is_planejamento = false
+        AND cancel_reason IS NULL
     `;
 
     // SQL - Projeções semanais gravadas no banco (cm_weekly_projections)
@@ -230,7 +236,21 @@ export async function GET(request: Request) {
     const cliHist = (resCliHist.data || []) as any[];
     const baseCli = (resBaseCli.data || []) as any[];
     const mgrTargets = (resMgrTargets.data || []) as any[];
-    const investHist = (resInvestHist.data || []) as any[];
+    
+    // Processamento Typescript SSOT: Calcular valor total e agrupar
+    const rawInvests = (resInvestHist.data || []) as any[];
+    const investHistMap: Record<string, number> = {};
+    rawInvests.forEach(acao => {
+      const key = `${acao.manager}|${acao.mes_referencia}`;
+      if (!investHistMap[key]) investHistMap[key] = 0;
+      investHistMap[key] += getInvestimentoRealizadoOficial(acao);
+    });
+    
+    const investHist = Object.keys(investHistMap).map(key => {
+      const [manager, mes_referencia] = key.split('|');
+      return { manager, mes_referencia, total_invest: investHistMap[key] };
+    });
+
     
     // Consolidar projeções brutas pela identidade canônica antes da montagem de managerProjs
     const dbProjections = consolidateProjectionsByCanonicalManager((resProj.data || []) as any[]);
@@ -254,18 +274,23 @@ export async function GET(request: Request) {
       const pmHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevMonthKey);
       const pyHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevYearKey);
 
+      const curFatVal = curHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
       const pmFatVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
       const pyFatVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+      const curQtyVal = curHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
       const pmQtyVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
       const pyQtyVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
 
       // Buscar Investimento Histórico Realizado
+      const curInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === curMonthKey);
       const pmInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevMonthKey);
       const pyInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevYearKey);
 
+      const curInvestVal = curInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
       const pmInvestVal = pmInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
       const pyInvestVal = pyInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
 
+      const curInvestPct = curFatVal > 0 ? (curInvestVal / curFatVal) * 100 : 0;
       const pmInvestPct = pmFatVal > 0 ? (pmInvestVal / pmFatVal) * 100 : 0;
       const pyInvestPct = pyFatVal > 0 ? (pyInvestVal / pyFatVal) * 100 : 10.0;
 
@@ -312,6 +337,7 @@ export async function GET(request: Request) {
           ano_a: pyQtyVal,
           mes_a: pmQtyVal,
           desafio: desafioVol,
+          real: curQtyVal,
           prev_month_projection: prevVolProj,
           projections: mondays.map(date => {
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'VOL');
@@ -323,6 +349,7 @@ export async function GET(request: Request) {
           ano_a: pyFatVal,
           mes_a: pmFatVal,
           desafio: desafioFat,
+          real: curFatVal,
           prev_month_projection: prevFatProj,
           projections: mondays.map(date => {
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
@@ -334,6 +361,7 @@ export async function GET(request: Request) {
           ano_a: pyInvestPct,
           mes_a: pmInvestPct,
           desafio: desafioInvest,
+          real: curInvestPct,
           prev_month_projection: prevInvestProj,
           projections: mondays.map(date => {
             const p = managerProjs.find((p: any) => p.week_start_date === date && p.kpi === 'INVEST');
@@ -365,9 +393,11 @@ export async function GET(request: Request) {
       const clientsList = sortedRedeNames.map(cName => {
         const cProj = clientProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase());
         
+        const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
         const pmSales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevMonthKey);
         const pySales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevYearKey);
 
+        const fatCur = Number(curSales?.fat || 0);
         const fatPm = Number(pmSales?.fat || 0);
         const fatPy = Number(pySales?.fat || 0);
 
@@ -388,6 +418,8 @@ export async function GET(request: Request) {
           client: cName,
           ano_a: fatPy,
           mes_a: fatPm,
+          desafio: 0, // Fallback estético
+          real: fatCur,
           meta: metaValue,
           prev_month_projection: prevCliFatProj,
           projections: mondays.map(date => {
@@ -403,6 +435,7 @@ export async function GET(request: Request) {
       const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
       const defaultMetaOutros = Math.max(0, desafioFat - clientsList.reduce((acc, c) => acc + c.meta, 0));
       const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : defaultMetaOutros;
+      const curFatOutros = Math.max(0, curFatVal - clientsList.reduce((acc, c) => acc + c.real, 0));
 
       const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
       const prevOtherFatWeekly = prevMondays.map(date => {
@@ -417,6 +450,8 @@ export async function GET(request: Request) {
         client: "OUTROS",
         ano_a: 0,
         mes_a: 0,
+        desafio: 0,
+        real: curFatOutros,
         meta: metaValueOutros,
         prev_month_projection: prevOtherFatProj,
         projections: mondays.map(date => {

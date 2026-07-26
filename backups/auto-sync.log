@@ -768,3 +768,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    c0ed4e0..4029dc7  main -> main
 [24/07/2026 07:21] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 68a8370] auto-save: 24/07/2026 15:52
+ 4 files changed, 60 insertions(+), 3 deletions(-)
+ create mode 100644 scratch/trigger_import.ts
+ create mode 100644 scratch/trigger_import_mock.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   4029dc7..68a8370  main -> main
+[24/07/2026 15:52] ✅ Alterações enviadas com sucesso para o GitHub.
