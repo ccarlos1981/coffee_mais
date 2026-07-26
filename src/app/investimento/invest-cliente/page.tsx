@@ -1,6 +1,6 @@
 "use client";
 
-import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -213,7 +213,7 @@ export default function InvestClientePage() {
     setFatLoading(true);
     try {
       const { data: salesRows, error } = await supabase
-        .from(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL)
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
         .select("rede, fat")
         .eq("mes", mes)
         .limit(10000);

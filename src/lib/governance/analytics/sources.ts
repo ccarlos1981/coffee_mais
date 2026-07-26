@@ -96,3 +96,13 @@ export function validateColumnSupport(targetTable: OfficialSourceTable, requeste
     }
   }
 }
+
+/**
+ * Utilitário de Resolução de Nomes (Consumidores)
+ * Converte o nome oficial (físico/SQL) para o formato esperado pelo supabase-js (sem prefixo public).
+ * @param source Fonte oficial registrada (ex: 'public.mv_vendas_mensal')
+ * @returns Identificador compatível com supabase-js (ex: 'mv_vendas_mensal')
+ */
+export function resolveSupabaseTableName(source: OfficialSourceTable | string): string {
+  return source.replace(/^public\./, '');
+}

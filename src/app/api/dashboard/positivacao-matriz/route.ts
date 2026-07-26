@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = 'nodejs';
@@ -46,7 +46,7 @@ export async function GET(request: Request) {
 
     // Query mv_positivacao_sku_mensal for SKU-level data per client
     let query = supabase
-      .from(OFFICIAL_ANALYTICS_SOURCES.POSITIVACAO_SKU_MENSAL)
+      .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.POSITIVACAO_SKU_MENSAL))
       .select('mes, manager, rede, nome_parceiro, product, qty');
 
     if (startMonth) query = query.gte('mes', startMonth);

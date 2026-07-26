@@ -1787,15 +1787,32 @@ A arquitetura estabelecida na Seção 49 encontra-se validada operacionalmente p
 
 Novas evoluções deverão continuar observando os critérios de desempenho, auditoria, equivalência funcional e governança definidos na baseline.
 
+---
 
+## 50. Baseline Oficial — Single Source of Truth do Valor Oficial de Investimento
 
+### Diretriz Permanente
 
+O cálculo do Valor Oficial de Investimento é responsabilidade exclusiva da camada de domínio de Investimentos.
 
+Nenhum módulo consumidor (RPS, Dashboards, Analytics, BI, APIs ou futuras funcionalidades) poderá implementar, replicar ou adaptar sua própria lógica de cálculo.
 
+Toda funcionalidade deverá consumir exclusivamente a camada oficial de domínio responsável por determinar o Valor Oficial de Investimento.
 
+### Regras Arquiteturais
 
+- A camada de domínio constitui a única Single Source of Truth para o cálculo do Valor Oficial de Investimento.
+- Havendo apuração financeira válida, ela prevalece como valor oficial.
+- Na ausência de apuração financeira, deverá ser utilizado o valor oficial do investimento comercial comprometido, conforme definido pela regra de domínio.
+- É proibida a duplicação da lógica de cálculo em SQL, Views, RPCs, APIs, componentes, dashboards ou qualquer outro consumidor.
+- Alterações futuras na metodologia de cálculo deverão ocorrer exclusivamente na camada de domínio, propagando automaticamente o novo comportamento para todos os consumidores.
 
+### Objetivos
 
+Esta diretriz garante:
 
-
-
+- Single Source of Truth para Investimentos;
+- Paridade permanente entre todos os módulos da plataforma;
+- Eliminação de duplicação de regras de negócio;
+- Evolução centralizada da governança de Investimentos;
+- Consistência entre os indicadores apresentados em toda a aplicação.
