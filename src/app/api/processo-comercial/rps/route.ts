@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError, logAuditAction } from "@/lib/supabase/auth-helpers";
 import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 import { resolveSupabaseTableName } from '@/lib/governance/analytics/sources';
 import { getInvestimentoRealizadoOficial } from '@/lib/investimento/getValorTotal';
@@ -415,8 +415,7 @@ export async function GET(request: Request) {
         const fatPy = Number(pySales?.fat || 0);
 
         const metaProj = cProj.find((p: any) => p.kpi === 'META');
-        const defaultMeta = (desafioFat > 0 && pmFatVal > 0) ? (fatPm / pmFatVal) * desafioFat : 0;
-        const metaValue = metaProj ? Number(metaProj.projection_value) : (fatPm > 0 ? fatPm : defaultMeta);
+        const metaValue = metaProj ? Number(metaProj.projection_value) : 0;
 
         const clientPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase() && p.kpi === 'FAT');
         const prevCliFatWeekly = prevMondays.map(date => {
@@ -446,8 +445,7 @@ export async function GET(request: Request) {
       // Adicionar permanentemente "OUTROS" como o último item para vendas de PDVs/parceiros sem rede vinculada
       const cProjOutros = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
       const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
-      const defaultMetaOutros = Math.max(0, desafioFat - clientsList.reduce((acc, c) => acc + c.meta, 0));
-      const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : defaultMetaOutros;
+      const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : 0;
       const curFatOutros = Math.max(0, curFatVal - clientsList.reduce((acc, c) => acc + c.real, 0));
 
       const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
@@ -481,6 +479,8 @@ export async function GET(request: Request) {
       };
     });
 
+    const isAdmin = ["Admin", "Admin Master"].includes(userRole);
+
     return NextResponse.json({
       success: true,
       year,
@@ -488,7 +488,8 @@ export async function GET(request: Request) {
       mondays,
       managers: managersData,
       restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
-      isGerenteNacionalAdmin
+      isGerenteNacionalAdmin,
+      isAdmin
     });
   } catch (error: any) {
     return handleAuthError(error);
@@ -505,6 +506,7 @@ export async function POST(request: Request) {
     const userManagerName = profile.manager_name || null;
     const userEmail = (user.email || '').toLowerCase().trim();
 
+    const isAdmin = ["Admin", "Admin Master"].includes(userRole);
     const isGerenteNacionalAdmin = checkIsGerenteNacionalAdmin(userRole, userEmail);
     const isRestricted = !isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
 
@@ -513,6 +515,15 @@ export async function POST(request: Request) {
 
     if (!year || !month || !projections || !Array.isArray(projections)) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
+    }
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode salvar/alterar kpi === 'META' (Desafio por Rede)
+    const metaRowsInPayload = projections.filter((p: any) => p.kpi === 'META');
+    if (metaRowsInPayload.length > 0 && !isAdmin) {
+      return NextResponse.json(
+        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem definir ou alterar o Desafio por Rede." },
+        { status: 403 }
+      );
     }
 
     let filteredProjections = projections;
@@ -574,6 +585,25 @@ export async function POST(request: Request) {
         .upsert(rowsToUpsert, { onConflict: 'manager,client_matrix,year,month,week_start_date,kpi' });
 
       if (error) throw error;
+    }
+
+    // Registrador oficial de auditoria para edições do Desafio por Rede efetuadas por Administrador
+    if (isAdmin && metaRowsInPayload.length > 0) {
+      for (const mRow of metaRowsInPayload) {
+        const canonicalMgr = resolveCanonicalManager(mRow.manager).managerName;
+        await logAuditAction(
+          user.id,
+          "DESAFIO_POR_REDE_UPDATE",
+          "cm_weekly_projections",
+          {
+            manager: canonicalMgr,
+            client_matrix: mRow.client_matrix,
+            year: parseInt(year),
+            month: parseInt(month),
+            projection_value: Number(mRow.projection_value)
+          }
+        );
+      }
     }
 
     return NextResponse.json({ success: true, count: targetsToUpsert.length + rowsToUpsert.length });

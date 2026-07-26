@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { X, Edit, Building2, Calendar, AlertCircle, Check, Loader2, Lock, Sparkles, FilePlus } from "lucide-react";
 import { toast } from "sonner";
 import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
-import { CartaAnuenciaItem, editarCartaAnuencia, obterCompetencias, CompetenciaItem, obterOuUploadLogoRede } from "./actions";
+import { CartaAnuenciaItem, editarCartaAnuencia, obterCompetencias, CompetenciaItem, obterLogoOficialRede, processarEUploadLogoRede } from "./actions";
+import { LogoUpload } from "./components/LogoUpload";
 
 interface EditarCartaModalProps {
   carta: CartaAnuenciaItem | null;
@@ -24,8 +25,11 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
   const [selectedCompetencia, setSelectedCompetencia] = useState("");
   const [cnpj, setCnpj] = useState("");
   const [validaAte, setValidaAte] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
   const [observacoes, setObservacoes] = useState("");
+
+  // Logo State
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
 
   const isBloqueada = carta ? (carta.status === "ASSINADA" || carta.status === "CANCELADA") : false;
 
@@ -60,13 +64,13 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
         setRedes(redesList);
         setCompetencias(compData);
 
-        // Preencher estado inicial com os dados da carta
+        // Preencher estado inicial
         setSelectedRedeCode(c.rede_id);
         setSelectedCompetencia(c.competencia);
         setCnpj(c.cnpj || "");
         setValidaAte(c.valida_ate ? c.valida_ate.substring(0, 10) : "");
-        setLogoUrl(c.logo_rede_url || "");
         setObservacoes(c.observacoes || "");
+        setCurrentStoragePath(c.logo_snapshot_path || c.logo_rede_url || null);
       } catch (err) {
         console.error("Erro ao carregar dados para edição:", err);
         toast.error("Erro ao carregar dados da carta.");
@@ -99,6 +103,18 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
 
     setSubmitting(true);
     try {
+      let finalStoragePath = currentStoragePath || "";
+
+      // Se o usuário selecionou uma nova logo, ela é processada 100% no servidor
+      if (selectedFile) {
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("rede_id", selectedRedeCode);
+
+        const resUpload = await processarEUploadLogoRede(formData);
+        finalStoragePath = resUpload.storage_path;
+      }
+
       await editarCartaAnuencia({
         carta_id: carta.id,
         rede_id: selectedRedeCode,
@@ -107,7 +123,7 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
         competencia_id: competenciaObj?.id || carta.competencia_id || undefined,
         competencia: selectedCompetencia,
         valida_ate: validaAte || undefined,
-        logo_url: logoUrl || undefined,
+        storage_path: finalStoragePath,
         observacoes,
       });
 
@@ -263,20 +279,13 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
               />
             </div>
 
-            {/* URL da Logo */}
-            <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                URL da Logo da Rede
-              </label>
-              <input
-                type="url"
-                placeholder="https://exemplo.com/logo.png"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                disabled={isBloqueada}
-                className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-              />
-            </div>
+            {/* Componente de Upload de Logo (Sem URL textual) */}
+            <LogoUpload
+              currentStoragePath={currentStoragePath}
+              selectedFile={selectedFile}
+              onFileSelect={(file) => setSelectedFile(file)}
+              disabled={isBloqueada || submitting}
+            />
 
             {/* Observações */}
             <div>

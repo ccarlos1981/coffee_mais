@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { AnalyticsEngine } from "@/lib/governance/analytics/engine";
 import { revalidatePath } from "next/cache";
+import { getStoragePublicUrl } from "@/lib/storage-helpers";
+import { calculateBufferHash, getImageDimensionsFromBuffer } from "@/lib/server-image-helpers";
 
 export interface CartaAnuenciaItem {
   id: string;
@@ -20,6 +22,7 @@ export interface CartaAnuenciaItem {
   valida_ate?: string | null;
   status: "PENDENTE" | "EMITIDA" | "ENVIADA" | "ASSINADA" | "CANCELADA";
   logo_id?: string | null;
+  logo_snapshot_path?: string | null;
   logo_rede_url?: string | null;
   logo_coffee_url?: string | null;
   pdf_url?: string | null;
@@ -35,7 +38,7 @@ export interface CartaAnuenciaItem {
   qr_code_hash?: string | null;
   created_at: string;
   updated_at: string;
-  // Campos virtuais de expiração, gerente, uf e farol
+  // Campos virtuais
   expirada?: boolean;
   gerente?: string | null;
   uf?: string | null;
@@ -73,8 +76,26 @@ export interface FarolItem {
   possui_carta_assinada: boolean;
 }
 
+export interface LogoRedeItem {
+  id: string;
+  rede_id: string;
+  storage_path: string;
+  logo_url?: string | null;
+  hash?: string | null;
+  mime_type?: string | null;
+  file_size?: number | null;
+  width?: number | null;
+  height?: number | null;
+  origem?: string | null;
+  validada?: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by?: string | null;
+  updated_by?: string | null;
+}
+
 /**
- * 1. Obter e Criar Competências Parametrizadas
+ * 1. Obter Competências Parametrizadas
  */
 export async function obterCompetencias(): Promise<CompetenciaItem[]> {
   const adminClient = createAdminClient();
@@ -116,48 +137,302 @@ export async function criarCompetencia(input: {
 }
 
 /**
- * 2. Gestão de Logos por Rede (cm_logos_redes)
+ * 2. Gestão da Logo Oficial Vigente da Rede (cm_logos_redes)
+ * Mantém exatamente UM registro único vigente por rede_id para acesso direto por todos os módulos.
  */
-export async function obterOuUploadLogoRede(redeId: string, logoUrlInput?: string) {
+export async function obterLogoOficialRede(redeId: string): Promise<LogoRedeItem | null> {
+  if (!redeId) return null;
   const adminClient = createAdminClient();
 
-  // Buscar logo mestre existente
-  const { data: existingLogo } = await adminClient
+  const { data, error } = await adminClient
     .from("cm_logos_redes")
     .select("*")
     .eq("rede_id", redeId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (existingLogo && !logoUrlInput) {
-    return existingLogo;
+  if (error) {
+    console.error(`Erro ao obter logo oficial vigente da rede ${redeId}:`, error);
+    return null;
   }
 
-  if (logoUrlInput) {
-    const { data: newLogo, error } = await adminClient
+  return data || null;
+}
+
+/**
+ * 2.1 Processamento Seguro Server-Side de Upload de Logo
+ */
+export async function processarEUploadLogoRede(formData: FormData): Promise<{
+  storage_path: string;
+  logoRecord: LogoRedeItem;
+}> {
+  const file = formData.get("file") as File | null;
+  const redeId = formData.get("rede_id") as string | null;
+
+  if (!file || !redeId) {
+    throw new Error("Arquivo da logo ou ID da Rede não fornecido.");
+  }
+
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    throw new Error("O arquivo excede o limite máximo permitido de 10MB.");
+  }
+
+  const ALLOWED_MIMES = [
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/svg+xml",
+  ];
+  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  const ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
+
+  if (!ALLOWED_MIMES.includes(file.type) && !ALLOWED_EXTS.includes(ext)) {
+    throw new Error("Formato de arquivo inválido. Apenas PNG, JPG, JPEG, WEBP ou SVG são permitidos.");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const hash = calculateBufferHash(buffer);
+  const { width, height } = getImageDimensionsFromBuffer(buffer, file.type);
+
+  // Geração do storage_path único (NUNCA sobrescreve fisicamente)
+  const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const storagePath = `${redeId}/${Date.now()}_${cleanFileName}`;
+
+  const adminClient = createAdminClient();
+  const { error: uploadErr } = await adminClient.storage
+    .from("logos-redes")
+    .upload(storagePath, buffer, {
+      contentType: file.type || "image/png",
+      upsert: true,
+    });
+
+  if (uploadErr) {
+    throw new Error(`Erro ao gravar logo no Storage corporativo: ${uploadErr.message}`);
+  }
+
+  // Gravar no cadastro operacional (cm_logos_redes) e arquivar versão anterior em cm_logos_redes_historico
+  const logoRecord = await salvarLogoOficialRede({
+    redeId,
+    storagePath,
+    hash,
+    mimeType: file.type,
+    fileSize: file.size,
+    width,
+    height,
+  });
+
+  return {
+    storage_path: storagePath,
+    logoRecord,
+  };
+}
+
+/**
+ * 2.2 Salvar/Atualizar Cadastro Operacional (cm_logos_redes) + Arquivamento Histórico (cm_logos_redes_historico)
+ * Separação completa entre a logo oficial vigente e a tabela dedicada de histórico.
+ */
+export async function salvarLogoOficialRede(input: {
+  redeId: string;
+  storagePath: string;
+  hash?: string;
+  mimeType?: string;
+  fileSize?: number;
+  width?: number;
+  height?: number;
+  motivoAlteracao?: string;
+}): Promise<LogoRedeItem> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const adminClient = createAdminClient();
+
+  // 1. Obter a logo operacional vigente atual da rede
+  const logoAtual = await obterLogoOficialRede(input.redeId);
+
+  // 2. Se já existir uma logo cadastrada, arquivar o registro anterior na tabela cm_logos_redes_historico
+  if (logoAtual) {
+    const { error: errHist } = await adminClient
+      .from("cm_logos_redes_historico")
+      .insert({
+        logo_id: logoAtual.id,
+        rede_id: logoAtual.rede_id,
+        storage_path: logoAtual.storage_path || logoAtual.logo_url,
+        hash: logoAtual.hash || null,
+        mime_type: logoAtual.mime_type || null,
+        file_size: logoAtual.file_size || null,
+        width: logoAtual.width || null,
+        height: logoAtual.height || null,
+        motivo_alteracao: input.motivoAlteracao || "Atualização da logo oficial da rede",
+        created_at: logoAtual.updated_at || logoAtual.created_at,
+        created_by: logoAtual.updated_by || logoAtual.created_by || user?.id || null,
+      });
+
+    if (errHist) {
+      console.error("Aviso: Falha ao arquivar histórico da logo anterior:", errHist);
+    }
+  }
+
+  let resultRecord: LogoRedeItem;
+  const agora = new Date().toISOString();
+
+  // 3. Atualizar ou Inserir o único registro vigente em cm_logos_redes
+  if (logoAtual) {
+    const { data, error } = await adminClient
+      .from("cm_logos_redes")
+      .update({
+        storage_path: input.storagePath,
+        logo_url: input.storagePath,
+        hash: input.hash || null,
+        mime_type: input.mimeType || null,
+        file_size: input.fileSize || null,
+        width: input.width || null,
+        height: input.height || null,
+        updated_at: agora,
+        updated_by: user?.id || null,
+      })
+      .eq("id", logoAtual.id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Erro ao atualizar logo oficial da rede: ${error.message}`);
+    }
+    resultRecord = data;
+  } else {
+    const { data, error } = await adminClient
       .from("cm_logos_redes")
       .insert({
-        rede_id: redeId,
-        logo_url: logoUrlInput,
+        rede_id: input.redeId,
+        storage_path: input.storagePath,
+        logo_url: input.storagePath,
+        hash: input.hash || null,
+        mime_type: input.mimeType || null,
+        file_size: input.fileSize || null,
+        width: input.width || null,
+        height: input.height || null,
         origem: "MANUAL",
         validada: true,
+        created_by: user?.id || null,
+        updated_by: user?.id || null,
       })
       .select()
       .single();
 
     if (error) {
-      console.error("Erro ao salvar logo da rede:", error);
-      return existingLogo || null;
+      throw new Error(`Erro ao cadastrar logo oficial da rede: ${error.message}`);
     }
-    return newLogo;
+    resultRecord = data;
   }
 
-  return existingLogo || null;
+  // 4. Auditoria Corporativa em cm_audit_logs
+  await adminClient.from("cm_audit_logs").insert({
+    user_id: user?.id || null,
+    action: "Atualização Logo Oficial da Rede (Histórico Arquivado)",
+    table_name: "cm_logos_redes",
+    old_data: {
+      rede_id: input.redeId,
+      logo_anterior_id: logoAtual?.id || null,
+      logo_anterior_storage_path: logoAtual?.storage_path || logoAtual?.logo_url || null,
+    },
+    new_data: {
+      rede_id: input.redeId,
+      logo_nova_id: resultRecord.id,
+      storage_path: input.storagePath,
+      hash: input.hash || null,
+      mime_type: input.mimeType || null,
+      file_size: input.fileSize || null,
+      width: input.width || null,
+      height: input.height || null,
+    },
+  });
+
+  return resultRecord;
 }
 
 /**
- * 3. Listar Cartas de Anuência com suporte a filtros de gerente, uf, status e competência
+ * 2.3 Rotina de Limpeza Controlada de Logos Históricas Órfãs
+ * Avalia apenas registros em cm_logos_redes_historico que NÃO são a logo ativa em cm_logos_redes
+ * e NÃO estão referenciados em NENHUMA Carta de Anuência (logo_snapshot_path).
+ */
+export async function executarLimpezaLogosOrfas(): Promise<{
+  removidos: number;
+  protegidosSnapshot: number;
+  erros: string[];
+}> {
+  const adminClient = createAdminClient();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const { data: orfas, error: errRpc } = await adminClient.rpc("fn_listar_logos_obsoletas_orfas");
+
+  if (errRpc) {
+    throw new Error(`Erro ao listar logos obsoletas órfãs: ${errRpc.message}`);
+  }
+
+  let removidos = 0;
+  let protegidosSnapshot = 0;
+  const erros: string[] = [];
+
+  for (const item of (orfas || [])) {
+    // 1. Checagem de segurança se está ativa em cm_logos_redes
+    const { count: isAtiva } = await adminClient
+      .from("cm_logos_redes")
+      .select("*", { count: "exact", head: true })
+      .eq("storage_path", item.storage_path);
+
+    if (isAtiva && isAtiva > 0) {
+      protegidosSnapshot++;
+      continue;
+    }
+
+    // 2. Checagem de segurança se está em snapshot de alguma Carta de Anuência
+    const { count: isSnapshot } = await adminClient
+      .from("cm_cartas_anuencia")
+      .select("*", { count: "exact", head: true })
+      .eq("logo_snapshot_path", item.storage_path);
+
+    if (isSnapshot && isSnapshot > 0) {
+      protegidosSnapshot++;
+      continue;
+    }
+
+    // Remover fisicamente do Storage
+    const { error: errRemoveStorage } = await adminClient.storage
+      .from("logos-redes")
+      .remove([item.storage_path]);
+
+    if (errRemoveStorage) {
+      erros.push(`Falha ao remover arquivo ${item.storage_path} do Storage: ${errRemoveStorage.message}`);
+      continue;
+    }
+
+    // Remover registro da tabela de histórico
+    await adminClient
+      .from("cm_logos_redes_historico")
+      .delete()
+      .eq("id", item.historico_id);
+
+    removidos++;
+  }
+
+  await adminClient.from("cm_audit_logs").insert({
+    user_id: user?.id || null,
+    action: "Limpeza Controlada de Logos Históricas Órfãs",
+    table_name: "cm_logos_redes_historico",
+    new_data: {
+      removidos,
+      protegidosSnapshot,
+      erros,
+    },
+  });
+
+  return { removidos, protegidosSnapshot, erros };
+}
+
+/**
+ * 3. Listar Cartas de Anuência
  */
 export async function listarCartasAnuencia(filters?: {
   status?: string;
@@ -190,7 +465,6 @@ export async function listarCartasAnuencia(filters?: {
     return [];
   }
 
-  // Mapear Gerente e UF utilizando a AnalyticsEngine (fonte homologada VENDAS_CLIENTE_MENSAL)
   const redesMeta = await AnalyticsEngine.getMapeamentoRedesMeta();
 
   const metaMap = new Map<string, { manager: string | null; uf: string | null }>();
@@ -212,8 +486,12 @@ export async function listarCartasAnuencia(filters?: {
     const key = (item.rede_nome || item.rede_id || "").toLowerCase().trim();
     const meta = metaMap.get(key) || { manager: null, uf: null };
     const expirada = !!(item.valida_ate && item.valida_ate < hoje);
+
+    const dynamicLogoUrl = getStoragePublicUrl(item.logo_snapshot_path || item.logo_rede_url, "logos-redes");
+
     return {
       ...item,
+      logo_rede_url: dynamicLogoUrl,
       gerente: meta.manager,
       uf: meta.uf,
       expirada,
@@ -235,7 +513,7 @@ export async function obterFiltrosGerenteUf() {
 }
 
 /**
- * 4. Obter Resumo Executivo / Dashboard KPIs
+ * 4. Resumo Executivo / KPIs
  */
 export async function obterResumoDashboard() {
   const adminClient = createAdminClient();
@@ -292,7 +570,7 @@ export async function obterResumoDashboard() {
 }
 
 /**
- * 5. Farol Executivo (> R$ 80k/mês nos últimos 12 meses via AnalyticsEngine)
+ * 5. Farol Executivo (> R$ 80k/mês)
  */
 export async function obterDadosFarolExecutivo(filters?: {
   manager?: string;
@@ -300,7 +578,6 @@ export async function obterDadosFarolExecutivo(filters?: {
   channel?: string;
   competencia?: string;
 }): Promise<FarolItem[]> {
-  // 1. Obter vendas dos últimos 12 meses via AnalyticsEngine V1
   const redesAnalytics = await AnalyticsEngine.getFarolAnuenciaRedes({
     manager: filters?.manager,
     uf: filters?.uf,
@@ -308,7 +585,6 @@ export async function obterDadosFarolExecutivo(filters?: {
     minMedia: 80000,
   });
 
-  // 2. Obter cartas ativas
   const adminClient = createAdminClient();
   let cartasQuery = adminClient
     .from("cm_cartas_anuencia")
@@ -326,11 +602,11 @@ export async function obterDadosFarolExecutivo(filters?: {
   const hoje = new Date().toISOString().substring(0, 10);
 
   (cartasAtivas || []).forEach((c) => {
-    // Mapear pela rede (ou id/nome)
     const key = c.rede_id.toLowerCase().trim();
     if (!cartasMap.has(key)) {
       cartasMap.set(key, {
         ...c,
+        logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
         expirada: !!(c.valida_ate && c.valida_ate < hoje),
       });
     }
@@ -346,14 +622,14 @@ export async function obterDadosFarolExecutivo(filters?: {
     if (carta) {
       if (carta.status === "ASSINADA") {
         if (carta.expirada) {
-          farol_status = "AMARELO"; // Assinada porém expirada
+          farol_status = "AMARELO";
           possui_carta_assinada = true;
         } else {
-          farol_status = "VERDE"; // Assinada e vigente
+          farol_status = "VERDE";
           possui_carta_assinada = true;
         }
       } else {
-        farol_status = "AMARELO"; // Emitida/pendente
+        farol_status = "AMARELO";
       }
     }
 
@@ -373,7 +649,7 @@ export async function obterDadosFarolExecutivo(filters?: {
 }
 
 /**
- * 6. Gerar Nova Carta de Anuência (ou Criar Nova Versão versao++)
+ * 6. Gerar Nova Carta de Anuência (Snapshot Imutável)
  */
 export async function gerarCartaAnuencia(input: {
   rede_id: string;
@@ -382,26 +658,22 @@ export async function gerarCartaAnuencia(input: {
   competencia_id?: string;
   competencia: string;
   valida_ate?: string;
-  logo_url?: string;
+  storage_path?: string;
   observacoes?: string;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   const adminClient = createAdminClient();
 
-  // Buscar usuário/perfil para auditoria
   let userName = "Usuário do Sistema";
   if (user) {
     const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
     userName = profile?.full_name || profile?.name || user.email || userName;
   }
 
-  // 1. Garantir/salvar logo em cm_logos_redes
-  const logoRecord = await obterOuUploadLogoRede(input.rede_id, input.logo_url);
-  const finalLogoUrl = logoRecord?.logo_url || input.logo_url || "/coffee-mais-logo.png";
+  const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
+  const finalSnapshotPath = input.storage_path || officialLogoRecord?.storage_path || null;
 
-  // 2. Verificação de Unicidade & Versão Incremental (versao++)
   const { data: cartaExistente } = await adminClient
     .from("cm_cartas_anuencia")
     .select("*")
@@ -420,7 +692,6 @@ export async function gerarCartaAnuencia(input: {
     cartaOrigemId = cartaExistente.id;
   }
 
-  // 3. Gerar Número Oficial Único (CA-YYYY-XXXXXX) via RPC SQL ou fallback
   let numeroCarta = "";
   const { data: rpcNumero, error: rpcErr } = await adminClient.rpc("fn_generate_numero_carta_anuencia");
   if (rpcErr || !rpcNumero) {
@@ -431,10 +702,8 @@ export async function gerarCartaAnuencia(input: {
     numeroCarta = rpcNumero;
   }
 
-  // Hash único para QR Code de validação
   const qrCodeHash = Buffer.from(`${numeroCarta}:${input.rede_id}:${input.competencia}:${Date.now()}`).toString("base64url");
 
-  // 4. Inserir a Carta
   const { data: novaCarta, error: errInsert } = await adminClient
     .from("cm_cartas_anuencia")
     .insert({
@@ -448,8 +717,8 @@ export async function gerarCartaAnuencia(input: {
       competencia: input.competencia,
       valida_ate: input.valida_ate || null,
       status: "EMITIDA",
-      logo_id: logoRecord?.id || null,
-      logo_rede_url: finalLogoUrl,
+      logo_id: officialLogoRecord?.id || null,
+      logo_snapshot_path: finalSnapshotPath,
       logo_coffee_url: "/images/logo_coffee_mais_official.svg",
       usuario_emissao: user?.id || null,
       usuario_emissao_nome: userName,
@@ -463,7 +732,6 @@ export async function gerarCartaAnuencia(input: {
     throw new Error(`Erro ao gerar carta de anuência: ${errInsert.message}`);
   }
 
-  // 5. Registrar evento na Timeline
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: novaCarta.id,
     evento: "CRIADA",
@@ -471,16 +739,15 @@ export async function gerarCartaAnuencia(input: {
       numero_carta: numeroCarta,
       versao: novaVersao,
       competencia: input.competencia,
-      carta_origem_id: cartaOrigemId,
+      logo_snapshot_path: finalSnapshotPath,
     },
     usuario_id: user?.id || null,
     usuario_nome: userName,
   });
 
-  // 6. Auditoria Corporativa Global cm_audit_logs
   await adminClient.from("cm_audit_logs").insert({
     user_id: user?.id || null,
-    action: novaVersao > 1 ? "Reemissão Versao Carta Anuência" : "Emissão Carta Anuência",
+    action: novaVersao > 1 ? "Reemissão Versão Carta Anuência" : "Emissão Carta Anuência",
     table_name: "cm_cartas_anuencia",
     new_data: {
       id: novaCarta.id,
@@ -488,16 +755,19 @@ export async function gerarCartaAnuencia(input: {
       versao: novaVersao,
       rede_nome: input.rede_nome,
       competencia: input.competencia,
+      logo_snapshot_path: finalSnapshotPath,
     },
   });
 
   revalidatePath("/investimento/carta-anuencia");
-  return novaCarta as CartaAnuenciaItem;
+  return {
+    ...novaCarta,
+    logo_rede_url: getStoragePublicUrl(novaCarta.logo_snapshot_path, "logos-redes"),
+  } as CartaAnuenciaItem;
 }
 
 /**
- * 6.1. Editar Carta de Anuência (Máquina de Estados & Trava Backend)
- * Impede estritamente edições em cartas com status ASSINADA ou CANCELADA.
+ * 6.1. Editar Carta de Anuência
  */
 export async function editarCartaAnuencia(input: {
   carta_id: string;
@@ -507,15 +777,13 @@ export async function editarCartaAnuencia(input: {
   competencia_id?: string;
   competencia: string;
   valida_ate?: string;
-  logo_url?: string;
+  storage_path?: string;
   observacoes?: string;
 }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   const adminClient = createAdminClient();
 
-  // 1. Buscar a carta atual no banco de dados para validar status física no servidor
   const { data: cartaAtual, error: errFetch } = await adminClient
     .from("cm_cartas_anuencia")
     .select("*")
@@ -526,25 +794,21 @@ export async function editarCartaAnuencia(input: {
     throw new Error("Carta de Anuência não encontrada para edição.");
   }
 
-  // 2. VALIDAÇÃO DE SEGURANÇA NO SERVIDOR (MÁQUINA DE ESTADOS)
   if (cartaAtual.status === "ASSINADA" || cartaAtual.status === "CANCELADA") {
     throw new Error(
       `Documento com status ${cartaAtual.status} é oficial e não pode ser editado. Para modificações, emita uma nova versão.`
     );
   }
 
-  // 3. Buscar usuário/perfil para auditoria
   let userName = "Usuário do Sistema";
   if (user) {
     const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
     userName = profile?.full_name || profile?.name || user.email || userName;
   }
 
-  // 4. Garantir/salvar logo em cm_logos_redes
-  const logoRecord = await obterOuUploadLogoRede(input.rede_id, input.logo_url);
-  const finalLogoUrl = logoRecord?.logo_url || input.logo_url || cartaAtual.logo_rede_url || "/coffee-mais-logo.png";
+  const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
+  const finalSnapshotPath = input.storage_path || officialLogoRecord?.storage_path || cartaAtual.logo_snapshot_path;
 
-  // 5. Mapear campos alterados para a auditoria
   const camposAlterados: Record<string, { de: any; para: any }> = {};
 
   if (cartaAtual.rede_id !== input.rede_id) camposAlterados.rede_id = { de: cartaAtual.rede_id, para: input.rede_id };
@@ -553,8 +817,10 @@ export async function editarCartaAnuencia(input: {
   if (cartaAtual.competencia !== input.competencia) camposAlterados.competencia = { de: cartaAtual.competencia, para: input.competencia };
   if ((cartaAtual.valida_ate || "") !== (input.valida_ate || "")) camposAlterados.valida_ate = { de: cartaAtual.valida_ate, para: input.valida_ate };
   if ((cartaAtual.observacoes || "") !== (input.observacoes || "")) camposAlterados.observacoes = { de: cartaAtual.observacoes, para: input.observacoes };
+  if ((cartaAtual.logo_snapshot_path || "") !== (finalSnapshotPath || "")) {
+    camposAlterados.logo_snapshot_path = { de: cartaAtual.logo_snapshot_path, para: finalSnapshotPath };
+  }
 
-  // 6. Atualizar a carta no banco
   const { data: cartaEditada, error: errUpdate } = await adminClient
     .from("cm_cartas_anuencia")
     .update({
@@ -564,8 +830,8 @@ export async function editarCartaAnuencia(input: {
       competencia_id: input.competencia_id || null,
       competencia: input.competencia,
       valida_ate: input.valida_ate || null,
-      logo_id: logoRecord?.id || cartaAtual.logo_id,
-      logo_rede_url: finalLogoUrl,
+      logo_id: officialLogoRecord?.id || cartaAtual.logo_id,
+      logo_snapshot_path: finalSnapshotPath,
       observacoes: input.observacoes || null,
       updated_at: new Date().toISOString(),
     })
@@ -577,7 +843,6 @@ export async function editarCartaAnuencia(input: {
     throw new Error(`Erro ao atualizar carta de anuência: ${errUpdate.message}`);
   }
 
-  // 7. Registrar evento na Timeline
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: input.carta_id,
     evento: "EDITADA",
@@ -590,7 +855,6 @@ export async function editarCartaAnuencia(input: {
     usuario_nome: userName,
   });
 
-  // 8. Auditoria Corporativa Global cm_audit_logs
   await adminClient.from("cm_audit_logs").insert({
     user_id: user?.id || null,
     action: "Edição Carta Anuência",
@@ -604,11 +868,14 @@ export async function editarCartaAnuencia(input: {
   });
 
   revalidatePath("/investimento/carta-anuencia");
-  return cartaEditada as CartaAnuenciaItem;
+  return {
+    ...cartaEditada,
+    logo_rede_url: getStoragePublicUrl(cartaEditada.logo_snapshot_path, "logos-redes"),
+  } as CartaAnuenciaItem;
 }
 
 /**
- * 7. Registrar Compartilhamento por Canal (EMAIL, WHATSAPP, LINK, DOWNLOAD)
+ * 7. Registrar Compartilhamento por Canal
  */
 export async function registrarCompartilhamento(
   cartaId: string,
@@ -617,7 +884,6 @@ export async function registrarCompartilhamento(
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   const adminClient = createAdminClient();
 
   let userName = "Usuário do Sistema";
@@ -626,13 +892,11 @@ export async function registrarCompartilhamento(
     userName = profile?.full_name || profile?.name || user.email || userName;
   }
 
-  // Atualizar status se ainda estivesse EMITIDA -> ENVIADA
   const { data: carta } = await adminClient.from("cm_cartas_anuencia").select("status").eq("id", cartaId).single();
   if (carta && carta.status === "EMITIDA" && canal !== "DOWNLOAD") {
     await adminClient.from("cm_cartas_anuencia").update({ status: "ENVIADA" }).eq("id", cartaId);
   }
 
-  // Registrar na Timeline
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: cartaId,
     evento: canal === "DOWNLOAD" ? "DOWNLOAD" : "COMPARTILHADA",
@@ -642,7 +906,6 @@ export async function registrarCompartilhamento(
     usuario_nome: userName,
   });
 
-  // Registrar em cm_audit_logs
   await adminClient.from("cm_audit_logs").insert({
     user_id: user?.id || null,
     action: `Compartilhamento Carta (${canal})`,
@@ -664,7 +927,6 @@ export async function registrarCompartilhamento(
 export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   const adminClient = createAdminClient();
 
   let userName = "Usuário do Sistema";
@@ -693,7 +955,6 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
     throw new Error(`Erro ao registrar carta assinada: ${error.message}`);
   }
 
-  // Registrar na Timeline
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: cartaId,
     evento: "UPLOAD_ASSINADA",
@@ -705,7 +966,6 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
     usuario_nome: userName,
   });
 
-  // Registrar em cm_audit_logs
   await adminClient.from("cm_audit_logs").insert({
     user_id: user?.id || null,
     action: "Upload Carta Assinada (Baixa Automática Farol)",
@@ -727,7 +987,6 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
 export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-
   const adminClient = createAdminClient();
 
   let userName = "Usuário do Sistema";
@@ -751,7 +1010,6 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
     throw new Error(`Erro ao cancelar carta: ${error.message}`);
   }
 
-  // Timeline
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: cartaId,
     evento: "CANCELADA",
@@ -760,7 +1018,6 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
     usuario_nome: userName,
   });
 
-  // Audit
   await adminClient.from("cm_audit_logs").insert({
     user_id: user?.id || null,
     action: "Cancelamento Carta Anuência",
