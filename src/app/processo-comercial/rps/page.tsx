@@ -545,17 +545,17 @@ export default function RpsPage() {
     return ((current - historical) / historical) * 100;
   };
 
-  // Helper de cálculo de dispersão (% DISP Oficial: Fechamento Mês Anterior ÷ Última Projeção Mês Anterior * 100)
+  // Helper de cálculo de dispersão (% DISP Oficial: Variação Delta % entre Fechamento Mês Anterior e Última Projeção Mês Anterior)
   const calcDispersionPct = (closed: number, projected: number) => {
     if (projected <= 0) return 0;
-    return (closed / projected) * 100;
+    return ((closed - projected) / projected) * 100;
   };
 
   // Estilo de cor para células de porcentagem baseadas nas premissas
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
     if (kpi === "DISPERSAO") {
-      // Como a dispersão oficial é Atingimento (Fechamento / Projeção * 100), fica verde se for >= 100% (o real atingiu ou superou a projeção)
-      if (pctVal >= 100) {
+      // Como a dispersão é Variação Delta % ((Fechamento - Projeção) / Projeção * 100), fica verde se for >= 0% (o real atingiu ou superou a projeção)
+      if (pctVal >= 0) {
         return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
         return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
@@ -722,7 +722,7 @@ export default function RpsPage() {
                 </div>
               )}
               <span className="text-[11px] text-foreground-muted bg-white/5 px-2.5 py-1 rounded-lg border border-white/10 font-mono">
-                *Valores Faturamento /1k
+                *Valores (VOL e FAT) /1k
               </span>
             </div>
           </div>
@@ -825,25 +825,26 @@ export default function RpsPage() {
                                 </div>
                               </td>
                               <td className="font-semibold text-xs text-foreground-secondary">VOL</td>
-                              <td className="col-divider text-right">{formatNumber(row.kpis.VOL.ano_a, 0)}</td>
-                              <td className="text-right">{formatNumber(row.kpis.VOL.mes_a, 0)}</td>
+                              <td className="col-divider text-right">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
+                              <td className="text-right">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
                               <td className="col-divider text-right font-medium">
                                 {isGerenteNacionalAdmin ? (
                                   <input
                                     type="number"
-                                    value={row.kpis.VOL.desafio === 0 ? "" : row.kpis.VOL.desafio.toString()}
+                                    step="0.1"
+                                    value={row.kpis.VOL.desafio === 0 ? "" : (row.kpis.VOL.desafio / 1000).toString()}
                                     placeholder="0"
                                     onChange={(e) => {
                                       const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                      handleManagerDesafioChange(mIdx, "VOL", isNaN(num) ? 0 : num);
+                                      handleManagerDesafioChange(mIdx, "VOL", isNaN(num) ? 0 : num * 1000);
                                     }}
                                     className="w-full text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold"
                                   />
                                 ) : (
-                                  formatNumber(row.kpis.VOL.desafio, 0)
+                                  formatNumber(row.kpis.VOL.desafio / 1000, 1)
                                 )}
                               </td>
-                              <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(row.kpis.VOL.real, 0)}</td>
+                              <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
                               {mondays.map((m, wIdx) => {
                                 const val = row.kpis.VOL.projections[wIdx];
                                 const isFuture = m > todayStr;
@@ -853,26 +854,27 @@ export default function RpsPage() {
                                     {isEditable ? (
                                       <input
                                         type="number"
-                                        value={val === 0 ? "" : val.toString()}
+                                        step="0.1"
+                                        value={val === 0 ? "" : (val / 1000).toString()}
                                         placeholder="0"
                                         onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "VOL", wIdx })}
                                         onBlur={() => setFocusedInput(null)}
                                         onChange={(e) => {
                                           const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                          handleManagerKpiChange(mIdx, "VOL", wIdx, isNaN(num) ? 0 : num);
+                                          handleManagerKpiChange(mIdx, "VOL", wIdx, isNaN(num) ? 0 : num * 1000);
                                         }}
                                         className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
                                       />
                                     ) : (
                                       <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(val, 0))}
+                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(val / 1000, 1))}
                                       </div>
                                     )}
                                   </td>
                                 );
                               })}
                               <td className="pct-cell col-divider" style={row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, row.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? formatNumber(pVolDisp, 0) + "%" : "-"}
+                                {row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
                               </td>
                               <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, row.kpis.VOL.desafio)}>{row.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, row.kpis.VOL.ano_a)}>{row.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
@@ -929,7 +931,7 @@ export default function RpsPage() {
                                 );
                               })}
                               <td className="pct-cell col-divider" style={row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, row.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? formatNumber(pFatDisp, 0) + "%" : "-"}
+                                {row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
                               </td>
                               <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, row.kpis.FAT.desafio)}>{row.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, row.kpis.FAT.ano_a)}>{row.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
@@ -994,7 +996,7 @@ export default function RpsPage() {
                                 );
                               })}
                               <td className="pct-cell col-divider" style={row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, row.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? formatNumber(pInvestDisp, 0) + "%" : "-"}
+                                {row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
                               </td>
                               <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, row.kpis.INVEST.desafio)}>{row.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
                               <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, row.kpis.INVEST.ano_a)}>{row.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>
@@ -1088,7 +1090,7 @@ export default function RpsPage() {
                                     return (
                                       <>
                                         <td className="pct-cell col-divider" style={cli.prev_month_projection && cli.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pCliDisp, cli.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                          {cli.prev_month_projection && cli.prev_month_projection > 0 ? formatNumber(pCliDisp, 0) + "%" : "-"}
+                                          {cli.prev_month_projection && cli.prev_month_projection > 0 ? (pCliDisp > 0 ? "+" : "") + formatNumber(pCliDisp, 0) + "%" : "-"}
                                         </td>
                                         <td className="pct-cell" style={getPctCellStyle("META", pCliMeta, cli.meta, true)}>{cli.meta > 0 ? formatNumber(pCliMeta, 0) + "%" : "-"}</td>
                                         <td className="pct-cell" style={getPctCellStyle("AA", pCliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? (pCliAA >= 0 ? "+" : "") + formatNumber(pCliAA, 0) + "%" : "-"}</td>
@@ -1113,13 +1115,13 @@ export default function RpsPage() {
                               <span className="text-[10px] text-foreground-secondary font-semibold">CRISTIANO</span>
                             </td>
                             <td>VOL</td>
-                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.ano_a, 0)}</td>
-                            <td className="text-right">{formatNumber(totalsRow.kpis.VOL.mes_a, 0)}</td>
-                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.desafio, 0)}</td>
-                            <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(totalsRow.kpis.VOL.real, 0)}</td>
+                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
+                            <td className="text-right">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
+                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                            <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
                             {mondays.map((m, idx) => (
                               <td key={m} className={`text-right ${idx === 0 ? "col-divider" : ""}`}>
-                                {formatNumber(totalsRow.kpis.VOL.projections[idx], 0)}
+                                {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
                               </td>
                             ))}
                              {(() => {
@@ -1131,7 +1133,7 @@ export default function RpsPage() {
                               return (
                                 <>
                                   <td className="pct-cell col-divider" style={totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, totalsRow.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? formatNumber(pVolDisp, 0) + "%" : "-"}
+                                    {totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
                                   </td>
                                   <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, totalsRow.kpis.VOL.desafio)}>{totalsRow.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, totalsRow.kpis.VOL.ano_a)}>{totalsRow.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
@@ -1162,7 +1164,7 @@ export default function RpsPage() {
                               return (
                                 <>
                                   <td className="pct-cell col-divider" style={totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, totalsRow.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? formatNumber(pFatDisp, 0) + "%" : "-"}
+                                    {totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
                                   </td>
                                   <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, totalsRow.kpis.FAT.desafio)}>{totalsRow.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, totalsRow.kpis.FAT.ano_a)}>{totalsRow.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
@@ -1193,7 +1195,7 @@ export default function RpsPage() {
                               return (
                                 <>
                                   <td className="pct-cell col-divider" style={totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, totalsRow.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? formatNumber(pInvestDisp, 0) + "%" : "-"}
+                                    {totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
                                   </td>
                                   <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, totalsRow.kpis.INVEST.desafio)}>{totalsRow.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
                                   <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, totalsRow.kpis.INVEST.ano_a)}>{totalsRow.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>

@@ -1816,3 +1816,45 @@ Esta diretriz garante:
 - Eliminação de duplicação de regras de negócio;
 - Evolução centralizada da governança de Investimentos;
 - Consistência entre os indicadores apresentados em toda a aplicação.
+
+---
+
+## 51. Baseline Oficial — Indicador % DISP (Dispersão)
+
+### Diretriz Permanente
+
+O indicador **% DISP (Dispersão)** representa a variação percentual (delta %) entre o resultado efetivamente realizado e a última projeção registrada para o mês imediatamente anterior.
+
+Sua finalidade é medir o desvio relativo (erro de dispersão para mais ou para menos) entre o fechamento oficial do mês e a última projeção assumida antes do encerramento.
+
+### Regra Oficial
+
+A fórmula oficial é:
+
+**% DISP = ((Fechamento Oficial do Mês Anterior − Última Projeção do Mês Anterior) ÷ Última Projeção do Mês Anterior) × 100**
+
+Onde:
+
+- **Fechamento Oficial do Mês Anterior** corresponde ao resultado consolidado e oficial do KPI no mês imediatamente anterior.
+- **Última Projeção do Mês Anterior** corresponde à última projeção semanal persistida para aquele KPI no mês imediatamente anterior.
+- Exemplo: Fechamento = 103.528, Projeção = 100.887 ➔ % DISP = **+3%** (em vez de 103%).
+
+### TOTAL BRASIL
+
+A consolidação deverá seguir as regras oficiais:
+
+- **VOL:** cálculo utilizando os valores consolidados.
+- **FAT:** cálculo utilizando os valores consolidados.
+- **INVEST:** cálculo utilizando percentual ponderado pelo faturamento consolidado.
+
+É proibida a utilização de média simples dos percentuais.
+
+### Objetivos
+
+Esta diretriz garante:
+
+- interpretação uniforme do indicador % DISP como variação delta de desvio;
+- consistência entre RPS, Analytics e futuros módulos;
+- preservação da governança dos indicadores comerciais;
+- eliminação de ambiguidades entre percentual de atingimento e desvio relativo.
+

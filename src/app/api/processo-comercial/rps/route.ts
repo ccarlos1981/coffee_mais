@@ -125,7 +125,7 @@ export async function GET(request: Request) {
     const prevYearKey = `${prevYearYear}-${String(month).padStart(2, '0')}`;
 
     // Cálculo dos últimos 3 meses fechados para ranking
-    const closedMonths = [];
+    const closedMonths: string[] = [];
     let tempY = year;
     let tempM = month;
     for (let i = 0; i < 3; i++) {
@@ -386,8 +386,21 @@ export async function GET(request: Request) {
       redeSet.delete('Não Mapeado');
       redeSet.delete('OUTROS');
 
-      // Ordenar redes comerciais em ordem alfabética (pt-BR)
-      const sortedRedeNames = Array.from(redeSet).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+      // Ordenar redes comerciais pelo Ranking Oficial Comercial: Rolling 3M FAT (Maior -> Menor), desempate por nome
+      const redeRollingMap = new Map<string, number>();
+      Array.from(redeSet).forEach(cName => {
+        const r3m = managerCliHist
+          .filter((c: any) => c.client === cName && closedMonths.includes(c.mes))
+          .reduce((acc: number, c: any) => acc + Number(c.fat || 0), 0);
+        redeRollingMap.set(cName, r3m);
+      });
+
+      const sortedRedeNames = Array.from(redeSet).sort((a, b) => {
+        const fatA = redeRollingMap.get(a) || 0;
+        const fatB = redeRollingMap.get(b) || 0;
+        if (fatB !== fatA) return fatB - fatA;
+        return a.localeCompare(b, 'pt-BR');
+      });
 
       // Mapear cada rede comercial pertencente ao gerente
       const clientsList = sortedRedeNames.map(cName => {
