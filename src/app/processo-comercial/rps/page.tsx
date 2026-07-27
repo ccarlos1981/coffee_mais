@@ -946,7 +946,7 @@ export default function RpsPage() {
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 50 }}>KPI</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">ANO A</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }}>MÊS A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="col-divider bg-amber-500/15 text-amber-300 font-extrabold border-x border-amber-500/30">DESAFIO</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="bg-amber-500/15 text-amber-300 font-extrabold border-x-2 border-amber-500/50 shadow-xs">DESAFIO</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">REAL</th>
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
@@ -1038,8 +1038,8 @@ export default function RpsPage() {
                             <td className="col-divider text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
                             <td className="text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
 
-                            {/* Célula DESAFIO VOL (Destaque Focal) */}
-                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO VOL (Bloco Contínuo 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-500/50 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1091,8 +1091,8 @@ export default function RpsPage() {
                             <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
                             <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
-                            {/* Célula DESAFIO FAT (Destaque Focal) */}
-                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
+                            {/* Célula DESAFIO FAT (Bloco Contínuo 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-500/50 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1144,8 +1144,8 @@ export default function RpsPage() {
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
                             <td className="text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.mes_a)}</td>
 
-                            {/* Célula DESAFIO INVEST (Destaque Focal) */}
-                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
+                            {/* Célula DESAFIO INVEST (Bloco Contínuo 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-500/50 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1245,8 +1245,8 @@ export default function RpsPage() {
                                 <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000, 0)}</td>
                                 <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
-                                {/* Meta do cliente (Destaque DESAFIO) */}
-                                <td className="col-divider font-mono text-xs font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
+                                {/* Meta do cliente (Bloco Contínuo DESAFIO 2px) */}
+                                <td className="font-mono text-xs font-bold bg-amber-500/10 border-x-2 border-amber-500/50 text-amber-300 py-1.5">
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1309,7 +1309,7 @@ export default function RpsPage() {
                           <td className="text-accent-gold">VOL</td>
                           <td className="col-divider font-mono">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
                           <td className="font-mono">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
-                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                          <td className="font-mono bg-amber-500/15 border-x-2 border-amber-500/50 text-amber-300 font-black py-2.5">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
@@ -1338,7 +1338,7 @@ export default function RpsPage() {
                           <td className="text-accent-gold">FAT</td>
                           <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
                           <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
-                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
+                          <td className="font-mono bg-amber-500/15 border-x-2 border-amber-500/50 text-amber-300 font-black py-2.5">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
@@ -1367,7 +1367,7 @@ export default function RpsPage() {
                           <td className="text-accent-gold">INVEST</td>
                           <td className="col-divider font-mono">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
                           <td className="font-mono">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
-                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
+                          <td className="font-mono bg-amber-500/15 border-x-2 border-amber-500/50 text-amber-300 font-black py-2.5">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatPercent(totalsRow.kpis.INVEST.real)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
