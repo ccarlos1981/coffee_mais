@@ -976,7 +976,7 @@ export default function RpsPage() {
                         <th className="border-l-0" style={{ width: 70 }}>% Disp</th>
                         <th style={{ width: 70 }}>% DESAFIO</th>
                         <th style={{ width: 70 }}>%AA</th>
-                        <th style={{ width: 70 }}>%MT</th>
+                        <th style={{ width: 70 }}>%M. Trim</th>
                       </tr>
                     </thead>
                     
@@ -1436,7 +1436,7 @@ export default function RpsPage() {
                   </div>
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-amber-400">%MT:</span>
+                    <span className="font-bold text-amber-400">%M. Trim:</span>
                     <span>Crescimento vs Média do Trimestre (Abr, Mai, Jun)</span>
                   </div>
                 </div>
