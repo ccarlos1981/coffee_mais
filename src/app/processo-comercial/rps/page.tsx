@@ -966,13 +966,13 @@ export default function RpsPage() {
                       const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
 
                       return (
-                        <tbody key={row.manager} className="border-b-2 border-border">
+                        <tbody key={row.manager} className="border-b-4 border-border/80 last:border-b-0">
                           
-                          {/* LINHA 1: VOL */}
-                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
-                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-3 bg-background-elevated/20">
-                              <div className="flex flex-col gap-1">
-                                <span className="text-sm">{getManagerDisplayName(row.manager)}</span>
+                          {/* LINHA 1: VOL (Separador superior por Gerente) */}
+                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors border-t-2 border-accent-gold/40">
+                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3 bg-background-elevated/40 border-r border-border/60 shadow-sm">
+                              <div className="flex flex-col gap-1.5">
+                                <span className="text-sm font-extrabold text-foreground">{getManagerDisplayName(row.manager)}</span>
                                 <div className="flex items-center gap-2">
                                   <button
                                     onClick={() => toggleManagerExpanded(row.manager)}
@@ -1001,17 +1001,17 @@ export default function RpsPage() {
                                 </div>
                               </div>
                             </td>
-                            <td className="font-bold text-foreground">VOL</td>
-                            <td className="col-divider text-foreground-muted font-mono">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
-                            <td className="text-foreground-muted font-mono">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
+                            <td className="font-bold text-foreground py-2.5">VOL</td>
+                            <td className="col-divider text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
+                            <td className="text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
 
                             {/* Célula Desafio VOL */}
-                            <td className="col-divider font-mono font-bold text-foreground">
+                            <td className="col-divider font-mono font-bold text-foreground py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
                                   step="0.1"
-                                  value={row.kpis.VOL.desafio ? row.kpis.VOL.desafio / 1000 : ""}
+                                  value={row.kpis.VOL.desafio ? (row.kpis.VOL.desafio / 1000).toFixed(1) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'VOL', parseFloat(e.target.value) || 0)}
                                   className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
                                 />
@@ -1020,20 +1020,20 @@ export default function RpsPage() {
                               )}
                             </td>
 
-                            <td className="col-divider font-mono font-bold text-foreground">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
+                            <td className="col-divider font-mono font-bold text-foreground py-2.5">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
 
-                            {/* Projeções Semanais VOL */}
+                            {/* Projeções Semanais VOL (Sempre 1 casa decimal) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                              const val = row.kpis.VOL.projections[wIdx] ? row.kpis.VOL.projections[wIdx] / 1000 : 0;
+                              const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
                               return (
-                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
                                     disabled={!isEditable}
-                                    value={val || ""}
-                                    placeholder="0"
+                                    value={rawVal}
+                                    placeholder="0,0"
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'VOL', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
                                     className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                   />
@@ -1041,17 +1041,17 @@ export default function RpsPage() {
                               );
                             })}
 
-                            <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", volDisp, row.kpis.VOL.prev_month_projection || 0)}>{formatPercent(volDisp)}</td>
-                            <td className="font-mono" style={getPctCellStyle("DESAFIO", volDesafio, row.kpis.VOL.desafio)}>{formatPercent(volDesafio)}</td>
-                            <td className="font-mono" style={getPctCellStyle("AA", volAA, row.kpis.VOL.ano_a)}>{formatPercent(volAA)}</td>
-                            <td className="font-mono" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
+                            <td className="col-divider font-mono py-2.5" style={getPctCellStyle("DISPERSAO", volDisp, row.kpis.VOL.prev_month_projection || 0)}>{formatPercent(volDisp)}</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", volDesafio, row.kpis.VOL.desafio)}>{formatPercent(volDesafio)}</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("AA", volAA, row.kpis.VOL.ano_a)}>{formatPercent(volAA)}</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
                           </tr>
 
-                          {/* LINHA 2: FAT */}
+                          {/* LINHA 2: FAT (Sempre sem casas decimais - Inteiros) */}
                           <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
                             <td className="font-bold text-foreground">FAT</td>
-                            <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000)}</td>
-                            <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000)}</td>
+                            <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
+                            <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
                             {/* Célula Desafio FAT */}
                             <td className="col-divider font-mono font-bold text-foreground">
@@ -1059,28 +1059,28 @@ export default function RpsPage() {
                                 <input
                                   type="number"
                                   step="1"
-                                  value={row.kpis.FAT.desafio ? row.kpis.FAT.desafio / 1000 : ""}
+                                  value={row.kpis.FAT.desafio ? Math.round(row.kpis.FAT.desafio / 1000) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'FAT', parseFloat(e.target.value) || 0)}
                                   className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
                                 />
                               ) : (
-                                formatCurrency(row.kpis.FAT.desafio / 1000)
+                                formatCurrency(row.kpis.FAT.desafio / 1000, 0)
                               )}
                             </td>
 
-                            <td className="col-divider font-mono font-bold text-foreground">{formatCurrency(row.kpis.FAT.real / 1000)}</td>
+                            <td className="col-divider font-mono font-bold text-foreground">{formatCurrency(row.kpis.FAT.real / 1000, 0)}</td>
 
-                            {/* Projeções Semanais FAT */}
+                            {/* Projeções Semanais FAT (Sempre Inteiros sem casas decimais) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                              const val = row.kpis.FAT.projections[wIdx] ? row.kpis.FAT.projections[wIdx] / 1000 : 0;
+                              const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
                                   <input
                                     type="number"
                                     step="1"
                                     disabled={!isEditable}
-                                    value={val || ""}
+                                    value={rawVal}
                                     placeholder="0"
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'FAT', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
                                     className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
@@ -1095,7 +1095,7 @@ export default function RpsPage() {
                             <td className="font-mono" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
                           </tr>
 
-                          {/* LINHA 3: INVEST */}
+                          {/* LINHA 3: INVEST (Sempre 1 casa decimal) */}
                           <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
                             <td className="font-bold text-foreground">INVEST</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
@@ -1107,7 +1107,7 @@ export default function RpsPage() {
                                 <input
                                   type="number"
                                   step="0.1"
-                                  value={row.kpis.INVEST.desafio || ""}
+                                  value={row.kpis.INVEST.desafio ? Number(row.kpis.INVEST.desafio).toFixed(1) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'INVEST', parseFloat(e.target.value) || 0)}
                                   className="w-14 px-1 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
                                 />
@@ -1121,7 +1121,7 @@ export default function RpsPage() {
                             {/* Projeções Semanais INVEST */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                              const val = row.kpis.INVEST.projections[wIdx] || 0;
+                              const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">
@@ -1129,8 +1129,8 @@ export default function RpsPage() {
                                       type="number"
                                       step="0.1"
                                       disabled={!isEditable}
-                                      value={val || ""}
-                                      placeholder="0"
+                                      value={rawVal}
+                                      placeholder="0.0"
                                       onChange={(e) => handleManagerKpiChange(mIdx, 'INVEST', wIdx, parseFloat(e.target.value) || 0)}
                                       className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                     />
@@ -1146,7 +1146,7 @@ export default function RpsPage() {
                             <td className="font-mono text-foreground-muted">-</td>
                           </tr>
 
-                          {/* LINHAS DOS CLIENTES SE EXPANDIDO */}
+                          {/* LINHAS DOS CLIENTES SE EXPANDIDO (FAT sempre sem casas decimais) */}
                           {isExpanded && row.clients.map((cli, cIdx) => {
                             const cliAA = calcGrowthPct(cli.real, cli.ano_a);
                             const cliMA = calcGrowthPct(cli.real, cli.mes_a);
@@ -1194,8 +1194,8 @@ export default function RpsPage() {
                                 </td>
 
                                 <td className="text-foreground-secondary text-[11px] font-bold">FAT</td>
-                                <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000)}</td>
-                                <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000)}</td>
+                                <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000, 0)}</td>
+                                <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
                                 {/* Meta do cliente */}
                                 <td className="col-divider font-mono text-xs font-bold text-foreground">
@@ -1203,28 +1203,28 @@ export default function RpsPage() {
                                     <input
                                       type="number"
                                       step="1"
-                                      value={cli.meta ? cli.meta / 1000 : ""}
+                                      value={cli.meta ? Math.round(cli.meta / 1000) : ""}
                                       onChange={(e) => handleClientMetaChange(mIdx, cIdx, parseFloat(e.target.value) || 0)}
                                       className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
                                     />
                                   ) : (
-                                    cli.meta > 0 ? formatCurrency(cli.meta / 1000) : "—"
+                                    cli.meta > 0 ? formatCurrency(cli.meta / 1000, 0) : "—"
                                   )}
                                 </td>
 
-                                <td className="col-divider font-mono text-xs font-bold text-foreground">{formatCurrency(cli.real / 1000)}</td>
+                                <td className="col-divider font-mono text-xs font-bold text-foreground">{formatCurrency(cli.real / 1000, 0)}</td>
 
-                                {/* Projeções semanais do cliente */}
+                                {/* Projeções semanais do cliente (Inteiros sem decimais) */}
                                 {mondays.map((m, wIdx) => {
                                   const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                                  const val = cli.projections[wIdx] ? cli.projections[wIdx] / 1000 : 0;
+                                  const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
                                     <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
                                         disabled={!isEditable}
-                                        value={val || ""}
+                                        value={rawVal}
                                         placeholder="0"
                                         onChange={(e) => handleClientProjChange(mIdx, cIdx, wIdx, parseFloat(e.target.value) || 0)}
                                         className="w-full text-center py-1 px-1 rounded border border-border/30 bg-background/50 text-xs font-mono font-medium text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
@@ -1277,16 +1277,16 @@ export default function RpsPage() {
                           </td>
                         </tr>
 
-                        {/* TOTAL FAT */}
+                        {/* TOTAL FAT (Sempre sem casas decimais) */}
                         <tr>
                           <td className="text-accent-gold">FAT</td>
-                          <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000)}</td>
-                          <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000)}</td>
-                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000)}</td>
-                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.real / 1000)}</td>
+                          <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
+                          <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
                           {mondays.map((m, idx) => (
                             <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
-                              {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000)}
+                              {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
                             </td>
                           ))}
                           <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
