@@ -21,7 +21,14 @@ import {
   Upload, 
   Users, 
   DollarSign, 
-  ChevronDown 
+  ChevronDown,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  Search,
+  X,
+  AlertTriangle
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
@@ -35,6 +42,7 @@ interface ClientRow {
   real: number;
   prev_month_projection?: number;
   projections: number[];
+  display_order?: number;
 }
 
 interface ManagerKPI {
@@ -135,6 +143,8 @@ export default function RpsPage() {
   const [saving, setSaving] = useState(false);
   const [mondays, setMondays] = useState<string[]>([]);
   const [managers, setManagers] = useState<ManagerRow[]>([]);
+  const [allAvailableRedes, setAllAvailableRedes] = useState<Array<{ client: string; manager?: string; codigo_matriz?: string; uf?: string }>>([]);
+  const [removedNetworks, setRemovedNetworks] = useState<Record<string, string[]>>({});
   const [businessDays, setBusinessDays] = useState<{ total_days: number; elapsed_days: number } | null>(null);
 
   // Estados de UI
@@ -145,6 +155,15 @@ export default function RpsPage() {
   const [restrictedToManager, setRestrictedToManager] = useState<string | null>(null);
   const [isGerenteNacionalAdmin, setIsGerenteNacionalAdmin] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+
+  // Estados de Modais de Gestão Dinâmica da Carteira (Admin Only)
+  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  const [addModalManager, setAddModalManager] = useState<string>("");
+  const [searchRedeTerm, setSearchRedeTerm] = useState<string>("");
+  const [selectedRedeToAdd, setSelectedRedeToAdd] = useState<string>("");
+  
+  const [isRemoveModalOpen, setIsRemoveModalOpen] = useState<boolean>(false);
+  const [removeModalTarget, setRemoveModalTarget] = useState<{ mIdx: number; cIdx: number; clientName: string; managerName: string } | null>(null);
 
   // Mapeamento estético do nome dos gerentes
   const getManagerDisplayName = (name: string) => {
@@ -228,6 +247,8 @@ export default function RpsPage() {
       if (json.success) {
         setMondays(json.mondays || []);
         setManagers(json.managers || []);
+        setAllAvailableRedes(json.allAvailableRedes || []);
+        setRemovedNetworks({});
         setRestrictedToManager(json.restrictedToManager || null);
         if (json.isGerenteNacionalAdmin) {
           setIsGerenteNacionalAdmin(true);
@@ -251,8 +272,6 @@ export default function RpsPage() {
     loadBusinessDays(filterYear, filterMonth);
     loadProjectionsData(filterYear, filterMonth);
   }, [filterYear, filterMonth, loadBusinessDays, loadProjectionsData]);
-
-
 
   // Handler para input de faturamento do cliente
   const handleClientProjChange = (mIdx: number, cIdx: number, wIdx: number, val: number) => {
@@ -345,7 +364,140 @@ export default function RpsPage() {
     setExpandedManagers(prev => ({ ...prev, [manager]: !prev[manager] }));
   };
 
-  // Salvar projeções e metas no banco
+  // --- REORDENAÇÃO E REMOÇÃO DINÂMICA DE REDES (ADMIN ONLY) ---
+  const handleMoveNetworkUp = (mIdx: number, cIdx: number) => {
+    if (cIdx <= 0) return;
+    setManagers(prev => {
+      const next = [...prev];
+      const mgr = { ...next[mIdx] };
+      const clients = [...mgr.clients];
+      
+      const temp = clients[cIdx];
+      clients[cIdx] = clients[cIdx - 1];
+      clients[cIdx - 1] = temp;
+
+      mgr.clients = clients;
+      next[mIdx] = mgr;
+      return next;
+    });
+  };
+
+  const handleMoveNetworkDown = (mIdx: number, cIdx: number) => {
+    setManagers(prev => {
+      const next = [...prev];
+      const mgr = { ...next[mIdx] };
+      const clients = [...mgr.clients];
+      
+      if (cIdx >= clients.length - 2) return next; // preserva OUTROS na última posição
+      
+      const temp = clients[cIdx];
+      clients[cIdx] = clients[cIdx + 1];
+      clients[cIdx + 1] = temp;
+
+      mgr.clients = clients;
+      next[mIdx] = mgr;
+      return next;
+    });
+  };
+
+  const openRemoveModal = (mIdx: number, cIdx: number, clientName: string, managerName: string) => {
+    setRemoveModalTarget({ mIdx, cIdx, clientName, managerName });
+    setIsRemoveModalOpen(true);
+  };
+
+  const confirmRemoveNetwork = () => {
+    if (!removeModalTarget) return;
+    const { mIdx, cIdx, clientName, managerName } = removeModalTarget;
+
+    setManagers(prev => {
+      const next = [...prev];
+      const mgr = { ...next[mIdx] };
+      const clients = [...mgr.clients];
+      clients.splice(cIdx, 1);
+      mgr.clients = clients;
+      next[mIdx] = mgr;
+      return next;
+    });
+
+    setRemovedNetworks(prev => {
+      const current = prev[managerName] || [];
+      if (!current.includes(clientName)) {
+        return { ...prev, [managerName]: [...current, clientName] };
+      }
+      return prev;
+    });
+
+    setIsRemoveModalOpen(false);
+    setRemoveModalTarget(null);
+  };
+
+  const confirmAddNetwork = () => {
+    if (!selectedRedeToAdd || !addModalManager) return;
+
+    const mIdx = managers.findIndex(m => m.manager === addModalManager);
+    if (mIdx === -1) return;
+
+    const existingIndex = managers[mIdx].clients.findIndex(
+      c => c.client.trim().toUpperCase() === selectedRedeToAdd.trim().toUpperCase()
+    );
+    if (existingIndex !== -1) {
+      setError(`A rede "${selectedRedeToAdd}" já faz parte do planejamento deste gerente.`);
+      setIsAddModalOpen(false);
+      return;
+    }
+
+    setRemovedNetworks(prev => {
+      const current = prev[addModalManager] || [];
+      return { 
+        ...prev, 
+        [addModalManager]: current.filter(r => r.trim().toUpperCase() !== selectedRedeToAdd.trim().toUpperCase()) 
+      };
+    });
+
+    const newClientRow: ClientRow = {
+      client: selectedRedeToAdd,
+      ano_a: 0,
+      mes_a: 0,
+      meta: 0,
+      real: 0,
+      prev_month_projection: 0,
+      projections: mondays.map(() => 0)
+    };
+
+    setManagers(prev => {
+      const next = [...prev];
+      const mgr = { ...next[mIdx] };
+      const clients = [...mgr.clients];
+      
+      const outrosIdx = clients.findIndex(c => c.client === "OUTROS");
+      if (outrosIdx !== -1) {
+        clients.splice(outrosIdx, 0, newClientRow);
+      } else {
+        clients.push(newClientRow);
+      }
+
+      mgr.clients = clients;
+      next[mIdx] = mgr;
+      return next;
+    });
+
+    setIsAddModalOpen(false);
+    setSelectedRedeToAdd("");
+    setSearchRedeTerm("");
+  };
+
+  const filteredAvailableRedes = useMemo(() => {
+    if (!searchRedeTerm) return allAvailableRedes.slice(0, 30);
+    const term = searchRedeTerm.toLowerCase().trim();
+    return allAvailableRedes.filter(r => 
+      (r.client && r.client.toLowerCase().includes(term)) ||
+      (r.codigo_matriz && r.codigo_matriz.toLowerCase().includes(term)) ||
+      (r.manager && r.manager.toLowerCase().includes(term)) ||
+      (r.uf && r.uf.toLowerCase().includes(term))
+    ).slice(0, 50);
+  }, [allAvailableRedes, searchRedeTerm]);
+
+  // Salvar projeções, metas e carteira dinâmica no banco
   const handleSaveProjections = async () => {
     setSaving(true);
     setError(null);
@@ -420,7 +572,7 @@ export default function RpsPage() {
             payloadProjs.push({
               manager: mgr.manager,
               client_matrix: cli.client,
-              week_start_date: mondays[0], // Meta referenciada na primeira segunda do mês
+              week_start_date: mondays[0],
               kpi: 'META',
               projection_value: cli.meta
             });
@@ -444,21 +596,52 @@ export default function RpsPage() {
         ? payloadProjs
         : payloadProjs.filter((p: any) => p.kpi !== 'META');
 
+      // Montar payload da Carteira Dinâmica de Planejamento (Exclusivo Admin)
+      const customCarteiraPayload: any[] = [];
+      if (isAdmin) {
+        managers.forEach(mgr => {
+          mgr.clients.forEach((cli, idx) => {
+            if (cli.client !== 'OUTROS') {
+              customCarteiraPayload.push({
+                manager: mgr.manager,
+                client_matrix: cli.client,
+                display_order: idx,
+                is_excluded: false
+              });
+            }
+          });
+
+          // Incluir redes excluídas pelo admin nesta sprint
+          const removed = removedNetworks[mgr.manager] || [];
+          removed.forEach(rName => {
+            if (rName !== 'OUTROS') {
+              customCarteiraPayload.push({
+                manager: mgr.manager,
+                client_matrix: rName,
+                display_order: 999999,
+                is_excluded: true
+              });
+            }
+          });
+        });
+      }
+
       const res = await fetch('/api/processo-comercial/rps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           year: filterYear,
           month: filterMonth,
-          projections: finalProjections
+          projections: finalProjections,
+          customCarteira: isAdmin ? customCarteiraPayload : undefined
         })
       });
 
       const json = await res.json();
       if (json.success) {
-        setSuccess("Projeções da RPS salvas com sucesso!");
+        setSuccess("Projeções e Carteira de Planejamento salvas com sucesso!");
         loadProjectionsData(filterYear, filterMonth);
-        setTimeout(() => setSuccess(null), 3000);
+        setTimeout(() => setSuccess(null), 3500);
       } else {
         throw new Error(json.error || "Erro ao salvar.");
       }
@@ -505,23 +688,18 @@ export default function RpsPage() {
     kpis.INVEST.desafio = 10.0;
 
     // Calcular Investimentos Ponderados: sum(fat * invest_pct) / sum(fat)
-    // Para ANO A
     const totalInvestAnoA = managers.reduce((acc, m) => acc + (m.kpis.FAT.ano_a * (m.kpis.INVEST.ano_a / 100)), 0);
     kpis.INVEST.ano_a = kpis.FAT.ano_a > 0 ? (totalInvestAnoA / kpis.FAT.ano_a) * 100 : 10.0;
 
-    // Para MÊS A
     const totalInvestMesA = managers.reduce((acc, m) => acc + (m.kpis.FAT.mes_a * (m.kpis.INVEST.mes_a / 100)), 0);
     kpis.INVEST.mes_a = kpis.FAT.mes_a > 0 ? (totalInvestMesA / kpis.FAT.mes_a) * 100 : 10.0;
 
-    // Para REAL (Mês Atual Acumulado)
     const totalInvestReal = managers.reduce((acc, m) => acc + (m.kpis.FAT.real * (m.kpis.INVEST.real / 100)), 0);
     kpis.INVEST.real = kpis.FAT.real > 0 ? (totalInvestReal / kpis.FAT.real) * 100 : 10.0;
 
-    // Para o MÊS ANTERIOR (PROJEÇÃO)
     const totalInvestPrevMonth = managers.reduce((acc, m) => acc + (m.kpis.FAT.mes_a * ((m.kpis.INVEST.prev_month_projection || 0) / 100)), 0);
     kpis.INVEST.prev_month_projection = kpis.FAT.mes_a > 0 ? (totalInvestPrevMonth / kpis.FAT.mes_a) * 100 : 10.0;
 
-    // Para cada semana de projeção
     mondays.forEach((m, idx) => {
       const isFuture = m > todayStr;
       if (isFuture) {
@@ -541,7 +719,6 @@ export default function RpsPage() {
 
   // Helper para obter a última projeção disponível
   const getLatestProjection = (projections: number[]) => {
-    // Retorna a projeção mais recente que seja diferente de zero, ou a última
     for (let i = projections.length - 1; i >= 0; i--) {
       if (projections[i] !== 0) return projections[i];
     }
@@ -560,16 +737,15 @@ export default function RpsPage() {
     return ((current - historical) / historical) * 100;
   };
 
-  // Helper de cálculo de dispersão (% DISP Oficial: Variação Delta % entre Fechamento Mês Anterior e Última Projeção Mês Anterior)
+  // Helper de cálculo de dispersão
   const calcDispersionPct = (closed: number, projected: number) => {
     if (projected <= 0) return 0;
     return ((closed - projected) / projected) * 100;
   };
 
-  // Estilo de cor para células de porcentagem baseadas nas premissas
+  // Estilo de cor para células de porcentagem
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
     if (kpi === "DISPERSAO") {
-      // Como a dispersão é Variação Delta % ((Fechamento - Projeção) / Projeção * 100), fica verde se for >= 0% (o real atingiu ou superou a projeção)
       if (pctVal >= 0) {
         return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
@@ -580,17 +756,13 @@ export default function RpsPage() {
     if (compareVal <= 0) return { color: "var(--foreground-dim)" };
 
     if (kpi === "INVEST") {
-      // Para investimento: menor ou igual a 100% (ou da referência) é melhor (verde)
       if (pctVal <= 100) {
         return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
         return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
       }
     } else {
-      // Para volume (VOL) e faturamento (FAT)
-      // Se for meta/desafio, compara com a porcentagem de tempo decorrido (timeElapsedPct)
       if (isClient) {
-        // Na tabela de clientes: %META é comparada com timeElapsedPct, %AA e %MA são crescimento (verde se >= 0%)
         if (kpi === "META") {
           if (pctVal >= timeElapsedPct) {
             return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
@@ -598,7 +770,6 @@ export default function RpsPage() {
             return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
           }
         } else {
-          // %AA e %MA de clientes são crescimento
           if (pctVal >= 0) {
             return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
           } else {
@@ -606,7 +777,6 @@ export default function RpsPage() {
           }
         }
       } else {
-        // Na tabela de gerentes: % DESAFIO é comparada com timeElapsedPct
         if (kpi === "DESAFIO") {
           if (pctVal >= timeElapsedPct) {
             return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
@@ -614,7 +784,6 @@ export default function RpsPage() {
             return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
           }
         } else {
-          // %AA e %MA de gerentes são proporções diretas (verde se >= 100%)
           if (pctVal >= 100) {
             return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
           } else {
@@ -709,7 +878,7 @@ export default function RpsPage() {
               )}
             </button>
             <p className="text-[10px] text-foreground-muted text-center mt-2 leading-tight">
-              *As alterações salvam todas as projeções semanais e metas dos clientes exibidos na tela.
+              *As alterações salvam todas as projeções semanais, metas e carteira de planejamento exibidas na tela.
             </p>
           </div>
         </aside>
@@ -717,7 +886,7 @@ export default function RpsPage() {
         {/* CONTEÚDO PRINCIPAL: Tabelas */}
         <main className="cm-main">
           
-          {/* Cabeçalho da Página (Scrolls naturally com a página) */}
+          {/* Cabeçalho da Página */}
           <div className="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-border/60">
             <div className="flex flex-col gap-1">
               <h1 className="text-lg md:text-xl font-bold text-foreground tracking-wide flex items-center gap-2">
@@ -725,12 +894,18 @@ export default function RpsPage() {
                 RPS — Reunião de Planejamento Semanal
               </h1>
               <p className="text-xs text-foreground-muted">
-                Reunião de RPS com as áreas comerciais
+                Reunião de RPS com as áreas comerciais & Gestão Dinâmica da Carteira
               </p>
             </div>
             
             <div className="flex items-center gap-3">
-              {isGerenteNacionalAdmin && (
+              {isAdmin && (
+                <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-lg text-emerald-400 text-xs font-bold tracking-wider uppercase shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Gestão Dinâmica de Carteira Ativa (Admin)
+                </div>
+              )}
+              {isGerenteNacionalAdmin && !isAdmin && (
                 <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1 rounded-lg text-amber-400 text-xs font-bold tracking-wider uppercase shadow-xs">
                   <CheckCircle2 className="w-4 h-4" />
                   Modo Administrativo (Gerente Nacional)
@@ -804,487 +979,546 @@ export default function RpsPage() {
                     
                     {/* Linhas para cada Gerente comercial */}
                     {managers.map((row, mIdx) => {
-                        const isExpanded = !!expandedManagers[row.manager];
-                        const latestVol = getLatestProjection(row.kpis.VOL.projections);
-                        const latestFat = getLatestProjection(row.kpis.FAT.projections);
-                        const latestInvest = getLatestProjection(row.kpis.INVEST.projections);
+                      const isExpanded = !!expandedManagers[row.manager];
 
-                        const pVolDesafio = calcRatioPct(latestVol, row.kpis.VOL.desafio);
-                        const pVolAA = calcRatioPct(latestVol, row.kpis.VOL.ano_a);
-                        const pVolMA = calcRatioPct(latestVol, row.kpis.VOL.mes_a);
-                        const pVolDisp = calcDispersionPct(row.kpis.VOL.mes_a, row.kpis.VOL.prev_month_projection || 0);
+                      // KPIs Padrão
+                      const volDisp = calcDispersionPct(row.kpis.VOL.real, row.kpis.VOL.prev_month_projection || 0);
+                      const volDesafio = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.desafio);
+                      const volAA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.ano_a);
+                      const volMA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.mes_a);
 
-                        const pFatDesafio = calcRatioPct(latestFat, row.kpis.FAT.desafio);
-                        const pFatAA = calcRatioPct(latestFat, row.kpis.FAT.ano_a);
-                        const pFatMA = calcRatioPct(latestFat, row.kpis.FAT.mes_a);
-                        const pFatDisp = calcDispersionPct(row.kpis.FAT.mes_a, row.kpis.FAT.prev_month_projection || 0);
+                      const fatDisp = calcDispersionPct(row.kpis.FAT.real, row.kpis.FAT.prev_month_projection || 0);
+                      const fatDesafio = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.desafio);
+                      const fatAA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.ano_a);
+                      const fatMA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.mes_a);
 
-                        const pInvestDesafio = calcRatioPct(latestInvest, row.kpis.INVEST.desafio);
-                        const pInvestAA = calcRatioPct(latestInvest, row.kpis.INVEST.ano_a);
-                        const pInvestMA = calcRatioPct(latestInvest, row.kpis.INVEST.mes_a);
-                        const pInvestDisp = calcDispersionPct(row.kpis.INVEST.mes_a, row.kpis.INVEST.prev_month_projection || 0);
+                      const investDisp = calcDispersionPct(row.kpis.INVEST.real, row.kpis.INVEST.prev_month_projection || 0);
+                      const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
 
-                        return (
-                          <tbody key={row.manager}>
-                            {/* Linha VOLUME */}
-                            <tr>
-                              <td rowSpan={3} onClick={() => toggleManagerExpanded(row.manager)} className="cursor-pointer font-bold select-none border-r border-border hover:bg-white/5 manager-border-bottom" style={{ whiteSpace: "normal" }}>
-                                <div className="flex items-center gap-1">
-                                  <ChevronRight className={`w-4 h-4 text-foreground-muted transition-transform duration-200 ${isExpanded ? "rotate-90" : ""}`} />
-                                  <div className="flex flex-col">
-                                    <span style={{ fontSize: "0.8rem" }}>{getManagerDisplayName(row.manager)}</span>
-                                    <span style={{ fontSize: "0.55rem", fontWeight: "normal" }} className="text-accent-gold underline">
-                                      {isExpanded ? "Fechar Clientes" : "Abrir Clientes"}
-                                    </span>
-                                  </div>
+                      return (
+                        <tbody key={row.manager} className="border-b-2 border-border">
+                          
+                          {/* LINHA 1: VOL */}
+                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
+                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-3 bg-background-elevated/20">
+                              <div className="flex flex-col gap-1">
+                                <span className="text-sm">{getManagerDisplayName(row.manager)}</span>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => toggleManagerExpanded(row.manager)}
+                                    className="text-[11px] text-accent-gold hover:underline font-semibold cursor-pointer text-left"
+                                  >
+                                    {isExpanded ? "Fechar Clientes" : "Abrir Clientes"}
+                                  </button>
+
+                                  {/* Botão "+" Admin Only para Gestão Dinâmica de Carteira */}
+                                  {isAdmin && isExpanded && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAddModalManager(row.manager);
+                                        setSearchRedeTerm("");
+                                        setSelectedRedeToAdd("");
+                                        setIsAddModalOpen(true);
+                                      }}
+                                      className="px-2 py-0.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs font-bold transition-all border border-emerald-500/30 flex items-center gap-1 cursor-pointer"
+                                      title="Adicionar Rede no Planejamento"
+                                    >
+                                      <Plus className="w-3 h-3" />
+                                      <span className="text-[10px]">Adicionar</span>
+                                    </button>
+                                  )}
                                 </div>
-                              </td>
-                              <td className="font-semibold text-xs text-foreground-secondary">VOL</td>
-                              <td className="col-divider text-right">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
-                              <td className="text-right">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
-                              <td className="col-divider text-right font-medium">
-                                {isGerenteNacionalAdmin ? (
+                              </div>
+                            </td>
+                            <td className="font-bold text-foreground">VOL</td>
+                            <td className="col-divider text-foreground-muted font-mono">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
+                            <td className="text-foreground-muted font-mono">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
+
+                            {/* Célula Desafio VOL */}
+                            <td className="col-divider font-mono font-bold text-foreground">
+                              {isAdmin ? (
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={row.kpis.VOL.desafio ? row.kpis.VOL.desafio / 1000 : ""}
+                                  onChange={(e) => handleManagerDesafioChange(mIdx, 'VOL', parseFloat(e.target.value) || 0)}
+                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                />
+                              ) : (
+                                formatNumber(row.kpis.VOL.desafio / 1000, 1)
+                              )}
+                            </td>
+
+                            <td className="col-divider font-mono font-bold text-foreground">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
+
+                            {/* Projeções Semanais VOL */}
+                            {mondays.map((m, wIdx) => {
+                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const val = row.kpis.VOL.projections[wIdx] ? row.kpis.VOL.projections[wIdx] / 1000 : 0;
+                              return (
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
-                                    value={row.kpis.VOL.desafio === 0 ? "" : (row.kpis.VOL.desafio / 1000).toString()}
+                                    disabled={!isEditable}
+                                    value={val || ""}
                                     placeholder="0"
-                                    onChange={(e) => {
-                                      const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                      handleManagerDesafioChange(mIdx, "VOL", isNaN(num) ? 0 : num * 1000);
-                                    }}
-                                    className="w-full text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold"
+                                    onChange={(e) => handleManagerKpiChange(mIdx, 'VOL', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
+                                    className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                   />
-                                ) : (
-                                  formatNumber(row.kpis.VOL.desafio / 1000, 1)
-                                )}
-                              </td>
-                              <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
-                              {mondays.map((m, wIdx) => {
-                                const val = row.kpis.VOL.projections[wIdx];
-                                const isFuture = m > todayStr;
-                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                                return (
-                                  <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    {isEditable ? (
-                                      <input
-                                        type="number"
-                                        step="0.1"
-                                        value={val === 0 ? "" : (val / 1000).toString()}
-                                        placeholder="0"
-                                        onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "VOL", wIdx })}
-                                        onBlur={() => setFocusedInput(null)}
-                                        onChange={(e) => {
-                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                          handleManagerKpiChange(mIdx, "VOL", wIdx, isNaN(num) ? 0 : num * 1000);
-                                        }}
-                                        className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
-                                      />
-                                    ) : (
-                                      <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(val / 1000, 1))}
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                              <td className="pct-cell col-divider" style={row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, row.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.VOL.prev_month_projection && row.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
-                              </td>
-                              <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, row.kpis.VOL.desafio)}>{row.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, row.kpis.VOL.ano_a)}>{row.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("MA", pVolMA, row.kpis.VOL.mes_a)}>{row.kpis.VOL.mes_a > 0 ? formatNumber(pVolMA, 0) + "%" : "-"}</td>
-                            </tr>
+                                </td>
+                              );
+                            })}
 
-                            {/* Linha FATURAMENTO */}
-                            <tr>
-                              <td className="font-semibold text-xs text-foreground-secondary">FAT</td>
-                              <td className="col-divider text-right">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
-                              <td className="text-right">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
-                              <td className="col-divider text-right font-medium">
-                                {isGerenteNacionalAdmin ? (
+                            <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", volDisp, row.kpis.VOL.prev_month_projection || 0)}>{formatPercent(volDisp)}</td>
+                            <td className="font-mono" style={getPctCellStyle("DESAFIO", volDesafio, row.kpis.VOL.desafio)}>{formatPercent(volDesafio)}</td>
+                            <td className="font-mono" style={getPctCellStyle("AA", volAA, row.kpis.VOL.ano_a)}>{formatPercent(volAA)}</td>
+                            <td className="font-mono" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
+                          </tr>
+
+                          {/* LINHA 2: FAT */}
+                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
+                            <td className="font-bold text-foreground">FAT</td>
+                            <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000)}</td>
+                            <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000)}</td>
+
+                            {/* Célula Desafio FAT */}
+                            <td className="col-divider font-mono font-bold text-foreground">
+                              {isAdmin ? (
+                                <input
+                                  type="number"
+                                  step="1"
+                                  value={row.kpis.FAT.desafio ? row.kpis.FAT.desafio / 1000 : ""}
+                                  onChange={(e) => handleManagerDesafioChange(mIdx, 'FAT', parseFloat(e.target.value) || 0)}
+                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                />
+                              ) : (
+                                formatCurrency(row.kpis.FAT.desafio / 1000)
+                              )}
+                            </td>
+
+                            <td className="col-divider font-mono font-bold text-foreground">{formatCurrency(row.kpis.FAT.real / 1000)}</td>
+
+                            {/* Projeções Semanais FAT */}
+                            {mondays.map((m, wIdx) => {
+                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const val = row.kpis.FAT.projections[wIdx] ? row.kpis.FAT.projections[wIdx] / 1000 : 0;
+                              return (
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
                                   <input
                                     type="number"
-                                    value={row.kpis.FAT.desafio === 0 ? "" : Math.round(row.kpis.FAT.desafio / 1000).toString()}
+                                    step="1"
+                                    disabled={!isEditable}
+                                    value={val || ""}
                                     placeholder="0"
-                                    onChange={(e) => {
-                                      const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                      handleManagerDesafioChange(mIdx, "FAT", isNaN(num) ? 0 : num);
-                                    }}
-                                    className="w-full text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold"
+                                    onChange={(e) => handleManagerKpiChange(mIdx, 'FAT', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
+                                    className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                   />
-                                ) : (
-                                  formatCurrency(row.kpis.FAT.desafio / 1000, 0)
-                                )}
-                              </td>
-                              <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatCurrency(row.kpis.FAT.real / 1000, 0)}</td>
-                              {mondays.map((m, wIdx) => {
-                                const val = row.kpis.FAT.projections[wIdx];
-                                const isFuture = m > todayStr;
-                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                                return (
-                                  <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    {isEditable ? (
-                                      <input
-                                        type="number"
-                                        value={val === 0 ? "" : Math.round(val / 1000).toString()}
-                                        placeholder="0"
-                                        onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "FAT", wIdx })}
-                                        onBlur={() => setFocusedInput(null)}
-                                        onChange={(e) => {
-                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                          handleManagerKpiChange(mIdx, "FAT", wIdx, isNaN(num) ? 0 : num * 1000);
-                                        }}
-                                        className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
-                                      />
-                                    ) : (
-                                      <div className="w-full text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                              <td className="pct-cell col-divider" style={row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, row.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.FAT.prev_month_projection && row.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
-                              </td>
-                              <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, row.kpis.FAT.desafio)}>{row.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, row.kpis.FAT.ano_a)}>{row.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("MA", pFatMA, row.kpis.FAT.mes_a)}>{row.kpis.FAT.mes_a > 0 ? formatNumber(pFatMA, 0) + "%" : "-"}</td>
-                            </tr>
+                                </td>
+                              );
+                            })}
 
-                            {/* Linha INVESTIMENTO */}
-                            <tr className="tr-manager-border-bottom">
-                              <td className="font-semibold text-xs text-foreground-secondary">INVEST</td>
-                              <td className="col-divider text-right text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.ano_a, 1)}%</td>
-                              <td className="text-right text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.mes_a, 1)}%</td>
-                              <td className="col-divider text-right font-mono">
-                                {isGerenteNacionalAdmin ? (
-                                  <div className="flex items-center gap-1 justify-end">
+                            <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", fatDisp, row.kpis.FAT.prev_month_projection || 0)}>{formatPercent(fatDisp)}</td>
+                            <td className="font-mono" style={getPctCellStyle("DESAFIO", fatDesafio, row.kpis.FAT.desafio)}>{formatPercent(fatDesafio)}</td>
+                            <td className="font-mono" style={getPctCellStyle("AA", fatAA, row.kpis.FAT.ano_a)}>{formatPercent(fatAA)}</td>
+                            <td className="font-mono" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
+                          </tr>
+
+                          {/* LINHA 3: INVEST */}
+                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
+                            <td className="font-bold text-foreground">INVEST</td>
+                            <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
+                            <td className="text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.mes_a)}</td>
+
+                            {/* Célula Desafio INVEST */}
+                            <td className="col-divider font-mono font-bold text-foreground">
+                              {isAdmin ? (
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={row.kpis.INVEST.desafio || ""}
+                                  onChange={(e) => handleManagerDesafioChange(mIdx, 'INVEST', parseFloat(e.target.value) || 0)}
+                                  className="w-14 px-1 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                />
+                              ) : (
+                                formatPercent(row.kpis.INVEST.desafio)
+                              )}
+                            </td>
+
+                            <td className="col-divider font-mono font-bold text-foreground">{formatPercent(row.kpis.INVEST.real)}</td>
+
+                            {/* Projeções Semanais INVEST */}
+                            {mondays.map((m, wIdx) => {
+                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const val = row.kpis.INVEST.projections[wIdx] || 0;
+                              return (
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                  <div className="flex items-center justify-center gap-0.5">
                                     <input
                                       type="number"
-                                      value={row.kpis.INVEST.desafio === 0 ? "" : row.kpis.INVEST.desafio.toString()}
+                                      step="0.1"
+                                      disabled={!isEditable}
+                                      value={val || ""}
                                       placeholder="0"
-                                      onChange={(e) => {
-                                        const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                        handleManagerDesafioChange(mIdx, "INVEST", isNaN(num) ? 0 : num);
-                                      }}
-                                      className="w-12 text-right bg-background border border-accent-gold/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold font-bold font-mono"
+                                      onChange={(e) => handleManagerKpiChange(mIdx, 'INVEST', wIdx, parseFloat(e.target.value) || 0)}
+                                      className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                     />
                                     <span className="text-[10px] text-foreground-muted">%</span>
                                   </div>
-                                ) : (
-                                  <span className="text-blue-400 font-mono">{formatNumber(row.kpis.INVEST.desafio, 1)}%</span>
-                                )}
-                              </td>
-                              <td className="col-divider text-right font-bold text-blue-400 font-mono text-[11px]">{formatNumber(row.kpis.INVEST.real, 1)}%</td>
-                              {mondays.map((m, wIdx) => {
-                                const val = row.kpis.INVEST.projections[wIdx];
-                                const isFuture = m > todayStr;
-                                const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                                return (
-                                  <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                    {isEditable ? (
-                                      <div className="flex items-center gap-1 justify-end">
-                                        <input
-                                          type="number"
-                                          value={val === 0 ? "" : val.toString()}
-                                          placeholder="0"
-                                          onFocus={() => setFocusedInput({ type: "manager", mIdx, kpi: "INVEST", wIdx })}
-                                          onBlur={() => setFocusedInput(null)}
-                                          onChange={(e) => {
-                                            const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                            handleManagerKpiChange(mIdx, "INVEST", wIdx, isNaN(num) ? 0 : num);
-                                          }}
-                                          className="w-12 text-right bg-background border border-border rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
-                                        />
-                                        <span className="text-[10px] text-foreground-muted">%</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center gap-1 justify-end opacity-40 cursor-not-allowed select-none min-h-[24px]">
-                                        <span className="text-xs text-blue-400 font-mono">
-                                          {isFuture && val === 0 ? "-" : formatNumber(val, 1)}%
-                                        </span>
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                              <td className="pct-cell col-divider" style={row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, row.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                {row.kpis.INVEST.prev_month_projection && row.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
-                              </td>
-                              <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, row.kpis.INVEST.desafio)}>{row.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, row.kpis.INVEST.ano_a)}>{row.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>
-                              <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestMA, row.kpis.INVEST.mes_a)}>{row.kpis.INVEST.mes_a > 0 ? formatNumber(pInvestMA, 0) + "%" : "-"}</td>
-                            </tr>
-
-                            {/* Clientes vinculados (se expandido) renderizados como linhas normais para alinhamento perfeito */}
-                            {isExpanded && row.clients.map((cli, cIdx) => {
-                              const latestCliFat = getLatestProjection(cli.projections);
-                              const pCliMeta = calcRatioPct(latestCliFat, cli.meta);
-                              const pCliAA = calcGrowthPct(latestCliFat, cli.ano_a);
-                              const pCliMA = calcGrowthPct(latestCliFat, cli.mes_a);
-                              const isLastClient = cIdx === row.clients.length - 1;
-
-                              return (
-                                <tr key={cli.client} className={`hover:bg-white/5 bg-background-elevated/5 text-[0.7rem] border-b border-border/40 ${isLastClient ? "tr-manager-border-bottom" : ""}`}>
-                                  {/* CLIENTE */}
-                                  <td className="pl-6 font-medium text-[0.72rem] text-foreground-secondary border-r border-border hover:text-foreground">
-                                    <div className="flex items-center gap-1.5 pl-3">
-                                      <Building2 className="w-3 h-3 text-accent-gold/75" />
-                                      <span className="truncate max-w-[150px]" title={cli.client}>{cli.client}</span>
-                                    </div>
-                                  </td>
-                                  
-                                  {/* KPI */}
-                                  <td className="text-[10px] uppercase text-foreground-muted font-bold text-center">Fat</td>
-                                  
-                                  {/* ANO A */}
-                                  <td className="col-divider text-right text-foreground-dim">{formatCurrency(cli.ano_a / 1000, 0)}</td>
-                                  
-                                  {/* MÊS A */}
-                                  <td className="text-right text-foreground-dim">{formatCurrency(cli.mes_a / 1000, 0)}</td>
-                                  
-                                  {/* META (DESAFIO POR REDE - PERMISSÃO EXCLUSIVA ADMIN) */}
-                                  <td className="col-divider text-right">
-                                    {isAdmin ? (
-                                      <input
-                                        type="number"
-                                        value={cli.meta === 0 ? "" : Math.round(cli.meta / 1000).toString()}
-                                        placeholder="0"
-                                        onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "META", wIdx: 0 })}
-                                        onBlur={() => setFocusedInput(null)}
-                                        onChange={(e) => {
-                                          const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                          handleClientMetaChange(mIdx, cIdx, isNaN(num) ? 0 : num);
-                                        }}
-                                        className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
-                                      />
-                                    ) : (
-                                      <div className="w-full text-right bg-background/50 border border-border/40 rounded px-1.5 py-0.5 text-xs text-foreground-muted opacity-60 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                        {cli.meta === 0 ? "—" : formatNumber(Math.round(cli.meta / 1000), 0)}
-                                      </div>
-                                    )}
-                                  </td>
-                                  
-                                  {/* REAL (ALINHADO AO REAL DO GERENTE) */}
-                                  <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatCurrency(cli.real / 1000, 0)}</td>
-                                  
-                                  {/* PROJEÇÕES SEMANAIS */}
-                                  {mondays.map((m, wIdx) => {
-                                    const val = cli.projections[wIdx];
-                                    const isFuture = m > todayStr;
-                                    const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
-                                    return (
-                                      <td key={m} className={wIdx === 0 ? "col-divider" : ""}>
-                                        {isEditable ? (
-                                          <input
-                                            type="number"
-                                            value={val === 0 ? "" : Math.round(val / 1000).toString()}
-                                            placeholder="0"
-                                            onFocus={() => setFocusedInput({ type: "client", mIdx, cIdx, kpi: "FAT", wIdx })}
-                                            onBlur={() => setFocusedInput(null)}
-                                            onChange={(e) => {
-                                              const num = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                              handleClientProjChange(mIdx, cIdx, wIdx, isNaN(num) ? 0 : num);
-                                            }}
-                                            className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground focus:border-accent-gold focus:ring-1 focus:ring-accent-gold"
-                                          />
-                                        ) : (
-                                          <div className="w-full text-right bg-background border border-border/60 rounded px-1.5 py-0.5 text-xs text-foreground opacity-40 cursor-not-allowed min-h-[24px] flex items-center justify-end">
-                                            {isFuture && val === 0 ? "-" : (val === 0 ? "0" : formatNumber(Math.round(val / 1000), 0))}
-                                          </div>
-                                        )}
-                                      </td>
-                                    );
-                                  })}
-                                  
-                                  {/* ANÁLISES */}
-                                  {(() => {
-                                    const pCliDisp = calcDispersionPct(cli.mes_a, cli.prev_month_projection || 0);
-                                    return (
-                                      <>
-                                        <td className="pct-cell col-divider" style={cli.prev_month_projection && cli.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pCliDisp, cli.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                          {cli.prev_month_projection && cli.prev_month_projection > 0 ? (pCliDisp > 0 ? "+" : "") + formatNumber(pCliDisp, 0) + "%" : "-"}
-                                        </td>
-                                        <td className="pct-cell" style={getPctCellStyle("META", pCliMeta, cli.meta, true)}>{cli.meta > 0 ? formatNumber(pCliMeta, 0) + "%" : "-"}</td>
-                                        <td className="pct-cell" style={getPctCellStyle("AA", pCliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? (pCliAA >= 0 ? "+" : "") + formatNumber(pCliAA, 0) + "%" : "-"}</td>
-                                        <td className="pct-cell" style={getPctCellStyle("MA", pCliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? (pCliMA >= 0 ? "+" : "") + formatNumber(pCliMA, 0) + "%" : "-"}</td>
-                                      </>
-                                    );
-                                  })()}
-                                </tr>
+                                </td>
                               );
                             })}
-                          </tbody>
-                        );
-                      })}
 
-                      {/* Linha consolidada TOTAL BRASIL */}
-                      {totalsRow && !restrictedToManager && (
-                        <tbody>
-                          {/* Total Volume */}
-                          <tr className="row-total">
-                            <td rowSpan={3} style={{ verticalAlign: "middle", whiteSpace: "normal", lineHeight: "1.2" }}>
-                              TOTAL BRASIL<br />
-                              <span className="text-[10px] text-foreground-secondary font-semibold">CRISTIANO</span>
-                            </td>
-                            <td>VOL</td>
-                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
-                            <td className="text-right">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
-                            <td className="col-divider text-right">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
-                            <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
-                            {mondays.map((m, idx) => (
-                              <td key={m} className={`text-right ${idx === 0 ? "col-divider" : ""}`}>
-                                {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
-                              </td>
-                            ))}
-                             {(() => {
-                              const latestVol = getLatestProjection(totalsRow.kpis.VOL.projections);
-                              const pVolDesafio = calcRatioPct(latestVol, totalsRow.kpis.VOL.desafio);
-                              const pVolAA = calcRatioPct(latestVol, totalsRow.kpis.VOL.ano_a);
-                              const pVolMA = calcRatioPct(latestVol, totalsRow.kpis.VOL.mes_a);
-                              const pVolDisp = calcDispersionPct(totalsRow.kpis.VOL.mes_a, totalsRow.kpis.VOL.prev_month_projection || 0);
-                              return (
-                                <>
-                                  <td className="pct-cell col-divider" style={totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pVolDisp, totalsRow.kpis.VOL.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.VOL.prev_month_projection && totalsRow.kpis.VOL.prev_month_projection > 0 ? (pVolDisp > 0 ? "+" : "") + formatNumber(pVolDisp, 0) + "%" : "-"}
-                                  </td>
-                                  <td className="pct-cell" style={getPctCellStyle("DESAFIO", pVolDesafio, totalsRow.kpis.VOL.desafio)}>{totalsRow.kpis.VOL.desafio > 0 ? formatNumber(pVolDesafio, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("AA", pVolAA, totalsRow.kpis.VOL.ano_a)}>{totalsRow.kpis.VOL.ano_a > 0 ? formatNumber(pVolAA, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("MA", pVolMA, totalsRow.kpis.VOL.mes_a)}>{totalsRow.kpis.VOL.mes_a > 0 ? formatNumber(pVolMA, 0) + "%" : "-"}</td>
-                                </>
-                              );
-                            })()}
+                            <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", investDisp, row.kpis.INVEST.prev_month_projection || 0)}>{formatPercent(investDisp)}</td>
+                            <td className="font-mono" style={getPctCellStyle("INVEST", getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio)}>{formatPercent(investDesafio)}</td>
+                            <td className="font-mono text-foreground-muted">-</td>
+                            <td className="font-mono text-foreground-muted">-</td>
                           </tr>
 
-                          {/* Total Faturamento */}
-                          <tr className="row-total">
-                            <td>FAT</td>
-                            <td className="col-divider text-right">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
-                            <td className="text-right">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
-                            <td className="col-divider text-right">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
-                            <td className="col-divider text-right font-bold text-foreground text-[11px]">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
-                            {mondays.map((m, idx) => (
-                              <td key={m} className={`text-right ${idx === 0 ? "col-divider" : ""}`}>
-                                {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
-                              </td>
-                            ))}
-                            {(() => {
-                              const latestFat = getLatestProjection(totalsRow.kpis.FAT.projections);
-                              const pFatDesafio = calcRatioPct(latestFat, totalsRow.kpis.FAT.desafio);
-                              const pFatAA = calcRatioPct(latestFat, totalsRow.kpis.FAT.ano_a);
-                              const pFatMA = calcRatioPct(latestFat, totalsRow.kpis.FAT.mes_a);
-                              const pFatDisp = calcDispersionPct(totalsRow.kpis.FAT.mes_a, totalsRow.kpis.FAT.prev_month_projection || 0);
-                              return (
-                                <>
-                                  <td className="pct-cell col-divider" style={totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pFatDisp, totalsRow.kpis.FAT.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.FAT.prev_month_projection && totalsRow.kpis.FAT.prev_month_projection > 0 ? (pFatDisp > 0 ? "+" : "") + formatNumber(pFatDisp, 0) + "%" : "-"}
-                                  </td>
-                                  <td className="pct-cell" style={getPctCellStyle("DESAFIO", pFatDesafio, totalsRow.kpis.FAT.desafio)}>{totalsRow.kpis.FAT.desafio > 0 ? formatNumber(pFatDesafio, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("AA", pFatAA, totalsRow.kpis.FAT.ano_a)}>{totalsRow.kpis.FAT.ano_a > 0 ? formatNumber(pFatAA, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("MA", pFatMA, totalsRow.kpis.FAT.mes_a)}>{totalsRow.kpis.FAT.mes_a > 0 ? formatNumber(pFatMA, 0) + "%" : "-"}</td>
-                                </>
-                              );
-                            })()}
-                          </tr>
+                          {/* LINHAS DOS CLIENTES SE EXPANDIDO */}
+                          {isExpanded && row.clients.map((cli, cIdx) => {
+                            const cliAA = calcGrowthPct(cli.real, cli.ano_a);
+                            const cliMA = calcGrowthPct(cli.real, cli.mes_a);
+                            const cliMetaPct = calcRatioPct(cli.real, cli.meta);
+                            const cliDisp = calcDispersionPct(cli.real, cli.prev_month_projection || 0);
 
-                          {/* Total Investimento */}
-                          <tr className="row-total">
-                            <td>INVEST</td>
-                            <td className="col-divider text-right text-blue-400 font-mono">{formatNumber(totalsRow.kpis.INVEST.ano_a, 1)}%</td>
-                            <td className="text-right text-blue-400 font-mono">{formatNumber(totalsRow.kpis.INVEST.mes_a, 1)}%</td>
-                            <td className="col-divider text-right text-blue-400 font-mono">{formatNumber(totalsRow.kpis.INVEST.desafio, 1)}%</td>
-                            <td className="col-divider text-right font-bold text-blue-400 font-mono text-[11px]">{formatNumber(totalsRow.kpis.INVEST.real, 1)}%</td>
-                            {mondays.map((m, idx) => (
-                              <td key={m} className={`text-right text-blue-400 font-mono ${idx === 0 ? "col-divider" : ""}`}>
-                                {formatNumber(totalsRow.kpis.INVEST.projections[idx], 1)}%
-                              </td>
-                            ))}
-                            {(() => {
-                              const latestInvest = getLatestProjection(totalsRow.kpis.INVEST.projections);
-                              const pInvestDesafio = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.desafio);
-                              const pInvestAA = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.ano_a);
-                              const pInvestMA = calcRatioPct(latestInvest, totalsRow.kpis.INVEST.mes_a);
-                              const pInvestDisp = calcDispersionPct(totalsRow.kpis.INVEST.mes_a, totalsRow.kpis.INVEST.prev_month_projection || 0);
-                              return (
-                                <>
-                                  <td className="pct-cell col-divider" style={totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? getPctCellStyle("DISPERSAO", pInvestDisp, totalsRow.kpis.INVEST.prev_month_projection) : { color: "var(--foreground-dim)" }}>
-                                    {totalsRow.kpis.INVEST.prev_month_projection && totalsRow.kpis.INVEST.prev_month_projection > 0 ? (pInvestDisp > 0 ? "+" : "") + formatNumber(pInvestDisp, 0) + "%" : "-"}
-                                  </td>
-                                  <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestDesafio, totalsRow.kpis.INVEST.desafio)}>{totalsRow.kpis.INVEST.desafio > 0 ? formatNumber(pInvestDesafio, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestAA, totalsRow.kpis.INVEST.ano_a)}>{totalsRow.kpis.INVEST.ano_a > 0 ? formatNumber(pInvestAA, 0) + "%" : "-"}</td>
-                                  <td className="pct-cell" style={getPctCellStyle("INVEST", pInvestMA, totalsRow.kpis.INVEST.mes_a)}>{totalsRow.kpis.INVEST.mes_a > 0 ? formatNumber(pInvestMA, 0) + "%" : "-"}</td>
-                                </>
-                              );
-                            })()}
-                          </tr>
+                            const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+
+                            return (
+                              <tr key={cli.client} className="bg-background-subtle/30 hover:bg-background-subtle transition-colors">
+                                <td className="font-semibold text-foreground text-left pl-6 pr-2 py-1.5 border-r border-border/40">
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="truncate text-xs font-sans font-bold">{cli.client}</span>
+
+                                    {/* Botões de Gestão Dinâmica de Carteira: Reordenação (▲/▼) e Exclusão (-) (Admin Only) */}
+                                    {isAdmin && cli.client !== "OUTROS" && (
+                                      <div className="flex items-center gap-0.5 shrink-0 font-mono">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveNetworkUp(mIdx, cIdx)}
+                                          disabled={cIdx === 0}
+                                          title="Mover Posição para Cima"
+                                          className="w-4 h-4 rounded hover:bg-white/10 text-[9px] text-foreground-muted hover:text-foreground disabled:opacity-20 flex items-center justify-center cursor-pointer"
+                                        >
+                                          ▲
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleMoveNetworkDown(mIdx, cIdx)}
+                                          disabled={cIdx >= row.clients.length - 2}
+                                          title="Mover Posição para Baixo"
+                                          className="w-4 h-4 rounded hover:bg-white/10 text-[9px] text-foreground-muted hover:text-foreground disabled:opacity-20 flex items-center justify-center cursor-pointer"
+                                        >
+                                          ▼
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => openRemoveModal(mIdx, cIdx, cli.client, row.manager)}
+                                          title="Remover Rede do Planejamento"
+                                          className="w-4 h-4 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 text-[10px] font-bold flex items-center justify-center cursor-pointer ml-0.5"
+                                        >
+                                          -
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="text-foreground-secondary text-[11px] font-bold">FAT</td>
+                                <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000)}</td>
+                                <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000)}</td>
+
+                                {/* Meta do cliente */}
+                                <td className="col-divider font-mono text-xs font-bold text-foreground">
+                                  {isAdmin ? (
+                                    <input
+                                      type="number"
+                                      step="1"
+                                      value={cli.meta ? cli.meta / 1000 : ""}
+                                      onChange={(e) => handleClientMetaChange(mIdx, cIdx, parseFloat(e.target.value) || 0)}
+                                      className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                    />
+                                  ) : (
+                                    cli.meta > 0 ? formatCurrency(cli.meta / 1000) : "—"
+                                  )}
+                                </td>
+
+                                <td className="col-divider font-mono text-xs font-bold text-foreground">{formatCurrency(cli.real / 1000)}</td>
+
+                                {/* Projeções semanais do cliente */}
+                                {mondays.map((m, wIdx) => {
+                                  const val = cli.projections[wIdx] ? cli.projections[wIdx] / 1000 : 0;
+                                  return (
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                      <input
+                                        type="number"
+                                        step="1"
+                                        disabled={!isEditable}
+                                        value={val || ""}
+                                        placeholder="0"
+                                        onChange={(e) => handleClientProjChange(mIdx, cIdx, wIdx, parseFloat(e.target.value) || 0)}
+                                        className="w-full text-center py-1 px-1 rounded border border-border/30 bg-background/50 text-xs font-mono font-medium text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                      />
+                                    </td>
+                                  );
+                                })}
+
+                                <td className="col-divider font-mono text-xs" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
+                                <td className="font-mono text-xs" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
+                                <td className="font-mono text-xs" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
+                                <td className="font-mono text-xs" style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
+                              </tr>
+                            );
+                          })}
+
                         </tbody>
-                      )}
+                      );
+                    })}
+
+                    {/* TOTAL CONSOLIDADO BRASIL */}
+                    {totalsRow && (
+                      <tfoot className="border-t-4 border-accent-gold font-bold bg-background-elevated">
+                        {/* TOTAL VOL */}
+                        <tr>
+                          <td rowSpan={3} className="text-left pl-3 text-accent-gold text-sm align-middle font-black">
+                            TOTAL BRASIL
+                          </td>
+                          <td className="text-accent-gold">VOL</td>
+                          <td className="col-divider font-mono">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
+                          <td className="font-mono">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
+                          {mondays.map((m, idx) => (
+                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
+                              {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
+                            </td>
+                          ))}
+                          <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio), totalsRow.kpis.VOL.desafio)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a), totalsRow.kpis.VOL.ano_a)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a), totalsRow.kpis.VOL.mes_a)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a))}
+                          </td>
+                        </tr>
+
+                        {/* TOTAL FAT */}
+                        <tr>
+                          <td className="text-accent-gold">FAT</td>
+                          <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000)}</td>
+                          <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.real / 1000)}</td>
+                          {mondays.map((m, idx) => (
+                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
+                              {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000)}
+                            </td>
+                          ))}
+                          <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio), totalsRow.kpis.FAT.desafio)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a), totalsRow.kpis.FAT.ano_a)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a), totalsRow.kpis.FAT.mes_a)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a))}
+                          </td>
+                        </tr>
+
+                        {/* TOTAL INVEST */}
+                        <tr>
+                          <td className="text-accent-gold">INVEST</td>
+                          <td className="col-divider font-mono">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
+                          <td className="font-mono">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
+                          <td className="col-divider font-mono text-accent-gold">{formatPercent(totalsRow.kpis.INVEST.real)}</td>
+                          {mondays.map((m, idx) => (
+                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
+                              {formatPercent(totalsRow.kpis.INVEST.projections[idx])}
+                            </td>
+                          ))}
+                          <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection))}
+                          </td>
+                          <td className="font-mono" style={getPctCellStyle("INVEST", getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio))}
+                          </td>
+                          <td className="font-mono text-foreground-muted">-</td>
+                          <td className="font-mono text-foreground-muted">-</td>
+                        </tr>
+                      </tfoot>
+                    )}
+
                   </table>
                 </div>
               </div>
 
-              {/* Botão de salvar e legenda no final do grid */}
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-4 bg-background-card border border-border rounded-xl shadow-sm">
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-[10px] text-foreground-muted max-w-2xl leading-relaxed">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-accent-gold uppercase tracking-wider">% Disp:</span>
-                    <span>Dispersão (Realizado vs Projeção do Mês Anterior)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-accent-gold uppercase tracking-wider">% Desafio:</span>
-                    <span>Projeção vs Desafio (Mês Atual)</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-accent-gold uppercase tracking-wider">%AA:</span>
-                    <span>Comparativo vs Ano Anterior</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-accent-gold uppercase tracking-wider">%MA:</span>
-                    <span>Comparativo vs Mês Anterior</span>
-                  </div>
-                </div>
-                <button
-                  disabled={saving || loading || managers.length === 0 || (!isTodayMonday && !isGerenteNacionalAdmin)}
-                  onClick={handleSaveProjections}
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white font-bold uppercase tracking-wider text-xs transition-all shadow-lg disabled:opacity-50 cursor-pointer whitespace-nowrap"
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4" />
-                      Salvar Alterações
-                    </>
-                  )}
-                </button>
-              </div>
-
             </div>
           )}
+
         </main>
       </div>
 
-      {/* Menu Inferior (Bottom Nav Bar) - Estilo Power BI */}
-      <nav className="bottom-tabs">
-        <Link href="/" className="bottom-tab"><Home className="bottom-tab-icon" /> Menu</Link>
-        <Link href="/vendas" className="bottom-tab"><BarChart3 className="bottom-tab-icon" /> Vendas</Link>
-        <Link href="/historico" className="bottom-tab"><History className="bottom-tab-icon" /> Hist.</Link>
-        <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
-        <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
-        <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
-        <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
-        <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
-        <Link href="/tributos" className="bottom-tab"><Receipt className="bottom-tab-icon" /> Tributos</Link>
-        <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
-        <Link href="/atendimento" className="bottom-tab"><Users className="bottom-tab-icon" /> Atendimento</Link>
-        <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
-      </nav>
-      
+      {/* --- MODAL 1: ADICIONAR REDE NA CARTEIRA DE PLANEJAMENTO (ADMIN ONLY) --- */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background-card border border-border rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden font-sans space-y-4 p-6 animate-fade-in">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    Adicionar Rede no Planejamento
+                  </h3>
+                  <p className="text-xs text-foreground-muted">
+                    Gerente: <span className="font-bold text-accent-gold">{getManagerDisplayName(addModalManager)}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="p-1 text-foreground-muted hover:text-foreground rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Input de Pesquisa Dinâmica */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-foreground-muted" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Pesquisar por nome, código de matriz, gerente ou UF..."
+                value={searchRedeTerm}
+                onChange={(e) => setSearchRedeTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-background-elevated border border-border rounded-xl text-xs text-foreground focus:border-accent-gold focus:outline-none font-sans"
+              />
+            </div>
+
+            {/* Lista de Resultados de Pesquisa */}
+            <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 font-mono text-xs">
+              {filteredAvailableRedes.length === 0 ? (
+                <div className="p-4 text-center text-xs text-foreground-muted">
+                  Nenhuma rede encontrada para a busca "{searchRedeTerm}".
+                </div>
+              ) : (
+                filteredAvailableRedes.map((item) => {
+                  const isSelected = selectedRedeToAdd === item.client;
+                  return (
+                    <div
+                      key={item.client}
+                      onClick={() => setSelectedRedeToAdd(item.client)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between font-sans ${
+                        isSelected 
+                          ? "bg-emerald-500/15 border-emerald-500 text-emerald-400 font-bold" 
+                          : "bg-background-elevated/40 border-border/50 text-foreground hover:bg-background-elevated"
+                      }`}
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-xs block font-bold">{item.client}</span>
+                        <span className="text-[11px] text-foreground-muted block font-mono">
+                          UF: {item.uf || "BR"} {item.codigo_matriz ? `| Matriz: ${item.codigo_matriz}` : ""}
+                        </span>
+                      </div>
+                      <input
+                        type="radio"
+                        name="selectedRede"
+                        checked={isSelected}
+                        onChange={() => setSelectedRedeToAdd(item.client)}
+                        className="accent-emerald-500 w-4 h-4 cursor-pointer"
+                      />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Botões de Ação do Modal */}
+            <div className="flex items-center justify-end gap-3 border-t border-border/60 pt-4">
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!selectedRedeToAdd}
+                onClick={confirmAddNetwork}
+                className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white text-xs font-bold shadow-md cursor-pointer"
+              >
+                Adicionar no Planejamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL 2: CONFIRMAÇÃO DE REMOÇÃO DE REDE DA CARTEIRA (ADMIN ONLY) --- */}
+      {isRemoveModalOpen && removeModalTarget && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-background-card border border-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden font-sans space-y-4 p-6 animate-fade-in">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-rose-500/15 text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-foreground">
+                  Remover Rede do Planejamento?
+                </h3>
+                <p className="text-xs text-foreground-muted mt-0.5">
+                  Esta ação afeta apenas a visualização de planejamento (RPS) deste mês.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-background-elevated border border-border text-center space-y-1">
+              <span className="text-xs text-foreground-muted uppercase font-bold tracking-wider block">Rede Selecionada</span>
+              <span className="text-sm font-black text-rose-400 block">{removeModalTarget.clientName}</span>
+              <span className="text-[11px] text-foreground-muted block font-mono">Gerente: {getManagerDisplayName(removeModalTarget.managerName)}</span>
+            </div>
+
+            <p className="text-[11px] text-foreground-muted text-center leading-relaxed">
+              Vendas históricas, cadastro comercial e faturamento de outros módulos permanecerão 100% preservados.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 border-t border-border/60 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRemoveModalOpen(false);
+                  setRemoveModalTarget(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveNetwork}
+                className="px-5 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-md cursor-pointer"
+              >
+                Remover do Planejamento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
