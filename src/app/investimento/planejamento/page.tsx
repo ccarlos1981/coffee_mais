@@ -1440,8 +1440,8 @@ export default function PlanejamentoInvestimentoPage() {
                     </thead>
                     <tbody className="divide-y divide-border/60">
                       {filteredMatrizesInView.length > 0 ? (
-                        filteredMatrizesInView.map((m) => (
-                          <tr key={m.codigo} className="hover:bg-elevated/20 transition-colors">
+                        filteredMatrizesInView.map((m, idx) => (
+                          <tr key={`${m.codigo}-${m.nome}-${idx}`} className="hover:bg-elevated/20 transition-colors">
                             <td className="p-3 min-w-[240px]">
                               <div className="flex flex-col">
                                 <div className="flex items-center gap-2">

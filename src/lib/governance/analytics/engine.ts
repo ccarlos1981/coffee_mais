@@ -9,7 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { OFFICIAL_ANALYTICS_SOURCES, resolveOfficialSource } from './sources';
-import { AnalyticsFilters, escapeSqlValue } from './filters';
+import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, buildRedeFilter } from './filters';
 import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
 
@@ -924,4 +924,640 @@ export class AnalyticsEngine {
       ufs: (res[0]?.ufs || []).sort(),
     };
   }
+
+  /**
+   * 15. Sistema Inovações — Cockpit Comercial (Fase 1: Backend Read-Only)
+   * 
+   * Consolida métricas executivas, saúde da carteira, ranking comercial
+   * e oportunidades calculadas sem alterar nenhuma tabela ou módulo existente.
+   * 
+   * @see Seção 54 do AGENTS.md (Sistema Inovações)
+   */
+  static async getCockpitComercial(filters: AnalyticsFilters): Promise<CockpitComercialData> {
+    const now = new Date();
+    const defaultYear = now.getFullYear();
+    const defaultMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const defaultCurrentMonth = `${defaultYear}-${defaultMonth}`;
+
+    const curStartMonth = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : defaultCurrentMonth);
+    const curEndMonth = filters.endMonth || (filters.endDate ? filters.endDate.substring(0, 7) : defaultCurrentMonth);
+
+    const [sYear, sMonth] = curStartMonth.split('-').map(Number);
+    const [eYear, eMonth] = curEndMonth.split('-').map(Number);
+
+    // Calcular período anterior (PM) de igual duração
+    const numMonths = (eYear - sYear) * 12 + (eMonth - sMonth) + 1;
+    let pmStartYear = sYear;
+    let pmStartMonthNum = sMonth - numMonths;
+    while (pmStartMonthNum <= 0) {
+      pmStartYear -= 1;
+      pmStartMonthNum += 12;
+    }
+    let pmEndYear = eYear;
+    let pmEndMonthNum = eMonth - numMonths;
+    while (pmEndMonthNum <= 0) {
+      pmEndYear -= 1;
+      pmEndMonthNum += 12;
+    }
+
+    const pmStartMonth = `${pmStartYear}-${String(pmStartMonthNum).padStart(2, '0')}`;
+    const pmEndMonth = `${pmEndYear}-${String(pmEndMonthNum).padStart(2, '0')}`;
+
+    // Calcular período dos últimos 3 meses fechados para o Rolling FAT 3M (Seção 15)
+    let rollingEndYear = eYear;
+    let rollingEndMonthNum = eMonth;
+    let rollingStartYear = eYear;
+    let rollingStartMonthNum = eMonth - 2;
+    while (rollingStartMonthNum <= 0) {
+      rollingStartYear -= 1;
+      rollingStartMonthNum += 12;
+    }
+    const rollingStartMonth = `${rollingStartYear}-${String(rollingStartMonthNum).padStart(2, '0')}`;
+    const rollingEndMonth = `${rollingEndYear}-${String(rollingEndMonthNum).padStart(2, '0')}`;
+
+    const curFilters = { ...filters, startMonth: curStartMonth, endMonth: curEndMonth };
+    const pmFilters = { ...filters, startMonth: pmStartMonth, endMonth: pmEndMonth };
+    const rollingFilters = { ...filters, startMonth: rollingStartMonth, endMonth: rollingEndMonth };
+
+    const whereCurMensal = buildWhereClause(curFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
+    const whereCurClient = buildWhereClause(curFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
+    const wherePmMensal = buildWhereClause(pmFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
+    const wherePmClient = buildWhereClause(pmFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
+    const whereRollingClient = buildWhereClause(rollingFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
+
+    // 1. Faturamento Período Atual e Período Anterior
+    const sqlFatCur = `SELECT SUM(fat) as total_fat FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${whereCurMensal}`;
+    const sqlFatPm = `SELECT SUM(fat) as total_fat FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${wherePmMensal}`;
+
+    // 2. Desempenho por Cliente no Período Atual e Anterior
+    const sqlClientsCur = `
+      SELECT 
+        COALESCE(rede, nome_parceiro, 'Não Mapeado') as rede,
+        nome_parceiro,
+        COALESCE(manager, 'Outros') as manager,
+        SUM(fat) as fat_atual
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${whereCurClient}
+      GROUP BY COALESCE(rede, nome_parceiro, 'Não Mapeado'), nome_parceiro, COALESCE(manager, 'Outros')
+    `;
+
+    const sqlClientsPm = `
+      SELECT 
+        nome_parceiro,
+        SUM(fat) as fat_anterior
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${wherePmClient}
+      GROUP BY nome_parceiro
+    `;
+
+    // 3. Rolling FAT 3M por Rede (Respeitando a Seção 15 do AGENTS.md)
+    const sqlRedesRolling = `
+      SELECT 
+        COALESCE(rede, 'OUTROS') as rede,
+        SUM(fat) as rolling_fat_3m
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${whereRollingClient}
+      GROUP BY COALESCE(rede, 'OUTROS')
+    `;
+
+    // 4. Desempenho por Gerente no Período
+    const sqlGerentes = `
+      SELECT 
+        COALESCE(manager, 'Outros') as manager,
+        SUM(fat) as faturamento
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${whereCurMensal}
+      GROUP BY COALESCE(manager, 'Outros')
+      ORDER BY faturamento DESC
+    `;
+
+    // 5. Atividade Comercial dos Clientes (cm_clientes_atividade)
+    let sqlAtividade = `
+      SELECT 
+        c.id as cliente_id,
+        c.nome_parceiro,
+        c.matriz as rede,
+        c.manager_name as manager,
+        a.ultima_compra::text as ultima_compra,
+        a.dias_sem_comprar,
+        COALESCE(a.situacao_comercial, 'Sem vendas') as situacao_comercial,
+        COALESCE(a.valor_faturado_12m, 0) as valor_faturado_12m
+      FROM public.cm_clientes c
+      LEFT JOIN public.cm_clientes_atividade a ON c.id = a.cliente_id
+    `;
+
+    const atividadeWhere: string[] = ['1=1'];
+    if (filters.manager_id || filters.manager) {
+      const mgrClause = buildManagerFilter(filters.manager_id, filters.manager, 'c');
+      if (mgrClause) atividadeWhere.push(mgrClause);
+    }
+    if (filters.uf) {
+      const ufClause = buildUfFilter(filters.uf, 'c');
+      if (ufClause) atividadeWhere.push(ufClause);
+    }
+    if (filters.matriz && filters.matriz !== 'all') {
+      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      atividadeWhere.push(`c.matriz IN (${redesEscaped})`);
+    }
+    sqlAtividade += ' WHERE ' + atividadeWhere.join(' AND ');
+
+    // Execução paralela de todas as consultas read-only
+    const [
+      resFatCur,
+      resFatPm,
+      resClientsCur,
+      resClientsPm,
+      resRedesRolling,
+      resGerentes,
+      resAtividade
+    ] = await Promise.all([
+      this.executeSql<{ total_fat: number }>(sqlFatCur),
+      this.executeSql<{ total_fat: number }>(sqlFatPm),
+      this.executeSql<{ rede: string; nome_parceiro: string; manager: string; fat_atual: number }>(sqlClientsCur),
+      this.executeSql<{ nome_parceiro: string; fat_anterior: number }>(sqlClientsPm),
+      this.executeSql<{ rede: string; rolling_fat_3m: number }>(sqlRedesRolling),
+      this.executeSql<{ manager: string; faturamento: number }>(sqlGerentes),
+      this.executeSql<{
+        cliente_id: string;
+        nome_parceiro: string;
+        rede: string | null;
+        manager: string | null;
+        ultima_compra: string | null;
+        dias_sem_comprar: number | null;
+        situacao_comercial: string;
+        valor_faturado_12m: number;
+      }>(sqlAtividade)
+    ]);
+
+    const faturamentoAtual = Number(resFatCur[0]?.total_fat || 0);
+    const faturamentoAnterior = Number(resFatPm[0]?.total_fat || 0);
+    const crescimentoNominal = faturamentoAtual - faturamentoAnterior;
+    const crescimentoPercentual = faturamentoAnterior > 0
+      ? (crescimentoNominal / faturamentoAnterior) * 100
+      : 0;
+
+    // Mapeamento de Faturamento Anterior por Cliente
+    const pmMap = new Map<string, number>();
+    resClientsPm.forEach(r => {
+      pmMap.set(r.nome_parceiro, Number(r.fat_anterior || 0));
+    });
+
+    // Mapeamento de Faturamento Atual por Cliente
+    const curClientMap = new Map<string, { rede: string; manager: string; fat: number }>();
+    resClientsCur.forEach(r => {
+      curClientMap.set(r.nome_parceiro, {
+        rede: r.rede,
+        manager: r.manager,
+        fat: Number(r.fat_atual || 0)
+      });
+    });
+
+    // Contagem de Clientes por Situação Comercial
+    let clientesAtivos = 0;
+    let clientesAtencao = 0;
+    let clientesInativos = 0;
+
+    resAtividade.forEach(a => {
+      const sit = a.situacao_comercial;
+      if (sit === 'Ativo') clientesAtivos += 1;
+      else if (sit === 'Atenção') clientesAtencao += 1;
+      else if (sit === 'Inativo') clientesInativos += 1;
+    });
+
+    const totalClientesCompradores = resClientsCur.length;
+    const ticketMedio = totalClientesCompradores > 0
+      ? faturamentoAtual / totalClientesCompradores
+      : 0;
+
+    // Construção da Saúde da Carteira
+    const saudeCarteira: CockpitComercialData['saudeCarteira'] = resAtividade.map(a => {
+      const curData = curClientMap.get(a.nome_parceiro);
+      const fatAtual = curData ? curData.fat : 0;
+      const fatAnterior = pmMap.get(a.nome_parceiro) || 0;
+
+      let varianciaPercentual = 0;
+      if (fatAnterior > 0) {
+        varianciaPercentual = ((fatAtual - fatAnterior) / fatAnterior) * 100;
+      } else if (fatAtual > 0) {
+        varianciaPercentual = 100;
+      }
+
+      let classificacaoSaude: CockpitComercialData['saudeCarteira'][0]['classificacaoSaude'] = 'Ativo';
+      if (varianciaPercentual <= -20 && (fatAnterior >= 1000 || fatAtual >= 1000)) {
+        classificacaoSaude = 'Em Risco';
+      } else if (varianciaPercentual >= 15 && fatAtual >= 1000) {
+        classificacaoSaude = 'Em Expansão';
+      } else if (a.situacao_comercial === 'Atenção') {
+        classificacaoSaude = 'Atenção';
+      } else if (a.situacao_comercial === 'Inativo' || a.situacao_comercial === 'Sem vendas') {
+        classificacaoSaude = 'Inativo';
+      }
+
+      return {
+        clienteId: a.cliente_id,
+        nomeParceiro: a.nome_parceiro,
+        rede: curData?.rede || a.rede,
+        manager: curData?.manager || a.manager,
+        ultimaCompra: a.ultima_compra,
+        diasSemComprar: a.dias_sem_comprar !== null ? Number(a.dias_sem_comprar) : null,
+        situacaoComercial: a.situacao_comercial,
+        valorFaturadoPeriodo: fatAtual,
+        valorFaturado12m: Number(a.valor_faturado_12m || 0),
+        varianciaPercentual: Number(varianciaPercentual.toFixed(2)),
+        classificacaoSaude,
+      };
+    });
+
+    // Ordenação do Ranking de Redes (Regra Oficial da Seção 15 do AGENTS.md)
+    const redesComRolling = resRedesRolling.map(r => ({
+      rede: r.rede,
+      rollingFat3m: Number(r.rolling_fat_3m || 0)
+    }));
+
+    const totalRollingFat = redesComRolling.reduce((acc, r) => acc + r.rollingFat3m, 0);
+
+    // Separar redes normais e a rede "OUTROS"
+    const redesNormais = redesComRolling.filter(r => r.rede.toUpperCase() !== 'OUTROS');
+    const redeOutros = redesComRolling.find(r => r.rede.toUpperCase() === 'OUTROS');
+
+    // Ordenar redes normais: Rolling FAT 3M desc, desempate alfabético pt-BR
+    redesNormais.sort((a, b) => {
+      if (Math.abs(b.rollingFat3m - a.rollingFat3m) > 0.001) {
+        return b.rollingFat3m - a.rollingFat3m;
+      }
+      return a.rede.localeCompare(b.rede, 'pt-BR');
+    });
+
+    const redesOrdenadasFinal = [...redesNormais];
+    if (redeOutros) {
+      redesOrdenadasFinal.push(redeOutros);
+    }
+
+    const rankingRedes: CockpitComercialData['ranking']['redes'] = redesOrdenadasFinal.map((r, idx) => ({
+      rede: r.rede,
+      rollingFat3m: Number(r.rollingFat3m.toFixed(2)),
+      share: totalRollingFat > 0 ? Number(((r.rollingFat3m / totalRollingFat) * 100).toFixed(2)) : 0,
+      rankingPosition: idx + 1
+    }));
+
+    // Ranking de Clientes (Top 20)
+    const clientesOrdenados = resClientsCur
+      .map(c => ({
+        nomeParceiro: c.nome_parceiro,
+        faturamento: Number(c.fat_atual || 0),
+        share: faturamentoAtual > 0 ? Number(((Number(c.fat_atual || 0) / faturamentoAtual) * 100).toFixed(2)) : 0
+      }))
+      .sort((a, b) => b.faturamento - a.faturamento)
+      .slice(0, 20);
+
+    // Ranking de Gerentes
+    const gerentesOrdenados = resGerentes.map(g => ({
+      manager: g.manager,
+      faturamento: Number(g.faturamento || 0),
+      share: faturamentoAtual > 0 ? Number(((Number(g.faturamento || 0) / faturamentoAtual) * 100).toFixed(2)) : 0
+    }));
+
+    // Motor de Oportunidades Calculadas
+    const oportunidades: CockpitComercialData['oportunidades'] = [];
+
+    // Oportunidade 1: Reativação de Clientes Valiosos (12M >= 10k e Atenção/Inativo)
+    saudeCarteira
+      .filter(c => (c.situacaoComercial === 'Atenção' || c.situacaoComercial === 'Inativo') && c.valorFaturado12m >= 10000)
+      .sort((a, b) => b.valorFaturado12m - a.valorFaturado12m)
+      .slice(0, 10)
+      .forEach(c => {
+        oportunidades.push({
+          tipo: 'REATIVACAO',
+          titulo: `Reativação: ${c.nomeParceiro}`,
+          descricao: `Cliente sem compras há ${c.diasSemComprar ?? 'X'} dias. Histórico faturado de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.valorFaturado12m)} nos últimos 12 meses.`,
+          clienteOuRede: c.nomeParceiro,
+          valorImpactoPotencial: c.valorFaturado12m,
+          nivelPrioridade: c.valorFaturado12m >= 50000 ? 'ALTA' : 'MEDIA'
+        });
+      });
+
+    // Oportunidade 2: Alerta de Queda Crítica (Queda >= 20% e Fat Anterior >= 5k)
+    saudeCarteira
+      .filter(c => c.classificacaoSaude === 'Em Risco' && c.varianciaPercentual <= -20)
+      .sort((a, b) => a.varianciaPercentual - b.varianciaPercentual)
+      .slice(0, 10)
+      .forEach(c => {
+        const fatAnteriorEst = pmMap.get(c.nomeParceiro) || 0;
+        const impactoNominal = fatAnteriorEst - c.valorFaturadoPeriodo;
+        oportunidades.push({
+          tipo: 'QUEDA_CRITICA',
+          titulo: `Risco de Queda: ${c.nomeParceiro}`,
+          descricao: `Queda de ${Math.abs(c.varianciaPercentual).toFixed(1)}% no período em relação ao período anterior (Redução de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(impactoNominal)}).`,
+          clienteOuRede: c.nomeParceiro,
+          valorImpactoPotencial: impactoNominal,
+          nivelPrioridade: impactoNominal >= 20000 ? 'ALTA' : 'MEDIA'
+        });
+      });
+
+    // Oportunidade 3: Expansão Acelerada (Crescimento >= 15% e Fat Periodo >= 5k)
+    saudeCarteira
+      .filter(c => c.classificacaoSaude === 'Em Expansão')
+      .sort((a, b) => b.varianciaPercentual - a.varianciaPercentual)
+      .slice(0, 10)
+      .forEach(c => {
+        oportunidades.push({
+          tipo: 'EXPANSAO',
+          titulo: `Oportunidade de Expansão: ${c.nomeParceiro}`,
+          descricao: `Crescimento de +${c.varianciaPercentual.toFixed(1)}% no período. Faturamento atual atingiu ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(c.valorFaturadoPeriodo)}.`,
+          clienteOuRede: c.nomeParceiro,
+          valorImpactoPotencial: c.valorFaturadoPeriodo,
+          nivelPrioridade: c.valorFaturadoPeriodo >= 30000 ? 'ALTA' : 'MEDIA'
+        });
+      });
+
+    return {
+      metrics: {
+        faturamentoAtual: Number(faturamentoAtual.toFixed(2)),
+        faturamentoAnterior: Number(faturamentoAnterior.toFixed(2)),
+        crescimentoNominal: Number(crescimentoNominal.toFixed(2)),
+        crescimentoPercentual: Number(crescimentoPercentual.toFixed(2)),
+        clientesAtivos,
+        clientesAtencao,
+        clientesInativos,
+        ticketMedio: Number(ticketMedio.toFixed(2)),
+      },
+      saudeCarteira,
+      ranking: {
+        redes: rankingRedes,
+        clientes: clientesOrdenados,
+        gerentes: gerentesOrdenados,
+      },
+      oportunidades,
+    };
+  }
+
+  /**
+   * 16. Sistema Inovações — DRE Comercial (Fase 2: Backend Read-Only)
+   * 
+   * Consolida a Demonstração do Resultado Comercial com apuração de MACO
+   * (Margem de Contribuição) por diferentes dimensões comerciais sem alterar nenhuma tabela.
+   * 
+   * Fórmula Oficial de MACO:
+   * MACO = Faturamento Líquido - CPV - Impostos - Frete (3% fixo) - Investimento Comercial
+   * 
+   * @see Seção 56 do AGENTS.md
+   */
+  static async getDreComercial(filters: AnalyticsFilters): Promise<DreComercialData> {
+    let mesStart = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : null);
+    let mesEnd = filters.endMonth || (filters.endDate ? filters.endDate.substring(0, 7) : null);
+    if (!mesStart) {
+      const now = new Date();
+      mesStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (!mesEnd) mesEnd = mesStart;
+
+    const dtStart = `${mesStart}-01`;
+    const [y, m] = mesEnd.split('-').map(Number);
+    const dtNext = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
+
+    // 1. Apuração Sintética de Faturamento, Impostos e Custo da View Oficial
+    let sqlSintetica = `
+      SELECT 
+        COALESCE(SUM(COALESCE(vlr_total_liq, 0) + COALESCE(vlr_desconto, 0)), 0) as fat_bruto,
+        COALESCE(SUM(COALESCE(vlr_desconto, 0)), 0) as descontos,
+        COALESCE(SUM(COALESCE(vlr_total_liq, 0)), 0) as fat_liquido,
+        COALESCE(SUM(COALESCE(custo_icms, 0) + CASE WHEN COALESCE(vlr_total_st, 0) >= ABS(COALESCE(vlr_total_liq, 0)) THEN 0 ELSE COALESCE(vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(custo_total, 0)), 0) as cpv
+      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)}
+      WHERE dt_faturamento >= ${escapeSqlValue(dtStart)} AND dt_faturamento < ${escapeSqlValue(dtNext)}
+    `;
+    if (filters.matriz && filters.matriz !== 'all') {
+      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      sqlSintetica += ` AND cod_parceiro IN (SELECT CAST(id AS TEXT) FROM public.cm_clientes WHERE matriz IN (${redesEscaped}))`;
+    }
+
+    // 2. Apuração dos Investimentos Comerciais Aprovados (cm_acoes_investimento)
+    let sqlInvestimentos = `
+      SELECT COALESCE(SUM(COALESCE(valor_investimento, 0)), 0) as total_investimento
+      FROM public.cm_acoes_investimento
+      WHERE COALESCE(verba_aprovada, true) = true
+        AND mes_referencia >= ${escapeSqlValue(mesStart)}
+        AND mes_referencia <= ${escapeSqlValue(mesEnd)}
+    `;
+    if (filters.matriz && filters.matriz !== 'all') {
+      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      sqlInvestimentos += ` AND codigo_matriz IN (${redesEscaped})`;
+    }
+
+    const [rowsSintetica, rowsInvest] = await Promise.all([
+      this.executeSql<{ fat_bruto: number; descontos: number; fat_liquido: number; impostos: number; cpv: number }>(sqlSintetica),
+      this.executeSql<{ total_investimento: number }>(sqlInvestimentos),
+    ]);
+
+    const rSint = rowsSintetica[0] || { fat_bruto: 0, descontos: 0, fat_liquido: 0, impostos: 0, cpv: 0 };
+    const rInv = rowsInvest[0] || { total_investimento: 0 };
+
+    const faturamentoBruto = Number(rSint.fat_bruto) || 0;
+    const descontos = Number(rSint.descontos) || 0;
+    const faturamentoLiquido = Number(rSint.fat_liquido) || 0;
+    const impostos = Number(rSint.impostos) || 0;
+    const cpv = Number(rSint.cpv) || 0;
+    const margemBruta = faturamentoLiquido - cpv;
+    const frete = faturamentoLiquido * DRE_FRETE_PERCENTUAL;
+    const investimentoComercial = Number(rInv.total_investimento) || 0;
+    const macoTotal = faturamentoLiquido - cpv - impostos - frete - investimentoComercial;
+    const margemMacoMedia = faturamentoLiquido > 0 ? (macoTotal / faturamentoLiquido) * 100 : 0;
+
+    // 3. Montagem da DRE Sintética em Cascata
+    const sintetica: DreComercialLinha[] = [
+      {
+        label: "(+) Faturamento Bruto Comercial",
+        valor: Number(faturamentoBruto.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((faturamentoBruto / faturamentoLiquido) * 100).toFixed(2)) : 100,
+        tipo: "RECEITA",
+      },
+      {
+        label: "(-) Descontos Comerciais",
+        valor: Number(descontos.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((descontos / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "DEDUCAO",
+      },
+      {
+        label: "(=) RECEITA COMERCIAL LÍQUIDA",
+        valor: Number(faturamentoLiquido.toFixed(2)),
+        percentual: 100,
+        tipo: "SUBTOTAL",
+      },
+      {
+        label: "(-) Deduções Fiscais & Impostos",
+        valor: Number(impostos.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((impostos / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "DEDUCAO",
+      },
+      {
+        label: "(-) Custo dos Produtos Vendidos (CPV)",
+        valor: Number(cpv.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((cpv / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "DEDUCAO",
+      },
+      {
+        label: "(=) MARGEM BRUTA",
+        valor: Number(margemBruta.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((margemBruta / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "SUBTOTAL",
+      },
+      {
+        label: "(-) Frete & Logística (3,00% Fixo)",
+        valor: Number(frete.toFixed(2)),
+        percentual: 3,
+        tipo: "DEDUCAO",
+      },
+      {
+        label: "(-) Investimentos Comerciais / Trade",
+        valor: Number(investimentoComercial.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((investimentoComercial / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "DEDUCAO",
+      },
+      {
+        label: "(=) MARGEM DE CONTRIBUIÇÃO (MACO)",
+        valor: Number(macoTotal.toFixed(2)),
+        percentual: Number(margemMacoMedia.toFixed(2)),
+        tipo: "RESULTADO",
+      },
+    ];
+
+    // 4. Apuração Dimensional por Cliente (Top 50)
+    let sqlDimensional = `
+      SELECT 
+        COALESCE(nome_parceiro, 'Outros') as nome,
+        COALESCE(SUM(COALESCE(vlr_total_liq, 0) + COALESCE(vlr_desconto, 0)), 0) as fat_bruto,
+        COALESCE(SUM(COALESCE(vlr_total_liq, 0)), 0) as fat_liquido,
+        COALESCE(SUM(COALESCE(custo_icms, 0) + CASE WHEN COALESCE(vlr_total_st, 0) >= ABS(COALESCE(vlr_total_liq, 0)) THEN 0 ELSE COALESCE(vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(custo_total, 0)), 0) as cpv
+      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)}
+      WHERE dt_faturamento >= ${escapeSqlValue(dtStart)} AND dt_faturamento < ${escapeSqlValue(dtNext)}
+    `;
+    if (filters.matriz && filters.matriz !== 'all') {
+      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      sqlDimensional += ` AND cod_parceiro IN (SELECT CAST(id AS TEXT) FROM public.cm_clientes WHERE matriz IN (${redesEscaped}))`;
+    }
+    sqlDimensional += ` GROUP BY nome_parceiro ORDER BY fat_liquido DESC LIMIT 50`;
+
+    const rowsDim = await this.executeSql<{ nome: string; fat_bruto: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
+
+    const taxaInvestimentoGlobal = faturamentoLiquido > 0 ? investimentoComercial / faturamentoLiquido : 0;
+
+    const dimensionais: DreComercialDimensional[] = rowsDim.map((r, idx) => {
+      const fLiq = Number(r.fat_liquido) || 0;
+      const fBrut = Number(r.fat_bruto) || 0;
+      const imp = Number(r.impostos) || 0;
+      const c = Number(r.cpv) || 0;
+      const mBruta = fLiq - c;
+      const fr = fLiq * DRE_FRETE_PERCENTUAL;
+      const invCom = fLiq * taxaInvestimentoGlobal;
+      const maco = fLiq - c - imp - fr - invCom;
+      const pctMaco = fLiq > 0 ? (maco / fLiq) * 100 : 0;
+
+      return {
+        id: `dim-${idx}-${r.nome}`,
+        nome: r.nome,
+        faturamentoBruto: Number(fBrut.toFixed(2)),
+        faturamentoLiquido: Number(fLiq.toFixed(2)),
+        impostos: Number(imp.toFixed(2)),
+        cpv: Number(c.toFixed(2)),
+        margemBruta: Number(mBruta.toFixed(2)),
+        frete: Number(fr.toFixed(2)),
+        investimentoComercial: Number(invCom.toFixed(2)),
+        maco: Number(maco.toFixed(2)),
+        margemMacoPercentual: Number(pctMaco.toFixed(2)),
+      };
+    });
+
+    return {
+      sintetica,
+      totais: {
+        faturamentoBruto: Number(faturamentoBruto.toFixed(2)),
+        faturamentoLiquido: Number(faturamentoLiquido.toFixed(2)),
+        impostos: Number(impostos.toFixed(2)),
+        cpv: Number(cpv.toFixed(2)),
+        margemBruta: Number(margemBruta.toFixed(2)),
+        frete: Number(frete.toFixed(2)),
+        investimentoComercial: Number(investimentoComercial.toFixed(2)),
+        macoTotal: Number(macoTotal.toFixed(2)),
+        margemMacoMedia: Number(margemMacoMedia.toFixed(2)),
+      },
+      dimensionais,
+    };
+  }
 }
+
+export const DRE_FRETE_PERCENTUAL = 0.03; // 3.00% fixo (Seção 56 do AGENTS.md)
+
+export interface DreComercialLinha {
+  label: string;
+  valor: number;
+  percentual: number;
+  tipo: "RECEITA" | "DEDUCAO" | "SUBTOTAL" | "RESULTADO";
+}
+
+export interface DreComercialDimensional {
+  id: string;
+  nome: string;
+  faturamentoBruto: number;
+  faturamentoLiquido: number;
+  impostos: number;
+  cpv: number;
+  margemBruta: number;
+  frete: number;
+  investimentoComercial: number;
+  maco: number;
+  margemMacoPercentual: number;
+}
+
+export interface DreComercialData {
+  sintetica: DreComercialLinha[];
+  totais: {
+    faturamentoBruto: number;
+    faturamentoLiquido: number;
+    impostos: number;
+    cpv: number;
+    margemBruta: number;
+    frete: number;
+    investimentoComercial: number;
+    macoTotal: number;
+    margemMacoMedia: number;
+  };
+  dimensionais: DreComercialDimensional[];
+}
+
+export interface CockpitComercialData {
+  metrics: {
+    faturamentoAtual: number;
+    faturamentoAnterior: number;
+    crescimentoNominal: number;
+    crescimentoPercentual: number;
+    clientesAtivos: number;
+    clientesAtencao: number;
+    clientesInativos: number;
+    ticketMedio: number;
+  };
+  saudeCarteira: Array<{
+    clienteId: string;
+    nomeParceiro: string;
+    rede: string | null;
+    manager: string | null;
+    ultimaCompra: string | null;
+    diasSemComprar: number | null;
+    situacaoComercial: string;
+    valorFaturadoPeriodo: number;
+    valorFaturado12m: number;
+    varianciaPercentual: number;
+    classificacaoSaude: 'Ativo' | 'Atenção' | 'Inativo' | 'Em Risco' | 'Em Expansão';
+  }>;
+  ranking: {
+    redes: Array<{ rede: string; rollingFat3m: number; share: number; rankingPosition: number }>;
+    clientes: Array<{ nomeParceiro: string; faturamento: number; share: number }>;
+    gerentes: Array<{ manager: string; faturamento: number; share: number }>;
+  };
+  oportunidades: Array<{
+    tipo: 'REATIVACAO' | 'QUEDA_CRITICA' | 'BAIXO_MIX' | 'EXPANSAO';
+    titulo: string;
+    descricao: string;
+    clienteOuRede: string;
+    valorImpactoPotencial: number;
+    nivelPrioridade: 'ALTA' | 'MEDIA' | 'BAIXA';
+  }>;
+}
+
+

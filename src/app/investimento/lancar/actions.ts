@@ -10,6 +10,7 @@ import { ActionResult, ActionErrorCode, successResult, errorResult, handleAction
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
+import { resolveNotificationRecipients } from "@/lib/investimento/notification-service";
 
 // --- Divergência Operacional de Calendário ---
 import { MotivoDivergencia } from "../divergencia-constants";
@@ -885,10 +886,13 @@ export async function enviarParaTrade(id: string) {
         tls: { rejectUnauthorized: false }
       });
 
-      const recipientsSet = new Set<string>();
-      recipientsSet.add("trade@coffeemais.com");
-      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
-      const recipients = Array.from(recipientsSet).join(", ");
+      const resolvedRecipients = await resolveNotificationRecipients({
+        evento: "ENVIAR_TRADE",
+        faseAtual: 1,
+        faseDestino: 2,
+        gerenteEmail: managerEmail
+      });
+      const recipients = resolvedRecipients.recipientsString;
 
       const formatCurrency = (val: number | null | undefined) => {
         if (val === null || val === undefined) return "R$ 0,00";
@@ -1117,10 +1121,13 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
         tls: { rejectUnauthorized: false }
       });
 
-      const recipientsSet = new Set<string>();
-      recipientsSet.add("trade@coffeemais.com");
-      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
-      const recipients = Array.from(recipientsSet).join(", ");
+      const resolvedRecipients = await resolveNotificationRecipients({
+        evento: "REPROVAR_TRADE",
+        faseAtual: 2,
+        faseDestino: 1,
+        gerenteEmail: managerEmail
+      });
+      const recipients = resolvedRecipients.recipientsString;
 
       const subject = `⚠️ AÇÃO REPROVADA PELO TRADE — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
 
@@ -1312,11 +1319,13 @@ export async function validarTrade(id: string, checklist: {
         tls: { rejectUnauthorized: false }
       });
 
-      const recipientsSet = new Set<string>();
-      recipientsSet.add("trade@coffeemais.com");
-      recipientsSet.add("financeiro@coffeemais.com");
-      if (managerEmail && managerEmail.includes("@")) recipientsSet.add(managerEmail);
-      const recipients = Array.from(recipientsSet).join(", ");
+      const resolvedRecipients = await resolveNotificationRecipients({
+        evento: "VALIDAR_TRADE",
+        faseAtual: 2,
+        faseDestino: 3,
+        gerenteEmail: managerEmail
+      });
+      const recipients = resolvedRecipients.recipientsString;
 
       const formatCurrency = (val: number | null | undefined) => {
         if (val === null || val === undefined) return "R$ 0,00";
@@ -1535,15 +1544,34 @@ async function enviarEmailNotificacaoApuracao(
       }
     });
 
-    // 5. Destinatários
-    const recipientsSet = new Set<string>();
-    recipientsSet.add("financeiro@coffeemais.com");
-    recipientsSet.add("joao.monteiro@coffeemais.com");
-    recipientsSet.add("cristiano.santos@coffeemais.com");
-    if (managerEmail && managerEmail.includes("@")) {
-      recipientsSet.add(managerEmail);
+    // 5. Destinatários via Serviço Central por Responsabilidade Funcional
+    const resolvedRecipients = await resolveNotificationRecipients({
+      evento: "CONCLUIR_APURACAO",
+      faseAtual: 3,
+      faseDestino: 4,
+      gerenteEmail: managerEmail
+    });
+    const recipients = resolvedRecipients.recipientsString;
+
+    // Registrar log de auditoria oficial da comunicação com o Financeiro (Fase 3 -> 4)
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      await supabase.from("cm_audit_logs").insert({
+        table_name: "cm_acoes_investimento",
+        action: "EMAIL_NOTIFY_FINANCEIRO",
+        user_id: currentUser?.id || null,
+        new_data: {
+          acao_id: acaoId,
+          fase_anterior: 3,
+          fase_destino: 4,
+          destinatarios: recipients,
+          motivo_envio: "Transição da Fase 3 (Apuração GRV) para Fase 4 (Conferência Financeira)",
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (auditErr) {
+      console.error("[Email Apuração] Falha ao registrar log de auditoria do envio ao Financeiro:", auditErr);
     }
-    const recipients = Array.from(recipientsSet).join(", ");
 
     // 6. Formatações auxiliares
     const formatCurrency = (val: number | null | undefined) => {
@@ -2077,13 +2105,14 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             }
           });
 
-          // Configurar destinatários
-          const recipientsSet = new Set<string>();
-          recipientsSet.add("trade@coffeemais.com");
-          if (managerEmail && managerEmail.includes("@")) {
-            recipientsSet.add(managerEmail);
-          }
-          const recipients = Array.from(recipientsSet).join(", ");
+          // Configurar destinatários via serviço por responsabilidade funcional
+          const resolvedRecipients = await resolveNotificationRecipients({
+            evento: "DEVOLVER_FINANCEIRO",
+            faseAtual: 4,
+            faseDestino: 3,
+            gerenteEmail: managerEmail
+          });
+          const recipients = resolvedRecipients.recipientsString;
 
           const formatCurrency = (val: number | null | undefined) => {
             if (val === null || val === undefined) return "R$ 0,00";
@@ -2215,13 +2244,14 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             }
           });
 
-          // Configurar destinatários
-          const recipientsSet = new Set<string>();
-          recipientsSet.add("trade@coffeemais.com");
-          if (managerEmail && managerEmail.includes("@")) {
-            recipientsSet.add(managerEmail);
-          }
-          const recipients = Array.from(recipientsSet).join(", ");
+          // Configurar destinatários via serviço por responsabilidade funcional
+          const resolvedRecipients = await resolveNotificationRecipients({
+            evento: "APROVAR_FINANCEIRO",
+            faseAtual: 4,
+            faseDestino: 5,
+            gerenteEmail: managerEmail
+          });
+          const recipients = resolvedRecipients.recipientsString;
 
           const formatCurrency = (val: number | null | undefined) => {
             if (val === null || val === undefined) return "R$ 0,00";
@@ -2390,13 +2420,14 @@ export async function confirmarPagamento(id: string, formData: FormData) {
           }
         });
 
-        // Configurar destinatários
-        const recipientsSet = new Set<string>();
-        recipientsSet.add("trade@coffeemais.com");
-        if (managerEmail && managerEmail.includes("@")) {
-          recipientsSet.add(managerEmail);
-        }
-        const recipients = Array.from(recipientsSet).join(", ");
+        // Configurar destinatários via serviço por responsabilidade funcional
+        const resolvedRecipients = await resolveNotificationRecipients({
+          evento: "PAGAMENTO_CONFIRMADO",
+          faseAtual: 5,
+          faseDestino: 6,
+          gerenteEmail: managerEmail
+        });
+        const recipients = resolvedRecipients.recipientsString;
 
         const formatCurrency = (val: number | null | undefined) => {
           if (val === null || val === undefined) return "R$ 0,00";
@@ -3068,14 +3099,13 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
           }
         });
 
-        // Configurar destinatários
-        const recipientsSet = new Set<string>();
-        recipientsSet.add("trade@coffeemais.com");
-        recipientsSet.add("cristiano.santos@coffeemais.com");
-        if (managerEmail && managerEmail.includes("@")) {
-          recipientsSet.add(managerEmail);
-        }
-        const recipients = Array.from(recipientsSet).join(", ");
+        // Configurar destinatários via serviço por responsabilidade funcional
+        const resolvedRecipients = await resolveNotificationRecipients({
+          evento: "ACAO_NAO_OCORREU",
+          faseAtual: 1,
+          gerenteEmail: managerEmail
+        });
+        const recipients = resolvedRecipients.recipientsString;
 
         const formatCurrency = (val: number | null | undefined) => {
           if (val === null || val === undefined) return "R$ 0,00";

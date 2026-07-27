@@ -320,8 +320,8 @@ export default function CartaAnuenciaPage() {
                   className="h-9 px-3 rounded-xl border border-input bg-background text-xs text-foreground focus:ring-2 focus:ring-primary"
                 >
                   <option value="TODAS">Todas as Competências</option>
-                  {competencias.map((c) => (
-                    <option key={c.id} value={c.competencia}>
+                  {competencias.map((c, idx) => (
+                    <option key={`${c.id}-${idx}`} value={c.competencia}>
                       {c.competencia}
                     </option>
                   ))}
@@ -334,8 +334,8 @@ export default function CartaAnuenciaPage() {
                   className="h-9 px-3 rounded-xl border border-input bg-background text-xs text-foreground focus:ring-2 focus:ring-primary"
                 >
                   <option value="TODOS">Todos os Gerentes</option>
-                  {gerentesList.map((g) => (
-                    <option key={g} value={g}>
+                  {gerentesList.map((g, idx) => (
+                    <option key={`${g}-${idx}`} value={g}>
                       {g}
                     </option>
                   ))}
@@ -348,8 +348,8 @@ export default function CartaAnuenciaPage() {
                   className="h-9 px-3 rounded-xl border border-input bg-background text-xs text-foreground focus:ring-2 focus:ring-primary"
                 >
                   <option value="TODAS">Todas as UFs</option>
-                  {ufsList.map((u) => (
-                    <option key={u} value={u}>
+                  {ufsList.map((u, idx) => (
+                    <option key={`${u}-${idx}`} value={u}>
                       {u}
                     </option>
                   ))}
@@ -394,14 +394,14 @@ export default function CartaAnuenciaPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {cartas.map((item) => {
+                      {cartas.map((item, idx) => {
                         const dataEmissaoFmt = new Date(item.data_emissao).toLocaleDateString("pt-BR");
                         const dataValidadeFmt = item.valida_ate
                           ? new Date(item.valida_ate).toLocaleDateString("pt-BR")
                           : "Sem limite";
 
                         return (
-                          <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                          <tr key={`${item.id}-${idx}`} className="hover:bg-muted/30 transition-colors">
                             {/* Número Oficial & Versão */}
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">

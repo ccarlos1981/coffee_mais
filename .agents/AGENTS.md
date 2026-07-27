@@ -1858,3 +1858,189 @@ Esta diretriz garante:
 - preservação da governança dos indicadores comerciais;
 - eliminação de ambiguidades entre percentual de atingimento e desvio relativo.
 
+---
+
+## 52. Regra Permanente — Notificações por Responsabilidade Funcional
+
+Todo novo fluxo de notificações do Módulo de Investimentos deve utilizar o serviço centralizado de notificações (`notification-service.ts`), proibindo e-mails institucionais hardcoded dentro de Server Actions.
+
+A resolução dos destinatários deve ocorrer por responsabilidade funcional, utilizando as fontes oficiais do sistema.
+
+### Exceção:
+Regras específicas de negócio (como gatilhos por fase) permanecem documentadas no módulo responsável.
+
+---
+
+## 53. Regra Permanente — React Keys e Renderização de Listas
+
+### Governança de Identidade de Componentes React
+
+Toda nova implementação de listas, tabelas, selects ou componentes renderizados via `.map()` no ecossistema Coffee++ deve garantir `key` com unicidade determinística.
+
+### Regras Obrigatórias
+
+- É proibido utilizar como `key` campos comerciais sem garantia de unicidade:
+  - código de rede
+  - código matriz
+  - nome da rede
+  - faturamento
+  - valores financeiros
+  - descrições
+
+- Prioridade de identificação:
+  1. UUID ou ID físico único do banco.
+  2. Chave composta com atributos estáveis.
+  3. Índice (`index`) somente como complemento de segurança quando não existir identificador único confiável.
+
+### Padrões Aceitos
+
+Exemplos:
+
+```tsx
+key={item.id}
+```
+
+```tsx
+key={`${item.codigo_matriz}-${item.nome}-${index}`}
+```
+
+### Registro de Correção — React Keys Duplicadas (Investimentos)
+
+Foi corrigida uma ocorrência de duplicidade de keys React no Módulo Investimentos.
+
+- **Causa raiz**: Uso de campos comerciais não únicos (`codigo_matriz`) como identificador de renderização em componentes de lista.
+- **Impacto**: Componentes React poderiam sofrer duplicação, omissão de elementos ou comportamento inconsistente durante re-renderizações.
+- **Correção aplicada**:
+  - Substituição de keys frágeis por identificadores determinísticos.
+  - Uso de UUID quando disponível.
+  - Uso de composição estável (`codigo + nome + índice`) quando necessário.
+- **Componentes revisados**:
+  - Carta de Anuência
+  - Dashboard Investimentos
+  - Planejamento
+  - Lançamento
+  - Invest Cliente
+
+Status: `HARDENED`
+
+---
+
+## 54. Sistema Inovações: Camada de Inteligência Comercial
+
+### Objetivo
+
+O Sistema Inovações é uma nova camada analítica do Coffee++ destinada a transformar dados operacionais homologados em inteligência para tomada de decisão comercial.
+
+O módulo deve atuar como uma camada independente de análise, sem substituir ou alterar módulos operacionais existentes.
+
+---
+
+### Princípios Obrigatórios
+
+#### 1. Não regressão
+
+O desenvolvimento do Sistema Inovações NÃO deve alterar:
+
+- telas existentes;
+- fluxos operacionais atuais;
+- regras de negócio já homologadas;
+- indicadores oficiais existentes;
+- tabelas oficiais sem necessidade técnica comprovada.
+
+Toda evolução deve ocorrer preferencialmente em novos componentes, novas páginas ou novas estruturas isoladas.
+
+---
+
+#### 2. Fonte Oficial dos Dados
+
+O Sistema Inovações deve consumir somente dados homologados existentes no ecossistema Coffee++.
+
+Fontes prioritárias:
+
+- `cm_faturamento`;
+- cadastro único de clientes;
+- redes;
+- gerentes;
+- indicadores oficiais existentes;
+- módulos homologados.
+
+Não criar duplicidade de dados operacionais.
+
+---
+
+#### 3. Estrutura Inicial
+
+O Sistema Inovações será organizado em módulos independentes:
+
+##### Fase 1 — Cockpit Comercial
+
+Objetivo:
+Criar uma visão executiva da saúde comercial.
+
+Indicadores iniciais:
+- faturamento;
+- crescimento versus períodos anteriores;
+- clientes ativos;
+- clientes sem compra;
+- clientes em risco;
+- clientes crescendo;
+- ranking de redes;
+- curva ABC;
+- oportunidades comerciais.
+
+---
+
+##### Fase 2 — DRE Comercial
+
+Visão de rentabilidade comercial por:
+- cliente;
+- rede;
+- gerente;
+- região;
+- canal;
+- SKU.
+
+Utilizando dados financeiros homologados disponíveis.
+
+---
+
+##### Fase 3 — CRM Comercial
+
+Camada de gestão comercial integrada contendo:
+- visitas;
+- oportunidades;
+- negociações;
+- planos de ação;
+- follow-ups;
+- metas.
+
+---
+
+##### Fase 4 — Inteligência Artificial Comercial
+
+Após maturidade dos dados:
+- previsão de queda de faturamento;
+- identificação de riscos;
+- sugestão de visitas;
+- recomendação de mix;
+- previsão de atingimento;
+- geração automática de resumos comerciais.
+
+---
+
+### Regra de Implementação
+
+Antes de qualquer alteração:
+
+1. apresentar plano técnico;
+2. identificar impacto;
+3. garantir isolamento do módulo;
+4. validar que nenhuma funcionalidade existente foi modificada.
+
+Status inicial:
+`PLANEJAMENTO OFICIAL` — Não iniciado desenvolvimento.
+
+
+
+
+
