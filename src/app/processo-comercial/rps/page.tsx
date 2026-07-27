@@ -944,9 +944,9 @@ export default function RpsPage() {
                       <tr>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", textAlign: "left", width: 110 }}>REGIONAL</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 50 }}>KPI</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">ANO A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }}>MÊS A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85, boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="bg-amber-500/15 text-amber-300 font-extrabold border-x-2 border-amber-400 shadow-xs">DESAFIO</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider border-r-0">ANO A</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-r-0">MÊS A</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="bg-amber-500/15 text-amber-300 font-extrabold border-l-2 border-r-2 border-amber-500/80 shadow-xs">DESAFIO</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-l-0">REAL</th>
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
@@ -959,8 +959,8 @@ export default function RpsPage() {
                           return (
                             <th
                               key={m}
-                              style={{ minWidth: 85, boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }}
-                              className={`transition-colors ${isCurrent ? "bg-amber-500/20 text-amber-300 font-black border-x-2 border-amber-400 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
+                              style={{ minWidth: 85 }}
+                              className={`transition-colors ${isCurrent ? "bg-amber-500/20 text-amber-300 font-black border-l-2 border-r-2 border-amber-500/80 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
                             >
                               <div className="flex flex-col items-center justify-center gap-0.5 py-0.5">
                                 <span>{formatDateLabel(m)}</span>
@@ -983,6 +983,7 @@ export default function RpsPage() {
                     {/* Linhas para cada Gerente comercial */}
                     {managers.map((row, mIdx) => {
                       const isExpanded = !!expandedManagers[row.manager];
+                      const totalRowsCount = 3 + (isExpanded ? row.clients.length : 0);
 
                       // KPIs Padrão
                       const volDisp = calcDispersionPct(row.kpis.VOL.real, row.kpis.VOL.prev_month_projection || 0);
@@ -999,11 +1000,11 @@ export default function RpsPage() {
                       const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
 
                       return (
-                        <tbody key={row.manager} className="border-b-4 border-border/90 last:border-b-0">
+                        <tbody key={row.manager} className="group/manager">
                           
-                          {/* LINHA 1: VOL (Separador superior evidente por Gerente) */}
-                          <tr className="bg-background-card/60 hover:bg-background-card transition-colors border-t-2 border-accent-gold/60">
-                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3.5 bg-background-elevated/50 border-r-2 border-border/80 shadow-xs">
+                          {/* LINHA 1: VOL (Topo do Bloco do Gerente com Moldura Dourada) */}
+                          <tr className="bg-background-card/70 hover:bg-background-card transition-colors border-t-2 border-accent-gold/70">
+                            <td rowSpan={totalRowsCount} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3.5 bg-background-elevated/70 border-l-2 border-t-2 border-b-2 border-accent-gold/70 shadow-sm">
                               <div className="flex flex-col gap-1.5">
                                 <span className="text-sm font-extrabold text-foreground">{getManagerDisplayName(row.manager)}</span>
                                 <div className="flex items-center gap-2">
@@ -1036,10 +1037,10 @@ export default function RpsPage() {
                             </td>
                             <td className="font-bold text-foreground py-2.5">VOL</td>
                             <td className="col-divider text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
-                            <td className="text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
+                            <td className="text-foreground-muted font-mono py-2.5 border-r-0">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
 
-                            {/* Célula DESAFIO VOL (Bloco Moldura 2px com Inset Shadow) */}
-                            <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-400 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO VOL (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1055,13 +1056,13 @@ export default function RpsPage() {
 
                             <td className="font-mono font-bold text-foreground py-2.5 border-l-0">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
 
-                            {/* Projeções Semanais VOL (Com destaque da Semana Corrente) */}
+                            {/* Projeções Semanais VOL (Com destaque da Semana Corrente Simétrico) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
                               return (
-                                <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-400" : ""}`}>
+                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1082,17 +1083,17 @@ export default function RpsPage() {
                             <td className="font-mono py-2.5 border-l-0" style={getPctCellStyle("DISPERSAO", volDisp, row.kpis.VOL.prev_month_projection || 0)}>{formatPercent(volDisp)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", volDesafio, row.kpis.VOL.desafio)}>{formatPercent(volDesafio)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("AA", volAA, row.kpis.VOL.ano_a)}>{formatPercent(volAA)}</td>
-                            <td className="font-mono py-2.5" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
+                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
                           </tr>
 
-                          {/* LINHA 2: FAT (Sempre inteiros) */}
+                          {/* LINHA 2: FAT (Meio do Bloco do Gerente) */}
                           <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
-                            <td className="font-bold text-foreground">FAT</td>
+                            <td className="font-bold text-foreground py-2.5">FAT</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
-                            <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
+                            <td className="text-foreground-muted font-mono border-r-0">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
-                            {/* Célula DESAFIO FAT (Bloco Moldura 2px com Inset Shadow) */}
-                            <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-400 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO FAT (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1108,13 +1109,13 @@ export default function RpsPage() {
 
                             <td className="font-mono font-bold text-foreground py-2.5 border-l-0">{formatCurrency(row.kpis.FAT.real / 1000, 0)}</td>
 
-                            {/* Projeções Semanais FAT (Com destaque da Semana Corrente) */}
+                            {/* Projeções Semanais FAT */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
-                                <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-400" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="1"
@@ -1133,19 +1134,19 @@ export default function RpsPage() {
                             })}
 
                             <td className="font-mono py-2.5 border-l-0" style={getPctCellStyle("DISPERSAO", fatDisp, row.kpis.FAT.prev_month_projection || 0)}>{formatPercent(fatDisp)}</td>
-                            <td className="font-mono" style={getPctCellStyle("DESAFIO", fatDesafio, row.kpis.FAT.desafio)}>{formatPercent(fatDesafio)}</td>
-                            <td className="font-mono" style={getPctCellStyle("AA", fatAA, row.kpis.FAT.ano_a)}>{formatPercent(fatAA)}</td>
-                            <td className="font-mono" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", fatDesafio, row.kpis.FAT.desafio)}>{formatPercent(fatDesafio)}</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("AA", fatAA, row.kpis.FAT.ano_a)}>{formatPercent(fatAA)}</td>
+                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
                           </tr>
 
-                          {/* LINHA 3: INVEST (Sempre 1 casa decimal) */}
-                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
-                            <td className="font-bold text-foreground">INVEST</td>
+                          {/* LINHA 3: INVEST */}
+                          <tr className={`bg-background-card/50 hover:bg-background-card transition-colors ${!isExpanded ? "border-b-2 border-accent-gold/70" : ""}`}>
+                            <td className="font-bold text-foreground py-2.5">INVEST</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
-                            <td className="text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.mes_a)}</td>
+                            <td className="text-foreground-muted font-mono border-r-0">{formatPercent(row.kpis.INVEST.mes_a)}</td>
 
-                            {/* Célula DESAFIO INVEST (Bloco Moldura 2px com Inset Shadow) */}
-                            <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono font-bold bg-amber-500/10 border-x-2 border-amber-400 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO INVEST (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1161,13 +1162,13 @@ export default function RpsPage() {
 
                             <td className="font-mono font-bold text-foreground py-2.5 border-l-0">{formatPercent(row.kpis.INVEST.real)}</td>
 
-                            {/* Projeções Semanais INVEST (Com destaque da Semana Corrente) */}
+                            {/* Projeções Semanais INVEST */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
                               return (
-                                <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-400" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <input
                                       type="number"
@@ -1189,64 +1190,27 @@ export default function RpsPage() {
                             })}
 
                             <td className="font-mono py-2.5 border-l-0" style={getPctCellStyle("DISPERSAO", investDisp, row.kpis.INVEST.prev_month_projection || 0)}>{formatPercent(investDisp)}</td>
-                            <td className="font-mono" style={getPctCellStyle("INVEST", getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio)}>{formatPercent(investDesafio)}</td>
-                            <td className="font-mono text-foreground-muted">-</td>
-                            <td className="font-mono text-foreground-muted">-</td>
+                            <td className="font-mono py-2.5" style={getPctCellStyle("INVEST", getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio)}>{formatPercent(investDesafio)}</td>
+                            <td className="font-mono py-2.5 text-foreground-muted">-</td>
+                            <td className="font-mono py-2.5 text-foreground-muted border-r-2 border-accent-gold/70">-</td>
                           </tr>
 
-                          {/* LINHAS DOS CLIENTES SE EXPANDIDO (FAT sempre sem casas decimais) */}
+                          {/* LINHAS DOS CLIENTES SE EXPANDIDO */}
                           {isExpanded && row.clients.map((cli, cIdx) => {
                             const cliAA = calcGrowthPct(cli.real, cli.ano_a);
                             const cliMA = calcGrowthPct(cli.real, cli.mes_a);
                             const cliMetaPct = calcRatioPct(cli.real, cli.meta);
                             const cliDisp = calcDispersionPct(cli.real, cli.prev_month_projection || 0);
+                            const isLastClientRow = cIdx === row.clients.length - 1;
 
                             return (
-                              <tr key={cli.client} className="bg-background-subtle/30 hover:bg-background-subtle transition-colors">
-                                <td className="font-semibold text-foreground text-left pl-6 pr-2 py-1.5 border-r border-border/40">
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className="truncate text-xs font-sans font-bold">{cli.client}</span>
+                              <tr key={cli.client} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
+                                <td className="text-foreground-secondary text-[11px] font-bold py-1.5">FAT</td>
+                                <td className="col-divider text-foreground-muted font-mono text-xs py-1.5">{formatCurrency(cli.ano_a / 1000, 0)}</td>
+                                <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
-                                    {/* Botões de Gestão Dinâmica de Carteira: Reordenação (▲/▼) e Exclusão (-) (Admin Only) */}
-                                    {isAdmin && cli.client !== "OUTROS" && (
-                                      <div className="flex items-center gap-0.5 shrink-0 font-mono">
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveNetworkUp(mIdx, cIdx)}
-                                          disabled={cIdx === 0}
-                                          title="Mover Posição para Cima"
-                                          className="w-4 h-4 rounded hover:bg-white/10 text-[9px] text-foreground-muted hover:text-foreground disabled:opacity-20 flex items-center justify-center cursor-pointer"
-                                        >
-                                          ▲
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => handleMoveNetworkDown(mIdx, cIdx)}
-                                          disabled={cIdx >= row.clients.length - 2}
-                                          title="Mover Posição para Baixo"
-                                          className="w-4 h-4 rounded hover:bg-white/10 text-[9px] text-foreground-muted hover:text-foreground disabled:opacity-20 flex items-center justify-center cursor-pointer"
-                                        >
-                                          ▼
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => openRemoveModal(mIdx, cIdx, cli.client, row.manager)}
-                                          title="Remover Rede do Planejamento"
-                                          className="w-4 h-4 rounded bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 text-[10px] font-bold flex items-center justify-center cursor-pointer ml-0.5"
-                                        >
-                                          -
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-
-                                <td className="text-foreground-secondary text-[11px] font-bold">FAT</td>
-                                <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000, 0)}</td>
-                                <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000, 0)}</td>
-
-                                {/* Meta do cliente (Bloco Moldura DESAFIO 2px com Inset Shadow) */}
-                                <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono text-xs font-bold bg-amber-500/10 border-x-2 border-amber-400 text-amber-300 py-1.5">
+                                {/* Meta do cliente (Moldura Simétrica DESAFIO 2px) */}
+                                <td className="font-mono text-xs font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1262,13 +1226,13 @@ export default function RpsPage() {
 
                                 <td className="font-mono text-xs font-bold text-foreground py-1.5 border-l-0">{formatCurrency(cli.real / 1000, 0)}</td>
 
-                                {/* Projeções semanais do cliente (Com destaque da Semana Corrente) */}
+                                {/* Projeções semanais do cliente */}
                                 {mondays.map((m, wIdx) => {
                                   const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                   const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-400" : ""}`}>
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
@@ -1286,13 +1250,18 @@ export default function RpsPage() {
                                   );
                                 })}
 
-                                <td className="font-mono text-xs border-l-0" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
-                                <td className="font-mono text-xs" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
-                                <td className="font-mono text-xs" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
-                                <td className="font-mono text-xs" style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
+                                <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
+                                <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
+                                <td className="font-mono text-xs py-1.5" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
+                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
                               </tr>
                             );
                           })}
+
+                          {/* SPACER VERTICAL ENTRE GERENTES (CRIA O BLOCO INDEPENDENTE) */}
+                          <tr className="h-3 bg-transparent border-0 select-none pointer-events-none">
+                            <td colSpan={10 + mondays.length} className="p-0 border-0 bg-transparent h-3"></td>
+                          </tr>
 
                         </tbody>
                       );
@@ -1300,91 +1269,91 @@ export default function RpsPage() {
 
                     {/* TOTAL CONSOLIDADO BRASIL (RESTRITO A ADMIN / ADMIN MASTER) */}
                     {canViewTotalBrasil && totalsRow && (
-                      <tfoot className="border-t-4 border-accent-gold font-bold bg-background-elevated">
+                      <tfoot className="border-t-4 border-accent-gold font-bold bg-background-elevated shadow-md">
                         {/* TOTAL VOL */}
                         <tr>
-                          <td rowSpan={3} className="text-left pl-3 text-accent-gold text-sm align-middle font-black">
+                          <td rowSpan={3} className="text-left pl-3 text-accent-gold text-sm align-middle font-black border-l-2 border-t-2 border-b-2 border-accent-gold/70">
                             TOTAL BRASIL
                           </td>
-                          <td className="text-accent-gold">VOL</td>
-                          <td className="col-divider font-mono">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
-                          <td className="font-mono">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
-                          <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono bg-amber-500/15 border-x-2 border-amber-400 text-amber-300 font-black py-2.5">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                          <td className="text-accent-gold py-2.5">VOL</td>
+                          <td className="col-divider font-mono py-2.5">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
+                          <td className="font-mono py-2.5 border-r-0">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-400 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio), totalsRow.kpis.VOL.desafio)}>
+                          <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio), totalsRow.kpis.VOL.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a), totalsRow.kpis.VOL.ano_a)}>
+                          <td className="font-mono py-2.5" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a), totalsRow.kpis.VOL.ano_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a), totalsRow.kpis.VOL.mes_a)}>
+                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a), totalsRow.kpis.VOL.mes_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a))}
                           </td>
                         </tr>
 
                         {/* TOTAL FAT (Sempre sem casas decimais) */}
                         <tr>
-                          <td className="text-accent-gold">FAT</td>
-                          <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
-                          <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
-                          <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono bg-amber-500/15 border-x-2 border-amber-400 text-amber-300 font-black py-2.5">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
+                          <td className="text-accent-gold py-2.5">FAT</td>
+                          <td className="col-divider font-mono py-2.5">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
+                          <td className="font-mono py-2.5 border-r-0">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-400 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio), totalsRow.kpis.FAT.desafio)}>
+                          <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio), totalsRow.kpis.FAT.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a), totalsRow.kpis.FAT.ano_a)}>
+                          <td className="font-mono py-2.5" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a), totalsRow.kpis.FAT.ano_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a), totalsRow.kpis.FAT.mes_a)}>
+                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a), totalsRow.kpis.FAT.mes_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a))}
                           </td>
                         </tr>
 
                         {/* TOTAL INVEST */}
-                        <tr>
-                          <td className="text-accent-gold">INVEST</td>
-                          <td className="col-divider font-mono">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
-                          <td className="font-mono">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
-                          <td style={{ boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" }} className="font-mono bg-amber-500/15 border-x-2 border-amber-400 text-amber-300 font-black py-2.5">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
+                        <tr className="border-b-2 border-accent-gold/70">
+                          <td className="text-accent-gold py-2.5">INVEST</td>
+                          <td className="col-divider font-mono py-2.5">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
+                          <td className="font-mono py-2.5 border-r-0">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatPercent(totalsRow.kpis.INVEST.real)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={{ boxShadow: isCurrent ? "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" : undefined }} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-400 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatPercent(totalsRow.kpis.INVEST.projections[idx])}
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection))}
                           </td>
-                          <td className="font-mono" style={getPctCellStyle("INVEST", getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio)}>
+                          <td className="font-mono py-2.5" style={getPctCellStyle("INVEST", getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio))}
                           </td>
-                          <td className="font-mono text-foreground-muted">-</td>
-                          <td className="font-mono text-foreground-muted">-</td>
+                          <td className="font-mono py-2.5 text-foreground-muted">-</td>
+                          <td className="font-mono py-2.5 text-foreground-muted border-r-2 border-accent-gold/70">-</td>
                         </tr>
                       </tfoot>
                     )}
