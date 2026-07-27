@@ -155,6 +155,7 @@ export default function RpsPage() {
   const [restrictedToManager, setRestrictedToManager] = useState<string | null>(null);
   const [isGerenteNacionalAdmin, setIsGerenteNacionalAdmin] = useState<boolean>(false);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [canViewTotalBrasil, setCanViewTotalBrasil] = useState<boolean>(false);
 
   // Estados de Modais de Gestão Dinâmica da Carteira (Admin Only)
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
@@ -212,6 +213,9 @@ export default function RpsPage() {
         }
         if (isStrictAdmin) {
           setIsAdmin(true);
+          setCanViewTotalBrasil(true);
+        } else {
+          setCanViewTotalBrasil(false);
         }
       }
     });
@@ -256,6 +260,7 @@ export default function RpsPage() {
         if (json.isAdmin) {
           setIsAdmin(true);
         }
+        setCanViewTotalBrasil(Boolean(json.canViewTotalBrasil));
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
       }
@@ -1275,8 +1280,8 @@ export default function RpsPage() {
                       );
                     })}
 
-                    {/* TOTAL CONSOLIDADO BRASIL */}
-                    {totalsRow && (
+                    {/* TOTAL CONSOLIDADO BRASIL (RESTRITO A ADMIN / ADMIN MASTER) */}
+                    {canViewTotalBrasil && totalsRow && (
                       <tfoot className="border-t-4 border-accent-gold font-bold bg-background-elevated">
                         {/* TOTAL VOL */}
                         <tr>

@@ -546,6 +546,7 @@ export async function GET(request: Request) {
     });
 
     const isAdmin = ["Admin", "Admin Master"].includes(userRole);
+    const canViewTotalBrasil = isAdmin;
 
     return NextResponse.json({
       success: true,
@@ -556,7 +557,8 @@ export async function GET(request: Request) {
       allAvailableRedes,
       restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
       isGerenteNacionalAdmin,
-      isAdmin
+      isAdmin,
+      canViewTotalBrasil
     });
   } catch (error: any) {
     return handleAuthError(error);
