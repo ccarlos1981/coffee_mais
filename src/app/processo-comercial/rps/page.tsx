@@ -945,7 +945,8 @@ export default function RpsPage() {
                         <th rowSpan={2} style={{ verticalAlign: "bottom", textAlign: "left", width: 110 }}>REGIONAL</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 50 }}>KPI</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider border-r-0">ANO A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85, borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold bg-amber-500/15 text-amber-300 font-extrabold shadow-xs">DESAFIO</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-r-0">MÊS A</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="bg-amber-500/15 text-amber-300 font-extrabold border-l-2 border-r-2 border-amber-500/80 shadow-xs">DESAFIO</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-l-0">REAL</th>
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
@@ -958,8 +959,8 @@ export default function RpsPage() {
                           return (
                             <th
                               key={m}
-                              style={{ minWidth: 85, ...(isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : {}) }}
-                              className={`transition-colors ${isCurrent ? "col-highlight-gold bg-amber-500/20 text-amber-300 font-black shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
+                              style={{ minWidth: 85 }}
+                              className={`transition-colors ${isCurrent ? "bg-amber-500/20 text-amber-300 font-black border-l-2 border-r-2 border-amber-500/80 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
                             >
                               <div className="flex flex-col items-center justify-center gap-0.5 py-0.5">
                                 <span>{formatDateLabel(m)}</span>
@@ -1036,9 +1037,10 @@ export default function RpsPage() {
                             </td>
                             <td className="font-bold text-foreground py-2.5">VOL</td>
                             <td className="col-divider text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
-                            
-                            {/* Célula DESAFIO VOL (Moldura Dourada Simétrica Fixo 2px) */}
-                            <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono font-bold bg-amber-500/10 text-amber-300 py-2.5">
+                            <td className="text-foreground-muted font-mono py-2.5 border-r-0">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
+
+                            {/* Célula DESAFIO VOL (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1054,13 +1056,13 @@ export default function RpsPage() {
 
                             <td className="font-mono font-bold text-foreground py-2.5 border-l-0">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
 
-                            {/* Projeções Semanais VOL (Com destaque da Semana Corrente Simétrico 2px) */}
+                            {/* Projeções Semanais VOL (Com destaque da Semana Corrente Simétrico) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
                               return (
-                                <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/10" : ""}`}>
+                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1088,9 +1090,10 @@ export default function RpsPage() {
                           <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
                             <td className="font-bold text-foreground py-2.5">FAT</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
+                            <td className="text-foreground-muted font-mono border-r-0">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
-                            {/* Célula DESAFIO FAT (Moldura Dourada Simétrica Fixo 2px) */}
-                            <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono font-bold bg-amber-500/10 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO FAT (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1112,7 +1115,7 @@ export default function RpsPage() {
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
-                                <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/10" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="1"
@@ -1140,9 +1143,10 @@ export default function RpsPage() {
                           <tr className={`bg-background-card/50 hover:bg-background-card transition-colors ${!isExpanded ? "border-b-2 border-accent-gold/70" : ""}`}>
                             <td className="font-bold text-foreground py-2.5">INVEST</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
+                            <td className="text-foreground-muted font-mono border-r-0">{formatPercent(row.kpis.INVEST.mes_a)}</td>
 
-                            {/* Célula DESAFIO INVEST (Moldura Dourada Simétrica Fixo 2px) */}
-                            <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono font-bold bg-amber-500/10 text-amber-300 py-2.5">
+                            {/* Célula DESAFIO INVEST (Moldura Simétrica 2px) */}
+                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1164,7 +1168,7 @@ export default function RpsPage() {
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
                               return (
-                                <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/10" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <input
                                       type="number"
@@ -1205,8 +1209,8 @@ export default function RpsPage() {
                                 <td className="col-divider text-foreground-muted font-mono text-xs py-1.5">{formatCurrency(cli.ano_a / 1000, 0)}</td>
                                 <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
-                                {/* Meta do cliente (Moldura Dourada Simétrica Fixo 2px) */}
-                                <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono text-xs font-bold bg-amber-500/10 text-amber-300 py-1.5">
+                                {/* Meta do cliente (Moldura Simétrica DESAFIO 2px) */}
+                                <td className="font-mono text-xs font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1228,7 +1232,7 @@ export default function RpsPage() {
                                   const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/10" : ""}`}>
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
@@ -1274,12 +1278,12 @@ export default function RpsPage() {
                           <td className="text-accent-gold py-2.5">VOL</td>
                           <td className="col-divider font-mono py-2.5">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
                           <td className="font-mono py-2.5 border-r-0">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
-                          <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono bg-amber-500/15 text-amber-300 font-black py-2.5">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/15 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
                               </td>
                             );
@@ -1303,12 +1307,12 @@ export default function RpsPage() {
                           <td className="text-accent-gold py-2.5">FAT</td>
                           <td className="col-divider font-mono py-2.5">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
                           <td className="font-mono py-2.5 border-r-0">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
-                          <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono bg-amber-500/15 text-amber-300 font-black py-2.5">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/15 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
                               </td>
                             );
@@ -1332,12 +1336,12 @@ export default function RpsPage() {
                           <td className="text-accent-gold py-2.5">INVEST</td>
                           <td className="col-divider font-mono py-2.5">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
                           <td className="font-mono py-2.5 border-r-0">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
-                          <td style={{ borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" }} className="col-highlight-gold font-mono bg-amber-500/15 text-amber-300 font-black py-2.5">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
+                          <td className="font-mono bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 font-black py-2.5">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
                           <td className="font-mono text-accent-gold py-2.5 border-l-0">{formatPercent(totalsRow.kpis.INVEST.real)}</td>
                           {mondays.map((m, idx) => {
                             const isCurrent = isCurrentWeek(m, idx);
                             return (
-                              <td key={m} style={isCurrent ? { borderLeft: "2px solid #f59e0b", borderRight: "2px solid #f59e0b" } : undefined} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "col-highlight-gold bg-amber-500/15 font-black py-2.5" : ""}`}>
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 font-black py-2.5" : ""}`}>
                                 {formatPercent(totalsRow.kpis.INVEST.projections[idx])}
                               </td>
                             );
