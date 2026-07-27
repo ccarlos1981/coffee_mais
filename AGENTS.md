@@ -365,6 +365,20 @@ A partir de 27/07/2026, a interface do módulo RPS (`/processo-comercial/rps`) a
 
 Status Arquitetural: `RPS_EXECUTIVE_UX = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 74. Baseline Oficial — Destaque e Bordas Verticais Contínuas da Coluna DESAFIO (RPS)
+
+A partir de 27/07/2026, a coluna **DESAFIO** no módulo RPS (`/processo-comercial/rps`) passa a utilizar bordas verticais contínuas de 2px do topo até o rodapé:
+
+### Diretrizes Mandatórias:
+1. **Bloco Visual Único**: A coluna DESAFIO é envolvida por bordas verticais contínuas de 2px (`border-x-2 border-amber-500/50`) em toda a sua extensão, englobando o cabeçalho (`th`), células de gerentes, clientes/redes expandidas e a linha `TOTAL BRASIL` no rodapé (`tfoot`).
+2. **Preservação do Fundo e Formatação**: Mantidos o fundo bege/amber suave (`bg-amber-500/10` / `bg-amber-500/15`), a tipagem numérica e os destaques visuais existentes, elevando o contraste executivo sem cores estridentes.
+3. **Imutabilidade de Negócio**: Refinamento puramente visual (UI/UX), com 0 alteração em regras, APIs, cálculos, SSOT ou governança.
+
+Status Arquitetural: `RPS_DESAFIO_COLUMN_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
