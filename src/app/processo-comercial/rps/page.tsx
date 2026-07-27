@@ -190,37 +190,6 @@ export default function RpsPage() {
     return (businessDays.elapsed_days / businessDays.total_days) * 100;
   }, [businessDays]);
 
-  // Checar perfil do usuário autenticado no carregamento da página
-  useEffect(() => {
-    supabase.auth.getUser().then(async (res: any) => {
-      const user = res?.data?.user;
-      if (user) {
-        const userEmail = (user.email || "").toLowerCase().trim();
-        const isAdminEmail = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"].includes(userEmail);
-        
-        const { data: profile } = await supabase
-          .from("cm_user_profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
-          
-        const role = profile?.role || "";
-        const isAdminRole = ["Gerente Nacional", "Diretor", "Admin Master", "Admin", "CEO"].includes(role);
-        const isStrictAdmin = ["Admin", "Admin Master"].includes(role);
-
-        if (isAdminRole || isAdminEmail) {
-          setIsGerenteNacionalAdmin(true);
-        }
-        if (isStrictAdmin) {
-          setIsAdmin(true);
-          setCanViewTotalBrasil(true);
-        } else {
-          setCanViewTotalBrasil(false);
-        }
-      }
-    });
-  }, []);
-
   // Carrega dias úteis do banco de dados
   const loadBusinessDays = useCallback(async (year: number, month: number) => {
     try {
@@ -241,7 +210,7 @@ export default function RpsPage() {
     }
   }, []);
 
-  // Carrega projeções e históricos via API
+  // Carrega projeções e históricos via API (Single Source of Truth para dados e permissões)
   const loadProjectionsData = useCallback(async (year: number, month: number) => {
     setLoading(true);
     setError(null);
@@ -254,12 +223,8 @@ export default function RpsPage() {
         setAllAvailableRedes(json.allAvailableRedes || []);
         setRemovedNetworks({});
         setRestrictedToManager(json.restrictedToManager || null);
-        if (json.isGerenteNacionalAdmin) {
-          setIsGerenteNacionalAdmin(true);
-        }
-        if (json.isAdmin) {
-          setIsAdmin(true);
-        }
+        setIsGerenteNacionalAdmin(Boolean(json.isGerenteNacionalAdmin));
+        setIsAdmin(Boolean(json.isAdmin));
         setCanViewTotalBrasil(Boolean(json.canViewTotalBrasil));
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
