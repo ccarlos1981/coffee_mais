@@ -1230,12 +1230,12 @@ export default function RpsPage() {
 
                             return (
                               <tr key={cli.client} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
-                                <td className="text-foreground-secondary text-[11px] font-bold py-1.5">FAT</td>
-                                <td className="col-divider text-foreground-muted font-mono text-xs py-1.5">{formatCurrency(cli.ano_a / 1000, 0)}</td>
-                                <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
+                                <td className={`text-foreground-secondary text-[11px] font-bold ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`}>FAT</td>
+                                <td className={`col-divider text-foreground-muted font-mono text-xs ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`}>{formatCurrency(cli.ano_a / 1000, 0)}</td>
+                                <td className={`text-foreground-muted font-mono text-xs border-r-0 ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`}>{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
                                 {/* Meta do cliente (Moldura Simétrica DESAFIO 2px) */}
-                                <td className="font-mono text-xs font-bold border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
+                                <td className={`font-mono text-xs font-bold border-l-2 border-r-2 border-amber-500/80 text-amber-300 ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`}>
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1249,7 +1249,7 @@ export default function RpsPage() {
                                   )}
                                 </td>
 
-                                <td className="font-mono text-xs font-bold text-foreground py-1.5 border-l-0">{formatCurrency(cli.real / 1000, 0)}</td>
+                                <td className={`font-mono text-xs font-bold text-foreground border-l-0 ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`}>{formatCurrency(cli.real / 1000, 0)}</td>
 
                                 {/* Projeções semanais do cliente */}
                                 {mondays.map((m, wIdx) => {
@@ -1257,7 +1257,7 @@ export default function RpsPage() {
                                   const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                    <td key={m} className={`p-1 ${cIdx === 0 ? "pt-3.5 pb-1" : ""} ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
@@ -1275,10 +1275,10 @@ export default function RpsPage() {
                                   );
                                 })}
 
-                                <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
-                                <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
-                                <td className="font-mono text-xs py-1.5" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
-                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
+                                <td className={`font-mono text-xs border-l-0 ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`} style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
+                                <td className={`font-mono text-xs ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`} style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
+                                <td className={`font-mono text-xs ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`} style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
+                                <td className={`font-mono text-xs border-r-2 border-accent-gold/70 ${cIdx === 0 ? "pt-4 pb-1.5" : "py-1.5"}`} style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
                               </tr>
                             );
                           })}
