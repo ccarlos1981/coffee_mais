@@ -142,6 +142,25 @@ export default function RpsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mondays, setMondays] = useState<string[]>([]);
+
+  // Identifica se a segunda-feira selecionada corresponde à semana corrente
+  const isCurrentWeek = useCallback((weekMondayStr: string, idx: number) => {
+    if (weekMondayStr === todayStr) return true;
+    const nextMonday = mondays[idx + 1];
+    if (nextMonday) {
+      return todayStr >= weekMondayStr && todayStr < nextMonday;
+    } else {
+      const parts = weekMondayStr.split('-');
+      if (parts.length === 3) {
+        const mDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        const endDate = new Date(mDate);
+        endDate.setDate(mDate.getDate() + 7);
+        const endStr = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
+        return todayStr >= weekMondayStr && todayStr < endStr;
+      }
+      return false;
+    }
+  }, [todayStr, mondays]);
   const [managers, setManagers] = useState<ManagerRow[]>([]);
   const [allAvailableRedes, setAllAvailableRedes] = useState<Array<{ client: string; manager?: string; codigo_matriz?: string; uf?: string }>>([]);
   const [removedNetworks, setRemovedNetworks] = useState<Record<string, string[]>>({});
@@ -927,7 +946,7 @@ export default function RpsPage() {
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 50 }}>KPI</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">ANO A</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }}>MÊS A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">DESAFIO</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="col-divider bg-amber-500/15 text-amber-300 font-extrabold border-x border-amber-500/30">DESAFIO</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider">REAL</th>
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
@@ -935,11 +954,25 @@ export default function RpsPage() {
                         <th colSpan={4} className="col-divider" style={{ borderBottom: "2px solid var(--border-light)" }}>ANÁLISE</th>
                       </tr>
                       <tr>
-                        {mondays.map((m, idx) => (
-                          <th key={m} style={{ minWidth: 80 }} className={idx === 0 ? "col-divider" : ""}>
-                            {formatDateLabel(m)}
-                          </th>
-                        ))}
+                        {mondays.map((m, idx) => {
+                          const isCurrent = isCurrentWeek(m, idx);
+                          return (
+                            <th
+                              key={m}
+                              style={{ minWidth: 85 }}
+                              className={`transition-colors ${isCurrent ? "bg-amber-500/20 text-amber-300 font-black border-x-2 border-amber-500/50 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
+                            >
+                              <div className="flex flex-col items-center justify-center gap-0.5 py-0.5">
+                                <span>{formatDateLabel(m)}</span>
+                                {isCurrent && (
+                                  <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 rounded-full font-black tracking-tighter uppercase shadow-xs">
+                                    Atual
+                                  </span>
+                                )}
+                              </div>
+                            </th>
+                          );
+                        })}
                         <th className="col-divider" style={{ width: 70 }}>% Disp</th>
                         <th style={{ width: 70 }}>% DESAFIO</th>
                         <th style={{ width: 70 }}>%AA</th>
@@ -966,11 +999,11 @@ export default function RpsPage() {
                       const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
 
                       return (
-                        <tbody key={row.manager} className="border-b-4 border-border/80 last:border-b-0">
+                        <tbody key={row.manager} className="border-b-4 border-border/90 last:border-b-0">
                           
-                          {/* LINHA 1: VOL (Separador superior por Gerente) */}
-                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors border-t-2 border-accent-gold/40">
-                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3 bg-background-elevated/40 border-r border-border/60 shadow-sm">
+                          {/* LINHA 1: VOL (Separador superior evidente por Gerente) */}
+                          <tr className="bg-background-card/60 hover:bg-background-card transition-colors border-t-2 border-accent-gold/60">
+                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3.5 bg-background-elevated/50 border-r-2 border-border/80 shadow-xs">
                               <div className="flex flex-col gap-1.5">
                                 <span className="text-sm font-extrabold text-foreground">{getManagerDisplayName(row.manager)}</span>
                                 <div className="flex items-center gap-2">
@@ -1005,15 +1038,15 @@ export default function RpsPage() {
                             <td className="col-divider text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.ano_a / 1000, 1)}</td>
                             <td className="text-foreground-muted font-mono py-2.5">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
 
-                            {/* Célula Desafio VOL */}
-                            <td className="col-divider font-mono font-bold text-foreground py-2.5">
+                            {/* Célula DESAFIO VOL (Destaque Focal) */}
+                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
                                   step="0.1"
                                   value={row.kpis.VOL.desafio ? (row.kpis.VOL.desafio / 1000).toFixed(1) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'VOL', parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-extrabold text-xs shadow-inner"
                                 />
                               ) : (
                                 formatNumber(row.kpis.VOL.desafio / 1000, 1)
@@ -1022,12 +1055,13 @@ export default function RpsPage() {
 
                             <td className="col-divider font-mono font-bold text-foreground py-2.5">{formatNumber(row.kpis.VOL.real / 1000, 1)}</td>
 
-                            {/* Projeções Semanais VOL (Sempre 1 casa decimal) */}
+                            {/* Projeções Semanais VOL (Com destaque da Semana Corrente) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
                               return (
-                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-500/40" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1035,7 +1069,11 @@ export default function RpsPage() {
                                     value={rawVal}
                                     placeholder="0,0"
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'VOL', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
-                                    className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                    className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
+                                      isCurrent
+                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none"
+                                        : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                    }`}
                                   />
                                 </td>
                               );
@@ -1047,21 +1085,21 @@ export default function RpsPage() {
                             <td className="font-mono py-2.5" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
                           </tr>
 
-                          {/* LINHA 2: FAT (Sempre sem casas decimais - Inteiros) */}
+                          {/* LINHA 2: FAT (Sempre inteiros) */}
                           <tr className="bg-background-card/50 hover:bg-background-card transition-colors">
                             <td className="font-bold text-foreground">FAT</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.ano_a / 1000, 0)}</td>
                             <td className="text-foreground-muted font-mono">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
-                            {/* Célula Desafio FAT */}
-                            <td className="col-divider font-mono font-bold text-foreground">
+                            {/* Célula DESAFIO FAT (Destaque Focal) */}
+                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
                               {isAdmin ? (
                                 <input
                                   type="number"
                                   step="1"
                                   value={row.kpis.FAT.desafio ? Math.round(row.kpis.FAT.desafio / 1000) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'FAT', parseFloat(e.target.value) || 0)}
-                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                  className="w-16 px-1.5 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-extrabold text-xs shadow-inner"
                                 />
                               ) : (
                                 formatCurrency(row.kpis.FAT.desafio / 1000, 0)
@@ -1070,12 +1108,13 @@ export default function RpsPage() {
 
                             <td className="col-divider font-mono font-bold text-foreground">{formatCurrency(row.kpis.FAT.real / 1000, 0)}</td>
 
-                            {/* Projeções Semanais FAT (Sempre Inteiros sem casas decimais) */}
+                            {/* Projeções Semanais FAT (Com destaque da Semana Corrente) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
-                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-500/40" : ""}`}>
                                   <input
                                     type="number"
                                     step="1"
@@ -1083,7 +1122,11 @@ export default function RpsPage() {
                                     value={rawVal}
                                     placeholder="0"
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'FAT', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
-                                    className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                    className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
+                                      isCurrent
+                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none"
+                                        : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                    }`}
                                   />
                                 </td>
                               );
@@ -1101,15 +1144,15 @@ export default function RpsPage() {
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
                             <td className="text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.mes_a)}</td>
 
-                            {/* Célula Desafio INVEST */}
-                            <td className="col-divider font-mono font-bold text-foreground">
+                            {/* Célula DESAFIO INVEST (Destaque Focal) */}
+                            <td className="col-divider font-mono font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
                               {isAdmin ? (
                                 <input
                                   type="number"
                                   step="0.1"
                                   value={row.kpis.INVEST.desafio ? Number(row.kpis.INVEST.desafio).toFixed(1) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'INVEST', parseFloat(e.target.value) || 0)}
-                                  className="w-14 px-1 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                  className="w-14 px-1 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-extrabold text-xs shadow-inner"
                                 />
                               ) : (
                                 formatPercent(row.kpis.INVEST.desafio)
@@ -1118,12 +1161,13 @@ export default function RpsPage() {
 
                             <td className="col-divider font-mono font-bold text-foreground">{formatPercent(row.kpis.INVEST.real)}</td>
 
-                            {/* Projeções Semanais INVEST */}
+                            {/* Projeções Semanais INVEST (Com destaque da Semana Corrente) */}
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
                               return (
-                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-500/40" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <input
                                       type="number"
@@ -1132,7 +1176,11 @@ export default function RpsPage() {
                                       value={rawVal}
                                       placeholder="0.0"
                                       onChange={(e) => handleManagerKpiChange(mIdx, 'INVEST', wIdx, parseFloat(e.target.value) || 0)}
-                                      className="w-full text-center py-1 px-1 rounded border border-border/40 bg-background-elevated text-xs font-mono font-bold text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                      className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
+                                        isCurrent
+                                          ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none"
+                                          : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                      }`}
                                     />
                                     <span className="text-[10px] text-foreground-muted">%</span>
                                   </div>
@@ -1197,15 +1245,15 @@ export default function RpsPage() {
                                 <td className="col-divider text-foreground-muted font-mono text-xs">{formatCurrency(cli.ano_a / 1000, 0)}</td>
                                 <td className="text-foreground-muted font-mono text-xs">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
-                                {/* Meta do cliente */}
-                                <td className="col-divider font-mono text-xs font-bold text-foreground">
+                                {/* Meta do cliente (Destaque DESAFIO) */}
+                                <td className="col-divider font-mono text-xs font-bold bg-amber-500/10 border-x border-amber-500/30 text-amber-300">
                                   {isAdmin ? (
                                     <input
                                       type="number"
                                       step="1"
                                       value={cli.meta ? Math.round(cli.meta / 1000) : ""}
                                       onChange={(e) => handleClientMetaChange(mIdx, cIdx, parseFloat(e.target.value) || 0)}
-                                      className="w-16 px-1.5 py-0.5 text-center bg-amber-500/10 border border-amber-500/30 rounded text-amber-400 font-bold text-xs"
+                                      className="w-16 px-1.5 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-bold text-xs"
                                     />
                                   ) : (
                                     cli.meta > 0 ? formatCurrency(cli.meta / 1000, 0) : "—"
@@ -1214,12 +1262,13 @@ export default function RpsPage() {
 
                                 <td className="col-divider font-mono text-xs font-bold text-foreground">{formatCurrency(cli.real / 1000, 0)}</td>
 
-                                {/* Projeções semanais do cliente (Inteiros sem decimais) */}
+                                {/* Projeções semanais do cliente (Com destaque da Semana Corrente) */}
                                 {mondays.map((m, wIdx) => {
                                   const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                                  const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-x-2 border-amber-500/40" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
@@ -1227,7 +1276,11 @@ export default function RpsPage() {
                                         value={rawVal}
                                         placeholder="0"
                                         onChange={(e) => handleClientProjChange(mIdx, cIdx, wIdx, parseFloat(e.target.value) || 0)}
-                                        className="w-full text-center py-1 px-1 rounded border border-border/30 bg-background/50 text-xs font-mono font-medium text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                        className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-medium transition-all ${
+                                          isCurrent
+                                            ? "border-2 border-amber-500/50 bg-amber-500/15 text-amber-200 font-bold"
+                                            : "border border-border/30 bg-background/50 text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                        }`}
                                       />
                                     </td>
                                   );
@@ -1256,13 +1309,16 @@ export default function RpsPage() {
                           <td className="text-accent-gold">VOL</td>
                           <td className="col-divider font-mono">{formatNumber(totalsRow.kpis.VOL.ano_a / 1000, 1)}</td>
                           <td className="font-mono">{formatNumber(totalsRow.kpis.VOL.mes_a / 1000, 1)}</td>
-                          <td className="col-divider font-mono text-accent-gold">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
+                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatNumber(totalsRow.kpis.VOL.desafio / 1000, 1)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatNumber(totalsRow.kpis.VOL.real / 1000, 1)}</td>
-                          {mondays.map((m, idx) => (
-                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
-                              {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
-                            </td>
-                          ))}
+                          {mondays.map((m, idx) => {
+                            const isCurrent = isCurrentWeek(m, idx);
+                            return (
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-500/50 font-black" : ""}`}>
+                                {formatNumber(totalsRow.kpis.VOL.projections[idx] / 1000, 1)}
+                              </td>
+                            );
+                          })}
                           <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection))}
                           </td>
@@ -1282,13 +1338,16 @@ export default function RpsPage() {
                           <td className="text-accent-gold">FAT</td>
                           <td className="col-divider font-mono">{formatCurrency(totalsRow.kpis.FAT.ano_a / 1000, 0)}</td>
                           <td className="font-mono">{formatCurrency(totalsRow.kpis.FAT.mes_a / 1000, 0)}</td>
-                          <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
+                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatCurrency(totalsRow.kpis.FAT.desafio / 1000, 0)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatCurrency(totalsRow.kpis.FAT.real / 1000, 0)}</td>
-                          {mondays.map((m, idx) => (
-                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
-                              {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
-                            </td>
-                          ))}
+                          {mondays.map((m, idx) => {
+                            const isCurrent = isCurrentWeek(m, idx);
+                            return (
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-500/50 font-black" : ""}`}>
+                                {formatCurrency(totalsRow.kpis.FAT.projections[idx] / 1000, 0)}
+                              </td>
+                            );
+                          })}
                           <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection))}
                           </td>
@@ -1308,13 +1367,16 @@ export default function RpsPage() {
                           <td className="text-accent-gold">INVEST</td>
                           <td className="col-divider font-mono">{formatPercent(totalsRow.kpis.INVEST.ano_a)}</td>
                           <td className="font-mono">{formatPercent(totalsRow.kpis.INVEST.mes_a)}</td>
-                          <td className="col-divider font-mono text-accent-gold">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
+                          <td className="col-divider font-mono bg-amber-500/15 border-x border-amber-500/30 text-amber-300 font-black">{formatPercent(totalsRow.kpis.INVEST.desafio)}</td>
                           <td className="col-divider font-mono text-accent-gold">{formatPercent(totalsRow.kpis.INVEST.real)}</td>
-                          {mondays.map((m, idx) => (
-                            <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""}`}>
-                              {formatPercent(totalsRow.kpis.INVEST.projections[idx])}
-                            </td>
-                          ))}
+                          {mondays.map((m, idx) => {
+                            const isCurrent = isCurrentWeek(m, idx);
+                            return (
+                              <td key={m} className={`font-mono text-accent-gold ${idx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-x-2 border-amber-500/50 font-black" : ""}`}>
+                                {formatPercent(totalsRow.kpis.INVEST.projections[idx])}
+                              </td>
+                            );
+                          })}
                           <td className="col-divider font-mono" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
                             {formatPercent(calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection))}
                           </td>
@@ -1329,6 +1391,52 @@ export default function RpsPage() {
 
                   </table>
                 </div>
+              </div>
+
+              {/* RODAPÉ RESTAURADO: LEGENDA DOS INDICADORES E BOTÃO SALVAR PROJEÇÕES */}
+              <div className="glass-card p-4 flex flex-col md:flex-row items-center justify-between gap-4 border border-border/60 rounded-xl bg-background-card/80 backdrop-blur-md shadow-lg">
+                {/* Legenda Explicativa dos Indicadores */}
+                <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-foreground-muted">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-amber-400">% DISP:</span>
+                    <span>Dispersão (Projeção Mês Ant. vs Real)</span>
+                  </div>
+                  <span className="text-border">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-amber-400">% DESAFIO:</span>
+                    <span>Atingimento (% Proj / Meta)</span>
+                  </div>
+                  <span className="text-border">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-amber-400">%AA:</span>
+                    <span>Crescimento Ano Ant. (Ano A)</span>
+                  </div>
+                  <span className="text-border">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-amber-400">%MA:</span>
+                    <span>Crescimento Mês Ant. (Mês A)</span>
+                  </div>
+                </div>
+
+                {/* Botão Primário Fixado no Rodapé */}
+                <button
+                  type="button"
+                  onClick={handleSaveProjections}
+                  disabled={saving}
+                  className="btn-primary shrink-0 px-6 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg hover:shadow-accent-gold/20 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Salvando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4" />
+                      <span>SALVAR PROJEÇÕES</span>
+                    </>
+                  )}
+                </button>
               </div>
 
             </div>
