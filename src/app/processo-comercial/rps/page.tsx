@@ -964,7 +964,14 @@ export default function RpsPage() {
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 50 }}>KPI</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="col-divider border-r-0">ANO A</th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-r-0">MÊS A</th>
-                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="bg-amber-500/8 text-amber-300 font-extrabold border-l-2 border-r-2 border-amber-500/80 shadow-xs">DESAFIO</th>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom", width: 85 }} className="bg-amber-500/8 text-amber-300 font-extrabold border-l-2 border-r-2 border-amber-500/80 shadow-xs py-1">
+                          <div className="flex flex-col items-center justify-center gap-0.5">
+                            <span>DESAFIO</span>
+                            <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 rounded-full font-black tracking-tighter uppercase shadow-xs">
+                              Meta
+                            </span>
+                          </div>
+                        </th>
                         <th rowSpan={2} style={{ verticalAlign: "bottom", width: 75 }} className="border-l-0">REAL</th>
                         <th colSpan={mondays.length} style={{ borderBottom: "2px solid var(--accent-gold)" }}>
                           PROJEÇÃO DE VENDAS PARA O MÊS DE {MONTHS[filterMonth - 1].toUpperCase()}
@@ -1228,7 +1235,7 @@ export default function RpsPage() {
                                 <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
                                 {/* Meta do cliente (Moldura Simétrica DESAFIO 2px) */}
-                                <td className="font-mono text-xs font-bold bg-amber-500/8 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
+                                <td className="font-mono text-xs font-bold border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1250,7 +1257,7 @@ export default function RpsPage() {
                                   const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/8 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"
@@ -1260,7 +1267,7 @@ export default function RpsPage() {
                                         onChange={(e) => handleClientProjChange(mIdx, cIdx, wIdx, parseFloat(e.target.value) || 0)}
                                         className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-medium transition-all ${
                                           isCurrent
-                                            ? "border-2 border-amber-500/50 bg-amber-500/15 text-amber-200 font-bold"
+                                            ? "border-2 border-amber-500/50 bg-background/50 text-amber-200 font-bold"
                                             : "border border-border/30 bg-background/50 text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                         }`}
                                       />
