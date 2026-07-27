@@ -380,13 +380,13 @@ Status Arquitetural: `RPS_DESAFIO_COLUMN_BORDERS = LOCKED` & `BASELINE = CONFIRM
 
 ---
 
-## 75. Baseline Oficial — Simetria de Moldura Dourada Dupla (RPS)
+## 75. Baseline Oficial — Moldura Dourada Dupla e Preservação Geométrica (RPS)
 
-A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) consolida rigorosamente o padrão visual de simetria de colunas e blocos delimitados:
+A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) consolida rigorosamente o alinhamento de tabela e destaque de colunas:
 
 ### Diretrizes Mandatórias:
-1. **Simetria Perfeita de Moldura Dourada Dupla (DESAFIO e Semana Atual)**: As colunas **DESAFIO** e **Semana Corrente (`27/JUL`)** são envolvidas por molduras verticais compostas por duas linhas douradas visíveis e idênticas de 2px de espessura (`borderLeft: 2px solid #f59e0b` e `borderRight: 2px solid #f59e0b` com especificidade CSS alta `.col-highlight-gold`), garantindo que a borda direita não seja sobrescrita pelas regras padrão da tabela ou células vizinhas.
-2. **Continuidade Vertical Completa**: As duas linhas douradas delimitadoras estendem-se em bloco contínuo desde o cabeçalho (`th`), atravessando todas as linhas dos gerentes e clientes até o `TOTAL BRASIL`.
+1. **Preservação Rígida da Geometria da Tabela**: A estrutura relacional da tabela (número de colunas `REGIONAL`, `KPI`, `ANO A`, `MÊS A`, `DESAFIO`, `REAL`, projeções semanais, `% DISP`, `% DESAFIO`, `%AA`, `%MA`), bem como `colspan`, `rowspan`, alinhamentos entre `thead`, `tbody` e `tfoot` são estritamente imutáveis. O valor `R$ 6.750` permanece obrigatoriamente alinhado na coluna `DESAFIO` e `R$ 3.701` na coluna `REAL`.
+2. **Moldura Dourada Dupla (DESAFIO e Semana Atual)**: As colunas **DESAFIO** e **Semana Corrente (`27/JUL`)** são delimitadas por duas linhas douradas idênticas de 2px de espessura (`borderLeft: 2px solid #f59e0b` e `borderRight: 2px solid #f59e0b` com especificidade CSS alta `.col-highlight-gold`), sem alterar larguras, grids ou posicionamento de colunas.
 3. **Blocos Visuais Independentes por Gerente**: Cada gerente comercial é enquadrado em um contêiner visual próprio delimitado por moldura externa completa (`border-t-2 border-b-2 border-l-2 border-r-2 border-accent-gold/70`) e célula de identificação com fundo sobressalente (`bg-background-elevated/70`), separado do bloco vizinho por um espaçador vertical de 12px.
 4. **Preservação Absoluta de Negócio**: Refinamentos estritamente de apresentação (UI/UX), com 0 alteração em regras, APIs, cálculos, SSOT ou governança.
 
