@@ -428,9 +428,34 @@ A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`)
    - Cabeçalho da **Semana Corrente**: Mantém o badge discreto `ATUAL` em destaque dourado abaixo da data.
 
 5. **Separação Visual Entre Resumo do Gerente e Clientes**:
-   - A linha `INVEST` do resumo do gerente possui **borda inferior dourada permanente (`border-b-2 border-accent-gold/80`)**. Quando os clientes daquele gerente são expandidos, essa borda funciona como uma linha divisória nítida e elegante delimitando o término do Bloco Resumo do Gerente (`VOL`, `FAT`, `INVEST`) e o início do detalhamento da carteira por Redes/Clientes, sem criar linhas em branco ou alterar a estrutura HTML da tabela.
+   - A linha `INVEST` do resumo do gerente possui **borda inferior dourada permanente (`border-b-2 border-accent-gold/80`)**. Quando os clientes daquele gerente são expandidos, a separação é feita via spacer vertical (`tr h-3`), delimitando com clareza o término do Bloco Resumo do Gerente (`VOL`, `FAT`, `INVEST`) e o início do detalhamento por Redes.
 
 Status Arquitetural: `RPS_EXECUTIVE_VISUAL_HIERARCHY = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 78. Baseline Oficial — Fórmulas dos Indicadores Analíticos da RPS
+
+A partir de 27/07/2026, os quatro indicadores da coluna **ANÁLISE** da RPS passam a seguir rigorosamente a convenção matemática única de variação percentual:
+
+$$\text{Indicador} = \left(\frac{\text{Valor Comparado}}{\text{Valor Base}} - 1\right) \times 100$$
+
+### Fórmulas Oficiais Homologadas:
+1. **`% DISP` (Dispersão do Mês Anterior)**:
+   $$\%\text{DISP} = \left(\frac{\text{REAL\_FECHADO\_MES\_ANTERIOR}}{\text{ULTIMA\_PROJECAO\_MES\_ANTERIOR}} - 1\right) \times 100$$
+   *Exemplo Homologado*: $(528.000 / 600.000 - 1) \times 100 = -12,0\%$.
+
+2. **`% DESAFIO` (Atingimento do Desafio)**:
+   $$\%\text{DESAFIO} = \left(\frac{\text{PROJECAO\_ATUAL}}{\text{DESAFIO}} - 1\right) \times 100$$
+   *Exemplo Homologado*: $(620 / 665 - 1) \times 100 = -6,8\%$.
+
+3. **`%AA` (Crescimento Ano a Ano)**:
+   $$\%AA = \left(\frac{\text{PROJECAO\_ATUAL}}{\text{ANO\_A}} - 1\right) \times 100$$
+
+4. **`%MA` (Crescimento Mês a Mês)**:
+   $$\%MA = \left(\frac{\text{PROJECAO\_ATUAL}}{\text{MES\_A}} - 1\right) \times 100$$
+
+Status Arquitetural: `RPS_ANALYSIS_FORMULAS = LOCKED` & `BASELINE = PERMANENTE`.
 
 
 

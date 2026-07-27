@@ -732,71 +732,30 @@ export default function RpsPage() {
     return projections[projections.length - 1] || 0;
   };
 
-  // Helper de cálculo de porcentagem de atingimento (meta/desafio)
-  const calcRatioPct = (current: number, target: number) => {
-    if (target <= 0) return 0;
-    return (current / target) * 100;
+  // Helper oficial de cálculo de variação analítica da RPS: (Valor Comparado / Valor Base - 1) * 100
+  const calcGrowthPct = (compared: number, base: number) => {
+    if (!base || base <= 0) return 0;
+    return ((compared / base) - 1) * 100;
   };
 
-  // Helper de cálculo de variação de crescimento (comparativos AA e MA dos clientes)
-  const calcGrowthPct = (current: number, historical: number) => {
-    if (historical <= 0) return 0;
-    return ((current - historical) / historical) * 100;
-  };
-
-  // Helper de cálculo de dispersão
-  const calcDispersionPct = (closed: number, projected: number) => {
-    if (projected <= 0) return 0;
-    return ((closed - projected) / projected) * 100;
-  };
+  const calcRatioPct = calcGrowthPct;
+  const calcDispersionPct = calcGrowthPct;
 
   // Estilo de cor para células de porcentagem
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
-    if (kpi === "DISPERSAO") {
-      if (pctVal >= 0) {
-        return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
-      } else {
-        return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
-      }
-    }
-
-    if (compareVal <= 0) return { color: "var(--foreground-dim)" };
+    if (!compareVal || compareVal <= 0) return { color: "var(--foreground-dim)" };
 
     if (kpi === "INVEST") {
-      if (pctVal <= 100) {
+      if (pctVal <= 0) {
         return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
         return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
       }
     } else {
-      if (isClient) {
-        if (kpi === "META") {
-          if (pctVal >= timeElapsedPct) {
-            return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
-          } else {
-            return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
-          }
-        } else {
-          if (pctVal >= 0) {
-            return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
-          } else {
-            return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
-          }
-        }
+      if (pctVal >= 0) {
+        return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
       } else {
-        if (kpi === "DESAFIO") {
-          if (pctVal >= timeElapsedPct) {
-            return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
-          } else {
-            return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
-          }
-        } else {
-          if (pctVal >= 100) {
-            return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
-          } else {
-            return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
-          }
-        }
+        return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
       }
     }
   };
@@ -1010,18 +969,18 @@ export default function RpsPage() {
                       const isExpanded = !!expandedManagers[row.manager];
                       const totalRowsCount = 3 + (isExpanded ? row.clients.length : 0);
 
-                      // KPIs Padrão
-                      const volDisp = calcDispersionPct(row.kpis.VOL.real, row.kpis.VOL.prev_month_projection || 0);
+                      // KPIs Padrão (Fórmulas Oficiais da Análise)
+                      const volDisp = calcDispersionPct(row.kpis.VOL.mes_a, row.kpis.VOL.prev_month_projection || 0);
                       const volDesafio = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.desafio);
                       const volAA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.ano_a);
                       const volMA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.mes_a);
 
-                      const fatDisp = calcDispersionPct(row.kpis.FAT.real, row.kpis.FAT.prev_month_projection || 0);
+                      const fatDisp = calcDispersionPct(row.kpis.FAT.mes_a, row.kpis.FAT.prev_month_projection || 0);
                       const fatDesafio = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.desafio);
                       const fatAA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.ano_a);
                       const fatMA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.mes_a);
 
-                      const investDisp = calcDispersionPct(row.kpis.INVEST.real, row.kpis.INVEST.prev_month_projection || 0);
+                      const investDisp = calcDispersionPct(row.kpis.INVEST.mes_a, row.kpis.INVEST.prev_month_projection || 0);
                       const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
 
                       return (
@@ -1229,10 +1188,11 @@ export default function RpsPage() {
 
                           {/* LINHAS DOS CLIENTES SE EXPANDIDO */}
                           {isExpanded && row.clients.map((cli, cIdx) => {
-                            const cliAA = calcGrowthPct(cli.real, cli.ano_a);
-                            const cliMA = calcGrowthPct(cli.real, cli.mes_a);
-                            const cliMetaPct = calcRatioPct(cli.real, cli.meta);
-                            const cliDisp = calcDispersionPct(cli.real, cli.prev_month_projection || 0);
+                            const cliProj = getLatestProjection(cli.projections) || cli.real;
+                            const cliAA = calcGrowthPct(cliProj, cli.ano_a);
+                            const cliMA = calcGrowthPct(cliProj, cli.mes_a);
+                            const cliMetaPct = calcGrowthPct(cliProj, cli.meta);
+                            const cliDisp = calcGrowthPct(cli.mes_a, cli.prev_month_projection || 0);
                             const isLastClientRow = cIdx === row.clients.length - 1;
 
                             return (
@@ -1366,8 +1326,8 @@ export default function RpsPage() {
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
-                            {formatPercent(calcDispersionPct(totalsRow.kpis.VOL.real, totalsRow.kpis.VOL.prev_month_projection))}
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.VOL.mes_a, totalsRow.kpis.VOL.prev_month_projection), totalsRow.kpis.VOL.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.VOL.mes_a, totalsRow.kpis.VOL.prev_month_projection))}
                           </td>
                           <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio), totalsRow.kpis.VOL.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.desafio))}
@@ -1395,8 +1355,8 @@ export default function RpsPage() {
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
-                            {formatPercent(calcDispersionPct(totalsRow.kpis.FAT.real, totalsRow.kpis.FAT.prev_month_projection))}
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.FAT.mes_a, totalsRow.kpis.FAT.prev_month_projection), totalsRow.kpis.FAT.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.FAT.mes_a, totalsRow.kpis.FAT.prev_month_projection))}
                           </td>
                           <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio), totalsRow.kpis.FAT.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.desafio))}
@@ -1424,8 +1384,8 @@ export default function RpsPage() {
                               </td>
                             );
                           })}
-                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
-                            {formatPercent(calcDispersionPct(totalsRow.kpis.INVEST.real, totalsRow.kpis.INVEST.prev_month_projection))}
+                          <td className="font-mono border-l-0 py-2.5" style={getPctCellStyle("DISPERSAO", calcDispersionPct(totalsRow.kpis.INVEST.mes_a, totalsRow.kpis.INVEST.prev_month_projection), totalsRow.kpis.INVEST.prev_month_projection)}>
+                            {formatPercent(calcDispersionPct(totalsRow.kpis.INVEST.mes_a, totalsRow.kpis.INVEST.prev_month_projection))}
                           </td>
                           <td className="font-mono py-2.5" style={getPctCellStyle("INVEST", getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.INVEST.projections), totalsRow.kpis.INVEST.desafio))}
