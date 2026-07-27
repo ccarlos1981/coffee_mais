@@ -399,7 +399,7 @@ Status Arquitetural: `RPS_EXECUTIVE_BLOCKS_AND_DOUBLE_GOLD_BORDERS = LOCKED` & `
 A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) institui oficialmente a padronização visual e temporal de edição:
 
 ### Diretrizes Mandatórias:
-1. **Fundo Amarelo Suave Contínuo (`bg-amber-500/15`)**: As colunas **DESAFIO** e **Semana Corrente (`ATUAL`)** utilizam o mesmo tom de fundo amarelo suave (`bg-amber-500/15` / `rgba(245, 158, 11, 0.15)`) de forma 100% contínua e idêntica através de todas as camadas da tabela: cabeçalho (`th`), linhas dos gerentes, linhas de clientes expandidas e rodapé (`TOTAL BRASIL`).
+1. **Fundo Amarelo Suave Executivo (`bg-amber-500/8`)**: As colunas **DESAFIO** e **Semana Corrente (`ATUAL`)** utilizam uma tonalidade de fundo amarelo ultra-suave com opacidade ajustada para 8% (`bg-amber-500/8` / `rgba(245, 158, 11, 0.08)`) de forma 100% contínua e idêntica através de todas as camadas da tabela: cabeçalho (`th`), linhas dos gerentes, linhas de clientes expandidas e rodapé (`TOTAL BRASIL`). Essa opacidade destaca visualmente as colunas sem competir com a legibilidade dos números.
 2. **Janela Temporal Oficial de Edição para Gerentes (15:00 de Segunda-feira)**:
    - **Administradores (`Admin`, `Admin Master`, `Gerente Nacional`)**: Permanece autorizada a edição de qualquer semana a qualquer momento sem restrição temporal.
    - **Gerentes Comerciais**: Autorizada a edição **exclusivamente da coluna da semana corrente** e estritamente **até as 15:00 da segunda-feira correspondente** (no fuso horário oficial do Brasil `America/Sao_Paulo`).
