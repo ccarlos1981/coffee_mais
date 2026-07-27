@@ -1307,7 +1307,7 @@ export default function RpsPage() {
                                 <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
-                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", cliMT, cli.media_trimestre, true)}>{cli.media_trimestre > 0 ? formatPercent(cliMT) : "—"}</td>
+                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", cliMT, cli.media_trimestre || 0, true)}>{(cli.media_trimestre || 0) > 0 ? formatPercent(cliMT) : "—"}</td>
                               </tr>
                             );
                           })}
