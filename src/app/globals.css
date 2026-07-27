@@ -887,6 +887,13 @@ body {
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.3) !important;
 }
 
+/* Molduras douradas simétricas para colunas destacadas (DESAFIO e Semana Atual) */
+.data-table.rps-table th.col-highlight-gold,
+.data-table.rps-table td.col-highlight-gold {
+  border-left: 2px solid #f59e0b !important;
+  border-right: 2px solid #f59e0b !important;
+}
+
 /* Reset containing block properties of glass-card in RPS page to allow sticky headers */
 .glass-card.rps-card {
   transform: none !important;
