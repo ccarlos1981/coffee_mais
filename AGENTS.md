@@ -293,6 +293,23 @@ A partir de 27/07/2026, a **Sprint 2.2 — Enterprise Performance & Optimization
 
 Status Arquitetural: `PERFORMANCE_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 69. Baseline Oficial — Carteira Dinâmica de Planejamento (Admin Only)
+
+A partir de 27/07/2026, a funcionalidade de **Gestão Dinâmica da Carteira de Planejamento** passa a integrar a RPS (`/processo-comercial/rps`), permitindo a customização das redes participantes do planejamento mensal por administradores sem alterar o cadastro oficial de vendas ou a carteira comercial de outros módulos.
+
+### Diretrizes Mandatórias:
+1. **Exclusividade de Acesso (Admin Only)**: Somente usuários autenticados com perfis `Admin` ou `Admin Master` possuem autorização para incluir redes (`+`), remover redes (`-`) ou reordenar posições (`▲` / `▼`). Demais perfis possuem acesso estritamente leitura.
+2. **Carregamento Automático de Dados Oficiais**: Quando uma nova rede é adicionada ao planejamento, seus indicadores históricos (Rolling FAT 3M, Ano A, Mês A, Real, Meta e projeções) são carregados automaticamente consumindo as fontes oficiais homologadas.
+3. **Persistência em Tabela Dedicada**: Toda customização de planejamento é salva na tabela `cm_rps_custom_carteira` (`year`, `month`, `manager`, `client_matrix`, `display_order`, `is_excluded`).
+4. **Isolamento de Cadastro**: A inclusão ou exclusão afeta exclusivamente a visão de planejamento da RPS para o mês correspondente, preservando 100% da integridade de vendas, clientes e faturamento nos demais módulos.
+5. **Auditoria Rastreável**: Operações de inclusão, remoção e reordenação registram logs de auditoria via `logAuditAction` (`RPS_REDE_INCLUSAO`, `RPS_REDE_EXCLUSAO`, `RPS_REDE_REORDENACAO`).
+6. **Segurança no Backend**: Tentativas não autorizadas de manipular a carteira por perfis não administrativos são rejeitadas pelo servidor com **HTTP 403 Forbidden**.
+
+Status Arquitetural: `RPS_DYNAMIC_PLANNING_CARTEIRA = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
