@@ -176,6 +176,25 @@ export async function GET(request: Request) {
       WHERE is_rede_planejavel = TRUE
     `;
 
+    // SQL - Carteira Dinâmica Customizada (Sprint RPS Carteira Dinâmica)
+    const sqlCustomCarteira = `
+      SELECT manager, TRIM(client_matrix) as client_matrix, display_order, is_excluded
+      FROM cm_rps_custom_carteira
+      WHERE year = ${year} AND month = ${month}
+    `;
+
+    // SQL - Todas as redes disponíveis no sistema para pesquisa do Modal "+"
+    const sqlAllAvailableRedes = `
+      SELECT DISTINCT 
+        TRIM(rede) as client,
+        manager,
+        codigo_matriz,
+        uf
+      FROM vw_redes_planejaveis_oficiais
+      WHERE rede IS NOT NULL AND TRIM(rede) != ''
+      ORDER BY TRIM(rede) ASC
+    `;
+
     // SQL - Metas Oficiais dos gerentes (SSOT: public.targets)
     const sqlManagerTargets = `
       SELECT manager, manager_id, target_revenue, target_tons
@@ -213,11 +232,23 @@ export async function GET(request: Request) {
       WHERE year = ${prevMonthYear} AND month = ${prevMonthVal}
     `;
 
-    // Executar consultas via RPC (Sem N+1, buscando todos em consultas únicas em paralelo)
-    const [resMgrHist, resCliHist, resBaseCli, resMgrTargets, resInvestHist, resProj, resPrevProj] = await Promise.all([
+    // Executar consultas via RPC
+    const [
+      resMgrHist, 
+      resCliHist, 
+      resBaseCli, 
+      resCustomCarteira, 
+      resAllAvailable, 
+      resMgrTargets, 
+      resInvestHist, 
+      resProj, 
+      resPrevProj
+    ] = await Promise.all([
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlClientHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlBaseClients }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlCustomCarteira }),
+      supabase.rpc('execute_readonly_query', { query_text: sqlAllAvailableRedes }),
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerTargets }),
       supabase.rpc('execute_readonly_query', { query_text: sqlInvestmentsHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlWeeklyProjections }),
@@ -227,6 +258,8 @@ export async function GET(request: Request) {
     if (resMgrHist.error) throw new Error("Erro buscar histórico gerentes: " + resMgrHist.error.message);
     if (resCliHist.error) throw new Error("Erro buscar histórico clientes: " + resCliHist.error.message);
     if (resBaseCli.error) throw new Error("Erro buscar base clientes: " + resBaseCli.error.message);
+    if (resCustomCarteira.error) throw new Error("Erro buscar carteira customizada: " + resCustomCarteira.error.message);
+    if (resAllAvailable.error) throw new Error("Erro buscar redes disponíveis: " + resAllAvailable.error.message);
     if (resMgrTargets.error) throw new Error("Erro buscar metas: " + resMgrTargets.error.message);
     if (resInvestHist.error) throw new Error("Erro buscar investimento histórico: " + resInvestHist.error.message);
     if (resProj.error) throw new Error("Erro buscar projeções: " + resProj.error.message);
@@ -235,6 +268,8 @@ export async function GET(request: Request) {
     const mgrHist = (resMgrHist.data || []) as any[];
     const cliHist = (resCliHist.data || []) as any[];
     const baseCli = (resBaseCli.data || []) as any[];
+    const customCarteiraRows = (resCustomCarteira.data || []) as any[];
+    const allAvailableRedes = (resAllAvailable.data || []) as any[];
     const mgrTargets = (resMgrTargets.data || []) as any[];
     
     // Processamento Typescript SSOT: Calcular valor total e agrupar
@@ -251,7 +286,6 @@ export async function GET(request: Request) {
       return { manager, mes_referencia, total_invest: investHistMap[key] };
     });
 
-    
     // Consolidar projeções brutas pela identidade canônica antes da montagem de managerProjs
     const dbProjections = consolidateProjectionsByCanonicalManager((resProj.data || []) as any[]);
     const dbPrevProjections = consolidateProjectionsByCanonicalManager((resPrevProj.data || []) as any[]);
@@ -323,11 +357,9 @@ export async function GET(request: Request) {
       // Projeções semanais gravadas para este gerente em cm_weekly_projections
       const managerProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix === '_TOTAL_');
 
-      // REGRA MANTIDA: DESAFIO_VOL e DESAFIO_FAT vêm EXCLUSIVAMENTE da fonte oficial public.targets (SSOT)
       const desafioVol = targetVol;
       const desafioFat = targetFat;
 
-      // DESAFIO_INVEST pode consultar cm_weekly_projections para personalização visual ou manter o padrão
       const customDesafioInvest = managerProjs.find((p: any) => p.kpi === 'DESAFIO_INVEST');
       const desafioInvest = customDesafioInvest ? Number(customDesafioInvest.projection_value) : targetInvest;
 
@@ -371,22 +403,35 @@ export async function GET(request: Request) {
         }
       };
 
-      // --- CAMADA OFICIAL DE DOMÍNIO: REDES COMERCIAIS PLANEJÁVEIS VIA VW_REDES_PLANEJAVEIS_OFICIAIS ---
+      // --- CAMADA DE GESTÃO DINÂMICA DE CARTEIRA (RPS) ---
       const managerBaseCli = baseCli.filter((b: any) => isSameManager(b.manager, mName) || isSameManager(b.manager_id, mName));
       const managerCliHist = cliHist.filter((c: any) => isSameManager(c.manager, mName));
       const clientProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix !== '_TOTAL_');
+      const managerCustomCarteira = customCarteiraRows.filter((r: any) => isSameManager(r.manager, mName));
 
-      // Conjunto de redes pertencentes EXCLUSIVAMENTE à camada oficial de redes planejáveis
-      const redeSet = new Set<string>(
-        managerBaseCli.map((b: any) => b.client)
-      );
+      // Montar conjunto de redes base + customizadas ativas
+      const redeSet = new Set<string>(managerBaseCli.map((b: any) => b.client));
+
+      // Adicionar redes ativas na customizacao
+      managerCustomCarteira.forEach((r: any) => {
+        if (!r.is_excluded && r.client_matrix) {
+          redeSet.add(r.client_matrix);
+        }
+      });
+
+      // Remover redes excluídas manualmente na carteira dinâmica
+      managerCustomCarteira.forEach((r: any) => {
+        if (r.is_excluded && r.client_matrix) {
+          redeSet.delete(r.client_matrix);
+        }
+      });
 
       // Remover desmapeados e a linha especial de agrupamento OUTROS
       redeSet.delete('');
       redeSet.delete('Não Mapeado');
       redeSet.delete('OUTROS');
 
-      // Ordenar redes comerciais pelo Ranking Oficial Comercial: Rolling 3M FAT (Maior -> Menor), desempate por nome
+      // Mapear Rolling FAT 3M
       const redeRollingMap = new Map<string, number>();
       Array.from(redeSet).forEach(cName => {
         const r3m = managerCliHist
@@ -395,15 +440,34 @@ export async function GET(request: Request) {
         redeRollingMap.set(cName, r3m);
       });
 
+      // Mapear Ordem Customizada se existir em cm_rps_custom_carteira
+      const customOrderMap = new Map<string, number>();
+      managerCustomCarteira.forEach((r: any) => {
+        if (!r.is_excluded && r.display_order !== undefined && r.display_order !== null) {
+          customOrderMap.set(r.client_matrix.trim().toUpperCase(), Number(r.display_order));
+        }
+      });
+
+      const hasCustomOrder = customOrderMap.size > 0;
+
       const sortedRedeNames = Array.from(redeSet).sort((a, b) => {
+        const keyA = a.trim().toUpperCase();
+        const keyB = b.trim().toUpperCase();
+
+        if (hasCustomOrder) {
+          const orderA = customOrderMap.has(keyA) ? customOrderMap.get(keyA)! : 999999;
+          const orderB = customOrderMap.has(keyB) ? customOrderMap.get(keyB)! : 999999;
+          if (orderA !== orderB) return orderA - orderB;
+        }
+
         const fatA = redeRollingMap.get(a) || 0;
         const fatB = redeRollingMap.get(b) || 0;
         if (fatB !== fatA) return fatB - fatA;
         return a.localeCompare(b, 'pt-BR');
       });
 
-      // Mapear cada rede comercial pertencente ao gerente
-      const clientsList = sortedRedeNames.map(cName => {
+      // Mapear cada rede comercial pertencente ao gerente com dados oficiais carregados automaticamente
+      const clientsList = sortedRedeNames.map((cName, idx) => {
         const cProj = clientProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase());
         
         const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
@@ -430,7 +494,7 @@ export async function GET(request: Request) {
           client: cName,
           ano_a: fatPy,
           mes_a: fatPm,
-          desafio: 0, // Fallback estético
+          desafio: 0,
           real: fatCur,
           meta: metaValue,
           prev_month_projection: prevCliFatProj,
@@ -438,11 +502,12 @@ export async function GET(request: Request) {
             const p = cProj.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
             if (p) return Number(p.projection_value);
             return date > todayStr ? 0 : metaValue;
-          })
+          }),
+          display_order: customOrderMap.get(cName.trim().toUpperCase()) ?? idx
         };
       });
 
-      // Adicionar permanentemente "OUTROS" como o último item para vendas de PDVs/parceiros sem rede vinculada
+      // Adicionar permanentemente "OUTROS" como o último item
       const cProjOutros = clientProjs.filter((p: any) => p.client_matrix === 'OUTROS');
       const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
       const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : 0;
@@ -469,7 +534,8 @@ export async function GET(request: Request) {
           const p = cProjOutros.find((p: any) => p.week_start_date === date && p.kpi === 'FAT');
           if (p) return Number(p.projection_value);
           return date > todayStr ? 0 : metaValueOutros;
-        })
+        }),
+        display_order: 999999
       });
 
       return {
@@ -487,6 +553,7 @@ export async function GET(request: Request) {
       month,
       mondays,
       managers: managersData,
+      allAvailableRedes,
       restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
       isGerenteNacionalAdmin,
       isAdmin
@@ -511,7 +578,7 @@ export async function POST(request: Request) {
     const isRestricted = !isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole);
 
     const body = await request.json();
-    const { year, month, projections } = body;
+    const { year, month, projections, customCarteira } = body;
 
     if (!year || !month || !projections || !Array.isArray(projections)) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
@@ -522,6 +589,14 @@ export async function POST(request: Request) {
     if (metaRowsInPayload.length > 0 && !isAdmin) {
       return NextResponse.json(
         { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem definir ou alterar o Desafio por Rede." },
+        { status: 403 }
+      );
+    }
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode gerenciar a Carteira Dinâmica (Custom Carteira)
+    if (customCarteira && Array.isArray(customCarteira) && customCarteira.length > 0 && !isAdmin) {
+      return NextResponse.json(
+        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem alterar a Carteira de Planejamento da RPS." },
         { status: 403 }
       );
     }
@@ -585,6 +660,49 @@ export async function POST(request: Request) {
         .upsert(rowsToUpsert, { onConflict: 'manager,client_matrix,year,month,week_start_date,kpi' });
 
       if (error) throw error;
+    }
+
+    // 3. PERSISTÊNCIA DA CARTEIRA DINÂMICA DE PLANEJAMENTO (EXCLUSIVO PARA ADMIN)
+    if (isAdmin && customCarteira && Array.isArray(customCarteira) && customCarteira.length > 0) {
+      const customRowsToUpsert = customCarteira.map((c: any) => ({
+        year: parseInt(year),
+        month: parseInt(month),
+        manager: resolveCanonicalManager(c.manager).managerName,
+        client_matrix: (c.client_matrix || '').trim(),
+        display_order: Number(c.display_order || 0),
+        is_excluded: Boolean(c.is_excluded),
+        updated_at: new Date().toISOString()
+      }));
+
+      const { error: customErr } = await supabase
+        .from('cm_rps_custom_carteira')
+        .upsert(customRowsToUpsert, { onConflict: 'year,month,manager,client_matrix' });
+
+      if (customErr) throw customErr;
+
+      // Auditoria Rastreável de Inclusão, Remoção e Reordenação
+      for (const cRow of customRowsToUpsert) {
+        let actionType = "RPS_REDE_REORDENACAO";
+        if (cRow.is_excluded) {
+          actionType = "RPS_REDE_EXCLUSAO";
+        } else if (cRow.display_order === 0) {
+          actionType = "RPS_REDE_INCLUSAO";
+        }
+
+        await logAuditAction(
+          user.id,
+          actionType,
+          "cm_rps_custom_carteira",
+          {
+            manager: cRow.manager,
+            client_matrix: cRow.client_matrix,
+            year: cRow.year,
+            month: cRow.month,
+            display_order: cRow.display_order,
+            is_excluded: cRow.is_excluded
+          }
+        );
+      }
     }
 
     // Registrador oficial de auditoria para edições do Desafio por Rede efetuadas por Administrador
