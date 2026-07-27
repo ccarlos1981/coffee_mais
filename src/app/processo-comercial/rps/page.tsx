@@ -1212,7 +1212,7 @@ export default function RpsPage() {
                             const isLastClientRow = cIdx === row.clients.length - 1;
 
                             return (
-                              <tr key={cli.client} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
+                              <tr key={`${row.manager}_${cli.client}_${cIdx}`} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
                                 {/* Nome da Rede/Cliente ocupando colSpan={2} (REGIONAL + KPI) sem a coluna KPI repetitiva */}
                                 <td colSpan={2} className="text-left pl-6 pr-3 py-1.5 text-xs font-bold text-amber-200/90">
                                   <div className="flex items-center justify-between gap-2">
@@ -1515,11 +1515,11 @@ export default function RpsPage() {
                   Nenhuma rede encontrada para a busca "{searchRedeTerm}".
                 </div>
               ) : (
-                filteredAvailableRedes.map((item) => {
+                filteredAvailableRedes.map((item, itemIdx) => {
                   const isSelected = selectedRedeToAdd === item.client;
                   return (
                     <div
-                      key={item.client}
+                      key={`${item.client}_${item.codigo_matriz || ''}_${itemIdx}`}
                       onClick={() => setSelectedRedeToAdd(item.client)}
                       className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between font-sans ${
                         isSelected 
