@@ -1054,7 +1054,7 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais VOL */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const val = row.kpis.VOL.projections[wIdx] ? row.kpis.VOL.projections[wIdx] / 1000 : 0;
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
@@ -1102,7 +1102,7 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais FAT */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const val = row.kpis.FAT.projections[wIdx] ? row.kpis.FAT.projections[wIdx] / 1000 : 0;
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
@@ -1150,7 +1150,7 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais INVEST */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || isTodayMonday;
+                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                               const val = row.kpis.INVEST.projections[wIdx] || 0;
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
@@ -1182,8 +1182,6 @@ export default function RpsPage() {
                             const cliMA = calcGrowthPct(cli.real, cli.mes_a);
                             const cliMetaPct = calcRatioPct(cli.real, cli.meta);
                             const cliDisp = calcDispersionPct(cli.real, cli.prev_month_projection || 0);
-
-                            const isEditable = isGerenteNacionalAdmin || isTodayMonday;
 
                             return (
                               <tr key={cli.client} className="bg-background-subtle/30 hover:bg-background-subtle transition-colors">
@@ -1248,6 +1246,7 @@ export default function RpsPage() {
 
                                 {/* Projeções semanais do cliente */}
                                 {mondays.map((m, wIdx) => {
+                                  const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
                                   const val = cli.projections[wIdx] ? cli.projections[wIdx] / 1000 : 0;
                                   return (
                                     <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""}`}>
