@@ -380,16 +380,16 @@ Status Arquitetural: `RPS_DESAFIO_COLUMN_BORDERS = LOCKED` & `BASELINE = CONFIRM
 
 ---
 
-## 75. Baseline Oficial — Alinhamento da Legenda do % DISP e Moldura Contínua (RPS)
+## 75. Baseline Oficial — Simetria de Molduras e Blocos Independente de Gerentes (RPS)
 
-A partir de 27/07/2026, o módulo RPS (`/processo-comercial/rps`) atende rigorosamente aos padrões de consistência documental e simetria de destaque visual:
+A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) consolida rigorosamente o padrão visual de blocos delimitados e simetria de colunas:
 
 ### Diretrizes Mandatórias:
-1. **Definição da Legenda do % DISP**: A legenda oficial do `% DISP` no rodapé da tabela é estritamente: `Dispersão (Última Projeção do Mês Anterior vs Real do Mês Anterior)`.
-2. **Consistência Matemática**: O cálculo do `% DISP` consome a **Última Projeção do Mês Anterior** (`prev_month_projection` vinda do SSOT backend) em comparação direta com o **Real do Mês Anterior** (`real`), garantindo 0,0000% de divergência conceitual.
-3. **Moldura Contínua nas Duas Laterais (DESAFIO e Semana Corrente)**: As colunas **DESAFIO** e **Semana Corrente** (`27/JUL`) são renderizadas como blocos verticais destacados delimitados por linhas douradas visíveis tanto à esquerda quanto à direita (`box-shadow: inset 2px ...` + `border-x-2 border-amber-400` com remoção do `border-left` na célula adjacente `REAL`/`% DISP`), eliminando qualquer sobreposição ou colapso de borda no navegador.
+1. **Simetria Perfeita das Molduras Focalizadas (DESAFIO e Semana Atual)**: As colunas **DESAFIO** e **Semana Corrente** (`27/JUL`) são renderizadas como blocos verticais simétricos delimitados por linhas douradas idênticas em espessura (2px), tonalidade e opacidade em ambas as laterais (`border-l-2 border-r-2 border-amber-500/80` com `border-r-0` na célula anterior e `border-l-0` na célula posterior), eliminando 100% das assimetrias por colapso de borda no navegador.
+2. **Blocos Visuais Independentes por Gerente**: Cada gerente comercial é enquadrado em um contêiner visual próprio delimitado por moldura externa completa (`border-t-2 border-b-2 border-l-2 border-r-2 border-accent-gold/70`) e célula de identificação com fundo sobressalente (`bg-background-elevated/70`), separado do bloco vizinho por um espaçador vertical de 12px.
+3. **Preservação Absoluta de Negócio**: Refinamentos estritamente de apresentação (UI/UX), com 0 alteração em regras, APIs, cálculos, SSOT ou governança.
 
-Status Arquitetural: `RPS_DISP_LEGEND_AND_DOUBLE_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
+Status Arquitetural: `RPS_EXECUTIVE_BLOCKS_AND_SYMMETRIC_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
 
 
 
