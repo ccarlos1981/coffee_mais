@@ -322,6 +322,20 @@ A partir de 27/07/2026, estabelece-se a regra geral e permanente de governança 
 
 Status Arquitetural: `PERMISSIONS_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 71. Baseline Oficial — Restrição da Linha "TOTAL BRASIL" na RPS (Admin Only)
+
+A partir de 27/07/2026, a visualização da linha consolidada **TOTAL BRASIL** no módulo RPS (`/processo-comercial/rps`) passa a ser restrita exclusivamente a administradores:
+
+### Diretrizes Mandatórias:
+1. **Exclusividade de Acesso (Admin Only)**: Apenas usuários autenticados com perfis `Admin` ou `Admin Master` podem visualizar a linha consolidada `TOTAL BRASIL`. Demais perfis (Gerente Nacional, Gerente Regional, Supervisor, Promotor, Consulta, etc.) não possuem acesso a este consolidado.
+2. **Decisão no Servidor (Server-Side Enforcement)**: A API `GET /api/processo-comercial/rps` valida o perfil do usuário e retorna `canViewTotalBrasil = false` para perfis não administrativos.
+3. **Renderização Limpa**: Quando o usuário não possui permissão, o frontend renderiza as demais linhas dos gerentes normalmente, sem lacunas visuais, linhas em branco ou alterações de layout.
+
+Status Arquitetural: `TOTAL_BRASIL_RPS_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
