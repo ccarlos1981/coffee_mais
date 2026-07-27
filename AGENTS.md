@@ -309,6 +309,20 @@ A partir de 27/07/2026, a funcionalidade de **Gestão Dinâmica da Carteira de P
 
 Status Arquitetural: `RPS_DYNAMIC_PLANNING_CARTEIRA = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 70. Regra Geral de Governança — Preservação de Permissões e Regras de Negócio (Baseline Permanente)
+
+A partir de 27/07/2026, estabelece-se a regra geral e permanente de governança funcional para o ecossistema Coffee++:
+
+### Diretrizes Mandatórias:
+1. **Preservação de Permissões Homologadas**: Novas funcionalidades não podem alterar regras de permissão existentes sem uma decisão explícita de negócio e aprovação arquitetural prévia.
+2. **Não Regressão em Sprints**: Toda Sprint deve preservar integralmente as regras funcionais previamente homologadas, salvo quando houver mudança explicitamente aprovada de requisito.
+3. **Escopo Restrito de Modificações**: O desenvolvimento de novas funcionalidades deve restringir seus impactos exclusivamente ao escopo solicitado, sendo proibido alterar permissões de células, visibilidade de papéis ou fluxos operacionais vigentes.
+
+Status Arquitetural: `PERMISSIONS_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
