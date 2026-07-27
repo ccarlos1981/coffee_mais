@@ -335,6 +335,22 @@ A partir de 27/07/2026, a visualização da linha consolidada **TOTAL BRASIL** n
 
 Status Arquitetural: `TOTAL_BRASIL_RPS_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 72. Baseline Oficial — Padronização de Formatação e Divisória de Gerentes (RPS)
+
+A partir de 27/07/2026, a interface do módulo RPS (`/processo-comercial/rps`) segue o padrão oficial de apresentação executiva:
+
+### Diretrizes Mandatórias:
+1. **Formatação de VOL**: Exibido estritamente com **1 casa decimal** (ex: `83,4`, `152,8`, `95,0`).
+2. **Formatação de FAT**: Exibido estritamente em **números inteiros sem casas decimais** (ex: `3072`, `1814`, `665`, `676`).
+3. **Formatação de INVEST**: Exibido estritamente com **1 casa decimal** (ex: `10,0%`, `9,5%`, `12,6%`, `0,0%`).
+4. **Divisória Visual entre Gerentes**: Cada grupo de gerente (`tbody`) possui separador superior em tom accent-gold/40 e borda inferior reforçada para garantir legibilidade executiva.
+5. **Preservação Total**: A padronização é estritamente de UI/UX, mantendo intocada a precisão matemática dos cálculos e dados persistidos.
+
+Status Arquitetural: `RPS_UI_FORMATTING = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
