@@ -97,8 +97,18 @@ export default function RpsPage() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
 
-  // Data de hoje no fuso horário do Brasil para desabilitar inputs fora de segundas-feiras
+  // Informações oficiais do servidor (Server Time)
+  const [serverTimeInfo, setServerTimeInfo] = useState<{
+    todayStr: string;
+    hour: number;
+    isTodayMonday: boolean;
+    isCutoffReached: boolean;
+    canManagerEdit: boolean;
+  } | null>(null);
+
+  // Data de hoje no fuso horário do Brasil (obtida do Server Time)
   const todayStr = useMemo(() => {
+    if (serverTimeInfo?.todayStr) return serverTimeInfo.todayStr;
     const d = new Date();
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Sao_Paulo',
@@ -111,16 +121,23 @@ export default function RpsPage() {
     const m = parts.find(p => p.type === 'month')?.value;
     const dVal = parts.find(p => p.type === 'day')?.value;
     return `${y}-${m}-${dVal}`;
-  }, []);
+  }, [serverTimeInfo]);
 
   const isTodayMonday = useMemo(() => {
+    if (serverTimeInfo) return serverTimeInfo.isTodayMonday;
     const parts = todayStr.split('-');
     if (parts.length === 3) {
       const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       return d.getDay() === 1; // 1 = Segunda-feira
     }
     return false;
-  }, [todayStr]);
+  }, [serverTimeInfo, todayStr]);
+
+  // Permissão temporal de edição para Gerentes: Segunda-feira até as 15:00 (Server Time)
+  const canManagerEdit = useMemo(() => {
+    if (serverTimeInfo) return serverTimeInfo.canManagerEdit;
+    return isTodayMonday;
+  }, [serverTimeInfo, isTodayMonday]);
 
   // Obtém a última segunda-feira do mês anterior ao mês atual de hoje
   const lastMondayOfPrevMonth = useMemo(() => {
@@ -245,6 +262,7 @@ export default function RpsPage() {
         setIsGerenteNacionalAdmin(Boolean(json.isGerenteNacionalAdmin));
         setIsAdmin(Boolean(json.isAdmin));
         setCanViewTotalBrasil(Boolean(json.canViewTotalBrasil));
+        if (json.serverTime) setServerTimeInfo(json.serverTime);
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
       }
@@ -851,7 +869,7 @@ export default function RpsPage() {
           <div className="mt-6">
             <button
               onClick={handleSaveProjections}
-              disabled={saving || loading || managers.length === 0 || (!isTodayMonday && !isGerenteNacionalAdmin)}
+              disabled={saving || loading || managers.length === 0 || (!isGerenteNacionalAdmin && !canManagerEdit)}
               className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-gradient-to-r from-[#c8a96e] to-[#a0844f] hover:from-[#d6b97d] hover:to-[#b0935d] disabled:from-gray-700 disabled:to-gray-700 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-lg disabled:opacity-50 cursor-pointer"
             >
               {saving ? (
@@ -960,7 +978,7 @@ export default function RpsPage() {
                             <th
                               key={m}
                               style={{ minWidth: 85 }}
-                              className={`transition-colors ${isCurrent ? "bg-amber-500/20 text-amber-300 font-black border-l-2 border-r-2 border-amber-500/80 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
+                              className={`transition-colors ${isCurrent ? "bg-amber-500/15 text-amber-300 font-black border-l-2 border-r-2 border-amber-500/80 shadow-sm" : (idx === 0 ? "col-divider" : "")}`}
                             >
                               <div className="flex flex-col items-center justify-center gap-0.5 py-0.5">
                                 <span>{formatDateLabel(m)}</span>
@@ -1040,7 +1058,7 @@ export default function RpsPage() {
                             <td className="text-foreground-muted font-mono py-2.5 border-r-0">{formatNumber(row.kpis.VOL.mes_a / 1000, 1)}</td>
 
                             {/* Célula DESAFIO VOL (Moldura Simétrica 2px) */}
-                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
+                            <td className="font-mono font-bold bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1058,11 +1076,11 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais VOL (Com destaque da Semana Corrente Simétrico) */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
                               return (
-                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="0.1"
@@ -1072,7 +1090,7 @@ export default function RpsPage() {
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'VOL', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
                                     className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
                                       isCurrent
-                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none"
+                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none disabled:opacity-60"
                                         : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                     }`}
                                   />
@@ -1093,7 +1111,7 @@ export default function RpsPage() {
                             <td className="text-foreground-muted font-mono border-r-0">{formatCurrency(row.kpis.FAT.mes_a / 1000, 0)}</td>
 
                             {/* Célula DESAFIO FAT (Moldura Simétrica 2px) */}
-                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
+                            <td className="font-mono font-bold bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1111,11 +1129,11 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais FAT */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
-                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
                                     type="number"
                                     step="1"
@@ -1125,7 +1143,7 @@ export default function RpsPage() {
                                     onChange={(e) => handleManagerKpiChange(mIdx, 'FAT', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
                                     className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
                                       isCurrent
-                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none"
+                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none disabled:opacity-60"
                                         : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
                                     }`}
                                   />
@@ -1146,7 +1164,7 @@ export default function RpsPage() {
                             <td className="text-foreground-muted font-mono border-r-0">{formatPercent(row.kpis.INVEST.mes_a)}</td>
 
                             {/* Célula DESAFIO INVEST (Moldura Simétrica 2px) */}
-                            <td className="font-mono font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
+                            <td className="font-mono font-bold bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-2.5">
                               {isAdmin ? (
                                 <input
                                   type="number"
@@ -1164,11 +1182,11 @@ export default function RpsPage() {
 
                             {/* Projeções Semanais INVEST */}
                             {mondays.map((m, wIdx) => {
-                              const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                              const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
                               const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
                               return (
-                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">
                                     <input
                                       type="number"
@@ -1210,7 +1228,7 @@ export default function RpsPage() {
                                 <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
                                 {/* Meta do cliente (Moldura Simétrica DESAFIO 2px) */}
-                                <td className="font-mono text-xs font-bold bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
+                                <td className="font-mono text-xs font-bold bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-300 py-1.5">
                                   {isAdmin ? (
                                     <input
                                       type="number"
@@ -1228,11 +1246,11 @@ export default function RpsPage() {
 
                                 {/* Projeções semanais do cliente */}
                                 {mondays.map((m, wIdx) => {
-                                  const isEditable = isGerenteNacionalAdmin || (isTodayMonday && m === todayStr);
+                                  const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                                   const isCurrent = isCurrentWeek(m, wIdx);
                                   const rawVal = cli.projections[wIdx] ? Math.round(cli.projections[wIdx] / 1000) : "";
                                   return (
-                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/10 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                    <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                       <input
                                         type="number"
                                         step="1"

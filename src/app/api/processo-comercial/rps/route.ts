@@ -96,21 +96,44 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseAdminClient();
 
-    // Data de hoje no fuso horário do Brasil para checar semanas futuras
-    const todayStr = (() => {
-      const d = new Date();
-      const formatter = new Intl.DateTimeFormat('en-US', {
+    // Data e Hora oficiais do servidor no fuso horário do Brasil (America/Sao_Paulo)
+    const serverTimeInfo = (() => {
+      const now = new Date();
+      const formatterDate = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Sao_Paulo',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit'
       });
-      const parts = formatter.formatToParts(d);
+      const parts = formatterDate.formatToParts(now);
       const y = parts.find(p => p.type === 'year')?.value;
       const m = parts.find(p => p.type === 'month')?.value;
       const dVal = parts.find(p => p.type === 'day')?.value;
-      return `${y}-${m}-${dVal}`;
+      const todayStr = `${y}-${m}-${dVal}`;
+
+      const formatterHour = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        hour12: false
+      });
+      const hour = parseInt(formatterHour.format(now), 10);
+
+      const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const isTodayMonday = dateSP.getDay() === 1;
+      const isCutoffReached = isTodayMonday && hour >= 15;
+      const canManagerEdit = isTodayMonday && hour < 15;
+
+      return {
+        todayStr,
+        hour,
+        isTodayMonday,
+        isCutoffReached,
+        canManagerEdit,
+        serverTimeISO: now.toISOString()
+      };
     })();
+
+    const todayStr = serverTimeInfo.todayStr;
 
     // Chaves de período
     const curMonthKey = `${year}-${String(month).padStart(2, '0')}`;
@@ -558,7 +581,8 @@ export async function GET(request: Request) {
       restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
       isGerenteNacionalAdmin,
       isAdmin,
-      canViewTotalBrasil
+      canViewTotalBrasil,
+      serverTime: serverTimeInfo
     });
   } catch (error: any) {
     return handleAuthError(error);
@@ -584,6 +608,51 @@ export async function POST(request: Request) {
 
     if (!year || !month || !projections || !Array.isArray(projections)) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
+    }
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA TEMPORAL NO BACKEND (HTTP 403):
+    // Gerentes podem editar APENAS a semana corrente E APENAS até as 15:00 da segunda-feira (Server Time America/Sao_Paulo).
+    if (isRestricted) {
+      const now = new Date();
+      const formatterDate = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const parts = formatterDate.formatToParts(now);
+      const y = parts.find(p => p.type === 'year')?.value;
+      const m = parts.find(p => p.type === 'month')?.value;
+      const dVal = parts.find(p => p.type === 'day')?.value;
+      const serverTodayStr = `${y}-${m}-${dVal}`;
+
+      const formatterHour = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        hour: 'numeric',
+        hour12: false
+      });
+      const serverHour = parseInt(formatterHour.format(now), 10);
+      const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const isTodayMonday = dateSP.getDay() === 1;
+
+      if (!isTodayMonday || serverHour >= 15) {
+        return NextResponse.json(
+          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 15:00 da segunda-feira." },
+          { status: 403 }
+        );
+      }
+
+      // Validar se o gerente tentou enviar projeções de semanas diferentes da semana atual
+      const invalidWeekProjections = projections.filter((p: any) => {
+        return p.client_matrix !== '_TOTAL_' && p.kpi !== 'META' && p.week_start_date && p.week_start_date !== serverTodayStr;
+      });
+
+      if (invalidWeekProjections.length > 0) {
+        return NextResponse.json(
+          { success: false, error: "Acesso negado (403 Forbidden): Gerentes possuem autorização para alterar exclusivamente a semana corrente." },
+          { status: 403 }
+        );
+      }
     }
 
     // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode salvar/alterar kpi === 'META' (Desafio por Rede)
