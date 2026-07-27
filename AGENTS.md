@@ -407,12 +407,27 @@ A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`)
 3. **Fonte Única do Horário (Server Time)**: A validação temporal utiliza **exclusivamente o horário oficial do servidor (Server Time no backend)** transmitido no endpoint `GET /api/processo-comercial/rps`. É proibido utilizar o relógio local do navegador do cliente.
 4. **Trava Temporal de Segurança HTTP 403 no Backend**: O handler `POST /api/processo-comercial/rps` valida no servidor a janela temporal (segunda-feira $< 15:00$) para perfil gerente e rejeita qualquer tentativa de persistência fora do horário com `HTTP 403 Forbidden`.
 
-Status Arquitetural: `RPS_CONTINUOUS_YELLOW_BG_AND_SERVER_TIME_CUTOFF = LOCKED` & `BASELINE = CONFIRMED`.
+---
 
+## 77. Baseline Oficial — Hierarquia Visual Executiva da RPS (Resumos vs. Detalhes)
 
+A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) institui a hierarquia visual de contraste por nível de agregação:
 
+### Diretrizes Mandatórias:
+1. **Destaque Visual Restrito aos Resumos (Amarelo Suave 8%)**:
+   - O fundo amarelo suave (`bg-amber-500/8`) é aplicado **exclusivamente** nas colunas **DESAFIO** e **Semana Corrente (`ATUAL`)** das linhas de resumo:
+     - Cabeçalho da tabela (`thead`);
+     - Linhas dos Gerentes (`VOL`, `FAT`, `INVEST`);
+     - Rodapé `TOTAL BRASIL` (`tfoot`).
+2. **Fundo Neutro nas Linhas de Detalhamento das Redes (Clientes)**:
+   - Todas as linhas de clientes/redes expandidas permanecem com **fundo neutro (branco/subtle)** nas células das colunas destacadas, garantindo que o nível analítico detalhado fique visualmente limpo.
+3. **Continuidade Rígida das Molduras Douradas Verticais**:
+   - As linhas verticais douradas de 2px (`border-l-2 border-r-2 border-amber-500/80`) permanecem idênticas, contínuas e alinhadas através de **todas as linhas da tabela** (cabeçalho, gerentes, clientes e TOTAL BRASIL), delimitando a coluna como um bloco estrutural simétrico.
+4. **Badges Executivos de Cabeçalho**:
+   - Cabeçalho **DESAFIO**: Inclui o badge discreto `META` em destaque dourado abaixo do título.
+   - Cabeçalho da **Semana Corrente**: Mantém o badge discreto `ATUAL` em destaque dourado abaixo da data.
 
-
+Status Arquitetural: `RPS_EXECUTIVE_VISUAL_HIERARCHY = LOCKED` & `BASELINE = CONFIRMED`.
 
 
 
