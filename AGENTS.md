@@ -380,12 +380,12 @@ Status Arquitetural: `RPS_DESAFIO_COLUMN_BORDERS = LOCKED` & `BASELINE = CONFIRM
 
 ---
 
-## 75. Baseline Oficial — Simetria de Molduras e Blocos Independente de Gerentes (RPS)
+## 75. Baseline Oficial — Simetria de Molduras e Stacking Context (RPS)
 
-A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) consolida rigorosamente o padrão visual de blocos delimitados e simetria de colunas:
+A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) consolida rigorosamente o padrão visual de simetria de colunas e blocos delimitados:
 
 ### Diretrizes Mandatórias:
-1. **Simetria Perfeita das Molduras Focalizadas (DESAFIO e Semana Atual)**: As colunas **DESAFIO** e **Semana Corrente** (`27/JUL`) são renderizadas como blocos verticais simétricos delimitados por linhas douradas idênticas em espessura (2px), tonalidade e opacidade em ambas as laterais (`border-l-2 border-r-2 border-amber-500/80` com `border-r-0` na célula anterior e `border-l-0` na célula posterior), eliminando 100% das assimetrias por colapso de borda no navegador.
+1. **Simetria Perfeita das Molduras Focalizadas (DESAFIO e Semana Atual)**: As colunas **DESAFIO** e **Semana Corrente** (`27/JUL`) utilizam o contexto de empilhamento CSS superior (`relative z-10`), garantindo que ambas as bordas laterais (`border-l-2 border-r-2 border-amber-500/80`) sejam pintadas acima do plano de fundo das células adjacentes. Isso resulta em 2px exatos, 100% simétricos, com idêntica espessura, tonalidade, opacidade e continuidade vertical desde o cabeçalho (`th`) até o `TOTAL BRASIL`.
 2. **Blocos Visuais Independentes por Gerente**: Cada gerente comercial é enquadrado em um contêiner visual próprio delimitado por moldura externa completa (`border-t-2 border-b-2 border-l-2 border-r-2 border-accent-gold/70`) e célula de identificação com fundo sobressalente (`bg-background-elevated/70`), separado do bloco vizinho por um espaçador vertical de 12px.
 3. **Preservação Absoluta de Negócio**: Refinamentos estritamente de apresentação (UI/UX), com 0 alteração em regras, APIs, cálculos, SSOT ou governança.
 
