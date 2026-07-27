@@ -1164,8 +1164,8 @@ export default function RpsPage() {
                             <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
                           </tr>
 
-                          {/* LINHA 3: INVEST */}
-                          <tr className={`bg-background-card/50 hover:bg-background-card transition-colors ${!isExpanded ? "border-b-2 border-accent-gold/70" : ""}`}>
+                          {/* LINHA 3: INVEST (Fim do Bloco Resumo do Gerente) */}
+                          <tr className="bg-background-card/50 hover:bg-background-card transition-colors border-b-2 border-accent-gold/80">
                             <td className="font-bold text-foreground py-2.5">INVEST</td>
                             <td className="col-divider text-foreground-muted font-mono">{formatPercent(row.kpis.INVEST.ano_a)}</td>
                             <td className="text-foreground-muted font-mono border-r-0">{formatPercent(row.kpis.INVEST.mes_a)}</td>

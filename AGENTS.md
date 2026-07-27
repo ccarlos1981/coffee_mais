@@ -427,6 +427,9 @@ A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`)
    - Cabeçalho **DESAFIO**: Inclui o badge discreto `META` em destaque dourado abaixo do título.
    - Cabeçalho da **Semana Corrente**: Mantém o badge discreto `ATUAL` em destaque dourado abaixo da data.
 
+5. **Separação Visual Entre Resumo do Gerente e Clientes**:
+   - A linha `INVEST` do resumo do gerente possui **borda inferior dourada permanente (`border-b-2 border-accent-gold/80`)**. Quando os clientes daquele gerente são expandidos, essa borda funciona como uma linha divisória nítida e elegante delimitando o término do Bloco Resumo do Gerente (`VOL`, `FAT`, `INVEST`) e o início do detalhamento da carteira por Redes/Clientes, sem criar linhas em branco ou alterar a estrutura HTML da tabela.
+
 Status Arquitetural: `RPS_EXECUTIVE_VISUAL_HIERARCHY = LOCKED` & `BASELINE = CONFIRMED`.
 
 
