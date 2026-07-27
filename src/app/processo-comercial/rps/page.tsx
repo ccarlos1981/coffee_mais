@@ -1399,7 +1399,7 @@ export default function RpsPage() {
                 <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-foreground-muted">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-amber-400">% DISP:</span>
-                    <span>Dispersão (Projeção Mês Ant. vs Real)</span>
+                    <span>Dispersão (Última Projeção do Mês Anterior vs Real do Mês Anterior)</span>
                   </div>
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1.5">
