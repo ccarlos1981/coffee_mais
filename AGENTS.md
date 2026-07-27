@@ -350,6 +350,22 @@ A partir de 27/07/2026, a interface do módulo RPS (`/processo-comercial/rps`) s
 
 Status Arquitetural: `RPS_UI_FORMATTING = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 73. Baseline Oficial — Refinamento Executivo de UX da RPS (Baseline Permanente)
+
+A partir de 27/07/2026, a interface do módulo RPS (`/processo-comercial/rps`) adota o padrão oficial de refinamento visual executivo:
+
+### Diretrizes Mandatórias:
+1. **Agrupamento Visual de Gerentes**: Separadores superiores nítidos (`border-t-2 border-accent-gold/60`), destaque na célula de identificação do gerente e respiro vertical adequado entre blocos.
+2. **Ponto Focal da Coluna DESAFIO**: Fundo dourado/bege suave (`bg-amber-500/15`), borda lateral discreta e fonte em negrito (`font-extrabold`), destacando a meta oficial da Administração Comercial.
+3. **Destaque da Semana Corrente**: Coluna da semana ativa identificada por cabeçalho em destaque, badge `▲ ATUAL`, fundo diferenciado e inputs sobressalentes.
+4. **Rodapé Restaurado**: Preservação da legenda explicativa dos indicadores (`% DISP`, `% DESAFIO`, `%AA`, `%MA`) e do botão primário `SALVAR PROJEÇÕES` fixado no rodapé da tabela.
+5. **Preservação Integral de Negócio**: Refinamentos estritamente visuais, sem qualquer impacto em regras, APIs, cálculos, SSOT ou governança.
+
+Status Arquitetural: `RPS_EXECUTIVE_UX = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
