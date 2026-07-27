@@ -392,6 +392,23 @@ A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`)
 
 Status Arquitetural: `RPS_EXECUTIVE_BLOCKS_AND_DOUBLE_GOLD_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 76. Baseline Oficial — Fundo Contínuo e Janela de Edição da Semana Atual (RPS)
+
+A partir de 27/07/2026, a interface executiva da RPS (`/processo-comercial/rps`) institui oficialmente a padronização visual e temporal de edição:
+
+### Diretrizes Mandatórias:
+1. **Fundo Amarelo Suave Contínuo (`bg-amber-500/15`)**: As colunas **DESAFIO** e **Semana Corrente (`ATUAL`)** utilizam o mesmo tom de fundo amarelo suave (`bg-amber-500/15` / `rgba(245, 158, 11, 0.15)`) de forma 100% contínua e idêntica através de todas as camadas da tabela: cabeçalho (`th`), linhas dos gerentes, linhas de clientes expandidas e rodapé (`TOTAL BRASIL`).
+2. **Janela Temporal Oficial de Edição para Gerentes (15:00 de Segunda-feira)**:
+   - **Administradores (`Admin`, `Admin Master`, `Gerente Nacional`)**: Permanece autorizada a edição de qualquer semana a qualquer momento sem restrição temporal.
+   - **Gerentes Comerciais**: Autorizada a edição **exclusivamente da coluna da semana corrente** e estritamente **até as 15:00 da segunda-feira correspondente** (no fuso horário oficial do Brasil `America/Sao_Paulo`).
+   - Às 15:00 da segunda-feira, todas as células daquela semana tornam-se automaticamente somente leitura no frontend (`disabled`) e o botão "Salvar Projeções" é desabilitado caso não existam outros campos editáveis.
+3. **Fonte Única do Horário (Server Time)**: A validação temporal utiliza **exclusivamente o horário oficial do servidor (Server Time no backend)** transmitido no endpoint `GET /api/processo-comercial/rps`. É proibido utilizar o relógio local do navegador do cliente.
+4. **Trava Temporal de Segurança HTTP 403 no Backend**: O handler `POST /api/processo-comercial/rps` valida no servidor a janela temporal (segunda-feira $< 15:00$) para perfil gerente e rejeita qualquer tentativa de persistência fora do horário com `HTTP 403 Forbidden`.
+
+Status Arquitetural: `RPS_CONTINUOUS_YELLOW_BG_AND_SERVER_TIME_CUTOFF = LOCKED` & `BASELINE = CONFIRMED`.
+
 
 
 
