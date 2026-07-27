@@ -1237,7 +1237,14 @@ export default function RpsPage() {
 
                             return (
                               <tr key={cli.client} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
-                                <td className="text-foreground-secondary text-[11px] font-bold py-1.5">FAT</td>
+                                {/* Nome da Rede/Cliente na coluna REGIONAL */}
+                                <td className="text-left pl-7 py-1.5 text-xs font-bold text-amber-200/90 truncate max-w-[220px]" title={cli.client}>
+                                  <div className="flex items-center gap-1.5 truncate">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/70 shrink-0"></span>
+                                    <span className="truncate font-semibold text-foreground-secondary hover:text-amber-300 transition-colors">{cli.client}</span>
+                                  </div>
+                                </td>
+                                <td className="text-foreground-muted text-[11px] font-semibold py-1.5">FAT</td>
                                 <td className="col-divider text-foreground-muted font-mono text-xs py-1.5">{formatCurrency(cli.ano_a / 1000, 0)}</td>
                                 <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
