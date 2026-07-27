@@ -172,7 +172,7 @@ export async function GET(request: Request) {
         SUM(fat) as fat,
         SUM(qty) as qty
       FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
-      WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}')
+      WHERE mes IN ('${curMonthKey}', '${prevMonthKey}', '${prevYearKey}', '${closedMonth2}', '${closedMonth3}')
       GROUP BY mes, manager
     `;
 
@@ -329,27 +329,45 @@ export async function GET(request: Request) {
       // Buscar Históricos Gerente unificados via isSameManager
       const curHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === curMonthKey);
       const pmHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevMonthKey);
+      const mHist2 = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === closedMonth2);
+      const mHist3 = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === closedMonth3);
       const pyHist = mgrHist.filter((h: any) => isSameManager(h.manager, mName) && h.mes === prevYearKey);
 
       const curFatVal = curHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
       const pmFatVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+      const fatM2Val = mHist2.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+      const fatM3Val = mHist3.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
       const pyFatVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.fat || 0), 0);
+
       const curQtyVal = curHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
       const pmQtyVal = pmHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
+      const qtyM2Val = mHist2.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
+      const qtyM3Val = mHist3.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
       const pyQtyVal = pyHist.reduce((acc: number, h: any) => acc + Number(h.qty || 0), 0);
 
       // Buscar Investimento Histórico Realizado
       const curInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === curMonthKey);
       const pmInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevMonthKey);
+      const inv2Hist = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === closedMonth2);
+      const inv3Hist = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === closedMonth3);
       const pyInvest = investHist.filter((i: any) => isSameManager(i.manager, mName) && i.mes_referencia === prevYearKey);
 
       const curInvestVal = curInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
       const pmInvestVal = pmInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
+      const inv2Val = inv2Hist.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
+      const inv3Val = inv3Hist.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
       const pyInvestVal = pyInvest.reduce((acc: number, i: any) => acc + Number(i.total_invest || 0), 0);
 
       const curInvestPct = curFatVal > 0 ? (curInvestVal / curFatVal) * 100 : 0;
       const pmInvestPct = pmFatVal > 0 ? (pmInvestVal / pmFatVal) * 100 : 0;
+      const inv2Pct = fatM2Val > 0 ? (inv2Val / fatM2Val) * 100 : 0;
+      const inv3Pct = fatM3Val > 0 ? (inv3Val / fatM3Val) * 100 : 0;
       const pyInvestPct = pyFatVal > 0 ? (pyInvestVal / pyFatVal) * 100 : 10.0;
+
+      // Médias dos 3 meses fechados do Trimestre (Média do Trimestre: Mês-1, Mês-2, Mês-3)
+      const mediaTrimestreFat = (pmFatVal + fatM2Val + fatM3Val) / 3;
+      const mediaTrimestreVol = (pmQtyVal + qtyM2Val + qtyM3Val) / 3;
+      const mediaTrimestreInvest = (pmInvestPct + inv2Pct + inv3Pct) / 3;
 
       // Projeções do mês anterior (DISPERSÃO)
       const prevMondays = getMondaysOfMonth(prevMonthYear, prevMonthVal);
@@ -391,6 +409,7 @@ export async function GET(request: Request) {
         VOL: {
           ano_a: pyQtyVal,
           mes_a: pmQtyVal,
+          media_trimestre: mediaTrimestreVol,
           desafio: desafioVol,
           real: curQtyVal,
           prev_month_projection: prevVolProj,
@@ -403,6 +422,7 @@ export async function GET(request: Request) {
         FAT: {
           ano_a: pyFatVal,
           mes_a: pmFatVal,
+          media_trimestre: mediaTrimestreFat,
           desafio: desafioFat,
           real: curFatVal,
           prev_month_projection: prevFatProj,
@@ -415,6 +435,7 @@ export async function GET(request: Request) {
         INVEST: {
           ano_a: pyInvestPct,
           mes_a: pmInvestPct,
+          media_trimestre: mediaTrimestreInvest,
           desafio: desafioInvest,
           real: curInvestPct,
           prev_month_projection: prevInvestProj,
@@ -513,10 +534,13 @@ export async function GET(request: Request) {
           ? (prevCliFatWeekly.slice().reverse().find(v => v !== 0) || prevCliFatWeekly[prevCliFatWeekly.length - 1] || 0)
           : 0;
 
+        const mediaTrimestreCli = (redeRollingMap.get(cName) || 0) / 3;
+
         return {
           client: cName,
           ano_a: fatPy,
           mes_a: fatPm,
+          media_trimestre: mediaTrimestreCli,
           desafio: 0,
           real: fatCur,
           meta: metaValue,
@@ -535,6 +559,7 @@ export async function GET(request: Request) {
       const metaProjOutros = cProjOutros.find((p: any) => p.kpi === 'META');
       const metaValueOutros = metaProjOutros ? Number(metaProjOutros.projection_value) : 0;
       const curFatOutros = Math.max(0, curFatVal - clientsList.reduce((acc, c) => acc + c.real, 0));
+      const mediaTrimestreOutros = Math.max(0, mediaTrimestreFat - clientsList.reduce((acc, c) => acc + c.media_trimestre, 0));
 
       const otherPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix === 'OUTROS' && p.kpi === 'FAT');
       const prevOtherFatWeekly = prevMondays.map(date => {
@@ -549,6 +574,7 @@ export async function GET(request: Request) {
         client: "OUTROS",
         ano_a: 0,
         mes_a: 0,
+        media_trimestre: mediaTrimestreOutros,
         desafio: 0,
         real: curFatOutros,
         meta: metaValueOutros,

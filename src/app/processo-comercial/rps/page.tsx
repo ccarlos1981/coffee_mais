@@ -38,6 +38,7 @@ interface ClientRow {
   client: string;
   ano_a: number;
   mes_a: number;
+  media_trimestre?: number;
   meta: number;
   real: number;
   prev_month_projection?: number;
@@ -48,6 +49,7 @@ interface ClientRow {
 interface ManagerKPI {
   ano_a: number;
   mes_a: number;
+  media_trimestre?: number;
   desafio: number;
   real: number;
   prev_month_projection?: number;
@@ -664,16 +666,17 @@ export default function RpsPage() {
   const totalsRow = useMemo(() => {
     if (managers.length === 0) return null;
 
-    const kpis = {
-      VOL: { ano_a: 0, mes_a: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
-      FAT: { ano_a: 0, mes_a: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
-      INVEST: { ano_a: 0, mes_a: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) }
+    const kpis: any = {
+      VOL: { ano_a: 0, mes_a: 0, media_trimestre: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
+      FAT: { ano_a: 0, mes_a: 0, media_trimestre: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) },
+      INVEST: { ano_a: 0, mes_a: 0, media_trimestre: 0, desafio: 0, real: 0, prev_month_projection: 0, projections: mondays.map(() => 0) }
     };
 
     // Somar VOL e FAT
     managers.forEach(m => {
       kpis.VOL.ano_a += m.kpis.VOL.ano_a;
       kpis.VOL.mes_a += m.kpis.VOL.mes_a;
+      kpis.VOL.media_trimestre += m.kpis.VOL.media_trimestre || 0;
       kpis.VOL.desafio += m.kpis.VOL.desafio;
       kpis.VOL.real += m.kpis.VOL.real;
       kpis.VOL.prev_month_projection += m.kpis.VOL.prev_month_projection || 0;
@@ -683,6 +686,7 @@ export default function RpsPage() {
 
       kpis.FAT.ano_a += m.kpis.FAT.ano_a;
       kpis.FAT.mes_a += m.kpis.FAT.mes_a;
+      kpis.FAT.media_trimestre += m.kpis.FAT.media_trimestre || 0;
       kpis.FAT.desafio += m.kpis.FAT.desafio;
       kpis.FAT.real += m.kpis.FAT.real;
       kpis.FAT.prev_month_projection += m.kpis.FAT.prev_month_projection || 0;
@@ -700,6 +704,9 @@ export default function RpsPage() {
 
     const totalInvestMesA = managers.reduce((acc, m) => acc + (m.kpis.FAT.mes_a * (m.kpis.INVEST.mes_a / 100)), 0);
     kpis.INVEST.mes_a = kpis.FAT.mes_a > 0 ? (totalInvestMesA / kpis.FAT.mes_a) * 100 : 10.0;
+
+    const totalInvestMediaTrimestre = managers.reduce((acc, m) => acc + ((m.kpis.FAT.media_trimestre || 0) * ((m.kpis.INVEST.media_trimestre || 0) / 100)), 0);
+    kpis.INVEST.media_trimestre = kpis.FAT.media_trimestre > 0 ? (totalInvestMediaTrimestre / kpis.FAT.media_trimestre) * 100 : 10.0;
 
     const totalInvestReal = managers.reduce((acc, m) => acc + (m.kpis.FAT.real * (m.kpis.INVEST.real / 100)), 0);
     kpis.INVEST.real = kpis.FAT.real > 0 ? (totalInvestReal / kpis.FAT.real) * 100 : 10.0;
@@ -744,6 +751,15 @@ export default function RpsPage() {
   // Estilo de cor para células de porcentagem
   const getPctCellStyle = (kpi: string, pctVal: number, compareVal: number, isClient = false) => {
     if (!compareVal || compareVal <= 0) return { color: "var(--foreground-dim)" };
+
+    if (kpi === "DISPERSAO") {
+      // Faixa verde oficial de acurácia de dispersão: -3.0% a +5.0%
+      if (pctVal >= -3 && pctVal <= 5) {
+        return { backgroundColor: "rgba(34, 197, 94, 0.15)", color: "var(--success)", fontWeight: 700 };
+      } else {
+        return { backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--danger)", fontWeight: 700 };
+      }
+    }
 
     if (kpi === "INVEST") {
       if (pctVal <= 0) {
@@ -960,7 +976,7 @@ export default function RpsPage() {
                         <th className="border-l-0" style={{ width: 70 }}>% Disp</th>
                         <th style={{ width: 70 }}>% DESAFIO</th>
                         <th style={{ width: 70 }}>%AA</th>
-                        <th style={{ width: 70 }}>%MA</th>
+                        <th style={{ width: 70 }}>%MT</th>
                       </tr>
                     </thead>
                     
@@ -973,12 +989,12 @@ export default function RpsPage() {
                       const volDisp = calcDispersionPct(row.kpis.VOL.mes_a, row.kpis.VOL.prev_month_projection || 0);
                       const volDesafio = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.desafio);
                       const volAA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.ano_a);
-                      const volMA = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.mes_a);
+                      const volMT = calcRatioPct(getLatestProjection(row.kpis.VOL.projections), row.kpis.VOL.media_trimestre || 0);
 
                       const fatDisp = calcDispersionPct(row.kpis.FAT.mes_a, row.kpis.FAT.prev_month_projection || 0);
                       const fatDesafio = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.desafio);
                       const fatAA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.ano_a);
-                      const fatMA = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.mes_a);
+                      const fatMT = calcRatioPct(getLatestProjection(row.kpis.FAT.projections), row.kpis.FAT.media_trimestre || 0);
 
                       const investDisp = calcDispersionPct(row.kpis.INVEST.mes_a, row.kpis.INVEST.prev_month_projection || 0);
                       const investDesafio = calcRatioPct(getLatestProjection(row.kpis.INVEST.projections), row.kpis.INVEST.desafio);
@@ -1067,7 +1083,7 @@ export default function RpsPage() {
                             <td className="font-mono py-2.5 border-l-0" style={getPctCellStyle("DISPERSAO", volDisp, row.kpis.VOL.prev_month_projection || 0)}>{formatPercent(volDisp)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", volDesafio, row.kpis.VOL.desafio)}>{formatPercent(volDesafio)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("AA", volAA, row.kpis.VOL.ano_a)}>{formatPercent(volAA)}</td>
-                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", volMA, row.kpis.VOL.mes_a)}>{formatPercent(volMA)}</td>
+                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", volMT, row.kpis.VOL.media_trimestre || 0)}>{formatPercent(volMT)}</td>
                           </tr>
 
                           {/* LINHA 2: FAT (Meio do Bloco do Gerente) */}
@@ -1120,7 +1136,7 @@ export default function RpsPage() {
                             <td className="font-mono py-2.5 border-l-0" style={getPctCellStyle("DISPERSAO", fatDisp, row.kpis.FAT.prev_month_projection || 0)}>{formatPercent(fatDisp)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("DESAFIO", fatDesafio, row.kpis.FAT.desafio)}>{formatPercent(fatDesafio)}</td>
                             <td className="font-mono py-2.5" style={getPctCellStyle("AA", fatAA, row.kpis.FAT.ano_a)}>{formatPercent(fatAA)}</td>
-                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", fatMA, row.kpis.FAT.mes_a)}>{formatPercent(fatMA)}</td>
+                            <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", fatMT, row.kpis.FAT.media_trimestre || 0)}>{formatPercent(fatMT)}</td>
                           </tr>
 
                           {/* LINHA 3: INVEST (Fim do Bloco Resumo do Gerente) */}
@@ -1190,7 +1206,7 @@ export default function RpsPage() {
                           {isExpanded && row.clients.map((cli, cIdx) => {
                             const cliProj = getLatestProjection(cli.projections) || cli.real;
                             const cliAA = calcGrowthPct(cliProj, cli.ano_a);
-                            const cliMA = calcGrowthPct(cliProj, cli.mes_a);
+                            const cliMT = calcGrowthPct(cliProj, cli.media_trimestre || 0);
                             const cliMetaPct = calcGrowthPct(cliProj, cli.meta);
                             const cliDisp = calcGrowthPct(cli.mes_a, cli.prev_month_projection || 0);
                             const isLastClientRow = cIdx === row.clients.length - 1;
@@ -1291,7 +1307,7 @@ export default function RpsPage() {
                                 <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
-                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", cliMA, cli.mes_a, true)}>{cli.mes_a > 0 ? formatPercent(cliMA) : "—"}</td>
+                                <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", cliMT, cli.media_trimestre, true)}>{cli.media_trimestre > 0 ? formatPercent(cliMT) : "—"}</td>
                               </tr>
                             );
                           })}
@@ -1335,8 +1351,8 @@ export default function RpsPage() {
                           <td className="font-mono py-2.5" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a), totalsRow.kpis.VOL.ano_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.ano_a))}
                           </td>
-                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a), totalsRow.kpis.VOL.mes_a)}>
-                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.mes_a))}
+                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.media_trimestre), totalsRow.kpis.VOL.media_trimestre)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.VOL.projections), totalsRow.kpis.VOL.media_trimestre))}
                           </td>
                         </tr>
 
@@ -1364,8 +1380,8 @@ export default function RpsPage() {
                           <td className="font-mono py-2.5" style={getPctCellStyle("AA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a), totalsRow.kpis.FAT.ano_a)}>
                             {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.ano_a))}
                           </td>
-                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MA", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a), totalsRow.kpis.FAT.mes_a)}>
-                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.mes_a))}
+                          <td className="font-mono py-2.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.media_trimestre), totalsRow.kpis.FAT.media_trimestre)}>
+                            {formatPercent(calcRatioPct(getLatestProjection(totalsRow.kpis.FAT.projections), totalsRow.kpis.FAT.media_trimestre))}
                           </td>
                         </tr>
 
@@ -1406,7 +1422,7 @@ export default function RpsPage() {
                 <div className="flex flex-wrap items-center gap-4 text-xs font-mono text-foreground-muted">
                   <div className="flex items-center gap-1.5">
                     <span className="font-bold text-amber-400">% DISP:</span>
-                    <span>Dispersão (Última Projeção do Mês Anterior vs Real do Mês Anterior)</span>
+                    <span>Dispersão (Faixa Verde: -3% a +5%)</span>
                   </div>
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1.5">
@@ -1420,8 +1436,8 @@ export default function RpsPage() {
                   </div>
                   <span className="text-border">|</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-amber-400">%MA:</span>
-                    <span>Crescimento Mês Ant. (Mês A)</span>
+                    <span className="font-bold text-amber-400">%MT:</span>
+                    <span>Crescimento vs Média do Trimestre (Abr, Mai, Jun)</span>
                   </div>
                 </div>
 
