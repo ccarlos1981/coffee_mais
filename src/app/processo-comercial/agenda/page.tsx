@@ -444,7 +444,7 @@ export default function AgendaPage() {
                         setEditingCell(`${mgr}_${day.dateStr}`);
                       }
                     }}
-                    className={`min-h-[100px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border ${
+                    className={`h-[125px] max-h-[125px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border overflow-hidden ${
                       day.isToday ? 'bg-accent-gold/[0.04]' : ''
                     } ${
                       !day.isCurrentMonth ? 'bg-elevated/10 opacity-40' : ''
@@ -459,7 +459,7 @@ export default function AgendaPage() {
                     }}
                   >
                     {/* Header da Célula */}
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center justify-between mb-1.5 shrink-0">
                       <div className="flex items-center gap-1">
                         {day.isToday ? (
                           <span
@@ -491,7 +491,7 @@ export default function AgendaPage() {
                     </div>
 
                     {/* Conteúdo/Evento */}
-                    <div className="flex-1 flex flex-col justify-start">
+                    <div className="flex-1 flex flex-col justify-start overflow-y-auto pr-0.5">
                       {isEditing ? (
                         <textarea
                           autoFocus
@@ -506,12 +506,12 @@ export default function AgendaPage() {
                               setEditingCell(null);
                             }
                           }}
-                          className="w-full text-xs p-1 rounded border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold h-14"
+                          className="w-full text-xs p-1 rounded border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold h-14 shrink-0"
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : value ? (
                         <div
-                          className="px-2 py-1 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-start gap-1"
+                          className="px-2 py-1 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-start gap-1 shrink-0"
                           style={{
                             backgroundColor: cellColors?.badge || 'var(--accent-gold)',
                             color: cellColors?.badgeText || '#ffffff',
@@ -521,7 +521,7 @@ export default function AgendaPage() {
                         </div>
                       ) : (
                         isEditable && (
-                          <div className="hidden group-hover:flex items-center justify-center py-2 text-[10px] font-bold text-accent-gold/60 border border-dashed border-accent-gold/20 rounded transition-all">
+                          <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center py-1.5 text-[10px] font-bold text-accent-gold/60 border border-dashed border-accent-gold/20 rounded transition-opacity shrink-0">
                             + Rota
                           </div>
                         )
@@ -717,7 +717,7 @@ export default function AgendaPage() {
                 return (
                   <div
                     key={day.dateStr}
-                    className={`min-h-[130px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border ${
+                    className={`h-[145px] max-h-[145px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border overflow-hidden ${
                       day.isToday ? 'bg-accent-gold/[0.04]' : ''
                     } ${
                       !day.isCurrentMonth ? 'bg-elevated/10 opacity-40' : ''
@@ -732,7 +732,7 @@ export default function AgendaPage() {
                     }}
                   >
                     {/* Header da Célula */}
-                    <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center justify-between mb-1.5 shrink-0">
                       <div className="flex items-center gap-1">
                         {day.isToday ? (
                           <span
@@ -764,7 +764,7 @@ export default function AgendaPage() {
                     </div>
 
                     {/* Empilhamento de Eventos (Gerentes) */}
-                    <div className="flex-1 flex flex-col gap-1 justify-start">
+                    <div className="flex-1 flex flex-col gap-1 justify-start overflow-y-auto pr-0.5">
                       {managers.map(mgr => {
                         const mgrRoutes = routesByManager[mgr] || {};
                         const value = mgrRoutes[day.dateStr] || '';
@@ -774,7 +774,7 @@ export default function AgendaPage() {
 
                         if (isEditing) {
                           return (
-                            <div key={mgr} onClick={(e) => e.stopPropagation()} className="mt-1">
+                            <div key={mgr} onClick={(e) => e.stopPropagation()} className="mt-0.5 shrink-0">
                               <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: colors.text }}>
                                 {mgr}:
                               </span>
@@ -791,7 +791,7 @@ export default function AgendaPage() {
                                     setEditingCell(null);
                                   }
                                 }}
-                                className="w-full text-[10px] p-1 rounded border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold h-12"
+                                className="w-full text-[10px] p-1 rounded border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold h-12 shrink-0"
                               />
                             </div>
                           );
@@ -807,7 +807,7 @@ export default function AgendaPage() {
                                   setEditingCell(`${mgr}_${day.dateStr}`);
                                 }
                               }}
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide transition-all shadow-sm flex items-center justify-between gap-1 ${
+                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide transition-all shadow-sm flex items-center justify-between gap-1 shrink-0 ${
                                 isEditableForManager ? 'cursor-pointer hover:brightness-95 active:scale-98' : ''
                               }`}
                               style={{
@@ -830,7 +830,7 @@ export default function AgendaPage() {
                               e.stopPropagation();
                               setEditingCell(`${mgr}_${day.dateStr}`);
                             }}
-                            className="hidden group-hover:flex items-center justify-center py-0.5 px-1 border border-dashed border-border-light hover:border-accent-gold/40 rounded text-[8px] font-bold text-foreground-muted hover:text-accent-gold cursor-pointer transition-all"
+                            className="opacity-0 group-hover:opacity-100 flex items-center justify-center py-0.5 px-1 border border-dashed border-border-light hover:border-accent-gold/40 rounded text-[8px] font-bold text-foreground-muted hover:text-accent-gold cursor-pointer transition-opacity shrink-0"
                           >
                             + {mgr}
                           </div>
