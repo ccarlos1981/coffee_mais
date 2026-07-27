@@ -1029,7 +1029,7 @@ export default function RpsPage() {
                           
                           {/* LINHA 1: VOL (Topo do Bloco do Gerente com Moldura Dourada) */}
                           <tr className="bg-background-card/70 hover:bg-background-card transition-colors border-t-2 border-accent-gold/70">
-                            <td rowSpan={totalRowsCount} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3.5 bg-background-elevated/70 border-l-2 border-t-2 border-b-2 border-accent-gold/70 shadow-sm">
+                            <td rowSpan={3} className="font-bold text-foreground align-middle text-left pl-4 pr-3 py-3.5 bg-background-elevated/70 border-l-2 border-t-2 border-b-2 border-accent-gold/70 shadow-sm">
                               <div className="flex flex-col gap-1.5">
                                 <span className="text-sm font-extrabold text-foreground">{getManagerDisplayName(row.manager)}</span>
                                 <div className="flex items-center gap-2">
@@ -1237,14 +1237,53 @@ export default function RpsPage() {
 
                             return (
                               <tr key={cli.client} className={`bg-background-subtle/30 hover:bg-background-subtle transition-colors ${isLastClientRow ? "border-b-2 border-accent-gold/70" : ""}`}>
-                                {/* Nome da Rede/Cliente na coluna REGIONAL */}
-                                <td className="text-left pl-7 py-1.5 text-xs font-bold text-amber-200/90 truncate max-w-[220px]" title={cli.client}>
-                                  <div className="flex items-center gap-1.5 truncate">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/70 shrink-0"></span>
-                                    <span className="truncate font-semibold text-foreground-secondary hover:text-amber-300 transition-colors">{cli.client}</span>
+                                {/* Nome da Rede/Cliente ocupando colSpan={2} (REGIONAL + KPI) sem a coluna KPI repetitiva */}
+                                <td colSpan={2} className="text-left pl-6 pr-3 py-1.5 text-xs font-bold text-amber-200/90">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 truncate">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/70 shrink-0"></span>
+                                      <span className="truncate font-semibold text-foreground-secondary hover:text-amber-300 transition-colors" title={cli.client}>
+                                        {cli.client}
+                                      </span>
+                                    </div>
+
+                                    {/* Controles da Gestão Dinâmica da Carteira (Admin / Admin Master) */}
+                                    {isAdmin && (
+                                      <div className="flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity shrink-0">
+                                        {cli.client !== "OUTROS" && (
+                                          <>
+                                            <button
+                                              type="button"
+                                              disabled={cIdx === 0}
+                                              onClick={() => handleMoveNetworkUp(mIdx, cIdx)}
+                                              className="p-0.5 rounded hover:bg-amber-500/20 text-amber-400 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                              title="Mover para cima (▲)"
+                                            >
+                                              <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={cIdx >= row.clients.length - 2}
+                                              onClick={() => handleMoveNetworkDown(mIdx, cIdx)}
+                                              className="p-0.5 rounded hover:bg-amber-500/20 text-amber-400 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                              title="Mover para baixo (▼)"
+                                            >
+                                              <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => openRemoveModal(mIdx, cIdx, cli.client, row.manager)}
+                                              className="p-0.5 rounded hover:bg-red-500/20 text-red-400 transition-all cursor-pointer"
+                                              title="Remover Rede (-)"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
-                                <td className="text-foreground-muted text-[11px] font-semibold py-1.5">FAT</td>
                                 <td className="col-divider text-foreground-muted font-mono text-xs py-1.5">{formatCurrency(cli.ano_a / 1000, 0)}</td>
                                 <td className="text-foreground-muted font-mono text-xs py-1.5 border-r-0">{formatCurrency(cli.mes_a / 1000, 0)}</td>
 
