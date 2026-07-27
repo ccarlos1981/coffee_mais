@@ -1480,6 +1480,174 @@ export class AnalyticsEngine {
       dimensionais,
     };
   }
+
+  /**
+   * Apuração Analítica do CRM Comercial — Sistema Inovações (Fase 3)
+   * 
+   * Transforma os indicadores do Cockpit Comercial e da DRE Comercial em recomendações
+   * comerciais prescritivas ordenadas pelo Score Oficial de Impacto Comercial (0 a 100).
+   * 
+   * @see Seção 58 do AGENTS.md
+   */
+  static async getCrmComercial(filters: AnalyticsFilters): Promise<CrmComercialData> {
+    // 1. Consumir Cockpit Comercial e DRE Comercial em paralelo
+    const [cockpitData, dreData] = await Promise.all([
+      this.getCockpitComercial(filters),
+      this.getDreComercial(filters),
+    ]);
+
+    // 2. Mapeamento de Oportunidades Prescritivas do Cockpit e DRE
+    const oportunidades: CrmOportunidade[] = [];
+    const dreDimMap = new Map(dreData.dimensionais.map((d) => [d.nome.toUpperCase(), d]));
+
+    cockpitData.saudeCarteira.forEach((sc, idx) => {
+      const dreItem = dreDimMap.get(sc.nomeParceiro.toUpperCase()) || dreDimMap.get((sc.rede || "").toUpperCase());
+      const margemMaco = dreItem ? dreItem.margemMacoPercentual : 0;
+      const macoVal = dreItem ? dreItem.maco : 0;
+      const diasSemComprar = sc.diasSemComprar || 0;
+      const faturamento3M = sc.valorFaturado12m / 4; // Estimativa 3M baseada no acumulado
+
+      let tipoRecomendacao = "";
+      let titulo = "";
+      let descricao = "";
+      let prioridade: "ALTA" | "MEDIA" | "BAIXA" | "OPORTUNIDADE" = "BAIXA";
+      let valorImpactoPotencial = 0;
+
+      if (sc.classificacaoSaude === "Inativo" || diasSemComprar > 45) {
+        tipoRecomendacao = "REC-01";
+        titulo = `🚨 Reativação Urgente: ${sc.nomeParceiro}`;
+        descricao = `Cliente sem faturamento há ${diasSemComprar} dias. Histórico mensal recente de ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(sc.valorFaturadoPeriodo || sc.valorFaturado12m / 12)}.`;
+        prioridade = "ALTA";
+        valorImpactoPotencial = (sc.valorFaturado12m / 12) * 2;
+      } else if (sc.classificacaoSaude === "Em Risco" || sc.varianciaPercentual <= -25) {
+        tipoRecomendacao = "REC-02";
+        titulo = `📉 Reversão de Queda: ${sc.nomeParceiro}`;
+        descricao = `Queda de ${Math.abs(sc.varianciaPercentual).toFixed(1)}% no faturamento. Contato comercial imediato necessário.`;
+        prioridade = "ALTA";
+        valorImpactoPotencial = Math.abs((sc.valorFaturadoPeriodo * sc.varianciaPercentual) / 100);
+      } else if (margemMaco < 25 || macoVal < 0) {
+        tipoRecomendacao = "REC-04";
+        titulo = `💰 Recomposição de Margem MACO: ${sc.nomeParceiro}`;
+        descricao = `Margem MACO atual em ${margemMaco.toFixed(1)}%. Renegociar custos de CPV/Frete ou revisar descontos.`;
+        prioridade = "MEDIA";
+        valorImpactoPotencial = Math.abs(sc.valorFaturadoPeriodo * 0.15);
+      } else if (sc.classificacaoSaude === "Atenção") {
+        tipoRecomendacao = "REC-05";
+        titulo = `📦 Expansão de Mix de Produtos: ${sc.nomeParceiro}`;
+        descricao = `Cliente ativo com baixo sortimento de SKUs. Apresentar lançamentos de cafés especiais.`;
+        prioridade = "MEDIA";
+        valorImpactoPotencial = sc.valorFaturadoPeriodo * 0.20;
+      } else if (sc.classificacaoSaude === "Em Expansão" || sc.varianciaPercentual >= 30) {
+        tipoRecomendacao = "REC-09";
+        titulo = `🚀 Aceleração de Expansão: ${sc.nomeParceiro}`;
+        descricao = `Crescimento de ${sc.varianciaPercentual.toFixed(1)}% no período. Oportunidade para aumentar linha contratada.`;
+        prioridade = "OPORTUNIDADE";
+        valorImpactoPotencial = sc.valorFaturadoPeriodo * 0.30;
+      }
+
+      if (tipoRecomendacao) {
+        // Cálculo do Score Oficial de Impacto Comercial (0 a 100)
+        // 1. Financeiro (40%)
+        let scoreFin = 20;
+        if (valorImpactoPotencial >= 100000) scoreFin = 100;
+        else if (valorImpactoPotencial >= 50000) scoreFin = 80;
+        else if (valorImpactoPotencial >= 20000) scoreFin = 60;
+        else if (valorImpactoPotencial >= 5000) scoreFin = 40;
+
+        // 2. Criticidade (30%)
+        let scoreCrit = 40;
+        if (prioridade === "ALTA") scoreCrit = 100;
+        else if (prioridade === "MEDIA") scoreCrit = 70;
+        else if (prioridade === "OPORTUNIDADE") scoreCrit = 30;
+
+        // 3. Relevância Estratégica (20%)
+        let scoreRelev = 25;
+        if (faturamento3M >= 200000) scoreRelev = 100;
+        else if (faturamento3M >= 50000) scoreRelev = 75;
+        else if (faturamento3M >= 10000) scoreRelev = 50;
+
+        // 4. Urgência (10%)
+        let scoreUrg = 30;
+        if (diasSemComprar > 60) scoreUrg = 100;
+        else if (diasSemComprar >= 30) scoreUrg = 70;
+
+        const scoreImpacto = Math.min(
+          100,
+          Math.round(scoreFin * 0.4 + scoreCrit * 0.3 + scoreRelev * 0.2 + scoreUrg * 0.1)
+        );
+
+        oportunidades.push({
+          id: `crm-${sc.clienteId}-${idx}`,
+          clienteId: sc.clienteId,
+          clienteNome: sc.nomeParceiro,
+          matrizNome: sc.rede || sc.nomeParceiro,
+          gerenteNome: sc.manager || "Sem Gerente",
+          canal: "Varejo",
+          uf: "BR",
+          tipoRecomendacao,
+          titulo,
+          descricao,
+          prioridade,
+          scoreImpacto,
+          valorImpactoPotencial: Number(valorImpactoPotencial.toFixed(2)),
+          margemMacoAtual: Number(margemMaco.toFixed(1)),
+          diasSemComprar,
+        });
+      }
+    });
+
+    // Ordenação Obrigatória pelo Score Oficial (Decrescente)
+    oportunidades.sort((a, b) => b.scoreImpacto - a.scoreImpacto);
+
+    // 3. Apuração do Resumo da Carteira
+    const totalClientesCarteira = cockpitData.saudeCarteira.length;
+    const totalClientesAtivos = cockpitData.saudeCarteira.filter((c) => c.classificacaoSaude === "Ativo").length;
+    const totalClientesEmRisco = cockpitData.saudeCarteira.filter((c) => c.classificacaoSaude === "Em Risco" || c.classificacaoSaude === "Atenção").length;
+    const totalClientesInativos = cockpitData.saudeCarteira.filter((c) => c.classificacaoSaude === "Inativo").length;
+    const potencialRecuperacaoMaco = oportunidades.reduce((acc, o) => acc + o.valorImpactoPotencial, 0);
+
+    const scoreSaudeGlobal = totalClientesCarteira > 0
+      ? Math.round((totalClientesAtivos / totalClientesCarteira) * 100)
+      : 100;
+
+    // 4. Ranking de Gerentes por Score de Saúde
+    const gerenteMap = new Map<string, { total: number; ativos: number; macoTotal: number; opsCount: number }>();
+    cockpitData.saudeCarteira.forEach((sc) => {
+      const g = sc.manager || "Outros";
+      const curr = gerenteMap.get(g) || { total: 0, ativos: 0, macoTotal: 0, opsCount: 0 };
+      curr.total += 1;
+      if (sc.classificacaoSaude === "Ativo" || sc.classificacaoSaude === "Em Expansão") curr.ativos += 1;
+      gerenteMap.set(g, curr);
+    });
+
+    oportunidades.forEach((o) => {
+      const curr = gerenteMap.get(o.gerenteNome);
+      if (curr) {
+        if (o.prioridade === "ALTA") curr.opsCount += 1;
+      }
+    });
+
+    const rankingGerentesScore = Array.from(gerenteMap.entries()).map(([gerente, val]) => ({
+      gerente,
+      totalClientes: val.total,
+      scoreSaude: val.total > 0 ? Math.round((val.ativos / val.total) * 100) : 100,
+      macoMedioPct: dreData.totais.margemMacoMedia,
+      oportunidadesPrioritarias: val.opsCount,
+    })).sort((a, b) => b.scoreSaude - a.scoreSaude);
+
+    return {
+      resumo: {
+        totalClientesCarteira,
+        totalClientesAtivos,
+        totalClientesEmRisco,
+        totalClientesInativos,
+        potencialRecuperacaoMaco: Number(potencialRecuperacaoMaco.toFixed(2)),
+        scoreSaudeGlobal,
+      },
+      oportunidades,
+      rankingGerentesScore,
+    };
+  }
 }
 
 export const DRE_FRETE_PERCENTUAL = 0.03; // 3.00% fixo (Seção 56 do AGENTS.md)
@@ -1559,5 +1727,45 @@ export interface CockpitComercialData {
     nivelPrioridade: 'ALTA' | 'MEDIA' | 'BAIXA';
   }>;
 }
+
+export interface CrmOportunidade {
+  id: string;
+  clienteId: string;
+  clienteNome: string;
+  matrizNome: string;
+  gerenteNome: string;
+  canal: string;
+  uf: string;
+  tipoRecomendacao: string;
+  titulo: string;
+  descricao: string;
+  prioridade: "ALTA" | "MEDIA" | "BAIXA" | "OPORTUNIDADE";
+  scoreImpacto: number;
+  valorImpactoPotencial: number;
+  margemMacoAtual: number;
+  diasSemComprar: number;
+}
+
+export interface CrmResumoCarteira {
+  totalClientesCarteira: number;
+  totalClientesAtivos: number;
+  totalClientesEmRisco: number;
+  totalClientesInativos: number;
+  potencialRecuperacaoMaco: number;
+  scoreSaudeGlobal: number;
+}
+
+export interface CrmComercialData {
+  resumo: CrmResumoCarteira;
+  oportunidades: CrmOportunidade[];
+  rankingGerentesScore: Array<{
+    gerente: string;
+    totalClientes: number;
+    scoreSaude: number;
+    macoMedioPct: number;
+    oportunidadesPrioritarias: number;
+  }>;
+}
+
 
 

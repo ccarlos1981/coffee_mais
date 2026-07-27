@@ -828,3 +828,23 @@ To https://github.com/ccarlos1981/coffee_mais.git
  1 file changed, 5 insertions(+)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [26/07/2026 18:24] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 59830be] auto-save: 26/07/2026 21:30
+ 28 files changed, 3130 insertions(+), 85 deletions(-)
+ create mode 100644 src/app/api/inovacoes/cockpit/route.ts
+ create mode 100644 src/app/api/inovacoes/dre/route.ts
+ create mode 100644 src/app/inovacoes/cockpit/components/CockpitFilterBar.tsx
+ create mode 100644 src/app/inovacoes/cockpit/components/ExecutiveKpis.tsx
+ create mode 100644 src/app/inovacoes/cockpit/components/OportunidadesEngine.tsx
+ create mode 100644 src/app/inovacoes/cockpit/components/RankingComercialTabs.tsx
+ create mode 100644 src/app/inovacoes/cockpit/components/SaudeCarteiraGrid.tsx
+ create mode 100644 src/app/inovacoes/cockpit/page.tsx
+ create mode 100644 src/app/inovacoes/dre/components/DreDimensionSelector.tsx
+ create mode 100644 src/app/inovacoes/dre/components/DreDimensionalGrid.tsx
+ create mode 100644 src/app/inovacoes/dre/components/DreFilterBar.tsx
+ create mode 100644 src/app/inovacoes/dre/components/DreResumoExecutivo.tsx
+ create mode 100644 src/app/inovacoes/dre/components/DreSinteticaCard.tsx
+ create mode 100644 src/app/inovacoes/dre/page.tsx
+ create mode 100644 src/lib/investimento/notification-service.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   99a9dbc..59830be  main -> main
+[26/07/2026 21:30] ✅ Alterações enviadas com sucesso para o GitHub.
