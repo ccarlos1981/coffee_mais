@@ -218,8 +218,8 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
                   className="w-full h-10 px-3 pr-8 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none"
                 >
                   <option value="">-- Escolha uma Rede Cadastrada --</option>
-                  {redes.map((r) => (
-                    <option key={r.codigo} value={r.codigo}>
+                  {redes.map((r, idx) => (
+                    <option key={`${r.codigo}-${r.nome}-${idx}`} value={r.codigo}>
                       {r.nome} {r.uf ? `(${r.uf})` : ""} {r.canal ? `— ${r.canal}` : ""}
                     </option>
                   ))}
@@ -240,8 +240,8 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
                   className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none"
                 >
                   <option value="">-- Selecione --</option>
-                  {competencias.map((c) => (
-                    <option key={c.id} value={c.competencia}>
+                  {competencias.map((c, idx) => (
+                    <option key={`${c.id}-${c.competencia}-${idx}`} value={c.competencia}>
                       {c.competencia}
                     </option>
                   ))}

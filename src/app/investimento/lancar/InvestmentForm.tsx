@@ -619,9 +619,9 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
             {isRedeOpen && (
               <div className="absolute z-[999] w-full mt-1 max-h-60 overflow-auto bg-[var(--background-elevated)] border border-border rounded-xl shadow-2xl divide-y divide-border" style={{ backgroundColor: 'var(--background-elevated)' }}>
                 {filteredRedes.length > 0 ? (
-                  filteredRedes.map(r => (
+                  filteredRedes.map((r, idx) => (
                     <button
-                      key={`${r.codigo}-${r.nome}-${r.gerente || ''}`}
+                      key={`${r.codigo}-${r.nome}-${r.gerente || ''}-${idx}`}
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-gold/10 hover:text-gold transition-colors flex items-center justify-between"
                       onClick={() => {

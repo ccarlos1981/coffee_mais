@@ -13,6 +13,7 @@ export const OFFICIAL_ANALYTICS_SOURCES = {
   POSITIVACAO_SKU_MENSAL: 'public.mv_positivacao_sku_mensal',
   SALES_REALTIME: 'public.sales',
   BASE_ATENDIMENTO: 'base_atendimento.faturamento_mensal',
+  VW_FATURAMENTO_COMERCIAL_OFICIAL: 'public.vw_faturamento_comercial_oficial',
 } as const;
 
 export type OfficialSourceKey = keyof typeof OFFICIAL_ANALYTICS_SOURCES;
@@ -41,6 +42,13 @@ export const OFFICIAL_SOURCE_SCHEMAS: Record<OfficialSourceTable, string[]> = {
   [OFFICIAL_ANALYTICS_SOURCES.BASE_ATENDIMENTO]: [
     'cod_parceiro', 'nome_parceiro', 'fat', 'qty'
   ],
+  [OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL]: [
+    'id', 'batch_id', 'cod_cfop', 'cfop_desc', 'dt_faturamento', 'nro_unico', 'nro_nota',
+    'cod_parceiro', 'nome_parceiro', 'cod_produto', 'desc_produto', 'quantidade', 'vlr_unitario',
+    'vlr_desconto', 'vlr_total_liq', 'cod_top', 'desc_top', 'custo_icms', 'cod_vendedor', 'nome_vendedor',
+    'controle', 'custo_total', 'cod_natureza', 'desc_natureza', 'status_nfe', 'vlr_frete',
+    'vlr_substituicao', 'vlr_total_st', 'cod_cr', 'centro_resultado', 'created_at', 'updated_at', 'chave_bq'
+  ],
 };
 
 export interface ResolveSourceOptions {
@@ -48,12 +56,20 @@ export interface ResolveSourceOptions {
   hasClientOutput?: boolean;
   isRealtimeDaily?: boolean;
   isAtendimento?: boolean;
+  isFaturamentoComercialOficial?: boolean;
 }
 
 /**
  * Comutador automático centralizado para seleção da fonte oficial.
  */
-export function resolveOfficialSource(options: ResolveSourceOptions = {}): OfficialSourceTable {
+export function resolveOfficialSource(sourceOrOptions: OfficialSourceTable | ResolveSourceOptions = {}): OfficialSourceTable {
+  if (typeof sourceOrOptions === 'string') {
+    return sourceOrOptions;
+  }
+  const options = sourceOrOptions;
+  if (options.isFaturamentoComercialOficial) {
+    return OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL;
+  }
   if (options.isAtendimento) {
     return OFFICIAL_ANALYTICS_SOURCES.BASE_ATENDIMENTO;
   }

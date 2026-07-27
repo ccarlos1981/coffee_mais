@@ -806,9 +806,9 @@ export default function InvestClientePage() {
                     <React.Fragment key={grupo.gerente}>
                       {/* Individual client rows */}
                       {isExpanded &&
-                        grupo.clientes.map((c) => (
+                        grupo.clientes.map((c, idx) => (
                           <tr
-                            key={`${grupo.gerente}__${c.rede}`}
+                            key={`${grupo.gerente}__${c.rede}__${idx}`}
                             className="border-b border-border hover:bg-foreground/3 transition-colors"
                           >
                             <td className="sticky left-0 z-10 bg-background hover:bg-foreground/3 px-3 py-2 text-muted whitespace-nowrap">
@@ -1024,8 +1024,8 @@ export default function InvestClientePage() {
                               {grupo.gerente}
                             </td>
                           </tr>
-                          {isExpanded && grupo.clientes.map((c) => (
-                            <tr key={`m1-${grupo.gerente}-${c.rede}`} className="border-b border-border hover:bg-foreground/3">
+                          {isExpanded && grupo.clientes.map((c, idx) => (
+                            <tr key={`m1-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
                               <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                                 {c.rede}
                               </td>
@@ -1118,8 +1118,8 @@ export default function InvestClientePage() {
                               {grupo.gerente}
                             </td>
                           </tr>
-                          {isExpanded && grupo.clientes.map((c) => (
-                            <tr key={`m2-${grupo.gerente}-${c.rede}`} className="border-b border-border hover:bg-foreground/3">
+                          {isExpanded && grupo.clientes.map((c, idx) => (
+                            <tr key={`m2-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
                               <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                                 {c.rede}
                               </td>
@@ -1243,8 +1243,8 @@ export default function InvestClientePage() {
                               {grupo.gerente}
                             </td>
                           </tr>
-                          {isExpanded && grupo.clientes.map((c) => (
-                            <tr key={`m3-${grupo.gerente}-${c.rede}`} className="border-b border-border hover:bg-foreground/3">
+                          {isExpanded && grupo.clientes.map((c, idx) => (
+                            <tr key={`m3-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
                               <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
                                 {c.rede}
                               </td>

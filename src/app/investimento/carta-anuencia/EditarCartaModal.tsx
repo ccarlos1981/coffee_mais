@@ -220,8 +220,8 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
                 className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="">-- Escolha uma Rede Cadastrada --</option>
-                {redes.map((r) => (
-                  <option key={r.codigo} value={r.codigo}>
+                {redes.map((r, idx) => (
+                  <option key={`${r.codigo}-${r.nome}-${idx}`} value={r.codigo}>
                     {r.nome} {r.uf ? `(${r.uf})` : ""} {r.canal ? `— ${r.canal}` : ""}
                   </option>
                 ))}
@@ -242,8 +242,8 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
                   className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">-- Selecione --</option>
-                  {competencias.map((c) => (
-                    <option key={c.id} value={c.competencia}>
+                  {competencias.map((c, idx) => (
+                    <option key={`${c.id}-${c.competencia}-${idx}`} value={c.competencia}>
                       {c.competencia}
                     </option>
                   ))}

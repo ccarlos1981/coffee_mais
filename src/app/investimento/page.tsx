@@ -2840,7 +2840,7 @@ export default function InvestimentoPage() {
                   className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todas as Redes</option>
-                  {redesDisponiveis.map(r => <option key={r} value={r}>{r}</option>)}
+                  {redesDisponiveis.map((r, idx) => <option key={`${r}-${idx}`} value={r}>{r}</option>)}
                 </select>
               </div>
 
@@ -2853,7 +2853,7 @@ export default function InvestimentoPage() {
                   className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todas as Famílias</option>
-                  {familiasDisponiveis.map(f => <option key={f} value={f}>{f}</option>)}
+                  {familiasDisponiveis.map((f, idx) => <option key={`${f}-${idx}`} value={f}>{f}</option>)}
                 </select>
               </div>
 
@@ -2866,7 +2866,7 @@ export default function InvestimentoPage() {
                   className="w-full bg-elevated border border-border rounded-xl px-4 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 transition-all appearance-none h-[38px]"
                 >
                   <option value="">Todos os Gerentes</option>
-                  {gerentesDisponiveis.map(g => <option key={g} value={g}>{g}</option>)}
+                  {gerentesDisponiveis.map((g, idx) => <option key={`${g}-${idx}`} value={g}>{g}</option>)}
                 </select>
               </div>
 
@@ -4057,8 +4057,8 @@ export default function InvestimentoPage() {
                     </thead>
                     <tbody className="divide-y divide-border/60">
                       {filteredMatrizesInView.length > 0 ? (
-                        filteredMatrizesInView.map((m) => (
-                          <tr key={m.codigo} className="hover:bg-elevated/20 transition-colors">
+                        filteredMatrizesInView.map((m, idx) => (
+                          <tr key={`${m.codigo}-${m.nome}-${idx}`} className="hover:bg-elevated/20 transition-colors">
                             <td className="p-3 min-w-[240px]">
                               <div className="flex flex-col">
                                 <div className="flex items-center gap-2">
