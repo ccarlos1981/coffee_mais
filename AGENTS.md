@@ -380,16 +380,16 @@ Status Arquitetural: `RPS_DESAFIO_COLUMN_BORDERS = LOCKED` & `BASELINE = CONFIRM
 
 ---
 
-## 75. Baseline Oficial — Alinhamento da Legenda do % DISP e Destaque da Semana Corrente (RPS)
+## 75. Baseline Oficial — Alinhamento da Legenda do % DISP e Moldura Contínua (RPS)
 
 A partir de 27/07/2026, o módulo RPS (`/processo-comercial/rps`) atende rigorosamente aos padrões de consistência documental e simetria de destaque visual:
 
 ### Diretrizes Mandatórias:
 1. **Definição da Legenda do % DISP**: A legenda oficial do `% DISP` no rodapé da tabela é estritamente: `Dispersão (Última Projeção do Mês Anterior vs Real do Mês Anterior)`.
 2. **Consistência Matemática**: O cálculo do `% DISP` consome a **Última Projeção do Mês Anterior** (`prev_month_projection` vinda do SSOT backend) em comparação direta com o **Real do Mês Anterior** (`real`), garantindo 0,0000% de divergência conceitual.
-3. **Simetria de Destaque da Semana Corrente**: A coluna da semana ativa possui o mesmo tratamento visual da coluna DESAFIO, contendo bordas verticais contínuas de 2px à esquerda e à direita (`border-x-2 border-amber-500/50`) do cabeçalho ao `TOTAL BRASIL`, preservando o badge `▲ ATUAL`.
+3. **Moldura Contínua nas Duas Laterais (DESAFIO e Semana Corrente)**: As colunas **DESAFIO** e **Semana Corrente** (`27/JUL`) são renderizadas como blocos verticais destacados delimitados por linhas douradas visíveis tanto à esquerda quanto à direita (`box-shadow: inset 2px ...` + `border-x-2 border-amber-400` com remoção do `border-left` na célula adjacente `REAL`/`% DISP`), eliminando qualquer sobreposição ou colapso de borda no navegador.
 
-Status Arquitetural: `RPS_DISP_LEGEND_AND_WEEK_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
+Status Arquitetural: `RPS_DISP_LEGEND_AND_DOUBLE_BORDERS = LOCKED` & `BASELINE = CONFIRMED`.
 
 
 
