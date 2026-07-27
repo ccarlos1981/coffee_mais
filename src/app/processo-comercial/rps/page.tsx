@@ -415,14 +415,16 @@ export default function RpsPage() {
 
         // 4. Metas e Projeções dos Clientes
         mgr.clients.forEach(cli => {
-          // Meta do cliente
-          payloadProjs.push({
-            manager: mgr.manager,
-            client_matrix: cli.client,
-            week_start_date: mondays[0], // Meta referenciada na primeira segunda do mês
-            kpi: 'META',
-            projection_value: cli.meta
-          });
+          // Meta do cliente (incluída no payload apenas se o usuário for Admin / Admin Master)
+          if (isAdmin) {
+            payloadProjs.push({
+              manager: mgr.manager,
+              client_matrix: cli.client,
+              week_start_date: mondays[0], // Meta referenciada na primeira segunda do mês
+              kpi: 'META',
+              projection_value: cli.meta
+            });
+          }
 
           // Projeções semanais de faturamento
           cli.projections.forEach((val, idx) => {
@@ -437,13 +439,18 @@ export default function RpsPage() {
         });
       });
 
+      // Garantia defensiva: se o usuário não for Admin ou Admin Master, expurgar qualquer item META antes do envio
+      const finalProjections = isAdmin
+        ? payloadProjs
+        : payloadProjs.filter((p: any) => p.kpi !== 'META');
+
       const res = await fetch('/api/processo-comercial/rps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           year: filterYear,
           month: filterMonth,
-          projections: payloadProjs
+          projections: finalProjections
         })
       });
 
