@@ -198,6 +198,7 @@ export default function CrmEnterprisePage() {
           opportunities={data.opportunities}
           pipelineByStage={data.pipelineByStage}
           stageLabels={data.stageLabels}
+          onRefresh={fetchCrmData}
         />
       )}
 

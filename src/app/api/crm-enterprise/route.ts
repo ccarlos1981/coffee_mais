@@ -1,6 +1,11 @@
+// ==============================================================================
+// API ROUTE: /api/crm-enterprise
+// Sprint 4.2 — Pilot Integration (CRM Enterprise + Enterprise Workflow Engine)
+// ==============================================================================
+
 import { NextResponse } from "next/server";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
-import { CrmEnterpriseEngine, CrmFilterOptions } from "@/lib/crm-enterprise";
+import { CrmEnterpriseEngine, CrmFilterOptions, CrmWorkflowBridge } from "@/lib/crm-enterprise";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -22,9 +27,13 @@ export async function GET(request: Request) {
 
     const crmData = CrmEnterpriseEngine.getCrmEnterpriseData(filters);
 
+    // Idempotent Read Enrichment: Annotates opportunities with existing workflows via CrmWorkflowBridge
+    // NEVER creates instances during GET
+    const enrichedData = CrmWorkflowBridge.enrichCrmDataWithWorkflows(crmData);
+
     return NextResponse.json({
       success: true,
-      data: crmData,
+      data: enrichedData,
     });
   } catch (error: any) {
     return handleAuthError(error);

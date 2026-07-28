@@ -1120,13 +1120,264 @@ As próximas evoluções do projeto deverão priorizar funcionalidades de negóc
 
 Alterações na pipeline de importação somente poderão ocorrer conforme os critérios estabelecidos na Seção 83.
 
+---
 
+## 83. Baseline Oficial — Enterprise Workflow Engine
 
+A partir de 28/07/2026, a **Sprint 4.1** institui oficialmente o **Enterprise Workflow Engine** como a infraestrutura corporativa compartilhada de workflows da plataforma Coffee++.
 
+### Diretrizes e Princípios Mandatórios
 
+1. **Princípio da Neutralidade do Workflow**: O `EnterpriseWorkflowEngine` (`src/lib/workflow-enterprise/`) é um componente neutro da infraestrutura corporativa no grupo "Governança & Health". Ele não pertence exclusivamente à Plataforma Comercial nem a nenhum módulo de negócio específico.
+2. **Separação entre Definição e Execução**:
+   - `WorkflowDefinition` (`/api/workflow-definitions/*`): Modelos reusáveis e versionados de máquinas de estado (`workflowKey`, `entityType`, `version`, `stateMachine`, `approvalPolicies`, `metadata`, `active`).
+   - `WorkflowInstance` (`/api/workflows/*`): Execuções ativas vinculadas à versão do modelo (`workflowId`, `definitionId`, `entityId`, `currentState`, `approvals`, `auditTrail`).
+3. **Repository Pattern Obrigatório**: Toda leitura e gravação de `WorkflowDefinition` ocorre estritamente via `WorkflowDefinitionRepository`, isolando a camada HTTP (`/api/workflow-definitions/*`) de acessos diretos ao banco de dados.
+4. **Versionamento dos Eventos Públicos de Domínio (v1)**: O `NotificationService` emite contratos de eventos fortemente tipados e versionados (`WorkflowDomainEventV1` com o campo `eventVersion: 'v1'`). Alterações estruturais no contrato exigirão nova versão (ex: `v2`), garantindo estabilidade para futuros consumidores (IA, Webhooks, Notificações).
+5. **Consistência Transacional & Lock Service**: Alterações concorrentes em instâncias de workflow são protegidas por trava mutex em memória e validação otimista de versão (`WorkflowLockService.validateOptimisticLock`), prevenindo dupla aprovação e condições de corrida (*race conditions*).
+6. **Múltiplos Modos de Aprovação**: Suporte a políticas de aprovação `SINGLE`, `SEQUENTIAL`, `PARALLEL` e `QUORUM` via `ApprovalService`, com suporte a ações de aprovar, rejeitar e devolver (*return for edit*).
+7. **Trilha Imutável de Auditoria**: Registro permanente de todas as transições e decisões via `WorkflowAuditService`.
 
+### Fluxo Arquitetural Único
+`Camada HTTP REST (/api/workflow-definitions e /api/workflows)` → `EnterpriseWorkflowEngine` → `WorkflowLockService` → `WorkflowExecutionService` → `WorkflowDefinitionRepository` & `ApprovalService` & `WorkflowAuditService` & `NotificationService` (`WorkflowDomainEventV1`).
 
+### Status Oficial
 
+```
+ENTERPRISE_WORKFLOW = ACTIVE
+
+CYCLE_3_PHASE_2 = ACTIVE
+
+ENTERPRISE_FOUNDATION = LOCKED
+
+COMMERCIAL_PLATFORM = LOCKED
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 84. Baseline Oficial — Sprint 4.2 — Piloto de Integração Workflow + CRM Enterprise
+
+A partir de 28/07/2026, a **Sprint 4.2** homologa oficialmente o **Piloto de Integração** entre o CRM Comercial Enterprise e o Enterprise Workflow Engine.
+
+### Diretrizes e Princípios Mandatórios
+
+1. **Princípio de Leitura sem Efeitos Colaterais (GET Idempotente)**: A rota `GET /api/crm-enterprise` e a ponte `CrmWorkflowBridge` operam estritamente em modo de leitura idempotente. A simples consulta à lista de oportunidades **NUNCA** instanciará automaticamente registros de workflow. Caso não exista workflow ativo para uma oportunidade, o sistema retorna `workflowStatus = "NOT_CREATED"`, `workflowId = null` e `canCreateWorkflow = true`.
+2. **Criação Explícita de Workflow**: A criação de um `WorkflowInstance` para uma oportunidade ocorre **exclusivamente por ação explícita do usuário** (ex: acionamento do botão *"Iniciar Workflow"* no Kanban/Painel do CRM) ou evento de negócio homologado, consumindo `EnterpriseWorkflowEngine.createInstance()`.
+3. **Utilização da Query API Especializada**: A integração consome a Query API especializada de lote `EnterpriseWorkflowEngine.findByEntities("CRM_OPPORTUNITY", oppIds)`, eliminando iterações completas e garantindo performance sub-milissegundo sem duplicar lógica de filtro nos módulos clientes.
+4. **Sem Duplicação de Regras**: As regras de transição de estado, quórum e políticas de aprovação permanecem 100% centralizadas no `EnterpriseWorkflowEngine`. O CRM consome apenas as anotações públicas de estado e exibe links profundos para `/workflow-enterprise`.
+5. **Preservação de Baselines Homologadas**: Mantida a paridade financeira de 0,0000%, 0 alterações em Engines existentes e 100% de compatibilidade retroativa.
+
+### Fluxo Arquitetural Único
+`CRM UI / API GET` → `CrmWorkflowBridge` → `EnterpriseWorkflowEngine.findByEntities()` (Leitura Idempotente)  
+`Ação Explícita de Usuário ("Iniciar Workflow")` → `CrmWorkflowBridge.createWorkflowForOpportunity()` → `EnterpriseWorkflowEngine.createInstance()`
+
+### Status Oficial
+
+```
+WORKFLOW_CRM_PILOT = ACTIVE
+
+ENTERPRISE_WORKFLOW = LOCKED
+
+COMMERCIAL_PLATFORM = LOCKED
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 85. Baseline Oficial — Integration Pattern for Enterprise Workflow Engine
+
+### Objetivo
+
+Padronizar definitivamente a forma como qualquer módulo da plataforma Coffee++ integra-se ao Enterprise Workflow Engine.
+
+---
+
+### Diretrizes Obrigatórias
+
+#### 1. Consumo Exclusivo da API Pública
+Todo módulo deverá consumir exclusivamente a fachada pública do `EnterpriseWorkflowEngine`. É proibido acessar diretamente `Repository`, `Storage`, tabelas internas ou serviços internos do Workflow Engine.
+
+#### 2. Bridge de Integração
+Cada módulo deverá possuir sua própria camada Bridge (ex: `CrmWorkflowBridge`, `SopWorkflowBridge`, `TradeWorkflowBridge`, `MasterDataWorkflowBridge`). A Bridge é responsável apenas por adaptar os dados do domínio ao Workflow Engine. Nenhuma regra de workflow poderá ser implementada dentro da Bridge.
+
+#### 3. GET Idempotente
+Operações GET nunca poderão criar `WorkflowInstance`s. Leituras apenas enriquecem informações utilizando `findByEntity()` e `findByEntities()`.
+
+#### 4. Criação Explícita
+`WorkflowInstance`s somente poderão ser criadas através de ações explícitas do usuário ou de automações previamente definidas. É proibida criação automática durante consultas.
+
+#### 5. Query API
+Integrações deverão utilizar consultas especializadas (`findByEntity()`, `findByEntities()`), evitando listagens completas para posterior filtragem.
+
+#### 6. Neutralidade
+O Enterprise Workflow Engine permanece neutro. Nenhuma regra específica de CRM, S&OP, Trade, RH, Promotor ou qualquer outro domínio poderá ser incorporada ao Engine.
+
+#### 7. Eventos
+Todos os módulos deverão consumir apenas eventos públicos versionados (`WorkflowDomainEventV1` permanece como contrato oficial).
+
+#### 8. Auditoria
+Toda alteração de estado deverá continuar registrada exclusivamente pelo `WorkflowAuditService`.
+
+#### 9. Concorrência
+Toda transição continuará protegida pelo `WorkflowLockService`. Nenhum módulo poderá implementar mecanismos próprios de lock.
+
+#### 11. Governança Operacional & Reference Playbook
+Todo novo módulo que utilizar o Enterprise Workflow Engine deverá seguir obrigatoriamente as diretrizes e checklists do **Enterprise Workflow Rollout Playbook** (`workflow_enterprise_rollout_playbook.md`). Os checklists de integração e homologação passam a integrar formalmente o processo de desenvolvimento e aprovação da Plataforma Comercial Enterprise.
+
+---
+
+### Gates de Governança Obrigatorios
+
+#### Gate 1 — Gate de Arquitetura (Pré-Desenvolvimento)
+Antes do início do desenvolvimento de qualquer nova integração com o Enterprise Workflow Engine, a engenharia deve validar formalmente:
+1. **Critérios de Elegibilidade**: Confirmação de que o módulo atende aos requisitos (aprovações multi-nível, quórum, SLA, auditoria imutável ou fluxo colaborativo).
+2. **Checklist de Integralização**: Planejamento de Bridge dedicada, leitura idempotente GET, acionamento explícito e consumo exclusivo da API pública (`findByEntity`/`findByEntities`).
+3. **Bloqueio de Início**: Caso qualquer critério não seja satisfeito, a integração **NÃO PODERÁ** ser iniciada.
+
+#### Gate 2 — Gate de Pull Request (Homologação Final)
+Nenhum Pull Request envolvendo integração com o Enterprise Workflow Engine poderá ser aprovado ou sofrer merge sem a apresentação das seguintes evidências empíricas de validação:
+- `npx tsc --noEmit` executado com **0 erros** de tipagem;
+- `npm run health:analytics` executado com status **100% APROVADO** e desvio financeiro exato de **0,0000%**;
+- Compilação oficial Next.js (`npm run build`) concluída com **sucesso**;
+- Conformidade total verificada em relação às Baselines homologadas (Seções 67 a 85);
+- Respeito integral ao **Enterprise Workflow Rollout Playbook**.
+
+---
+
+### Termo de Encerramento Oficial — Programa Enterprise Workflow
+
+A partir de 28/07/2026, o ciclo de arquitetura e governança do **Enterprise Workflow Engine** (Sprints 4.1, 4.2 e Baselines 83, 84 e 85) encontra-se **oficialmente encerrado, homologado e congelado**.
+
+#### Consolidação Arquitetural
+- **Seção 83**: Enterprise Workflow Engine (Infraestrutura Corporativa) `[LOCKED & CONFIRMED]`
+- **Seção 84**: Piloto de Integração CRM + Workflow Engine `[APPROVED & CONFIRMED]`
+- **Seção 85**: Integration Pattern, Rollout Playbook & Gates de Governança `[INSTITUTIONALIZED & LOCKED]`
+
+#### Diretrizes da Fase de Adoção Contínua (`PLATFORM_ADOPTION`)
+1. **Congelamento Arquitetural**: Fica proibida a criação de novos motores paralelos ou alteração da arquitetura base do `EnterpriseWorkflowEngine` sem justificativa prévia de produção.
+2. **Prioridade na Adoção**: Foco total na integração dos novos módulos da plataforma utilizando estritamente a fachada pública, a camada Bridge e os Gates de Governança.
+3. **Melhorias Orientadas a Evidências**: Evoluções futuras no engine ocorrerão apenas se motivadas por necessidades reais comprovadas durante a operação.
+
+---
+
+### Status Geral Consolidador
+
+```
+ENTERPRISE_WORKFLOW = PRODUCTION_READY
+
+WORKFLOW_ARCHITECTURE = FROZEN
+
+WORKFLOW_GOVERNANCE = INSTITUTIONALIZED
+
+NEXT_PHASE = PLATFORM_ADOPTION
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## Baseline Oficial — Especificação Funcional do Módulo de Investimentos (Baseline Permanente)
+
+A partir de 28/07/2026, o documento `docs/processos/modulo_investimentos_especificacao_funcional.md` torna-se a Especificação Funcional Oficial e permanente do Módulo de Investimentos do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Fonte Única de Verdade Funcional**: Em caso de divergência entre documentos operacionais, manuais legados ou páginas de ajuda, a `Especificação Funcional do Módulo de Investimentos` é a única fonte oficial para fluxo operacional, regras de negócio, responsabilidades, máquina de estados, permissões, integrações, notificações e critérios de encerramento.
+2. **Manutenção Obrigatória**: Toda e qualquer nova evolução funcional do módulo deverá obrigatoriamente atualizar a especificação funcional.
+3. **Governança Dual**: Novas regras de negócio devem ser registradas primeiro na especificação funcional e, quando representarem diretrizes permanentes de governança do sistema, também em `AGENTS.md`.
+4. **Escopo dos Walkthroughs**: Walkthroughs continuam sendo utilizados exclusivamente para registrar implementações pontuais, migrações de banco e evidências técnicas de validação.
+
+Status Arquitetural: `MODULO_INVESTIMENTOS_SPEC = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## Baseline Oficial — Arquitetura de Documentação e Treinamento em 3 Níveis (Módulo de Investimentos)
+
+A partir de 28/07/2026, a documentação do Módulo de Investimentos passa a ser oficialmente organizada em **três níveis complementares**:
+
+### 1. Governança Arquitetural (`AGENTS.md`)
+Contém exclusivamente regras permanentes de arquitetura, governança, padrões técnicos e decisões institucionais do projeto.
+
+### 2. Especificação Funcional Oficial (`docs/processos/modulo_investimentos_especificacao_funcional.md`)
+Documento canônico do módulo, contendo regras de negócio, fluxo operacional, máquina de estados, integrações, permissões, notificações e critérios funcionais. Toda evolução funcional deverá manter esta especificação atualizada.
+
+### 3. Manual Operacional do Usuário (`docs/manuais/manual_operacional_gerente_regional_investimentos.md`)
+Documento destinado aos Gerentes Regionais e usuários de negócio. Contém linguagem não técnica, procedimentos operacionais, exemplos práticos, boas práticas, perguntas frequentes, checklists e material de treinamento (sem detalhes de implementação, arquitetura, banco de dados ou código).
+
+### Diretrizes Mandatórias de Manutenção:
+Sempre que houver alteração no Módulo de Investimentos:
+1. **Especificação Funcional:** Atualizar quando houver mudança de comportamento ou regra do sistema;
+2. **Manual Operacional:** Atualizar quando houver impacto na forma de utilização pelos usuários de negócio;
+3. **AGENTS.md:** Manter exclusivamente para regras permanentes de governança e arquitetura.
+
+Status Arquitetural: `DOCUMENTACAO_3NIVEIS = HOMOLOGADA & LOCKED`.
+
+---
+
+## Baseline Oficial — Padrão Institucional de Documentação dos Módulos (Baseline Permanente)
+
+A partir de 28/07/2026, **todo e qualquer módulo estratégico do ecossistema Coffee++** deverá adotar obrigatoriamente a estrutura de documentação em **três níveis complementares**:
+
+### 1. Governança Arquitetural (`AGENTS.md`)
+Regras permanentes de arquitetura, governança, restrições operacionais, diretrizes de segurança, paridade financeira e decisões institucionais da plataforma.
+
+### 2. Especificação Funcional Oficial (`docs/processos/[modulo]_especificacao_funcional.md`)
+Documento canônico do módulo, contendo regras de negócio, fluxos transacionais, máquina de estados, integrações, permissões, notificações e critérios funcionais.
+
+### 3. Manual Operacional do Usuário (`docs/manuais/manual_operacional_[perfil]_[modulo].md`)
+Documento destinado aos usuários finais de negócio (ex: Gerentes Regionais, Trade, Promotores, Supervisores). Deve utilizar linguagem 100% não técnica, procedimentos operacionais, exemplos práticos, boas práticas, perguntas frequentes, checklists e material de treinamento (sem detalhes de implementação, banco de dados, APIs ou código).
+
+### Diretrizes Mandatórias de Manutenção:
+Sempre que houver qualquer alteração funcional no sistema:
+1. **Atualizar a Especificação Funcional** quando houver mudança no comportamento ou regra do sistema;
+2. **Atualizar o Manual Operacional** quando houver impacto na operação dos usuários finais;
+3. **Registrar no AGENTS.md** exclusivamente decisões permanentes de arquitetura e governança.
+
+Status Arquitetural: `PADRAO_DOCUMENTACAO_INSTITUCIONAL = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## Baseline Oficial — Infraestrutura Institucional de Exportação de PDF (Baseline Permanente)
+
+A partir de 28/07/2026, a plataforma Coffee++ conta com uma **infraestrutura institucional compartilhada de exportação de documentos Markdown para PDF**.
+
+### Diretrizes Mandatórias:
+1. **Infraestrutura Reutilizável Única**: Toda e qualquer documentação institucional da plataforma (Especificações Funcionais, Manuais Operacionais e Guias de Treinamento) deverá utilizar a infraestrutura compartilhada (`src/lib/docs/markdownPdfExporter.ts` e `ExportPdfButton`), sendo proibida a criação de soluções específicas ou duplicadas por módulo.
+2. **Preservação de Formatação e Mídia**: Os PDFs gerados devem obrigatoriamente converter e preservar:
+   - Estrutura hierárquica dos títulos (H1-H4) e numeração;
+   - Tabelas, listas e checklists (`☐`/`☑`);
+   - Blocos de alerta/callout (`NOTE`, `TIP`, `WARNING`, `IMPORTANT`, `CAUTION`);
+   - Diagramas Mermaid renderizados nativamente como imagens (proibida a exibição de código bruto);
+   - Capa institucional, identidade visual Coffee++, metadados, cabeçalhos, rodapés e paginação dinâmica ("Página X de Y").
+3. **Escopo de Aplicação**: Aplicável a todas as Especificações Funcionais, Manuais Operacionais de Usuários e documentos formais definidos pela governança do sistema.
+
+Status Arquitetural: `INFRAESTRUTURA_PDF_INSTITUCIONAL = HOMOLOGADA & LOCKED`.
+
+---
+
+## Baseline Oficial — Ciclo de Vida da Documentação e Critérios de Homologação (Baseline Permanente)
+
+A partir de 28/07/2026, toda documentação institucional da plataforma Coffee++ deverá permanecer continuamente sincronizada com a evolução funcional dos módulos.
+
+### Diretrizes Mandatórias:
+1. **Documentação Integrante da Homologação:** Nenhuma funcionalidade homologada poderá permanecer sem a documentação correspondente. A documentação é parte integrante do desenvolvimento, não uma atividade posterior.
+2. **Atualização por Impacto:** Qualquer alteração funcional no sistema exige atualização imediata:
+   - Da **Especificação Funcional**, quando houver mudança de comportamento, regra ou transição do sistema;
+   - Do **Manual Operacional**, quando houver impacto na jornada de uso dos usuários finais de negócio;
+   - Da **documentação de treinamento e exportação em PDF**, para refletir o comportamento atualizado;
+   - Do **`AGENTS.md`**, apenas quando a alteração representar nova diretriz permanente de arquitetura, governança ou padrão institucional.
+
+### Critério Obrigatório de Homologação Documental:
+Um módulo é considerado **documentalmente homologado** apenas quando possuir cumulativamente:
+1. Governança arquitetural registrada em `AGENTS.md`;
+2. Especificação Funcional Oficial (`docs/processos/[modulo]_especificacao_funcional.md`);
+3. Manual Operacional do Usuário (`docs/manuais/manual_operacional_[perfil]_[modulo].md`);
+4. Exportação oficial em PDF institucional configurada;
+5. Validação técnica de código (`npx tsc --noEmit` / `npm run build`) com 0 erros.
+
+Status Arquitetural: `CICLO_VIDA_DOCUMENTAL = HOMOLOGADO & LOCKED`.
 
 
 

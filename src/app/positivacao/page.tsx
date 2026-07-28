@@ -5,7 +5,7 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
 import { Filter, BarChart3, Upload, Home, DollarSign,
   History, Users, Target, TrendingUp, CheckCircle2, Calendar,
-  ChevronRight, ChevronDown, ChevronLeft, Package } from "lucide-react";
+  ChevronRight, ChevronDown, ChevronLeft, Package, Layers } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
@@ -784,6 +784,7 @@ export default function PositivacaoPage() {
         <Link href="/preco" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Preço</Link>
         <Link href="/dia" className="bottom-tab"><Calendar className="bottom-tab-icon" /> Dia</Link>
         <Link href="/positivacao" className="bottom-tab active"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/historico-familia" className="bottom-tab"><Layers className="bottom-tab-icon" /> Hist. Família</Link>
         <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab"><TrendingUp className="bottom-tab-icon" /> Inv.</Link>
         <Link href="/metas" className="bottom-tab"><Target className="bottom-tab-icon" /> Metas</Link>

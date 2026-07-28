@@ -1275,6 +1275,7 @@ export default function VendasDashboard() {
           <Calendar className="bottom-tab-icon" /> Dia
         </Link>
         <Link href="/positivacao" className="bottom-tab"><CheckCircle2 className="bottom-tab-icon" /> Posit.</Link>
+        <Link href="/historico-familia" className="bottom-tab"><Layers className="bottom-tab-icon" /> Hist. Família</Link>
         <Link href="/sku-pdv" className="bottom-tab"><Package className="bottom-tab-icon" /> Sku PDV</Link>
         <Link href="/investimento" className="bottom-tab">
           <TrendingUp className="bottom-tab-icon" /> Inv.

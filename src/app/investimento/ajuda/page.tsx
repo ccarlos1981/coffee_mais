@@ -15,6 +15,7 @@ import {
   MousePointerClick
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { ExportPdfButton } from "@/components/docs/ExportPdfButton";
 
 interface StepConfig {
   id: string;
@@ -266,7 +267,7 @@ export default function AjudaInvestimentoPage() {
     <div className="min-h-screen bg-background text-foreground p-4 md:p-8 space-y-6">
       
       {/* Header */}
-      <div className="max-w-6xl mx-auto flex items-center justify-between border-b border-border pb-4">
+      <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between border-b border-border pb-4 gap-4">
         <div className="flex items-center gap-3">
           <Link 
             href="/investimento" 
@@ -283,7 +284,23 @@ export default function AjudaInvestimentoPage() {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <ExportPdfButton
+            docPath="docs/manuais/manual_operacional_gerente_regional_investimentos.md"
+            title="Manual Operacional do Gerente Regional"
+            subtitle="Módulo de Investimentos — Guia do Usuário"
+            module="Investimentos"
+            label="📘 Manual (PDF)"
+            variant="gold"
+          />
+          <ExportPdfButton
+            docPath="docs/processos/modulo_investimentos_especificacao_funcional.md"
+            title="Especificação Funcional Oficial"
+            subtitle="Módulo de Investimentos — Documento Canônico"
+            module="Investimentos"
+            label="📄 Espec. Funcional (PDF)"
+            variant="secondary"
+          />
           <ThemeToggle />
         </div>
       </div>
