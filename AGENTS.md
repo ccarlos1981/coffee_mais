@@ -488,3 +488,650 @@ A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise 
 6. **Auditoria Mandatória de Encerramento**: Aprovado com 0 desvios financeiros, 0 regressões, 0 breaking changes, 0 persistência adicional e aprovação total em `npm run health:analytics`, `npm run verify:parity`, `npx tsc --noEmit` e `npm run build`.
 
 Status Arquitetural: `DATA_QUALITY_ENTERPRISE = LOCKED` & `DATA_LINEAGE_ENTERPRISE = LOCKED` & `DATA_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 71. Baseline Oficial — Sprint 2.5 — Enterprise Test Automation & Quality Assurance
+
+A partir de 28/07/2026, a **Sprint 2.5 — Enterprise Test Automation & Quality Assurance** passa a integrar oficialmente a arquitetura do Coffee++, constituindo a camada Enterprise responsável pela governança da qualidade técnica, inventário de testes, análise de regressões, validação de build e consolidação do Quality Score, desenvolvida sob arquitetura completamente isolada, sem qualquer alteração dos módulos homologados anteriormente.
+
+### Objetivo
+Consolidar a camada oficial de Quality Assurance da plataforma, fornecendo uma visão executiva da saúde dos testes automatizados, estabilidade da plataforma e qualidade do processo de entrega. Toda a implementação opera exclusivamente em modo Read-Only, sem alterar regras de negócio, estruturas de banco de dados ou comportamento operacional.
+
+### Arquitetura Oficial
+- `Test Suites` → `EnterpriseQualityEngine` → `GET /api/health/quality` & `GET /api/health/tests` → `Health Center (/health)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `EnterpriseQualityEngine`
+- `GET /api/health/quality`
+- `GET /api/health/tests`
+- `QualityOverview`
+- `QualityScoreCard`
+- `EnterpriseTestInventoryPanel`
+- `RegressionPanel`
+- `BuildValidationPanel`
+- `QualityRecommendations`
+
+### Princípios Arquiteturais
+Esta Sprint segue rigorosamente o Princípio de Não Intervenção. É expressamente proibida qualquer alteração em Engines homologadas, regras comerciais, financeiras, tabelas, views, procedimentos ou triggers, e execução de `UPDATE`, `INSERT`, `DELETE` ou `MERGE`. Toda a operação permanece exclusivamente observacional.
+
+### Quality Score Oficial
+O Quality Score representa a maturidade técnica da plataforma (25% Unitários, 20% Integração, 15% APIs, 15% Engines, 10% Cobertura, 10% Build, 5% Governança). Indicadores sem fonte oficial verificável serão apresentados como `NOT_AVAILABLE`.
+
+### Build Validation
+A validação oficial da plataforma permanece composta por: Auditoria de Governança, Paridade Financeira, Validação TypeScript, Build Next.js e Compatibilidade Arquitetural.
+
+### Garantias de Compatibilidade
+Preservados 0 alterações em módulos homologados, 0 alterações financeiras/comerciais/comportamentais, 0 Breaking Changes, 0 Regressões e 100% de compatibilidade com todas as Baselines Oficiais.
+
+Status Arquitetural: `QUALITY_ASSURANCE_ENTERPRISE = LOCKED` & `TEST_AUTOMATION_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 72. Baseline Oficial — Enterprise Operational Telemetry & Usage Analytics Program (Sprint 2.6)
+
+A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise Operational Telemetry & Usage Analytics Program** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Camada de Telemetria 100% Read-Only e LGPD Compliant**: O `EnterpriseTelemetryEngine` (`src/lib/governance/telemetry`) constitui a única fonte oficial para medição agregada de utilização de módulos, adoção de funcionalidades, jornadas de usuários, sessões e análise de dispositivos, operando exclusivamente em modo diagnósticos sem expor qualquer PII ou conteúdo de digitação.
+2. **Princípio de Não Intervenção no Usuário**: É expressamente proibida qualquer alteração no fluxo de navegação, experiência do usuário, permissões, rotas ou regras comerciais por meio da camada de telemetria.
+3. **Ponderação Oficial do Adoption Score**: O Adoption Score Global (0–100) é calculated pela soma ponderada oficial (30% Utilização dos Módulos, 20% Utilização das Funcionalidades, 20% Frequência de Acesso, 15% Jornada Completa, 10% Retenção, 5% Governança).
+4. **Respeito às Métricas Verificáveis (`NOT_AVAILABLE`)**: Indicadores que não possuam fonte oficial de dados verificável deverão obrigatoriamente retornar `STATUS = NOT_AVAILABLE`.
+5. **APIs e Componentes Congelados**: `EnterpriseTelemetryEngine`, `GET /api/health/telemetry`, `GET /api/health/adoption`, `/health`, `TelemetryOverview`, `AdoptionScoreCard`, `ModuleUsagePanel`, `UserJourneyPanel`, `FeatureUsagePanel`, `SessionAnalyticsPanel`, `DeviceAnalyticsPanel` e `TelemetryRecommendations`.
+6. **Auditoria Mandatória de Encerramento**: Aprovado com 0 desvios financeiros, 0 regressões, 0 breaking changes, 0 persistência adicional e aprovação total em `npm run health:analytics`, `npm run verify:parity`, `npx tsc --noEmit` e `npm run build`.
+
+Status Arquitetural: `TELEMETRY_ENTERPRISE = LOCKED` & `USAGE_ANALYTICS_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 73. Baseline Oficial — Enterprise Developer Experience & CI/CD Governance Program (Sprint 2.7)
+
+A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise Developer Experience & CI/CD Governance Program** passam a integrar oficialmente a arquitetura do Coffee++, constituindo a camada Enterprise responsável pela governança da experiência de desenvolvimento, monitoramento dos pipelines de integração e entrega contínua, saúde dos builds, prontidão para releases e consolidação do DevEx Score, desenvolvida sob arquitetura completamente isolada, sem qualquer alteração dos módulos homologados anteriormente.
+
+### Objetivo
+Consolidar a camada oficial de Developer Experience & CI/CD Governance da plataforma, fornecendo uma visão executiva da maturidade do processo de desenvolvimento e entrega, operando exclusivamente em modo Read-Only e preservando integralmente todas as baselines homologadas anteriormente.
+
+### Arquitetura Oficial
+- `Pipelines Oficiais` → `EnterpriseCICDEngine` → `EnterpriseDevExEngine` → `GET /api/health/devex` & `GET /api/health/cicd` → `Health Center (/health)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `EnterpriseDevExEngine`
+- `EnterpriseCICDEngine`
+- `GET /api/health/devex`
+- `GET /api/health/cicd`
+- `DevExOverview`
+- `DevExScoreCard`
+- `PipelineInventoryPanel`
+- `BuildHealthPanel`
+- `ReleaseReadinessPanel`
+- `DevExRecommendations`
+
+### Princípios Arquiteturais
+Esta Sprint segue rigorosamente o Princípio de Não Intervenção. É expressamente proibido modificar qualquer Engine homologada, regras comerciais, financeiras, comportamento operacional ou estruturas do banco de dados, e executar `UPDATE`, `INSERT`, `DELETE` ou `MERGE`. Toda a operação permanece exclusivamente observacional.
+
+### DevEx Score Oficial
+O DevEx Score representa a maturidade técnica do processo de desenvolvimento (30% Sucesso de Pipelines, 20% Tempo de Build/Deploy, 20% Estabilidade de Releases, 15% Cobertura de Workflows, 10% Release Readiness, 5% Governança). Indicadores sem fonte oficial verificável serão apresentados como `NOT_AVAILABLE`.
+
+### Release Readiness
+A prontidão de releases consolida exclusivamente verificações objetivas da plataforma: Auditoria de Governança, Paridade Financeira 0.0000%, Tipagem TypeScript sem erros, Compilação de Produção Next.js 16 e Segurança/RLS.
+
+### Garantias de Compatibilidade
+Preservados 0 alterações em módulos homologados, 0 alterações financeiras/comerciais/comportamentais, 0 Breaking Changes, 0 Regressões e 100% de compatibilidade com todas as Baselines Oficiais.
+
+Status Arquitetural: `DEVELOPER_EXPERIENCE_ENTERPRISE = LOCKED` & `CICD_GOVERNANCE_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 74. Baseline Oficial — Enterprise Architecture & Documentation Governance Program (Sprint 2.8)
+
+A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise Architecture & Documentation Governance Program** passam a integrar oficialmente a arquitetura do Coffee++, constituindo a camada Enterprise responsável pela governança da arquitetura da plataforma, documentação viva, rastreabilidade técnica, inventário de ativos arquiteturais (14 Engines e 118 APIs HTTP) e análise das dependências entre módulos, APIs, Engines e componentes, desenvolvida sob arquitetura completamente isolada, sem qualquer alteração dos módulos homologados anteriormente.
+
+### Objetivo
+Consolidar a camada oficial de Governança Arquitetural da plataforma, fornecendo uma visão executiva da estrutura técnica do sistema, preservando integralmente todas as baselines homologadas anteriormente.
+
+### Arquitetura Oficial
+- `Inventário Oficial` → `EnterpriseDocumentationEngine` → `EnterpriseArchitectureEngine` → `GET /api/health/architecture` & `GET /api/health/documentation` → `Health Center (/health)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `EnterpriseArchitectureEngine`
+- `EnterpriseDocumentationEngine`
+- `GET /api/health/architecture`
+- `GET /api/health/documentation`
+- `ArchitectureOverview`
+- `ArchitectureScoreCard`
+- `EngineInventoryPanel`
+- `ApiInventoryPanel`
+- `DependencyGraphPanel`
+- `ArchitectureRecommendations`
+
+### Princípios Arquiteturais
+Esta Sprint segue rigorosamente o Princípio de Não Intervenção. É expressamente proibido modificar qualquer Engine homologada, regras comerciais, financeiras, comportamento operacional ou estruturas do banco de dados, e executar `UPDATE`, `INSERT`, `DELETE` ou `MERGE`. Toda a operação permanece exclusivamente observacional.
+
+### Architecture Score Oficial
+O Architecture Score representa a maturidade arquitetural da plataforma (30% Padronização, 20% Documentação, 20% Dependências, 15% Rastreabilidade, 10% Desacoplamento, 5% Governança). Indicadores sem fonte oficial verificável serão apresentados como `NOT_AVAILABLE`.
+
+### Dependency Graph
+O grafo de dependências é obtido exclusivamente da arquitetura oficial da plataforma, validando o desacoplamento de camadas em 5 níveis (Data Sources → Materialized Views → Core Analytics → Specialized Engines → HTTP APIs → UI Modules).
+
+### Garantias de Compatibilidade
+Preservados 0 alterações em módulos homologados, 0 alterações financeiras/comerciais/comportamentais, 0 Breaking Changes, 0 Regressões e 100% de compatibilidade com todas as Baselines Oficiais.
+
+Status Arquitetural: `ARCHITECTURE_ENTERPRISE = LOCKED` & `DOCUMENTATION_GOVERNANCE_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 75. Baseline Oficial — Enterprise Maturity Program
+
+A partir de 28/07/2026, considera-se oficialmente concluído o Enterprise Maturity Program do Coffee++, estabelecendo a arquitetura corporativa definitiva de governança técnica da plataforma.
+
+O programa consolida uma suíte integrada de capacidades Enterprise, operando exclusivamente em modo Read-Only, preservando integralmente as regras de negócio, financeiras, operacionais e analíticas da plataforma.
+
+### Capacidades Oficiais
+
+O Enterprise Maturity Program passa a ser composto pelas seguintes camadas oficiais:
+
+- Enterprise Observability
+- Enterprise Performance
+- Enterprise Security
+- Enterprise Compliance
+- Enterprise Data Quality & Governance
+- Enterprise Test Automation & Quality Assurance
+- Enterprise Operational Telemetry & Usage Analytics
+- Enterprise Developer Experience & CI/CD Governance
+- Enterprise Architecture & Documentation Governance
+
+### Princípios Permanentes
+
+Toda a suíte Enterprise deverá respeitar permanentemente os seguintes princípios:
+
+- Operação exclusivamente Read-Only;
+- Princípio de Não Intervenção;
+- Ausência de persistência de dados;
+- Ausência de alterações em regras comerciais;
+- Ausência de alterações em regras financeiras;
+- Ausência de alterações operacionais;
+- Ausência de alterações comportamentais;
+- Compatibilidade integral com todas as Baselines Oficiais homologadas.
+
+### Evolução da Plataforma
+
+Com o encerramento do Enterprise Maturity Program, novas funcionalidades deverão ser implementadas como capacidades independentes da plataforma, preservando a estabilidade das baselines homologadas e mantendo a arquitetura Enterprise congelada.
+
+O Enterprise Maturity Program passa a constituir a fundação oficial de governança técnica do Coffee++.
+
+### Status Oficial
+
+```
+ENTERPRISE_MATURITY_PROGRAM = LOCKED
+
+ENTERPRISE_GOVERNANCE = LOCKED
+
+PLATFORM_BASELINE = CONFIRMED
+
+BASELINE = CONFIRMED
+```
+
+---
+
+# CICLO 3 — EVOLUÇÃO FUNCIONAL DA PLATAFORMA
+
+A partir de 28/07/2026, inicia-se oficialmente o **Ciclo 3 — Evolução Funcional da Plataforma Coffee++**.
+
+O Enterprise Maturity Program (Seções 67 a 75) permanece permanentemente homologado e congelado (`LOCKED`), constituindo a fundação oficial de engenharia, arquitetura e governança técnica da plataforma.
+
+Todas as novas funcionalidades desenvolvidas a partir deste ciclo deverão utilizar essa fundação, preservando integralmente as Baselines Oficiais homologadas.
+
+## Objetivos do Ciclo 3
+
+O foco do Ciclo 3 passa a ser exclusivamente a evolução funcional do Coffee++, ampliando as capacidades de negócio da plataforma sem modificar sua fundação arquitetural.
+
+As evoluções deverão priorizar:
+
+- Inteligência Comercial;
+- CRM Comercial Enterprise;
+- Planejamento Comercial;
+- Execução em Campo;
+- Trade Marketing;
+- Inteligência Artificial aplicada ao negócio;
+- Automações e Integrações Corporativas;
+- Dashboards Executivos;
+- Novos módulos estratégicos da plataforma.
+
+## Princípios Permanentes
+
+Todas as funcionalidades desenvolvidas durante o Ciclo 3 deverão respeitar obrigatoriamente:
+
+- Enterprise Maturity Program preservado;
+- Arquitetura Enterprise inalterada;
+- Compatibilidade retroativa integral;
+- Zero regressões funcionais;
+- Preservação das regras comerciais;
+- Preservação das regras financeiras;
+- Preservação das regras operacionais;
+- Utilização exclusiva das Engines homologadas como fundação da plataforma.
+
+## Organização das Baselines
+
+As novas Baselines passam a seguir a seguinte convenção:
+
+- Seção 76 — Sprint 3.1
+- Seção 77 — Sprint 3.2
+- Seção 78 — Sprint 3.3
+- ...
+
+As numerações do Ciclo 3 representam exclusivamente novas capacidades funcionais da plataforma, mantendo intactas as Baselines do Enterprise Maturity Program.
+
+## Status Oficial
+
+```
+CYCLE_3 = ACTIVE
+
+ENTERPRISE_FOUNDATION = LOCKED
+
+PLATFORM_EVOLUTION = ACTIVE
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 76. Baseline Oficial — Sprint 3.1 — CRM Comercial Enterprise
+
+A partir de 28/07/2026, a **Sprint 3.1** institui oficialmente o CRM Comercial Enterprise do Coffee++, estabelecendo a camada corporativa de gestão comercial da plataforma.
+
+O CRM Comercial Enterprise consolida o relacionamento com Clientes, Distribuidores, Redes, PDVs, Contatos e Oportunidades Comerciais, preservando integralmente a Fundação Enterprise homologada (Seções 67 a 75).
+
+### Objetivo
+Disponibilizar uma plataforma unificada para gestão do relacionamento comercial, pipeline de oportunidades em 9 estágios corporativos (`Lead → Prospect → Qualificação → Negociação → Proposta → Implantação → Cliente Ativo → Expansão → Renovação`), histórico cronológico de interações, planos de ação e indicadores executivos.
+
+### Arquitetura Oficial
+- `AnalyticsEngine & Engines Homologadas` → `CrmEnterpriseEngine (CustomerService, OpportunityService, TimelineService, ActionPlanService, DashboardService)` → `GET /api/crm-enterprise` → `CRM Comercial Enterprise (/crm-enterprise)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `CrmEnterpriseEngine`
+- `GET /api/crm-enterprise`
+- `/crm-enterprise`
+- `CrmFilterBar`
+- `CrmEnterpriseKpis`
+- `CrmPipelineKanban`
+- `CrmCadastroUnificadoPanel`
+- `CrmTimelinePanel`
+- `CrmPlanoAcaoPanel`
+- `CrmAnalyticsDashboard`
+
+### Princípios Arquiteturais
+- Preservação integral da Fundação Enterprise (Seções 67 a 75).
+- Reutilização exclusiva das Engines homologadas sem alterá-las.
+- Arquitetura desacoplada.
+- Ausência de duplicação de lógica analítica ou financeira.
+- Compatibilidade retroativa integral com 0.0000% de desvio financeiro.
+
+Status Oficial: `CRM_ENTERPRISE = ACTIVE` & `CYCLE_3 = ACTIVE` & `BASELINE = CONFIRMED`.
+
+---
+
+## 77. Baseline Oficial — Sprint 3.2 — Execução Comercial & Agenda Inteligente
+
+A partir de 28/07/2026, a **Sprint 3.2** institui oficialmente a camada de Execução Comercial & Agenda Inteligente do Coffee++, ampliando o CRM Comercial Enterprise com capacidades de planejamento, execução e acompanhamento da rotina comercial.
+
+A Sprint 3.2 transforma oportunidades comerciais em atividades operacionais, preservando integralmente a Fundação Enterprise (Seções 67 a 75) e a Baseline do CRM Comercial Enterprise (Seção 76).
+
+### Objetivo
+Disponibilizar uma plataforma corporativa para planejamento e execução da atividade comercial, consolidando agenda, visitas, follow-ups, tarefas, recomendações operacionais e indicadores de execução.
+
+### Arquitetura Oficial
+- `AnalyticsEngine & Engines Homologadas` → `CommercialExecutionEngine (PlanningService, AgendaService, ExecutionService, FollowUpService, AnalyticsService)` → `GET /api/commercial-execution` → `Execução Comercial & Agenda Inteligente (/execucao-comercial)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `CommercialExecutionEngine`
+- `GET /api/commercial-execution`
+- `/execucao-comercial`
+- `ExecutionFilterBar`
+- `ExecutionKpis`
+- `DailyAgendaPanel`
+- `VisitPlanningPanel`
+- `FollowUpPanel`
+- `TaskManagementPanel`
+- `ExecutionAnalyticsPanel`
+
+### Princípios Arquiteturais
+- Preservação integral da Fundação Enterprise (Seções 67 a 75).
+- Preservação da Baseline do CRM Comercial Enterprise (Seção 76).
+- Reutilização exclusiva das Engines homologadas.
+- Arquitetura desacoplada.
+- Ausência de duplicação de regras comerciais.
+- Compatibilidade retroativa integral com 0.0000% de desvio financeiro.
+
+Status Oficial: `COMMERCIAL_EXECUTION = ACTIVE` & `CRM_ENTERPRISE = ACTIVE` & `CYCLE_3 = ACTIVE` & `BASELINE = CONFIRMED`.
+
+---
+
+## 78. Baseline Oficial — Sprint 3.3 — Inteligência Comercial & Assistente de Decisão
+
+A partir de 28/07/2026, a **Sprint 3.3** institui oficialmente a camada de Inteligência Comercial & Assistente de Decisão do Coffee++, ampliando o CRM Comercial Enterprise e a Execução Comercial com capacidades de análise, priorização e recomendação para suporte à tomada de decisão.
+
+A Sprint 3.3 transforma dados operacionais em recomendações estratégicas, preservando integralmente a Fundação Enterprise (Seções 67 a 75), a Baseline do CRM Comercial Enterprise (Seção 76) e a Baseline da Execução Comercial & Agenda Inteligente (Seção 77).
+
+### Objetivo
+Disponibilizar uma camada corporativa de inteligência comercial capaz de priorizar oportunidades, identificar riscos, recomendar ações e apoiar a tomada de decisão utilizando exclusivamente dados provenientes das Engines homologadas.
+
+### Arquitetura Oficial
+- `AnalyticsEngine & Engines Homologadas` → `CommercialDecisionEngine (ScoringService, RiskAnalysisService, RecommendationService, PrioritizationService, ExplainabilityService)` → `GET /api/commercial-decision` → `Assistente de Decisão Comercial (/assistente-decisao)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `CommercialDecisionEngine`
+- `GET /api/commercial-decision`
+- `/assistente-decisao`
+- `DecisionFilterBar`
+- `DecisionKpis`
+- `RecommendationsPanel`
+- `OpportunityScoringPanel`
+- `RiskDetectionPanel`
+- `PriorityRankingPanel`
+- `DecisionAnalyticsPanel`
+
+### Princípios Arquiteturais
+- Preservação integral da Fundação Enterprise (Seções 67 a 75).
+- Preservação das Baselines homologadas (Seções 76 e 77).
+- Reutilização exclusiva das Engines homologadas.
+- Arquitetura desacoplada e caráter 100% consultivo.
+- Ausência de duplicação de lógica analítica.
+- Compatibilidade retroativa integral com 0.0000% de desvio financeiro.
+
+Status Oficial: `COMMERCIAL_DECISION = ACTIVE` & `COMMERCIAL_EXECUTION = ACTIVE` & `CRM_ENTERPRISE = ACTIVE` & `CYCLE_3 = ACTIVE` & `BASELINE = CONFIRMED`.
+
+---
+
+## 79. Baseline Oficial — Sprint 3.4 — Simulação Estratégica Comercial
+
+A partir de 28/07/2026, a Sprint 3.4 institui oficialmente a camada de Simulação Estratégica Comercial do Coffee++, ampliando o ecossistema funcional do Ciclo 3 com capacidades de construção, comparação e validação de cenários prospectivos para suporte ao planejamento comercial.
+
+A Simulação Estratégica Comercial opera exclusivamente em modo prospectivo (read-only em memória), reutilizando a `SimulationEngine` homologada como mecanismo oficial de projeção, preservando integralmente a Fundação Enterprise (Seções 67 a 75), a Baseline do CRM Comercial Enterprise (Seção 76), a Baseline da Execução Comercial (Seção 77) e a Baseline da Inteligência Comercial (Seção 78).
+
+### Objetivo
+
+Disponibilizar uma camada corporativa para construção e comparação de cenários estratégicos, permitindo avaliar impactos financeiros e operacionais antes da tomada de decisão, sem modificar dados oficiais da plataforma.
+
+### Arquitetura Oficial
+
+```
+AnalyticsEngine
+CommercialIntelligenceEngine
+ForecastEngine
+SimulationEngine
+CrmEnterpriseEngine
+CommercialExecutionEngine
+CommercialDecisionEngine
+        │
+        ▼
+CommercialScenarioEngine
+        │
+        ├── ScenarioBuilderService
+        ├── ComparisonService
+        ├── RecommendationValidationService
+        │
+        ▼
+SimulationEngine
+        │
+        ▼
+GET /api/commercial-scenarios
+        │
+        ▼
+Simulação Estratégica Comercial
+```
+
+### Capacidades Oficiais
+
+A Sprint 3.4 disponibiliza oficialmente:
+
+- Construção de cenários comerciais prospectivos;
+- Modelagem de premissas comerciais;
+- Comparação lado a lado entre cenários;
+- Análise de impacto financeiro e operacional;
+- Validação prospectiva das recomendações do Assistente de Decisão;
+- Dashboard de indicadores prospectivos.
+
+### Princípios Arquiteturais
+
+Toda a implementação deverá respeitar obrigatoriamente:
+
+- Preservação integral da Fundação Enterprise;
+- Preservação das Baselines homologadas;
+- Arquitetura desacoplada;
+- Reutilização obrigatória da `SimulationEngine` como mecanismo oficial de simulação;
+- Ausência de duplicação de lógica de projeção;
+- Compatibilidade retroativa integral.
+
+As simulações possuem caráter exclusivamente prospectivo e consultivo, não alterando automaticamente dados operacionais, previsões oficiais, regras comerciais ou decisões dos usuários.
+
+### Status Oficial
+
+```
+COMMERCIAL_SIMULATION = ACTIVE
+
+COMMERCIAL_DECISION = ACTIVE
+
+COMMERCIAL_EXECUTION = ACTIVE
+
+CRM_ENTERPRISE = ACTIVE
+
+CYCLE_3 = ACTIVE
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 80. Baseline Oficial — Sprint 3.5 — Planejamento Comercial Integrado (S&OP Comercial)
+
+A partir de 28/07/2026, a **Sprint 3.5** institui oficialmente a camada de Planejamento Comercial Integrado (S&OP Comercial) do Coffee++, consolidando informações provenientes do CRM Comercial Enterprise, da Execução Comercial, da Inteligência Comercial e da Simulação Estratégica para suportar o ciclo corporativo de planejamento comercial.
+
+O módulo atua como orquestrador do processo de planejamento, preservando integralmente a Fundação Enterprise (Seções 67 a 75) e todas as Baselines homologadas do Ciclo 3 (Seções 76 a 79).
+
+### Objetivo
+Disponibilizar uma camada corporativa para elaboração, consolidação, distribuição, acompanhamento e governança dos planos comerciais oficiais utilizando exclusivamente informações provenientes das Engines homologadas.
+
+### Arquitetura Oficial
+- `AnalyticsEngine & Engines Homologadas` → `CommercialPlanningEngine (PlanningCycleService, PlanningWorkflowService, CommercialPlanService, GoalDistributionService, ActionPlanService, PlanningAnalyticsService)` → `GET /api/commercial-planning` → `Planejamento Comercial Integrado (/planejamento-comercial)`
+
+### Componentes Oficiais
+Passam a compor oficialmente a arquitetura:
+- `CommercialPlanningEngine`
+- `GET /api/commercial-planning`
+- `/planejamento-comercial`
+- `PlanningFilterBar`
+- `PlanningKpis`
+- `PlanningCyclePanel`
+- `CommercialPlanPanel`
+- `GoalDistributionPanel`
+- `ActionPlanOrchestratorPanel`
+- `PlanningAnalyticsPanel`
+
+### Princípios Arquiteturais
+- Preservação integral da Fundação Enterprise (Seções 67 a 75).
+- Preservação das Baselines homologadas (Seções 76, 77, 78 e 79).
+- Reutilização exclusiva das Engines homologadas.
+- Arquitetura desacoplada e caráter consultivo até aprovação formal.
+- Ausência de duplicação de lógica de planejamento.
+- Compatibilidade retroativa integral com 0.0000% de desvio financeiro.
+
+Status Oficial: `COMMERCIAL_PLANNING = ACTIVE` & `COMMERCIAL_SIMULATION = ACTIVE` & `COMMERCIAL_DECISION = ACTIVE` & `COMMERCIAL_EXECUTION = ACTIVE` & `CRM_ENTERPRISE = ACTIVE` & `CYCLE_3 = ACTIVE` & `BASELINE = CONFIRMED`.
+
+---
+
+## 81. Baseline Oficial — Encerramento da Fase I do Ciclo 3
+
+A partir de 28/07/2026, considera-se concluída a Fase I do Ciclo 3 — Evolução Funcional da Plataforma Coffee++.
+
+A Fase I consolida uma arquitetura comercial corporativa composta pelos módulos de CRM Comercial Enterprise, Execução Comercial, Inteligência Comercial, Simulação Estratégica e Planejamento Comercial Integrado, preservando integralmente a Fundação Enterprise homologada.
+
+### Escopo Consolidado
+
+- CRM Comercial Enterprise;
+- Execução Comercial & Agenda Inteligente;
+- Inteligência Comercial & Assistente de Decisão;
+- Simulação Estratégica Comercial;
+- Planejamento Comercial Integrado (S&OP Comercial).
+
+### Princípios Permanentes
+
+- Preservação da Fundação Enterprise;
+- Reutilização exclusiva das Engines homologadas;
+- Arquitetura desacoplada;
+- Ausência de duplicação de lógica;
+- Compatibilidade retroativa integral;
+- Aprovação humana para qualquer alteração operacional.
+
+### Status Oficial
+
+```
+CYCLE_3_PHASE_1 = LOCKED
+
+COMMERCIAL_PLATFORM = CONSOLIDATED
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 82. Baseline Oficial — Abertura da Fase II do Ciclo 3
+
+A partir de 28/07/2026, inicia-se oficialmente a Fase II do Ciclo 3 da Plataforma Coffee++, destinada à evolução das capacidades de automação, colaboração e inteligência operacional da plataforma comercial.
+
+A Fase II preserva integralmente a Fundação Enterprise (Seções 67 a 75) e a Plataforma Comercial Corporativa consolidada na Fase I (Seções 76 a 81).
+
+### Objetivo
+
+Expandir a plataforma com capacidades de automação de processos, assistência inteligente aos usuários, colaboração corporativa e visão executiva integrada, reutilizando exclusivamente os módulos homologados da Fase I.
+
+### Escopo Inicial
+
+A Fase II poderá contemplar, entre outros:
+
+- Automação Comercial;
+- Assistente Comercial baseado em IA;
+- Workflows colaborativos;
+- Aprovação eletrônica de planos;
+- Notificações inteligentes;
+- Executive Command Center.
+
+### Princípios Permanentes
+
+- Preservação integral da Fundação Enterprise;
+- Preservação integral da Plataforma Comercial Corporativa;
+- Arquitetura desacoplada;
+- Reutilização exclusiva das Engines homologadas;
+- Compatibilidade retroativa integral;
+- Aprovação humana para alterações operacionais.
+
+### Status Oficial
+
+```
+CYCLE_3_PHASE_2 = ACTIVE
+
+COMMERCIAL_PLATFORM = LOCKED
+
+ENTERPRISE_FOUNDATION = LOCKED
+
+BASELINE = CONFIRMED
+```
+
+---
+
+## 83. Baseline Oficial — Operação Assistida do Hub de Importação (Ciclo 3)
+
+A partir de 28/07/2026, a pipeline do Hub de Importação de Faturamento é considerada operacionalmente estável e entra em regime de Operação Assistida.
+
+### Critérios para alteração da baseline
+
+Nenhuma alteração de código, SQL, arquitetura ou performance deverá ser realizada com base apenas em sugestões, hipóteses ou oportunidades de otimização.
+
+Uma nova intervenção somente poderá ser iniciada quando houver evidência objetiva de um incidente em produção, incluindo pelo menos um dos seguintes eventos:
+
+- Statement timeout;
+- Erro SQL recorrente;
+- Falha da auditoria de integridade;
+- Divergência financeira entre Coffee++ e My Metrics;
+- Regressão comprovada de desempenho;
+- Incidente operacional reproduzível.
+
+### Fluxo obrigatório
+
+Toda solicitação deverá seguir obrigatoriamente a sequência:
+
+Incidente → Diagnóstico → Causa Raiz → Plano de Correção → Aprovação → Implementação → Homologação → Nova Baseline.
+
+Não são permitidas alterações diretas na pipeline sem esse fluxo.
+
+### Indicadores da Operação Assistida
+
+Monitorar continuamente:
+
+- Tempo médio de importação
+- Tempo médio por chunk
+- Número de imports executados
+- Taxa de sucesso (%)
+- Rollbacks
+- Timeouts
+- Divergências financeiras
+- Incidentes por mês
+
+### Critério de saída da Operação Assistida
+
+Após 30 importações consecutivas (ou 90 dias, o que ocorrer primeiro) sem:
+- timeout;
+- rollback inesperado;
+- falha de integridade;
+- divergência financeira;
+
+a pipeline poderá ser reclassificada como: `IMPORT_HUB_STATUS = STABLE`.
+
+### Status da Baseline
+
+```
+IMPORT_HUB_BASELINE = LOCKED
+
+ASSISTED_OPERATION = ACTIVE
+
+BASELINE = CONFIRMED
+```
+
+Qualquer futura alteração deverá gerar uma nova seção de baseline no `AGENTS.md`, preservando o histórico e a rastreabilidade das versões.
+
+---
+
+## 84. Encerramento Oficial — Ciclo 3 (Hub de Importação)
+
+A partir desta baseline, o Ciclo 3 do Hub de Importação é considerado concluído.
+
+### Status Oficial
+- `IMPORT_HUB_BASELINE = LOCKED`
+- `ASSISTED_OPERATION = ACTIVE`
+- `ANALYTICS_ENGINE_V1 = LOCKED`
+- `BASELINE = CONFIRMED`
+
+As próximas evoluções do projeto deverão priorizar funcionalidades de negócio e geração de valor ao usuário final.
+
+Alterações na pipeline de importação somente poderão ocorrer conforme os critérios estabelecidos na Seção 83.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
