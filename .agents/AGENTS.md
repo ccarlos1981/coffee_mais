@@ -2040,6 +2040,22 @@ Antes de qualquer alteração:
 Status inicial:
 `PLANEJAMENTO OFICIAL` — Não iniciado desenvolvimento.
 
+---
+
+## 66. Baseline Oficial — Executive Intelligence Report (RPS)
+
+A partir de 28/07/2026, a arquitetura e a suíte de componentes do **Executive Intelligence Report (RPS)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Arquitetura Desacoplada**: O Executive Intelligence Report passa a integrar oficialmente a arquitetura da RPS como o mecanismo executivo padrão de análise estratégica. Toda a inteligência do relatório deverá permanecer concentrada no `ExecutiveIntelligenceEngine`, mantendo desacoplamento completo entre regras de negócio e formatos de apresentação. O renderer (PDF ou qualquer formato futuro) é estritamente responsável pela apresentação visual dos dados, sendo proibida a implementação de regras de negócio, cálculos, diagnósticos ou recomendações na camada de renderização.
+2. **Single Source of Truth (SSOT)**: Todo cálculo, indicador, diagnóstico, ranking, score, tendência, oportunidade, recomendação e decisão deverá utilizar exclusivamente os dados oficiais da RPS (SSOT). É proibido duplicar cálculos, criar regras paralelas, utilizar dados externos ao pipeline oficial ou gerar recomendações sem evidência objetiva. Na ausência de evidências suficientes, a conclusão deverá ser omitida.
+3. **Estrutura Oficial do Motor**: O Executive Intelligence Report possui como componentes oficiais congelados: `ExecutiveAnalyticalEngine`, `ExecutiveDiagnosticEngine`, `ExecutiveRankingEngine` e `ExecutiveRecommendationEngine`. Todos operando sobre um único payload estruturado (`ExecutiveIntelligenceData`), consumido por renderizadores desacoplados.
+4. **Formatos de Saída**: O motor deverá permanecer independente do formato de saída. O PDF Executivo é o primeiro renderer oficial, permitindo reutilização futura para dashboards, apresentações, e-mails executivos e demais canais sem alteração da lógica analítica.
+5. **Governança e Auditoria Mandatória**: Toda evolução futura deverá preservar a separação entre inteligência e apresentação, compatibilidade com o SSOT oficial da RPS, determinismo dos cálculos, rastreabilidade das recomendações e ausência total de regressão funcional na RPS (`npm run health:analytics`, `npx tsc --noEmit` e `npm run build`).
+
+Status Arquitetural: `EXECUTIVE_INTELLIGENCE_REPORT = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
