@@ -457,16 +457,34 @@ $$\text{Indicador} = \left(\frac{\text{Valor Comparado}}{\text{Valor Base}} - 1\
 
 Status Arquitetural: `RPS_ANALYSIS_FORMULAS = LOCKED` & `BASELINE = PERMANENTE`.
 
+---
 
+## 69. Baseline Oficial — Enterprise Security & Compliance Program (Sprint 2.3)
 
+A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise Security & Compliance Program** tornam-se o baseline permanente e oficial do Coffee++.
 
+### Diretrizes Mandatórias:
+1. **Camada de Auditoria e Diagnóstico 100% Read-Only**: O `EnterpriseSecurityEngine` (`src/lib/governance/security`) é a única fonte oficial de auditoria técnica de segurança e compliance, operando exclusivamente em memória de forma não intervencionista.
+2. **Proibição de Alterações Automáticas**: É expressamente proibida qualquer alteração em permissões, políticas RLS, rotas de API, variáveis de ambiente, dependências ou segredos por meio do motor de diagnóstico.
+3. **Mapeamento Transparente e Ocultação de Segredos**: O audit de variáveis de ambiente exibe estritamente o status de validação (`CONFIGURED`, `MASKED`, `VALIDATED`, `MISSING`) sem jamais expor qualquer valor ou chave sensível.
+4. **Matriz de Governança e Compliance Score**: Cálculo do Compliance Score Global (0–100) baseado na ponderação oficial homologada (25% Autenticação, 20% Autorização, 15% RLS, 15% APIs, 10% Ambiente, 10% Dependências, 5% Governança).
+5. **APIs e Componentes Congelados**: `EnterpriseSecurityEngine`, `GET /api/health/security`, `GET /api/health/compliance`, `/health`, `SecurityOverview`, `ComplianceScoreCard`, `AccessMatrixPanel`, `ApiSecurityPanel`, `EnvironmentPanel`, `DependencyInventoryPanel`, `DependencyRiskPanel`, `ComplianceRecommendations` e `SecurityTimeline`.
+6. **Auditoria Mandatória de Encerramento**: Aprovado com 0 desvios financeiros, 0 regressões, 0 breaking changes e aprovação total em `npm run health:analytics`, `npm run verify:parity`, `npx tsc --noEmit` e `npm run build`.
 
+Status Arquitetural: `SECURITY_ENTERPRISE = LOCKED` & `COMPLIANCE_ENTERPRISE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
 
+## 70. Baseline Oficial — Enterprise Data Quality & Governance Program (Sprint 2.4)
 
+A partir de 28/07/2026, a arquitetura e a suíte de ferramentas do **Enterprise Data Quality & Governance Program** tornam-se o baseline permanente e oficial do Coffee++.
 
+### Diretrizes Mandatórias:
+1. **Camada de Auditoria de Dados 100% Read-Only**: O `EnterpriseDataQualityEngine` e o `EnterpriseDataLineageEngine` (`src/lib/governance/data-quality`) constituem a única fonte oficial para medição da qualidade, consistência, integridade, tempestividade (freshness), cobertura e rastreabilidade (data lineage) de dados, operando exclusivamente em memória de forma não intervencionista.
+2. **Princípio de Não Intervenção em Dados**: É expressamente proibida qualquer execução de `UPDATE`, `INSERT`, `DELETE`, `MERGE` ou alteração de tabelas, views, triggers e procedimentos por meio dos motores de qualidade de dados.
+3. **Ponderação Oficial do Data Quality Score**: O Data Quality Score Global (0–100) é calculado pela soma ponderada oficial (25% Completude, 20% Consistência, 15% Integridade, 15% Atualização, 10% Unicidade, 10% Validação, 5% Governança), mantendo scores independentes para os 14 domínios de dados homologados.
+4. **Respeito às Métricas Oficiais (`NOT_AVAILABLE`)**: Indicadores que não possuam fonte oficial de dados deverão obrigatoriamente retornar `STATUS = NOT_AVAILABLE`, sendo proibida a criação de métricas artificiais ou estimativas paralelas.
+5. **APIs e Componentes Congelados**: `EnterpriseDataQualityEngine`, `EnterpriseDataLineageEngine`, `GET /api/health/data-quality`, `GET /api/health/data-lineage`, `/health`, `DataQualityOverview`, `DataQualityScoreCard`, `CompletenessPanel`, `ConsistencyPanel`, `IntegrityPanel`, `FreshnessPanel`, `CoveragePanel`, `DataLineagePanel` e `DataRecommendations`.
+6. **Auditoria Mandatória de Encerramento**: Aprovado com 0 desvios financeiros, 0 regressões, 0 breaking changes, 0 persistência adicional e aprovação total em `npm run health:analytics`, `npm run verify:parity`, `npx tsc --noEmit` e `npm run build`.
 
-
-
-
-
+Status Arquitetural: `DATA_QUALITY_ENTERPRISE = LOCKED` & `DATA_LINEAGE_ENTERPRISE = LOCKED` & `DATA_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
