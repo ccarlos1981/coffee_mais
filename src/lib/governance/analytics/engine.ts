@@ -831,6 +831,322 @@ export class AnalyticsEngine {
   }
 
   /**
+   * 11.1 Módulo Analítico Histórico de Famílias (Hist Família)
+   * Consome exclusivamente a fonte oficial POSITIVACAO_SKU_MENSAL.
+   */
+  static async getHistoricoFamiliaData(filters: AnalyticsFilters) {
+    const curStartMonth = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : null);
+    const curEndMonth = filters.endMonth || (filters.endDate ? filters.endDate.substring(0, 7) : null);
+
+    if (!curStartMonth || !curEndMonth) {
+      throw new Error("[AnalyticsEngine] Parâmetros 'startMonth'/'endMonth' ou 'startDate'/'endDate' são obrigatórios.");
+    }
+
+    const [sYear, sMonth] = curStartMonth.split('-').map(Number);
+    const [eYear, eMonth] = curEndMonth.split('-').map(Number);
+
+    // Mês/Período anterior (MoM)
+    const numMonths = (eYear - sYear) * 12 + (eMonth - sMonth) + 1;
+    const momStartD = new Date(sYear, sMonth - 1 - numMonths, 1);
+    const momEndD = new Date(eYear, eMonth - 1 - numMonths, 1);
+    const momStartMonth = `${momStartD.getFullYear()}-${String(momStartD.getMonth() + 1).padStart(2, '0')}`;
+    const momEndMonth = `${momEndD.getFullYear()}-${String(momEndD.getMonth() + 1).padStart(2, '0')}`;
+
+    // Mesmo período ano anterior (YoY)
+    const yoyStartMonth = `${sYear - 1}-${String(sMonth).padStart(2, '0')}`;
+    const yoyEndMonth = `${eYear - 1}-${String(eMonth).padStart(2, '0')}`;
+
+    const curFilters = { ...filters, startMonth: curStartMonth, endMonth: curEndMonth };
+    const momFilters = { ...filters, startMonth: momStartMonth, endMonth: momEndMonth };
+    const yoyFilters = { ...filters, startMonth: yoyStartMonth, endMonth: yoyEndMonth };
+
+    const targetSource = OFFICIAL_ANALYTICS_SOURCES.POSITIVACAO_SKU_MENSAL;
+    const whereCur = buildWhereClause(curFilters, targetSource);
+    const whereMom = buildWhereClause(momFilters, targetSource);
+    const whereYoy = buildWhereClause(yoyFilters, targetSource);
+
+    // Query Totais
+    const sqlTotals = `
+      SELECT 
+        COUNT(DISTINCT COALESCE(tipo_produto, 'Outros')) as familias,
+        COUNT(DISTINCT nome_parceiro) as clientes,
+        COUNT(DISTINCT rede) as matrizes,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT mes) as meses
+      FROM ${targetSource} ${whereCur}
+    `;
+
+    // Query Total Empresa (Não filtrado)
+    const sqlTotalEmpresa = `
+      SELECT SUM(fat) as total_empresa_fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+      WHERE mes >= ${escapeSqlValue(curStartMonth)} AND mes <= ${escapeSqlValue(curEndMonth)}
+    `;
+
+    // Query por Família (Período Atual)
+    const sqlByFamilia = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT nome_parceiro) as clientes,
+        COUNT(DISTINCT rede) as matrizes,
+        COUNT(DISTINCT product) as skus
+      FROM ${targetSource} ${whereCur}
+      GROUP BY COALESCE(tipo_produto, 'Outros')
+      ORDER BY fat DESC
+    `;
+
+    // Query MoM
+    const sqlMomByFamilia = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT nome_parceiro) as clientes
+      FROM ${targetSource} ${whereMom}
+      GROUP BY COALESCE(tipo_produto, 'Outros')
+    `;
+
+    // Query YoY
+    const sqlYoyByFamilia = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT nome_parceiro) as clientes
+      FROM ${targetSource} ${whereYoy}
+      GROUP BY COALESCE(tipo_produto, 'Outros')
+    `;
+
+    // Query Mensal (Evolução & Heatmap)
+    const sqlMonthly = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        mes as month,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT nome_parceiro) as clientes
+      FROM ${targetSource} ${whereCur}
+      GROUP BY COALESCE(tipo_produto, 'Outros'), mes
+      ORDER BY mes ASC
+    `;
+
+    // Query Treemap & Drill-down (Família -> SKU)
+    const sqlSkuBreakdown = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        product as sku,
+        SUM(fat) as fat,
+        SUM(qty) as qty,
+        COUNT(DISTINCT nome_parceiro) as clientes
+      FROM ${targetSource} ${whereCur}
+      GROUP BY COALESCE(tipo_produto, 'Outros'), product
+      ORDER BY fat DESC
+    `;
+
+    // Query Drill-down Nível 3 (Família -> SKU -> Clientes)
+    const sqlClientBreakdown = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        product as sku,
+        nome_parceiro as cliente,
+        MAX(rede) as rede,
+        MAX(uf) as uf,
+        SUM(fat) as fat,
+        SUM(qty) as qty
+      FROM ${targetSource} ${whereCur}
+      GROUP BY COALESCE(tipo_produto, 'Outros'), product, nome_parceiro
+      ORDER BY fat DESC
+    `;
+
+    // Query Região Líder (Insights)
+    const sqlTopUf = `
+      SELECT COALESCE(uf, 'SP') as uf, SUM(fat) as fat
+      FROM ${targetSource} ${whereCur}
+      GROUP BY COALESCE(uf, 'SP')
+      ORDER BY fat DESC LIMIT 1
+    `;
+
+    const [
+      resTotals,
+      resTotalEmpresa,
+      resByFamilia,
+      resMom,
+      resYoy,
+      resMonthly,
+      resSkuBreakdown,
+      resClientBreakdown,
+      resTopUf
+    ] = await Promise.all([
+      this.executeSql(sqlTotals),
+      this.executeSql(sqlTotalEmpresa),
+      this.executeSql(sqlByFamilia),
+      this.executeSql(sqlMomByFamilia),
+      this.executeSql(sqlYoyByFamilia),
+      this.executeSql(sqlMonthly),
+      this.executeSql(sqlSkuBreakdown),
+      this.executeSql(sqlClientBreakdown),
+      this.executeSql(sqlTopUf)
+    ]);
+
+    const totals = {
+      familias: Number(resTotals[0]?.familias || 0),
+      clientes: Number(resTotals[0]?.clientes || 0),
+      matrizes: Number(resTotals[0]?.matrizes || 0),
+      fat: Number(resTotals[0]?.fat || 0),
+      qty: Number(resTotals[0]?.qty || 0),
+      meses: Number(resTotals[0]?.meses || 1) || 1,
+      totalEmpresaFat: Number(resTotalEmpresa[0]?.total_empresa_fat || resTotals[0]?.fat || 0),
+    };
+
+    const totalFat = totals.fat || 1;
+    const totalEmpresaFat = totals.totalEmpresaFat || totalFat;
+
+    // Indexar MoM e YoY por Família
+    const momMap = new Map<string, { fat: number; qty: number; clientes: number }>();
+    resMom.forEach((r: any) => {
+      momMap.set(r.familia, {
+        fat: Number(r.fat || 0),
+        qty: Number(r.qty || 0),
+        clientes: Number(r.clientes || 0)
+      });
+    });
+
+    const yoyMap = new Map<string, { fat: number; qty: number; clientes: number }>();
+    resYoy.forEach((r: any) => {
+      yoyMap.set(r.familia, {
+        fat: Number(r.fat || 0),
+        qty: Number(r.qty || 0),
+        clientes: Number(r.clientes || 0)
+      });
+    });
+
+    // Processar Famílias com Métricas e Crescimentos
+    let acumuladoFat = 0;
+    const familias = resByFamilia.map((r: any) => {
+      const fat = Number(r.fat || 0);
+      const qty = Number(r.qty || 0);
+      const clientes = Number(r.clientes || 0);
+      const matrizes = Number(r.matrizes || 0);
+      const skus = Number(r.skus || 0);
+
+      acumuladoFat += fat;
+
+      const pctFiltrado = (fat / totalFat) * 100;
+      const pctEmpresa = (fat / totalEmpresaFat) * 100;
+      const pctAcumulado = (acumuladoFat / totalFat) * 100;
+
+      const mom = momMap.get(r.familia);
+      const yoy = yoyMap.get(r.familia);
+
+      const momFatGrowth = mom && mom.fat > 0 ? ((fat - mom.fat) / mom.fat) * 100 : null;
+      const yoyFatGrowth = yoy && yoy.fat > 0 ? ((fat - yoy.fat) / yoy.fat) * 100 : null;
+
+      const momQtyGrowth = mom && mom.qty > 0 ? ((qty - mom.qty) / mom.qty) * 100 : null;
+      const yoyQtyGrowth = yoy && yoy.qty > 0 ? ((qty - yoy.qty) / yoy.qty) * 100 : null;
+
+      return {
+        familia: r.familia,
+        fat,
+        qty,
+        clientes,
+        matrizes,
+        skus,
+        ticketMedio: clientes > 0 ? fat / clientes : 0,
+        precoMedio: qty > 0 ? fat / qty : 0,
+        pctFiltrado,
+        pctEmpresa,
+        pctAcumulado,
+        isPareto80: pctAcumulado <= 82,
+        momFatGrowth,
+        yoyFatGrowth,
+        momQtyGrowth,
+        yoyQtyGrowth,
+      };
+    });
+
+    // Pareto 80/20 list
+    const pareto80 = familias.filter((f: any) => f.isPareto80 || f.pctAcumulado <= 85);
+
+    // Insights Automáticos
+    const familiaLider = familias[0] || null;
+    
+    // Maior crescimento MoM / YoY
+    const comCrescimento = [...familias].filter((f: any) => f.momFatGrowth !== null).sort((a: any, b: any) => (b.momFatGrowth || 0) - (a.momFatGrowth || 0));
+    const maiorCrescimento = comCrescimento[0] || null;
+
+    // Maior queda MoM / YoY
+    const comQueda = [...familias].filter((f: any) => f.momFatGrowth !== null).sort((a: any, b: any) => (a.momFatGrowth || 0) - (b.momFatGrowth || 0));
+    const maiorQueda = comQueda[0] || null;
+
+    const regiaoLider = resTopUf[0] ? { uf: resTopUf[0].uf, fat: Number(resTopUf[0].fat || 0) } : null;
+
+    // Insights em formato de bullet executivo
+    const insightsBullet: string[] = [];
+    if (familiaLider) {
+      insightsBullet.push(`A família ${familiaLider.familia} é a líder do período, representando ${familiaLider.pctFiltrado.toFixed(1)}% do faturamento das famílias filtradas.`);
+    }
+    if (pareto80.length > 0) {
+      const paretoNomes = pareto80.map((f: any) => f.familia).join(', ');
+      insightsBullet.push(`Curva Pareto 80/20: As famílias [ ${paretoNomes} ] acumulam ~80% da receita total comercializada.`);
+    }
+    if (maiorCrescimento && (maiorCrescimento.momFatGrowth || 0) > 0) {
+      insightsBullet.push(`Destaque MoM: A família ${maiorCrescimento.familia} teve a maior aceleração com +${maiorCrescimento.momFatGrowth?.toFixed(1)}% de crescimento.`);
+    }
+    if (maiorQueda && (maiorQueda.momFatGrowth || 0) < 0) {
+      insightsBullet.push(`Atenção Desaceleração: A família ${maiorQueda.familia} variou ${maiorQueda.momFatGrowth?.toFixed(1)}% em relação ao período anterior.`);
+    }
+    if (regiaoLider) {
+      const pctUf = (regiaoLider.fat / totalFat) * 100;
+      insightsBullet.push(`Concentração Regional: A UF ${regiaoLider.uf} foi o maior polo comprador com ${pctUf.toFixed(1)}% das vendas.`);
+    }
+
+    return {
+      totals,
+      familias,
+      pareto: familias.map((f: any) => ({
+        familia: f.familia,
+        fat: f.fat,
+        pctFiltrado: f.pctFiltrado,
+        pctAcumulado: f.pctAcumulado,
+        isPareto80: f.isPareto80,
+      })),
+      monthly: resMonthly.map((r: any) => ({
+        familia: r.familia,
+        month: r.month,
+        fat: Number(r.fat || 0),
+        qty: Number(r.qty || 0),
+        clientes: Number(r.clientes || 0)
+      })),
+      skuBreakdown: resSkuBreakdown.map((r: any) => ({
+        familia: r.familia,
+        sku: r.sku,
+        fat: Number(r.fat || 0),
+        qty: Number(r.qty || 0),
+        clientes: Number(r.clientes || 0)
+      })),
+      clientBreakdown: resClientBreakdown.map((r: any) => ({
+        familia: r.familia,
+        sku: r.sku,
+        cliente: r.cliente,
+        rede: r.rede,
+        uf: r.uf,
+        fat: Number(r.fat || 0),
+        qty: Number(r.qty || 0)
+      })),
+      insights: {
+        familiaLider,
+        maiorCrescimento,
+        maiorQueda,
+        regiaoLider,
+        bulletPoints: insightsBullet,
+      }
+    };
+  }
+
+  /**
    * 12. Farol de Cartas de Anuência — Média Mensal de Compras (Últimos 12 meses)
    * 
    * Filtra redes com média de faturamento mensal dos últimos 12 meses >= R$ 80.000,

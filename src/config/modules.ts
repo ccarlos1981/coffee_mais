@@ -26,6 +26,7 @@ import {
   MapPin,
   Trophy,
   Activity,
+  Network,
   Building2,
   CheckSquare,
   Brain,
@@ -82,6 +83,7 @@ export const allModules: NavigationGroup[] = [
       { key: "matriz", title: "Rede", permission: "Matriz", description: "Ranking clientes", href: "/matriz", icon: Users, color: "from-emerald-600 to-emerald-800", ready: true },
       { key: "positivacao", title: "Positivação", description: "Clientes ativos", href: "/positivacao", icon: CheckCircle2, color: "from-indigo-600 to-indigo-800", ready: true },
       { key: "positivacao_matriz", title: "Posit. Rede", permission: "Posit. Matriz", description: "Rede e Cliente", href: "/positivacao-matriz", icon: CheckCircle2, color: "from-cyan-600 to-cyan-800", ready: true },
+      { key: "historico_familia", title: "Hist. Família", description: "Evolução e ranking de famílias", href: "/historico-familia", icon: Layers, color: "from-indigo-600 to-indigo-800", ready: true },
       { key: "carteira", title: "Carteira", description: "Base ativa", href: "/carteira", icon: Briefcase, color: "from-teal-600 to-teal-800", ready: false },
       { key: "mix", title: "Mix", description: "Composição SKU", href: "/mix", icon: PieChart, color: "from-pink-600 to-pink-800", ready: false },
     ],
@@ -170,6 +172,7 @@ export const allModules: NavigationGroup[] = [
     category: "Governança & Health",
     items: [
       { key: "health_center", title: "Health Center", description: "Governança & Observabilidade", href: "/health", icon: Activity, color: "from-emerald-600 to-teal-800", ready: true, permission: "Health Center" },
+      { key: "workflow_enterprise", title: "Workflow Enterprise", description: "Infraestrutura de Workflows", href: "/workflow-enterprise", icon: Network, color: "from-amber-600 to-amber-800", ready: true, permission: "Workflow Enterprise" },
     ],
   },
   {
