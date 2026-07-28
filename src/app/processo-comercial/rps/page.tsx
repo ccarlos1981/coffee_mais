@@ -28,11 +28,14 @@ import {
   ArrowDown,
   Search,
   X,
-  AlertTriangle
+  AlertTriangle,
+  FileText
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntelligenceEngine";
+import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
 
 interface ClientRow {
   client: string;
@@ -662,6 +665,33 @@ export default function RpsPage() {
     }
   };
 
+  const [generatingPdf, setGeneratingPdf] = useState(false);
+
+  const handleGenerateExecutiveReport = () => {
+    try {
+      setGeneratingPdf(true);
+      setError(null);
+      
+      const reportData = ExecutiveIntelligenceEngine.generateReport(
+        managers,
+        totalsRow,
+        mondays,
+        filterMonth,
+        filterYear,
+        null
+      );
+      
+      generateExecutivePdf(reportData);
+      setSuccess("Relatório Executivo Inteligente (Visão CEO) gerado com sucesso!");
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: any) {
+      console.error("Erro ao gerar PDF Executivo:", err);
+      setError(err?.message || "Falha ao gerar o Relatório Executivo.");
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   // --- CÁLCULOS DOS TOTAIS CONSOLIDADOS DO TOTAL BRASIL ---
   const totalsRow = useMemo(() => {
     if (managers.length === 0) return null;
@@ -859,6 +889,26 @@ export default function RpsPage() {
                 </>
               )}
             </button>
+            {(isAdmin || isGerenteNacionalAdmin) && (
+              <button
+                onClick={handleGenerateExecutiveReport}
+                disabled={generatingPdf || loading || managers.length === 0}
+                className="mt-3 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-bold uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50 shadow-xs"
+                title="Gerar Relatório Executivo Inteligente (PDF Visão CEO)"
+              >
+                {generatingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 text-amber-300" />
+                    📊 Visão CEO (PDF Executivo)
+                  </>
+                )}
+              </button>
+            )}
             <p className="text-[10px] text-foreground-muted text-center mt-2 leading-tight">
               *As alterações salvam todas as projeções semanais, metas e carteira de planejamento exibidas na tela.
             </p>
@@ -881,6 +931,26 @@ export default function RpsPage() {
             </div>
             
             <div className="flex items-center gap-3">
+              {(isAdmin || isGerenteNacionalAdmin) && (
+                <button
+                  onClick={handleGenerateExecutiveReport}
+                  disabled={generatingPdf || loading || managers.length === 0}
+                  className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  title="Gerar Relatório Executivo Inteligente (PDF Visão CEO)"
+                >
+                  {generatingPdf ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Gerando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 text-amber-200" />
+                      📊 Visão CEO (PDF Executivo)
+                    </>
+                  )}
+                </button>
+              )}
               {isAdmin && (
                 <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/30 px-3 py-1 rounded-lg text-emerald-400 text-xs font-bold tracking-wider uppercase shadow-xs">
                   <CheckCircle2 className="w-4 h-4" />
