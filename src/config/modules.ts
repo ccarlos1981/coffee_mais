@@ -24,7 +24,13 @@ import {
   BookOpen,
   FileText,
   MapPin,
-  Trophy
+  Trophy,
+  Activity,
+  Building2,
+  CheckSquare,
+  Brain,
+  Sliders,
+  Compass
 } from "lucide-react";
 
 export interface NavigationItem {
@@ -46,6 +52,16 @@ export interface NavigationGroup {
 }
 
 export const allModules: NavigationGroup[] = [
+  {
+    category: "Plataforma Comercial Enterprise",
+    items: [
+      { key: "crm_enterprise", title: "CRM Enterprise", description: "Gestão 360º da carteira comercial", href: "/crm-enterprise", icon: Building2, color: "from-indigo-600 to-indigo-800", ready: true, permission: "CRM Enterprise" },
+      { key: "execucao_comercial", title: "Execução Comercial", description: "Agenda e visitas inteligentes", href: "/execucao-comercial", icon: CheckSquare, color: "from-emerald-600 to-emerald-800", ready: true, permission: "Execução Comercial" },
+      { key: "assistente_decisao", title: "Assistente de Decisão", description: "Inteligência e recomendações", href: "/assistente-decisao", icon: Brain, color: "from-amber-500 to-yellow-600", ready: true, permission: "Assistente de Decisão" },
+      { key: "simulacao_estrategica", title: "Simulação Estratégica", description: "Cenários prospectivos", href: "/simulacao-estrategica", icon: Sliders, color: "from-purple-600 to-purple-800", ready: true, permission: "Simulação Estratégica" },
+      { key: "planejamento_comercial", title: "S&OP Comercial", description: "Planejamento comercial integrado", href: "/planejamento-comercial", icon: Compass, color: "from-blue-600 to-blue-800", ready: true, permission: "S&OP Comercial" },
+    ],
+  },
   {
     category: "Faturamento e Volume",
     items: [
@@ -148,6 +164,12 @@ export const allModules: NavigationGroup[] = [
       { key: "config_financeiro_cadastro", title: "Cadastro", description: "Cadastros financeiros", href: "/config-financeiro/cadastro", icon: DollarSign, color: "from-yellow-600 to-yellow-800", ready: true },
       { key: "config_financeiro_clientes", title: "Clientes", description: "Gestão de carteira", href: "/config-financeiro/clientes", icon: Users, color: "from-amber-600 to-amber-800", ready: true },
       { key: "config_financeiro_multiestado", title: "Multiestado", description: "Bases regionais", href: "/config-financeiro/multiestado", icon: MapPin, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
+    ],
+  },
+  {
+    category: "Governança & Health",
+    items: [
+      { key: "health_center", title: "Health Center", description: "Governança & Observabilidade", href: "/health", icon: Activity, color: "from-emerald-600 to-teal-800", ready: true, permission: "Health Center" },
     ],
   },
   {

@@ -49,6 +49,16 @@ const CATEGORIZED_MODULES = [
     ]
   },
   {
+    category: "Plataforma Comercial Enterprise",
+    modules: [
+      "CRM Enterprise",
+      "Execução Comercial",
+      "Assistente de Decisão",
+      "Simulação Estratégica",
+      "S&OP Comercial"
+    ]
+  },
+  {
     category: "Análise",
     modules: [
       "Matriz",
@@ -135,6 +145,12 @@ const CATEGORIZED_MODULES = [
     modules: [
       "Cadastro",
       "Clientes"
+    ]
+  },
+  {
+    category: "Governança & Health",
+    modules: [
+      "Health Center"
     ]
   },
   {

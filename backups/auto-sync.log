@@ -863,3 +863,32 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    04bdf02..065d7ee  main -> main
 [27/07/2026 15:35] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 0d3fdb3] auto-save: 28/07/2026 07:37
+ 29 files changed, 10919 insertions(+), 45 deletions(-)
+ create mode 100644 src/app/api/health/compliance/route.ts
+ create mode 100644 src/app/api/health/data-lineage/route.ts
+ create mode 100644 src/app/api/health/data-quality/route.ts
+ create mode 100644 src/app/api/health/security/route.ts
+ create mode 100644 src/app/health/components/AccessMatrixPanel.tsx
+ create mode 100644 src/app/health/components/ApiSecurityPanel.tsx
+ create mode 100644 src/app/health/components/CompletenessPanel.tsx
+ create mode 100644 src/app/health/components/ComplianceRecommendations.tsx
+ create mode 100644 src/app/health/components/ComplianceScoreCard.tsx
+ create mode 100644 src/app/health/components/ConsistencyPanel.tsx
+ create mode 100644 src/app/health/components/CoveragePanel.tsx
+ create mode 100644 src/app/health/components/DataLineagePanel.tsx
+ create mode 100644 src/app/health/components/DataQualityOverview.tsx
+ create mode 100644 src/app/health/components/DataQualityScoreCard.tsx
+ create mode 100644 src/app/health/components/DataRecommendations.tsx
+ create mode 100644 src/app/health/components/DependencyInventoryPanel.tsx
+ create mode 100644 src/app/health/components/DependencyRiskPanel.tsx
+ create mode 100644 src/app/health/components/EnvironmentPanel.tsx
+ create mode 100644 src/app/health/components/FreshnessPanel.tsx
+ create mode 100644 src/app/health/components/IntegrityPanel.tsx
+ create mode 100644 src/app/health/components/SecurityOverview.tsx
+ create mode 100644 src/app/health/components/SecurityTimeline.tsx
+ create mode 100644 src/lib/governance/data-quality/index.ts
+ create mode 100644 src/lib/governance/security/index.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   065d7ee..0d3fdb3  main -> main
+[28/07/2026 07:37] ✅ Alterações enviadas com sucesso para o GitHub.
