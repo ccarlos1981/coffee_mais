@@ -1026,3 +1026,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    ef97038..b294cd1  main -> main
 [28/07/2026 18:13] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 28e5b42] auto-save: 28/07/2026 22:38
+ 8 files changed, 230 insertions(+), 32 deletions(-)
+ create mode 100644 scripts/test-familia-light.ts
+ create mode 100644 scripts/test-familia.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   b294cd1..28e5b42  main -> main
+[28/07/2026 22:38] ✅ Alterações enviadas com sucesso para o GitHub.

@@ -16,13 +16,13 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricBlock {
-  aa: number; fct: number; desafio: number; real: number; pct: number; delta: number;
+  aa: number; mAnt?: number; fct: number; desafio: number; real: number; pct: number; delta: number;
 }
 interface FarolData {
   managerLabel: string;
   weights: { VOL: number; FAT: number; INVEST: number };
-  month: { vol: MetricBlock; fat: MetricBlock; score: number };
-  ytd:   { label: string; vol: MetricBlock; fat: MetricBlock; score: number };
+  month: { vol: MetricBlock; fat: MetricBlock; invest: MetricBlock; score: number };
+  ytd:   { label: string; vol: MetricBlock; fat: MetricBlock; invest: MetricBlock; score: number };
 }
 interface VolPrecoEntry {
   mesKey: string;
@@ -95,8 +95,9 @@ const MANAGER_INFO: Record<string, { name: string; region: string }> = {
 
 // ─── Semáforo de cores ────────────────────────────────────────────────────────
 function trafficLight(pct: number): { bg: string; color: string } {
-  if (pct >= 100)     return { bg: "#4caf5033", color: "#2e7d32" };
-  if (pct >= 90)      return { bg: "#ff980033", color: "#e65100" };
+  const safePct = typeof pct === 'number' && !isNaN(pct) ? pct : 0;
+  if (safePct >= 100) return { bg: "#4caf5033", color: "#2e7d32" };
+  if (safePct >= 90)  return { bg: "#ff980033", color: "#e65100" };
   return               { bg: "#f4433633", color: "#c62828" };
 }
 
@@ -1834,14 +1835,16 @@ function SlideProjecao({
 
   const mVol   = farol.month.vol;
   const mFat   = farol.month.fat;
+  const mInvest = farol.month.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
   const ytdVol = farol.ytd.vol;
   const ytdFat = farol.ytd.fat;
+  const ytdInvest = farol.ytd.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
 
   const baseRows = useMemo(() => [
     {
       label: 'QUANTIDADE',
       unit: 'un.',
-      weight: farol.weights.VOL,
+      weight: 34,
       monthAA:      Math.round(mVol.aa),
       monthFct:     Math.round(mVol.fct),
       monthDesafio: Math.round(mVol.desafio),
@@ -1855,7 +1858,7 @@ function SlideProjecao({
     {
       label: 'FATURAMENTO',
       unit: 'R$k',
-      weight: farol.weights.FAT,
+      weight: 33,
       monthAA:      Math.round(mFat.aa / 1000),
       monthFct:     Math.round(mFat.fct / 1000),
       monthDesafio: Math.round(mFat.desafio / 1000),
@@ -1869,22 +1872,22 @@ function SlideProjecao({
     {
       label: 'INVESTIMENTO',
       unit: '%',
-      weight: 0,           // sem dados ainda
+      weight: 0,
       monthAA:      0,
       monthFct:     0,
-      monthDesafio: 0,
-      defaultProj:  0,
+      monthDesafio: 10.0,
+      defaultProj:  Number((mInvest.real ?? 0).toFixed(1)),
       ytdAA:      0,
-      ytdDesafio: 0,
-      ytdReal:    0,
-      ytdPct:     0,
-      ytdDelta:   0,
+      ytdDesafio: 10.0,
+      ytdReal:    Number((ytdInvest.real ?? 0).toFixed(1)),
+      ytdPct:     ytdInvest.pct ?? 0,
+      ytdDelta:   Number((ytdInvest.delta ?? 0).toFixed(1)),
     },
    
   ], [mFat.aa, mFat.fct, mFat.desafio, mFat.real, mVol.aa, mVol.fct, mVol.desafio, mVol.real,
+      mInvest.real, ytdInvest.real, ytdInvest.pct, ytdInvest.delta,
       ytdFat.aa, ytdFat.fct, ytdFat.real, ytdFat.pct, ytdFat.delta,
-      ytdVol.aa, ytdVol.fct, ytdVol.real, ytdVol.pct, ytdVol.delta,
-      farol.weights.FAT, farol.weights.VOL]);
+      ytdVol.aa, ytdVol.fct, ytdVol.real, ytdVol.pct, ytdVol.delta]);
 
   // Editable PROJ values
   const [projValues, setProjValues] = useState<Record<string, string>>({});
@@ -1955,8 +1958,8 @@ function SlideProjecao({
 
   const totalYtdPct = (() => {
     const rows = [
-      { pct: ytdVol.pct, weight: farol.weights.VOL },
-      { pct: ytdFat.pct, weight: farol.weights.FAT },
+      { pct: ytdVol.pct, weight: 34 },
+      { pct: ytdFat.pct, weight: 33 },
     ].filter(r => r.weight > 0);
     if (!rows.length) return 0;
     const totalW = rows.reduce((a, r) => a + r.weight, 0);
@@ -3208,30 +3211,46 @@ function SlideVolumeMatriz({
 // ─── Sub-components de SlideFarol (fora do componente para evitar recriação) ──
 function MetricRow({
   label, weight, block
-}: { label: string; weight: number; block: MetricBlock; isYtd?: boolean }) {
-  const light = trafficLight(block.pct);
+}: { label: string; weight: number; block?: MetricBlock; isYtd?: boolean }) {
+  const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
+  const b = block ?? emptyBlock;
+  const light = trafficLight(b.pct ?? 0);
   const isVol = label === "VOLUME";
+  const isInvest = label === "INVESTIMENTO";
+  const mAntVal = b.mAnt ?? b.fct ?? 0;
+
+  const fmtVal = (val: number) => {
+    if (isVol) return formatNumber(val, 0);
+    if (isInvest) return `${formatNumber(val, 1)}%`;
+    return formatCurrency(val / 1000, 0);
+  };
+
+  const fmtDelta = (val: number) => {
+    if (isVol) return formatNumber(val, 0);
+    if (isInvest) {
+      const sign = val > 0 ? "+" : "";
+      return `${sign}${formatNumber(val, 1)} p.p.`;
+    }
+    return formatCurrency(val / 1000, 0);
+  };
+
+  const isGood = isInvest ? (b.delta ?? 0) <= 0 : (b.delta ?? 0) >= 0;
+
   return (
     <tr className="rdm-farol-row">
       <td className="rdm-farol-label">{label}</td>
       <td className="rdm-farol-weight">{weight}%</td>
-      <td className="rdm-farol-cell">
-        {isVol ? formatNumber(block.aa, 0) : formatCurrency(block.aa / 1000, 0)}
-      </td>
-      <td className="rdm-farol-cell">
-        {isVol ? formatNumber(block.fct, 0) : formatCurrency(block.fct / 1000, 0)}
-      </td>
-      <td className="rdm-farol-cell rdm-farol-desafio">
-        {isVol ? formatNumber(block.desafio, 0) : formatCurrency(block.desafio / 1000, 0)}
-      </td>
+      <td className="rdm-farol-cell">{fmtVal(b.aa ?? 0)}</td>
+      <td className="rdm-farol-cell">{fmtVal(mAntVal)}</td>
+      <td className="rdm-farol-cell rdm-farol-desafio">{fmtVal(b.desafio ?? 0)}</td>
       <td className="rdm-farol-cell rdm-farol-real" style={{ background: "#FF6B001A" }}>
-        {isVol ? formatNumber(block.real, 0) : formatCurrency(block.real / 1000, 0)}
+        {fmtVal(b.real ?? 0)}
       </td>
       <td className="rdm-farol-pct" style={{ background: light.bg, color: light.color }}>
-        {formatNumber(block.pct, 1)}%
+        {formatNumber(b.pct ?? 0, 1)}%
       </td>
-      <td className="rdm-farol-delta" style={{ color: block.delta >= 0 ? "#2e7d32" : "#c62828" }}>
-        {formatNumber(block.delta, 0)}
+      <td className="rdm-farol-delta" style={{ color: isGood ? "#2e7d32" : "#c62828" }}>
+        {fmtDelta(b.delta ?? 0)}
       </td>
     </tr>
   );
@@ -3251,16 +3270,24 @@ function ScoreRow({ score }: { score: number }) {
   );
 }
 
-function FarolTable({ title, block, managerLabel }: {
+function FarolTable({ title, block, managerLabel, weights }: {
   title: string;
-  block: { vol: MetricBlock; fat: MetricBlock; score: number };
-  managerLabel: string;
+  block?: { vol?: MetricBlock; fat?: MetricBlock; invest?: MetricBlock; score?: number };
+  managerLabel?: string;
+  weights?: { VOL: number; FAT: number; INVEST: number };
 }) {
+  const w = weights ?? { VOL: 0, FAT: 100, INVEST: 0 };
+  const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
+  const volBlock = block?.vol ?? emptyBlock;
+  const fatBlock = block?.fat ?? emptyBlock;
+  const investBlock = block?.invest ?? emptyBlock;
+  const scoreVal = block?.score ?? 0;
+
   return (
     <div className="rdm-farol-table-wrap">
       {/* Manager label rotated */}
       <div className="rdm-farol-manager-col">
-        <span>{managerLabel}</span>
+        <span>{managerLabel ?? ''}</span>
       </div>
 
       <table className="rdm-farol-table">
@@ -3274,7 +3301,7 @@ function FarolTable({ title, block, managerLabel }: {
             <th />
             <th />
             <th className="rdm-th-col">A A</th>
-            <th className="rdm-th-col">FCT</th>
+            <th className="rdm-th-col">M ANT.</th>
             <th className="rdm-th-col">DESAFIO</th>
             <th className="rdm-th-col">REAL</th>
             <th className="rdm-th-col">%</th>
@@ -3282,16 +3309,10 @@ function FarolTable({ title, block, managerLabel }: {
           </tr>
         </thead>
         <tbody>
-          <MetricRow label="VOLUME"      weight={34} block={block.vol} />
-          <MetricRow label="FATURAMENTO" weight={33} block={block.fat} isYtd />
-          <tr className="rdm-farol-invest-placeholder">
-            <td className="rdm-farol-label rdm-invest-dim">INVESTIMENTO</td>
-            <td className="rdm-farol-weight rdm-invest-dim">33%</td>
-            <td colSpan={6} className="rdm-invest-dim" style={{ textAlign: "center", fontStyle: "italic", fontSize: "0.65rem" }}>
-              Em breve
-            </td>
-          </tr>
-          <ScoreRow score={block.score} />
+          <MetricRow label="VOLUME"       weight={w.VOL}    block={volBlock} />
+          <MetricRow label="FATURAMENTO"  weight={w.FAT}    block={fatBlock} isYtd />
+          <MetricRow label="INVESTIMENTO" weight={w.INVEST} block={investBlock} />
+          <ScoreRow score={scoreVal} />
         </tbody>
       </table>
     </div>
@@ -3303,21 +3324,27 @@ function SlideFarol({
   monthName, farol, comment, onCommentChange, onCommentSave, saving
 }: {
   monthName: string;
-  farol: FarolData;
+  farol?: FarolData;
   comment: string;
   onCommentChange: (v: string) => void;
   onCommentSave: () => void;
   saving: boolean;
 }) {
-  const m = farol.month;
-  const y = farol.ytd;
+  const emptyBlock = {
+    vol: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+    fat: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+    invest: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+    score: 0,
+  };
+  const m = farol?.month ?? emptyBlock;
+  const y = farol?.ytd ?? { label: 'YTD', ...emptyBlock };
 
   return (
     <SlideShell title="Farol de Metas" monthName={monthName}>
       <div className="rdm-farol-content">
         <div className="rdm-farol-tables-row">
-          <FarolTable title={monthName.toUpperCase()} block={m} managerLabel={farol.managerLabel} />
-          <FarolTable title={y.label} block={y} managerLabel={farol.managerLabel} />
+          <FarolTable title={monthName.toUpperCase()} block={m} managerLabel={farol?.managerLabel ?? ''} weights={farol?.weights} />
+          <FarolTable title={y.label} block={y} managerLabel={farol?.managerLabel ?? ''} weights={farol?.weights} />
         </div>
 
         {/* Comment area */}
