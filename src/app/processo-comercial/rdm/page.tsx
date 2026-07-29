@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2,
-  Save, Loader2
+  Save, Loader2, Download
 } from "lucide-react";
+import { exportRdmToPptx } from "./exportPptx";
 import { formatNumber, formatCurrency } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
@@ -103,7 +104,7 @@ function trafficLight(pct: number): { bg: string; color: string } {
 
 // ─── Slide 0: Capa ───────────────────────────────────────────────────────────
 
-function SlideCapa({ manager, monthName, year }: { manager: string; monthName: string; year: number }) {
+function SlideCapa({ manager, monthName, year, onExport, exporting, exportProgress }: { manager: string; monthName: string; year: number; onExport?: () => void; exporting?: boolean; exportProgress?: { current: number; total: number } | null }) {
   const info = MANAGER_INFO[manager] ?? { name: manager.toUpperCase(), region: '' };
   const gold  = '#c9a96e';
   const goldD = '#a07840';
@@ -303,11 +304,50 @@ function SlideCapa({ manager, monthName, year }: { manager: string; monthName: s
             }}>RDM</div>
           </div>
 
-          {/* Three dots — coffee grounds pattern */}
-          <div style={{ display: 'flex', gap: 5, alignItems: 'center', paddingBottom: 2 }}>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: gold }} />
-            <div style={{ width: 5, height: 5, borderRadius: '50%', background: gold, opacity: 0.55 }} />
-            <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: gold, opacity: 0.28 }} />
+          {/* Export button + dots */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', paddingBottom: 2 }}>
+            {onExport && (
+              <button
+                onClick={onExport}
+                disabled={exporting}
+                className="rdm-export-pptx-btn"
+                title="Exportar apresentação como PowerPoint (.pptx)"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '5px 14px',
+                  border: `1px solid ${gold}`,
+                  borderRadius: 3,
+                  background: exporting ? 'rgba(201,169,110,0.15)' : 'rgba(201,169,110,0.08)',
+                  color: gold,
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.18em',
+                  fontFamily: 'var(--font-geist-sans, system-ui)',
+                  cursor: exporting ? 'not-allowed' : 'pointer',
+                  opacity: exporting ? 0.7 : 1,
+                  transition: 'all 0.2s',
+                }}
+              >
+                {exporting ? (
+                  <>
+                    <Loader2 style={{ width: 13, height: 13, animation: 'spin 1s linear infinite' }} />
+                    {exportProgress ? `Exportando ${exportProgress.current}/${exportProgress.total}...` : 'Exportando...'}
+                  </>
+                ) : (
+                  <>
+                    <Download style={{ width: 13, height: 13 }} />
+                    Exportar PowerPoint
+                  </>
+                )}
+              </button>
+            )}
+            {/* Three dots — coffee grounds pattern */}
+            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+              <div style={{ width: 7, height: 7, borderRadius: '50%', background: gold }} />
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: gold, opacity: 0.55 }} />
+              <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: gold, opacity: 0.28 }} />
+            </div>
           </div>
         </div>
       </div>
@@ -3246,8 +3286,12 @@ function MetricRow({
       <td className="rdm-farol-cell rdm-farol-real" style={{ background: "#FF6B001A" }}>
         {fmtVal(b.real ?? 0)}
       </td>
-      <td className="rdm-farol-pct" style={{ background: light.bg, color: light.color }}>
-        {formatNumber(b.pct ?? 0, 1)}%
+      <td className="rdm-farol-pct" style={isInvest
+        ? { color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
+        : { background: light.bg, color: light.color }}>
+        {isInvest
+          ? `${(b.pct ?? 0) > 0 ? '+' : ''}${formatNumber(b.pct ?? 0, 1)}%`
+          : `${formatNumber(b.pct ?? 0, 1)}%`}
       </td>
       <td className="rdm-farol-delta" style={{ color: isGood ? "#2e7d32" : "#c62828" }}>
         {fmtDelta(b.delta ?? 0)}
@@ -3399,7 +3443,12 @@ export default function RdmPage() {
   const [savingKey,   setSavingKey]   = useState<string | null>(null);
   const [savedKey,    setSavedKey]    = useState<string | null>(null);
 
+  // Export
+  const [exporting,     setExporting]     = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
+  const slideContainerRef = useRef<HTMLDivElement>(null);
 
   // ── Load data ──
   const loadData = useCallback(async () => {
@@ -3534,6 +3583,43 @@ export default function RdmPage() {
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }, []);
 
+  // ── Export to PowerPoint ──
+  const handleExportPptx = useCallback(async () => {
+    const container = slideContainerRef.current;
+    if (!container || exporting) return;
+
+    setExporting(true);
+    setExportProgress(null);
+
+    // Save current slide index to restore later
+    const originalIdx = slideIdx;
+
+    try {
+      await exportRdmToPptx({
+        slideContainer: container,
+        slides,
+        goToSlide: (idx: number) => {
+          // Direct state set — no animation during export
+          setSlideIdx(idx);
+        },
+        manager,
+        monthName,
+        year,
+        onProgress: (current, total) => {
+          setExportProgress({ current, total });
+        },
+      });
+    } catch (err) {
+      console.error('[RDM-EXPORT]', err);
+      alert('Erro ao exportar PowerPoint. Tente novamente.');
+    } finally {
+      // Restore original slide
+      setSlideIdx(originalIdx);
+      setExporting(false);
+      setExportProgress(null);
+    }
+  }, [exporting, slideIdx, slides, manager, monthName, year]);
+
   // ESC exits presenting
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -3560,6 +3646,9 @@ export default function RdmPage() {
           manager={manager}
           monthName={monthName}
           year={year}
+          onExport={handleExportPptx}
+          exporting={exporting}
+          exportProgress={exportProgress}
         />
       );
     }
@@ -3864,7 +3953,7 @@ export default function RdmPage() {
           <ChevronLeft className="w-6 h-6" />
         </button>
 
-        <div className="rdm-slide-container">
+        <div className="rdm-slide-container" ref={slideContainerRef}>
           {slideBlock}
         </div>
 

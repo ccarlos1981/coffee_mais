@@ -277,13 +277,13 @@ export async function GET(request: Request) {
 
     const volPctMonth    = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
     const fatPctMonth    = targetSum.revenue > 0 ? (realMonth.fat / targetSum.revenue) * 100 : 0;
-    const investPctMonth = (realMonthInvestPct / investDesafio) * 100;
+    const investPctMonth = investDesafio > 0 ? ((realMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
     const investDeltaMonth = realMonthInvestPct - investDesafio;
     const scoreMonth     = calcScore(volPctMonth, fatPctMonth);
 
     const volPctYtd    = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
     const fatPctYtd    = ytdTargetSum.revenue > 0 ? (realYtd.fat / ytdTargetSum.revenue) * 100 : 0;
-    const investPctYtd = (realYtdInvestPct / investDesafio) * 100;
+    const investPctYtd = investDesafio > 0 ? ((realYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
     const investDeltaYtd = realYtdInvestPct - investDesafio;
     const scoreYtd     = calcScore(volPctYtd, fatPctYtd);
 

@@ -1033,3 +1033,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    b294cd1..28e5b42  main -> main
 [28/07/2026 22:38] ✅ Alterações enviadas com sucesso para o GitHub.
+[main d6df197] auto-save: 29/07/2026 09:45
+ 11 files changed, 9267 insertions(+), 99 deletions(-)
+ create mode 100644 scratch/check_rdm_endpoint.js
+ create mode 100644 scratch/diagnose_julliano.js
+ create mode 100644 scratch/diagnose_real_invest.js
+ create mode 100644 scratch/simulate_rdm_backend.js
+ create mode 100644 scratch/validate_farol_investimento.js
+To https://github.com/ccarlos1981/coffee_mais.git
+   28e5b42..d6df197  main -> main
+[29/07/2026 09:45] ✅ Alterações enviadas com sucesso para o GitHub.
