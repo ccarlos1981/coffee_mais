@@ -2,9 +2,18 @@ import { NextResponse } from "next/server";
 import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function getPrevMonthKey(y: number, m: number): string {
+  let pm = m - 1;
+  let py = y;
+  if (pm === 0) { pm = 12; py = y - 1; }
+  return `${py}-${String(pm).padStart(2, '0')}`;
+}
 
 // Admin client sem cookies (para queries sem RLS restritiva)
 function getAdminClient() {
@@ -44,22 +53,27 @@ export async function GET(request: Request) {
 
     // ── Chaves de período ──
     const monthKey  = `${year}-${String(month).padStart(2, '0')}`;
+    const prevMonthKey = getPrevMonthKey(year, month);
     const prevYear  = year - 1;
     const prevYearMonthKey = `${prevYear}-${String(month).padStart(2, '0')}`;
 
-    // Meses YTD: Jan até o mês selecionado (mesmo ano)
+    // Meses acumulados do trimestre (Quarter-to-Date / YTD do trimestre)
+    const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
+
     const ytdKeys: string[] = [];
-    for (let m = 1; m <= month; m++) {
+    const ytdPrevMonthKeys: string[] = [];
+    const ytdPrevYearKeys: string[] = [];
+    for (let m = quarterStartMonth; m <= month; m++) {
       ytdKeys.push(`${year}-${String(m).padStart(2, '0')}`);
-    }
-    // YTD ano anterior: Jan até mesmo mês do ano passado
-    const ytdPrevKeys: string[] = [];
-    for (let m = 1; m <= month; m++) {
-      ytdPrevKeys.push(`${prevYear}-${String(m).padStart(2, '0')}`);
+      ytdPrevMonthKeys.push(getPrevMonthKey(year, m));
+      ytdPrevYearKeys.push(`${prevYear}-${String(m).padStart(2, '0')}`);
     }
 
     // ── Queries paralelas ──
-    const allMesKeys = [monthKey, prevYearMonthKey, ...ytdKeys, ...ytdPrevKeys];
+    const allMesKeys = [
+      monthKey, prevMonthKey, prevYearMonthKey,
+      ...ytdKeys, ...ytdPrevMonthKeys, ...ytdPrevYearKeys
+    ];
     const uniqueMesKeys = [...new Set(allMesKeys)];
 
     // Todos os meses do ano atual necessários para o gráfico + 3 meses anteriores ao mês 1 (do ano anterior, para cálculo de média)
@@ -94,7 +108,7 @@ export async function GET(request: Request) {
 
     const chartMesKeys = [...new Set([...uniqueMesKeys, ...allMonthKeysForChart, ...familyQueryKeys])];
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily] = await Promise.all([
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -142,21 +156,42 @@ export async function GET(request: Request) {
           GROUP BY mes, COALESCE(manager,'Outros'), COALESCE(tipo_produto,'Outros')
         `
       }),
+
+      // 6. Investimentos realizados por mês e gerente (módulo de investimentos)
+      supabase
+        .from('v_acoes_investimento_com_gerente')
+        .select('gerente_responsavel, mes_referencia, apuracao_valor_realizado, valor_investimento, expectativa_volume, abrangencia, skus_detalhes, familias_detalhes')
+        .in('mes_referencia', uniqueMesKeys)
+        .eq('is_planejamento', false)
+        .is('cancel_reason', null),
     ]);
 
     if (resSales.error) throw new Error("Erro vendas: " + resSales.error.message);
 
-    const sales       = (resSales.data ?? []) as { mes: string; manager: string; fat: string; qty: string }[];
-    const targets     = (resTargets.data ?? []) as { manager: string; target_revenue: string; target_tons: string; target_forecast: string | null; target_forecast_qty: string | null }[];
-    const projections = (resProjections.data ?? []) as { manager: string; kpi: string; projection_value: string; week_start_date: string }[];
-    const comments    = (resComments.data ?? []) as { slide_key: string; comment: string; updated_at: string }[];
-    const salesByFamily = (resSalesByFamily.data ?? []) as { mes: string; manager: string; tipo_produto: string; fat: string; qty: string }[];
+    const sales          = (resSales.data ?? []) as { mes: string; manager: string; fat: string; qty: string }[];
+    const targets        = (resTargets.data ?? []) as { manager: string; target_revenue: string; target_tons: string; target_forecast: string | null; target_forecast_qty: string | null }[];
+    const projections    = (resProjections.data ?? []) as { manager: string; kpi: string; projection_value: string; week_start_date: string }[];
+    const comments       = (resComments.data ?? []) as { slide_key: string; comment: string; updated_at: string }[];
+    const salesByFamily  = (resSalesByFamily.data ?? []) as { mes: string; manager: string; tipo_produto: string; fat: string; qty: string }[];
+    const rawInvestments = (resInvestments.data ?? []) as any[];
 
     // ── Helper: somar vendas de vários gerentes em vários meses ──
     function sumSales(managers: string[], mesKeys: string[]) {
+      const targetCanon = managers.map(m => resolveCanonicalManager(m).canonicalKey);
       return sales
-        .filter(s => managers.includes(s.manager) && mesKeys.includes(s.mes))
+        .filter(s => targetCanon.includes(resolveCanonicalManager(s.manager).canonicalKey) && mesKeys.includes(s.mes))
         .reduce((acc, s) => ({ fat: acc.fat + Number(s.fat), qty: acc.qty + Number(s.qty) }), { fat: 0, qty: 0 });
+    }
+
+    // ── Helper: somar investimentos realizados do módulo de investimentos ──
+    function sumInvestments(managers: string[], mesKeys: string[]) {
+      const targetCanon = managers.map(m => resolveCanonicalManager(m).canonicalKey);
+      return rawInvestments
+        .filter(inv => {
+          const canonMgr = resolveCanonicalManager(inv.gerente_responsavel).canonicalKey;
+          return targetCanon.includes(canonMgr) && mesKeys.includes(inv.mes_referencia);
+        })
+        .reduce((acc, inv) => acc + getInvestimentoRealizadoOficial(inv), 0);
     }
 
     // ── Helper: obter meta de um conjunto de gerentes ──
@@ -174,7 +209,6 @@ export async function GET(request: Request) {
 
     // ── Helper: última projeção (FCT) para conjunto de gerentes ──
     function getLatestProjection(managers: string[], kpi: string) {
-      // Agrupa última projeção por gerente (projections já vêm ordenados desc)
       const seen = new Set<string>();
       let total = 0;
       for (const p of projections) {
@@ -187,24 +221,34 @@ export async function GET(request: Request) {
     }
 
     // ── Calcular dados ──
-    const realMonth  = sumSales(targetManagers, [monthKey]);
-    const aaMonth    = sumSales(targetManagers, [prevYearMonthKey]);
-    const realYtd    = sumSales(targetManagers, ytdKeys);
-    const aaYtd      = sumSales(targetManagers, ytdPrevKeys);
+    const realMonth   = sumSales(targetManagers, [monthKey]);
+    const prevMonth   = sumSales(targetManagers, [prevMonthKey]);
+    const aaMonth     = sumSales(targetManagers, [prevYearMonthKey]);
 
-    const targetSum  = getTargetSum(targetManagers);
+    const realYtd     = sumSales(targetManagers, ytdKeys);
+    const prevYtdMonth = sumSales(targetManagers, ytdPrevMonthKeys);
+    const aaYtd       = sumSales(targetManagers, ytdPrevYearKeys);
 
-    // FCT: usa target_forecast se preenchido, senão usa última projeção da RPS
-    const fctFat = targetSum.fctRev > 0 ? targetSum.fctRev : getLatestProjection(targetManagers, 'FAT');
-    const fctVol = targetSum.fctQty > 0 ? targetSum.fctQty : getLatestProjection(targetManagers, 'VOL');
+    const targetSum   = getTargetSum(targetManagers);
 
-    // YTD FCT: acumulado dos desafios mensais (simplificado: usa só o DESAFIO como proxy de FCT YTD)
-    // Para YTD, vamos buscar todos os targets do período e somar
+    // Investimentos realizados (R$)
+    const realMonthInvestRs = sumInvestments(targetManagers, [monthKey]);
+    const realYtdInvestRs   = sumInvestments(targetManagers, ytdKeys);
+
+    // Percentual de investimento realizado sobre o faturamento (%)
+    const realMonthInvestPct = realMonth.fat > 0 ? (realMonthInvestRs / realMonth.fat) * 100 : 0;
+    const realYtdInvestPct   = realYtd.fat > 0 ? (realYtdInvestRs / realYtd.fat) * 100 : 0;
+
+    // Desafio fixo = 10,0%
+    const investDesafio = 10.0;
+
+    // YTD targets
     const [resYtdTargets] = await Promise.all([
       supabase
         .from('targets')
         .select('manager, month, target_revenue, target_tons, target_forecast, target_forecast_qty')
         .eq('year', year)
+        .gte('month', quarterStartMonth)
         .lte('month', month)
         .in('manager', KA_MANAGERS),
     ]);
@@ -221,67 +265,94 @@ export async function GET(request: Request) {
       };
     }, { revenue: 0, tons: 0, fctRev: 0, fctQty: 0 });
 
-    // Pesos dos indicadores (fixo por enquanto)
-    const WEIGHTS = { VOL: 34, FAT: 33, INVEST: 33 };
+    // Pesos dos indicadores (Farol de Metas: Faturamento = 100%, Volume = 0%, Investimento = 0%)
+    const WEIGHTS = { VOL: 0, FAT: 100, INVEST: 0 };
 
-    // Calcular score ponderado do mês (apenas VOL e FAT por enquanto)
+    // Calcular score ponderado do mês (100% Faturamento)
     function calcScore(volPct: number, fatPct: number) {
-      const total = WEIGHTS.VOL + WEIGHTS.FAT; // 67
+      const total = WEIGHTS.VOL + WEIGHTS.FAT + WEIGHTS.INVEST;
+      if (total === 0) return 0;
       return ((volPct * WEIGHTS.VOL) + (fatPct * WEIGHTS.FAT)) / total;
     }
 
-    const volPctMonth = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
-    const fatPctMonth = targetSum.revenue > 0 ? (realMonth.fat / targetSum.revenue) * 100 : 0;
-    const scoreMonth  = calcScore(volPctMonth, fatPctMonth);
+    const volPctMonth    = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
+    const fatPctMonth    = targetSum.revenue > 0 ? (realMonth.fat / targetSum.revenue) * 100 : 0;
+    const investPctMonth = (realMonthInvestPct / investDesafio) * 100;
+    const investDeltaMonth = realMonthInvestPct - investDesafio;
+    const scoreMonth     = calcScore(volPctMonth, fatPctMonth);
 
-    const volPctYtd = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
-    const fatPctYtd = ytdTargetSum.revenue > 0 ? (realYtd.fat / ytdTargetSum.revenue) * 100 : 0;
-    const scoreYtd  = calcScore(volPctYtd, fatPctYtd);
+    const volPctYtd    = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
+    const fatPctYtd    = ytdTargetSum.revenue > 0 ? (realYtd.fat / ytdTargetSum.revenue) * 100 : 0;
+    const investPctYtd = (realYtdInvestPct / investDesafio) * 100;
+    const investDeltaYtd = realYtdInvestPct - investDesafio;
+    const scoreYtd     = calcScore(volPctYtd, fatPctYtd);
 
     // ── Montar resposta ──
     const farolData = {
       managerLabel: manager === CRISTIANO ? "CRISTIANO" : manager,
       weights: WEIGHTS,
 
-      // MAIO (mês selecionado)
+      // Mês selecionado
       month: {
         vol: {
           aa:      aaMonth.qty,
-          fct:     fctVol,
+          mAnt:    prevMonth.qty,
+          fct:     prevMonth.qty,
           desafio: targetSum.tons,
           real:    realMonth.qty,
           pct:     volPctMonth,
-          delta:   realMonth.qty - fctVol,
+          delta:   realMonth.qty - prevMonth.qty,
         },
         fat: {
           aa:      aaMonth.fat,
-          fct:     fctFat,
+          mAnt:    prevMonth.fat,
+          fct:     prevMonth.fat,
           desafio: targetSum.revenue,
           real:    realMonth.fat,
           pct:     fatPctMonth,
-          delta:   realMonth.fat - fctFat,
+          delta:   realMonth.fat - prevMonth.fat,
+        },
+        invest: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: investDesafio,
+          real:    realMonthInvestPct,
+          pct:     investPctMonth,
+          delta:   investDeltaMonth,
         },
         score: scoreMonth,
       },
 
-      // YTD (acumulado Jan → mês selecionado)
+      // YTD (acumulado do trimestre)
       ytd: {
         label: `YTD F${String(year).slice(-2)}`,
         vol: {
           aa:      aaYtd.qty,
-          fct:     ytdTargetSum.fctQty > 0 ? ytdTargetSum.fctQty : ytdTargetSum.tons,
+          mAnt:    prevYtdMonth.qty,
+          fct:     prevYtdMonth.qty,
           desafio: ytdTargetSum.tons,
           real:    realYtd.qty,
           pct:     volPctYtd,
-          delta:   realYtd.qty - (ytdTargetSum.fctQty > 0 ? ytdTargetSum.fctQty : ytdTargetSum.tons),
+          delta:   realYtd.qty - prevYtdMonth.qty,
         },
         fat: {
           aa:      aaYtd.fat,
-          fct:     ytdTargetSum.fctRev > 0 ? ytdTargetSum.fctRev : ytdTargetSum.revenue,
+          mAnt:    prevYtdMonth.fat,
+          fct:     prevYtdMonth.fat,
           desafio: ytdTargetSum.revenue,
           real:    realYtd.fat,
           pct:     fatPctYtd,
-          delta:   realYtd.fat - (ytdTargetSum.fctRev > 0 ? ytdTargetSum.fctRev : ytdTargetSum.revenue),
+          delta:   realYtd.fat - prevYtdMonth.fat,
+        },
+        invest: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: investDesafio,
+          real:    realYtdInvestPct,
+          pct:     investPctYtd,
+          delta:   investDeltaYtd,
         },
         score: scoreYtd,
       },

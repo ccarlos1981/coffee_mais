@@ -1403,6 +1403,24 @@ Um módulo é considerado **documentalmente homologado** apenas quando possuir c
 
 Status Arquitetural: `CICLO_VIDA_DOCUMENTAL = HOMOLOGADO & LOCKED`.
 
+---
+
+## Baseline Oficial — Resiliência Arquitetural do Módulo RDM (Baseline Permanente)
+
+A partir de 29/07/2026, o módulo **RDM (Reunião de Desempenho Mensal)** passa a seguir a diretriz obrigatória de **Blindagem Permanente e Resiliência contra Erros de Runtime**.
+
+### Diretrizes Mandatórias:
+1. **Ausência de Runtime Error por Dados Faltantes**: Sempre que um KPI, indicador ou bloco de dados não estiver disponível ou for omitido pela API (incluindo estados iniciais de carregamento ou transição de payload), o sistema é proibido de gerar exceções de runtime (`TypeError`/`Undefined`).
+2. **Uso de Fallbacks Estruturados**: O sistema deve obrigatoriamente utilizar objetos padrão contendo valores válidos default (ex: 0, `"-"`, `"Sem dados"` ou equivalente), garantindo que todos os slides da RDM (atuais e futuros) continuem sendo renderizados normalmente.
+3. **Validação Obrigatória em Componentes de Apresentação**:
+   - É proibido acessar propriedades encadeadas sem validação prévia.
+   - É obrigatório o uso de *optional chaining* (`?.`) e *nullish coalescing* (`??`) em todos os pontos de desestruturação e leitura de propriedades de dados.
+   - Os componentes de apresentação devem sempre receber e operar sobre objetos garantidamente completos.
+4. **Escopo Geral no RDM**: Esta regra aplica-se a todos os slides, tabelas, subcomponentes e gráficos do módulo RDM.
+
+Status Arquitetural: `RDM_RESILIENCE_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
