@@ -180,6 +180,47 @@ export default function HistoricoFamiliaPage() {
   // Drill-down Drawer state
   const [selectedDrawerFamilia, setSelectedDrawerFamilia] = useState<string | null>(null);
   const [expandedSku, setExpandedSku] = useState<string | null>(null);
+  const [skuClientsMap, setSkuClientsMap] = useState<Record<string, ClientBreakdownRow[]>>({});
+  const [loadingSkuClients, setLoadingSkuClients] = useState<Record<string, boolean>>({});
+
+  const handleToggleSkuClients = async (familia: string, sku: string) => {
+    if (expandedSku === sku) {
+      setExpandedSku(null);
+      return;
+    }
+    setExpandedSku(sku);
+
+    if (!skuClientsMap[sku]) {
+      setLoadingSkuClients(prev => ({ ...prev, [sku]: true }));
+      try {
+        const startMonth = `${filterStartYear}-${String(filterStartMonth).padStart(2, '0')}`;
+        const endMonth = `${filterEndYear}-${String(filterEndMonth).padStart(2, '0')}`;
+        const params = new URLSearchParams({
+          startMonth,
+          endMonth,
+          action: 'clients',
+          targetFamilia: familia,
+          targetSku: sku
+        });
+        if (filterManager.length > 0) params.set("manager", filterManager.join(","));
+        if (filterUf.length > 0) params.set("uf", filterUf.join(","));
+        if (filterChannel.length > 0) params.set("channel", filterChannel.join(","));
+        if (filterMatriz.length > 0) params.set("matriz", filterMatriz.join(","));
+
+        const res = await fetch(`/api/dashboard/historico-familia?${params}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.clients) {
+            setSkuClientsMap(prev => ({ ...prev, [sku]: json.clients }));
+          }
+        }
+      } catch(e) {
+        console.error("Erro ao carregar clientes do SKU:", e);
+      } finally {
+        setLoadingSkuClients(prev => ({ ...prev, [sku]: false }));
+      }
+    }
+  };
 
   const fetchRequestIdRef = useRef(0);
 
@@ -936,11 +977,13 @@ export default function HistoricoFamiliaPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {drawerFamilySkus.map(s => {
                 const isExpanded = expandedSku === s.sku;
+                const isLoadingClients = loadingSkuClients[s.sku];
+                const skuClients = skuClientsMap[s.sku] || [];
 
                 return (
                   <div key={s.sku} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
                     <div 
-                      onClick={() => setExpandedSku(isExpanded ? null : s.sku)}
+                      onClick={() => handleToggleSkuClients(s.familia, s.sku)}
                       style={{ padding: "10px 12px", background: "rgba(0,0,0,0.02)", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
                     >
                       <div>
@@ -955,17 +998,19 @@ export default function HistoricoFamiliaPage() {
                       </div>
                     </div>
 
-                    {/* NÍVEL 3: CLIENTES DO SKU */}
+                    {/* NÍVEL 3: CLIENTES DO SKU (LAZY LOADED) */}
                     {isExpanded && (
                       <div style={{ padding: "10px 12px", background: "var(--background)", borderTop: "1px solid var(--border)" }}>
                         <span style={{ fontSize: "0.6rem", fontWeight: 700, textTransform: "uppercase", color: "var(--foreground-muted)", display: "block", marginBottom: 6 }}>
                           Top Clientes Compradores do SKU
                         </span>
-                        {drawerSkuClients.length === 0 ? (
+                        {isLoadingClients ? (
+                          <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>Carregando compradores...</span>
+                        ) : skuClients.length === 0 ? (
                           <span style={{ fontSize: "0.65rem", color: "var(--foreground-muted)" }}>Sem registros de clientes.</span>
                         ) : (
                           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                            {drawerSkuClients.slice(0, 10).map((c, cIdx) => (
+                            {skuClients.slice(0, 15).map((c, cIdx) => (
                               <div key={cIdx} style={{ display: "flex", justifyContent: "space-between", fontSize: "0.68rem", padding: "3px 0", borderBottom: "1px dashed var(--border)" }}>
                                 <span><strong>{c.cliente}</strong> ({c.uf})</span>
                                 <span style={{ fontWeight: 700, color: "#2e7d32" }}>{formatCurrency(c.fat, 0)}</span>

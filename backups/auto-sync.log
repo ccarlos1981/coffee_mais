@@ -986,3 +986,43 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    0d3fdb3..ef97038  main -> main
 [28/07/2026 12:54] ✅ Alterações enviadas com sucesso para o GitHub.
+[main b294cd1] auto-save: 28/07/2026 18:13
+ 51 files changed, 8394 insertions(+), 102 deletions(-)
+ create mode 100644 docs/manuais/manual_operacional_gerente_regional_investimentos.md
+ create mode 100644 docs/processos/modulo_investimentos_especificacao_funcional.md
+ create mode 100644 docs/tecnica/infraestrutura_exportacao_pdf.md
+ create mode 100644 src/app/api/dashboard/historico-familia/route.ts
+ create mode 100644 src/app/api/docs/raw/route.ts
+ create mode 100644 src/app/api/workflow-definitions/[id]/route.ts
+ create mode 100644 src/app/api/workflow-definitions/route.ts
+ create mode 100644 src/app/api/workflows/[id]/route.ts
+ create mode 100644 src/app/api/workflows/route.ts
+ create mode 100644 src/app/historico-familia/page.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowAnalyticsPanel.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowApprovalsPanel.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowDefinitionsPanel.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowFilterBar.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowKpis.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowListPanel.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowStateMachinePanel.tsx
+ create mode 100644 src/app/workflow-enterprise/components/WorkflowTimelinePanel.tsx
+ create mode 100644 src/app/workflow-enterprise/page.tsx
+ create mode 100644 src/components/docs/ExportPdfButton.tsx
+ create mode 100644 src/lib/crm-enterprise/workflow-bridge.ts
+ create mode 100644 src/lib/docs/markdownPdfExporter.ts
+ create mode 100644 src/lib/workflow-enterprise/approval-service.ts
+ create mode 100644 src/lib/workflow-enterprise/audit-service.ts
+ create mode 100644 src/lib/workflow-enterprise/definition-repository.ts
+ create mode 100644 src/lib/workflow-enterprise/definition-service.ts
+ create mode 100644 src/lib/workflow-enterprise/escalation-service.ts
+ create mode 100644 src/lib/workflow-enterprise/execution-service.ts
+ create mode 100644 src/lib/workflow-enterprise/index.ts
+ create mode 100644 src/lib/workflow-enterprise/lock-service.ts
+ create mode 100644 src/lib/workflow-enterprise/notification-service.ts
+ create mode 100644 src/lib/workflow-enterprise/phase1-test.ts
+ create mode 100644 src/lib/workflow-enterprise/state-machine-service.ts
+ create mode 100644 src/lib/workflow-enterprise/types.ts
+ create mode 100644 supabase/migrations/20260728_seed_enterprise_role_permissions.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   ef97038..b294cd1  main -> main
+[28/07/2026 18:13] ✅ Alterações enviadas com sucesso para o GitHub.

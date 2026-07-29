@@ -969,26 +969,20 @@ export class AnalyticsEngine {
       ORDER BY fat DESC LIMIT 1
     `;
 
-    const [
-      resTotals,
-      resTotalEmpresa,
-      resByFamilia,
-      resMom,
-      resYoy,
-      resMonthly,
-      resSkuBreakdown,
-      resClientBreakdown,
-      resTopUf
-    ] = await Promise.all([
-      this.executeSql(sqlTotals),
-      this.executeSql(sqlTotalEmpresa),
-      this.executeSql(sqlByFamilia),
+    // Execução por lotes otimizados para evitar saturação de conexões concorrentes no Supabase RPC
+    const resTotals = await this.executeSql(sqlTotals);
+    const resTotalEmpresa = await this.executeSql(sqlTotalEmpresa);
+    const resByFamilia = await this.executeSql(sqlByFamilia);
+    const resTopUf = await this.executeSql(sqlTopUf);
+
+    const [resMom, resYoy] = await Promise.all([
       this.executeSql(sqlMomByFamilia),
-      this.executeSql(sqlYoyByFamilia),
+      this.executeSql(sqlYoyByFamilia)
+    ]);
+
+    const [resMonthly, resSkuBreakdown] = await Promise.all([
       this.executeSql(sqlMonthly),
-      this.executeSql(sqlSkuBreakdown),
-      this.executeSql(sqlClientBreakdown),
-      this.executeSql(sqlTopUf)
+      this.executeSql(sqlSkuBreakdown)
     ]);
 
     const totals = {
@@ -1127,15 +1121,6 @@ export class AnalyticsEngine {
         qty: Number(r.qty || 0),
         clientes: Number(r.clientes || 0)
       })),
-      clientBreakdown: resClientBreakdown.map((r: any) => ({
-        familia: r.familia,
-        sku: r.sku,
-        cliente: r.cliente,
-        rede: r.rede,
-        uf: r.uf,
-        fat: Number(r.fat || 0),
-        qty: Number(r.qty || 0)
-      })),
       insights: {
         familiaLider,
         maiorCrescimento,
@@ -1144,6 +1129,38 @@ export class AnalyticsEngine {
         bulletPoints: insightsBullet,
       }
     };
+  }
+
+  /**
+   * 11.2 Detalhamento de Clientes Compradores do SKU (Lazy Loading sob demanda)
+   */
+  static async getFamiliaClientBreakdownData(filters: AnalyticsFilters, familia: string, sku: string, limit: number = 20) {
+    const targetSource = OFFICIAL_ANALYTICS_SOURCES.POSITIVACAO_SKU_MENSAL;
+    const baseWhere = buildWhereClause(filters, targetSource);
+
+    const familiaCond = familia === 'Outros' 
+      ? "COALESCE(tipo_produto, 'Outros') = 'Outros'" 
+      : `tipo_produto = ${escapeSqlValue(familia)}`;
+
+    const skuCond = `product = ${escapeSqlValue(sku)}`;
+
+    const sqlClientBreakdown = `
+      SELECT 
+        COALESCE(tipo_produto, 'Outros') as familia,
+        product as sku,
+        nome_parceiro as cliente,
+        MAX(rede) as rede,
+        MAX(uf) as uf,
+        SUM(fat) as fat,
+        SUM(qty) as qty
+      FROM ${targetSource}
+      ${baseWhere} AND ${familiaCond} AND ${skuCond}
+      GROUP BY COALESCE(tipo_produto, 'Outros'), product, nome_parceiro
+      ORDER BY fat DESC
+      LIMIT ${limit}
+    `;
+
+    return this.executeSql(sqlClientBreakdown);
   }
 
   /**
