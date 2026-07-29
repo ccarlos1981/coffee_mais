@@ -249,6 +249,30 @@ Status Arquitetural: `PRESIDENCY_DASHBOARD = LOCKED` & `BASELINE = CONFIRMED`.
 
 ---
 
+## 66. Baseline Oficial — Módulo Analítico Hist Família (Baseline Permanente)
+
+A partir de 28/07/2026, a arquitetura e a suíte de componentes do **Módulo Analítico Hist Família** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Termo de Homologação:
+1. **Objetivo Oficial**: Fornecer à diretoria comercial uma visão executiva completa e profunda da evolução histórica das famílias de produtos da Coffee Mais, abrangendo análises de participação de mercado (Share Filtrado % e Share Empresa %), crescimento multiperíodo (MoM e YoY), curva Pareto 80/20 (Análise ABC), matriz sazonal (Heatmap), mix de vendas (Treemap), inteligência de insights automáticos e navegação interativa em 3 níveis (Família → Linha/SKU → Clientes Compradores).
+2. **Fluxo Arquitetural Único**: Fontes Oficiais (`mv_positivacao_sku_mensal`, `mv_vendas_mensal`) → `AnalyticsEngine.getHistoricoFamiliaData(filters)` → API `GET /api/dashboard/historico-familia` → Interface `/historico-familia`.
+3. **Consumo Exclusivo da AnalyticsEngine**: É expressamente proibida qualquer montagem de SQL local nas APIs HTTP ou no React. Toda a lógica de agregação e inteligência analítica reside 100% centralizada na `AnalyticsEngine`.
+4. **Fontes de Dados Homologadas**: Consumo exclusivo de `public.mv_positivacao_sku_mensal` (para faturamento, volume, positivadores e SKU/cliente) e `public.mv_vendas_mensal` (para total faturamento corporativo da empresa).
+5. **Aderência Total à Governança Analítica**: Mantida 0,0000% de divergência financeira, isolamento absoluto de código existente e sem criação de campos ou estruturas fictícias de Tipologia (conforme restrição de governança).
+6. **Componentes Oficiais Congelados**: `AnalyticsEngine.getHistoricoFamiliaData()`, `GET /api/dashboard/historico-familia`, `/historico-familia`, KPIs Executivos, Card Família Líder, Insights Automáticos, Ranking com chave Top 10/Todas, Pareto 80/20, Treemap Executivo, Área Empilhada Mês a Mês, Heatmap Sazonal, Tabela Analítica Ordenável/Exportável (Excel/CSV) e Drawer de Drill Down 3 Níveis.
+7. **Homologação Documental**: Walkthrough executivo homologado e especificações aprovadas.
+8. **Homologação Técnica**: 100% aprovado nos testes automatizados `npm run audit:analytics`, `npm run verify:parity`, `npx tsc --noEmit` e `npm run build`.
+9. **Estratégia Oficial de Carregamento & Performance (Diretriz Permanente)**:
+   - Carregamento inicial executado exclusivamente com consultas agregadas essenciais para a renderização completa da página (Totais, KPIs, Ranking, Pareto, Evolução Mensal, Heatmap e Treemap).
+   - Qualquer consulta de alta cardinalidade (ex.: detalhamento de clientes compradores por SKU no Nível 3 do Drill Down) utilizará obrigatoriamente carregamento sob demanda (*Lazy Loading*) via `AnalyticsEngine.getFamiliaClientBreakdownData()`.
+   - O carregamento inicial da tela nunca deverá depender de consultas de terceiro nível do Drill Down.
+   - Esta estratégia de carregamento faz parte da baseline oficial congelada do módulo Hist Família e deverá ser preservada em todas as evoluções futuras, salvo nova Sprint de Arquitetura e nova homologação.
+
+Status Arquitetural: `HISTORICO_FAMILIA = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+
 ## 66. Baseline Oficial — Ciclo 2 Enterprise Maturity Program & Health Center
 
 A partir de 27/07/2026, o **Ciclo 2 — Enterprise Maturity Program** entra oficialmente em vigor no ecossistema Coffee++, introduzindo o novo módulo administrativo **Health Center** (`/health`) sob arquitetura desacoplada e sem qualquer alteração comportamental ou financeira em módulos homologados do Ciclo 1.
