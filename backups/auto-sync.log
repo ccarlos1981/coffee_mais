@@ -1043,3 +1043,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    28e5b42..d6df197  main -> main
 [29/07/2026 09:45] ✅ Alterações enviadas com sucesso para o GitHub.
+[main bc70c83] auto-save: 29/07/2026 12:45
+ 6 files changed, 284 insertions(+), 13 deletions(-)
+ create mode 100644 src/app/processo-comercial/rdm/exportPptx.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   d6df197..bc70c83  main -> main
+[29/07/2026 12:45] ✅ Alterações enviadas com sucesso para o GitHub.
