@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2,
-  Save, Loader2, Download
+  Save, Loader2, Download, CheckSquare, Square, X
 } from "lucide-react";
 import { exportRdmToPptx } from "./exportPptx";
 import { formatNumber, formatCurrency } from "@/lib/formatters";
@@ -3443,9 +3444,21 @@ export default function RdmPage() {
   const [savingKey,   setSavingKey]   = useState<string | null>(null);
   const [savedKey,    setSavedKey]    = useState<string | null>(null);
 
-  // Export
-  const [exporting,     setExporting]     = useState(false);
-  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
+  // Export Modal & Config
+  const [showExportModal,     setShowExportModal]     = useState(false);
+  const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
+  const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
+    'capa', 'agenda', 'farol_metas', 'dre', 'fat_mensal', 'vol_mensal',
+    'vol_preco_medio', 'preco_yoy', 'preco_tabela', 'vol_matriz',
+    'preco_familia', 'plano_acao', 'projecao_vendas', 'agenda_rotas', 'obrigado'
+  ]));
+  const [includeComments,    setIncludeComments]    = useState(true);
+  const [includeCapa,        setIncludeCapa]        = useState(true);
+  const [includeObrigado,    setIncludeObrigado]    = useState(true);
+
+  const [exporting,      setExporting]      = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number; percent: number } | null>(null);
+  const exportAbortedRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const slideContainerRef = useRef<HTMLDivElement>(null);
@@ -3584,41 +3597,88 @@ export default function RdmPage() {
   }, []);
 
   // ── Export to PowerPoint ──
-  const handleExportPptx = useCallback(async () => {
+  const handleStartExport = useCallback(async () => {
+    setShowExportModal(false);
+
     const container = slideContainerRef.current;
     if (!container || exporting) return;
 
+    // Filter slides to export based on options
+    const allItems = slides.map((s, idx) => ({ key: s.key, label: s.label, originalIndex: idx }));
+    let targetItems = [...allItems];
+
+    if (exportScope === 'current') {
+      targetItems = [allItems[slideIdx]];
+    } else if (exportScope === 'custom') {
+      targetItems = allItems.filter(s => selectedCustomKeys.has(s.key));
+    }
+
+    if (exportScope !== 'current') {
+      if (!includeCapa) {
+        targetItems = targetItems.filter(s => s.key !== 'capa');
+      }
+      if (!includeObrigado) {
+        targetItems = targetItems.filter(s => s.key !== 'obrigado');
+      }
+    }
+
+    if (targetItems.length === 0) {
+      alert('Nenhum slide selecionado para exportação.');
+      return;
+    }
+
+    exportAbortedRef.current = false;
     setExporting(true);
-    setExportProgress(null);
+    setExportProgress({ current: 1, total: targetItems.length, percent: 0 });
 
     // Save current slide index to restore later
     const originalIdx = slideIdx;
 
     try {
-      await exportRdmToPptx({
+      const completed = await exportRdmToPptx({
         slideContainer: container,
-        slides,
+        slides: targetItems,
         goToSlide: (idx: number) => {
-          // Direct state set — no animation during export
-          setSlideIdx(idx);
+          if (exportAbortedRef.current) return;
+          // Force synchronous React state flush and DOM update
+          flushSync(() => {
+            setSlideIdx(idx);
+          });
         },
         manager,
         monthName,
         year,
-        onProgress: (current, total) => {
-          setExportProgress({ current, total });
+        onProgress: (current, total, percent) => {
+          if (!exportAbortedRef.current) {
+            setExportProgress({ current, total, percent });
+          }
         },
+        isAborted: () => exportAbortedRef.current,
+        includeComments,
       });
+
+      if (!completed && exportAbortedRef.current) {
+        console.log('[RDM-EXPORT] Exportação foi cancelada.');
+      }
     } catch (err) {
       console.error('[RDM-EXPORT]', err);
       alert('Erro ao exportar PowerPoint. Tente novamente.');
     } finally {
-      // Restore original slide
-      setSlideIdx(originalIdx);
+      // Restore original slide synchronously
+      flushSync(() => {
+        setSlideIdx(originalIdx);
+      });
       setExporting(false);
       setExportProgress(null);
+      exportAbortedRef.current = false;
     }
-  }, [exporting, slideIdx, slides, manager, monthName, year]);
+  }, [exporting, slideIdx, slides, exportScope, selectedCustomKeys, includeCapa, includeObrigado, includeComments, manager, monthName, year]);
+
+  const handleCancelExport = useCallback(() => {
+    exportAbortedRef.current = true;
+    setExporting(false);
+    setExportProgress(null);
+  }, []);
 
   // ESC exits presenting
   useEffect(() => {
@@ -3646,7 +3706,7 @@ export default function RdmPage() {
           manager={manager}
           monthName={monthName}
           year={year}
-          onExport={handleExportPptx}
+          onExport={isPresenting ? undefined : () => setShowExportModal(true)}
           exporting={exporting}
           exportProgress={exportProgress}
         />
@@ -3917,6 +3977,26 @@ export default function RdmPage() {
         </div>
 
         <div className="rdm-nav-right">
+          <button
+            onClick={() => setShowExportModal(true)}
+            className="rdm-export-nav-btn"
+            title="Exportar apresentação para PowerPoint (.pptx)"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid rgba(201, 169, 110, 0.4)',
+              background: 'rgba(201, 169, 110, 0.08)',
+              color: '#c9a96e',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>PowerPoint</span>
+          </button>
           <ThemeToggle />
           <button onClick={startPresenting} className="rdm-present-btn" title="Modo Apresentação">
             ▶ Apresentar
@@ -3977,6 +4057,337 @@ export default function RdmPage() {
         </div>
         <span className="rdm-slide-label">{slides[slideIdx].label}</span>
       </div>
+
+      {/* ── Export Options Modal ── */}
+      {showExportModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 20,
+        }}>
+          <div style={{
+            background: 'var(--card-bg, #141414)',
+            border: '1px solid rgba(201, 169, 110, 0.4)',
+            borderRadius: 12,
+            width: '100%',
+            maxWidth: 520,
+            maxHeight: '90vh',
+            overflowY: 'auto',
+            color: '#ffffff',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '20px 24px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Download className="w-5 h-5" style={{ color: '#c9a96e' }} />
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#c9a96e', margin: 0, fontFamily: 'Georgia, serif' }}>
+                  Exportar PowerPoint
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 22 }}>
+              {/* Radio Group: Scope */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                  Escopo da Exportação
+                </label>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      checked={exportScope === 'all'}
+                      onChange={() => setExportScope('all')}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Apresentação Completa ({slides.length} slides)</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      checked={exportScope === 'current'}
+                      onChange={() => setExportScope('current')}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Apenas slide atual (Slide {slideIdx + 1}: {slides[slideIdx]?.label})</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input
+                      type="radio"
+                      name="exportScope"
+                      checked={exportScope === 'custom'}
+                      onChange={() => setExportScope('custom')}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Selecionar slides...</span>
+                  </label>
+                </div>
+
+                {/* Custom Slide Selector Checklist */}
+                {exportScope === 'custom' && (
+                  <div style={{
+                    marginTop: 14,
+                    padding: 14,
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 8,
+                    maxHeight: 200,
+                    overflowY: 'auto',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.75rem' }}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomKeys(new Set(slides.map(s => s.key)))}
+                        style={{ background: 'none', border: 'none', color: '#c9a96e', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Marcar todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCustomKeys(new Set())}
+                        style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', textDecoration: 'underline' }}
+                      >
+                        Desmarcar todos
+                      </button>
+                    </div>
+
+                    {slides.map((s, idx) => {
+                      const checked = selectedCustomKeys.has(s.key);
+                      return (
+                        <label key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: '0.82rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              const next = new Set(selectedCustomKeys);
+                              if (checked) next.delete(s.key);
+                              else next.add(s.key);
+                              setSelectedCustomKeys(next);
+                            }}
+                            style={{ accentColor: '#c9a96e', width: 15, height: 15 }}
+                          />
+                          <span>{idx + 1}. {s.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.08)' }} />
+
+              {/* Checkbox Group: Content Options */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                  Opções de Conteúdo
+                </label>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeComments}
+                      onChange={e => setIncludeComments(e.target.checked)}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Incluir comentários</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeCapa}
+                      onChange={e => setIncludeCapa(e.target.checked)}
+                      disabled={exportScope === 'current' && slides[slideIdx]?.key === 'capa'}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Incluir capa</span>
+                  </label>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={includeObrigado}
+                      onChange={e => setIncludeObrigado(e.target.checked)}
+                      disabled={exportScope === 'current' && slides[slideIdx]?.key === 'obrigado'}
+                      style={{ accentColor: '#c9a96e', width: 16, height: 16 }}
+                    />
+                    <span>Incluir slide de encerramento</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              padding: '16px 24px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 12,
+              background: 'rgba(0,0,0,0.2)',
+            }}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 6,
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  background: 'transparent',
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={handleStartExport}
+                style={{
+                  padding: '8px 22px',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #c9a96e 0%, #a07840 100%)',
+                  color: '#060606',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  letterSpacing: '0.04em',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <Download className="w-4 h-4" />
+                Exportar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Export Progress Overlay ── */}
+      {exporting && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9999,
+          background: 'rgba(6, 6, 6, 0.88)', backdropFilter: 'blur(6px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 20, color: '#ffffff',
+          padding: 24,
+        }}>
+          <div style={{
+            background: 'rgba(20, 20, 20, 0.95)',
+            border: '1px solid rgba(201, 169, 110, 0.3)',
+            borderRadius: 12,
+            padding: '32px 40px',
+            maxWidth: 480,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 18,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.5)',
+          }}>
+            <Loader2 className="w-9 h-9 animate-spin" style={{ color: '#c9a96e' }} />
+
+            <div style={{ textAlign: 'center', width: '100%' }}>
+              <p style={{ fontSize: '1.15rem', fontWeight: 700, color: '#c9a96e', fontFamily: 'Georgia, serif', letterSpacing: '0.02em' }}>
+                Exportando PowerPoint (.pptx)...
+              </p>
+
+              {exportProgress && (
+                <>
+                  {/* Progress Bar */}
+                  <div style={{
+                    width: '100%',
+                    height: 8,
+                    background: 'rgba(255,255,255,0.1)',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    marginTop: 16,
+                    marginBottom: 12,
+                  }}>
+                    <div style={{
+                      width: `${exportProgress.percent}%`,
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #a07840 0%, #c9a96e 100%)',
+                      borderRadius: 4,
+                      transition: 'width 0.3s ease-out',
+                    }} />
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)' }}>
+                    <span>Slide {exportProgress.current} de {exportProgress.total}</span>
+                    <strong style={{ color: '#c9a96e' }}>{exportProgress.percent}%</strong>
+                  </div>
+
+                  <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', marginTop: 8, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    {slides[exportProgress.current - 1]?.label}
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Cancel Button */}
+            <button
+              onClick={handleCancelExport}
+              style={{
+                marginTop: 8,
+                padding: '8px 20px',
+                borderRadius: 6,
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                color: 'rgba(255, 255, 255, 0.8)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = 'rgba(220, 50, 50, 0.2)';
+                e.currentTarget.style.borderColor = 'rgba(220, 50, 50, 0.5)';
+                e.currentTarget.style.color = '#ff6b6b';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)';
+              }}
+            >
+              Cancelar Exportação
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
