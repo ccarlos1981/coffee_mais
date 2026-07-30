@@ -215,7 +215,7 @@ export default function ImportHubPage() {
   };
 
   // Upload and analyze Excel (Preview step)
-  const processUpload = async (allowOverride: boolean = false) => {
+  const processUpload = async () => {
     if (!file) return;
     setStatus("uploading");
     setProgress(10);
@@ -225,9 +225,6 @@ export default function ImportHubPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("userEmail", userEmail);
-      if (allowOverride) {
-        formData.append("allowDuplicateOverride", "true");
-      }
 
       const response = await fetch("/api/import/excel/upload", {
         method: "POST",
@@ -238,6 +235,9 @@ export default function ImportHubPage() {
 
       if (!response.ok || !resultData.success) {
         if (response.status === 409 && resultData.isDuplicate) {
+          if (resultData.preview) {
+            setPreview(resultData.preview);
+          }
           setDuplicateInfo({
             canOverride: resultData.canOverride,
             existingBatch: resultData.existingBatch,
@@ -266,7 +266,7 @@ export default function ImportHubPage() {
       motivo_descricao: overrideMotivoPadrao === "Outro" ? overrideMotivoDescricao.trim() : undefined,
     });
     setShowDuplicateModal(false);
-    processUpload(true);
+    setStatus("preview");
   };
 
   // Confirm Excel staging promotion to production
@@ -499,7 +499,7 @@ export default function ImportHubPage() {
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => processUpload(false)}
+                    onClick={processUpload}
                     className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-gold-light transition-all"
                   >
                     <Upload className="w-4 h-4" />

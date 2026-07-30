@@ -20,7 +20,6 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const userEmail = (formData.get("userEmail") as string) || "system";
-    const allowDuplicateOverride = formData.get("allowDuplicateOverride") === "true";
 
     if (!file) {
       return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
@@ -36,8 +35,7 @@ export async function POST(request: NextRequest) {
       buffer,
       file.name,
       file.size,
-      userEmail,
-      allowDuplicateOverride
+      userEmail
     );
 
     return NextResponse.json({
@@ -57,6 +55,7 @@ export async function POST(request: NextRequest) {
           isDuplicate: true,
           canOverride: isAdmin,
           existingBatch: error.existingBatch,
+          preview: error.preview,
         },
         { status: 409 }
       );

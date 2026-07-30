@@ -107,8 +107,7 @@ export class ImportService {
     fileBuffer: ArrayBuffer,
     fileName: string,
     fileSize: number,
-    triggeredBy: string = "manual",
-    allowDuplicateOverride: boolean = false
+    triggeredBy: string = "manual"
   ): Promise<ImportPreviewResult> {
     const startTime = Date.now();
 
@@ -119,37 +118,32 @@ export class ImportService {
       .digest("hex");
 
     // 2. Check if this exact file hash has already been successfully imported
-    if (!allowDuplicateOverride) {
-      const { data: duplicateCheck, error: dupError } = await supabase
-        .from("cm_sync_logs")
-        .select("id, started_at, finished_at, period_start, period_end, rows_inserted, triggered_by, metadata")
-        .eq("status", "SUCCESS")
-        .eq("source", "excel")
-        .filter("metadata->>file_hash", "eq", fileHash)
-        .order("started_at", { ascending: false })
-        .limit(1);
+    const { data: duplicateCheck, error: dupError } = await supabase
+      .from("cm_sync_logs")
+      .select("id, started_at, finished_at, period_start, period_end, rows_inserted, triggered_by, metadata")
+      .eq("status", "SUCCESS")
+      .eq("source", "excel")
+      .filter("metadata->>file_hash", "eq", fileHash)
+      .order("started_at", { ascending: false })
+      .limit(1);
 
-      if (dupError) {
-        console.error("[analyzeExcel] duplicateCheck query error:", dupError);
-      }
+    if (dupError) {
+      console.error("[analyzeExcel] duplicateCheck query error:", dupError);
+    }
 
-      if (duplicateCheck && duplicateCheck.length > 0) {
-        const existing = duplicateCheck[0];
-        const dupErr: any = new Error(`Este arquivo já foi importado anteriormente (Lote ID: ${existing.id}).`);
-        dupErr.isDuplicate = true;
-        dupErr.existingBatch = {
-          batchId: existing.id,
-          importedAt: existing.finished_at || existing.started_at,
-          importedBy: existing.metadata?.triggered_by_email || existing.triggered_by || "Sistema",
-          period: existing.metadata?.period || `${existing.period_start} a ${existing.period_end}`,
-          periodStart: existing.period_start,
-          periodEnd: existing.period_end,
-          totalRows: existing.metadata?.total_rows || existing.rows_inserted || 0,
-          totalNet: existing.metadata?.total_net || 0,
-        };
-        dupErr.fileHash = fileHash;
-        throw dupErr;
-      }
+    let existingDuplicateBatchInfo: any = null;
+    if (duplicateCheck && duplicateCheck.length > 0) {
+      const existing = duplicateCheck[0];
+      existingDuplicateBatchInfo = {
+        batchId: existing.id,
+        importedAt: existing.finished_at || existing.started_at,
+        importedBy: existing.metadata?.triggered_by_email || existing.triggered_by || "Sistema",
+        period: existing.metadata?.period || `${existing.period_start} a ${existing.period_end}`,
+        periodStart: existing.period_start,
+        periodEnd: existing.period_end,
+        totalRows: existing.metadata?.total_rows || existing.rows_inserted || 0,
+        totalNet: existing.metadata?.total_net || 0,
+      };
     }
 
     const allowedTriggers = ["manual", "cron_06", "cron_12", "cron_18", "reconciliation"];
@@ -628,6 +622,15 @@ export class ImportService {
             error_message: `O arquivo contém ${errorsCount} erros críticos que impedem a importação.`,
           })
           .eq("id", batchId);
+      }
+
+      if (existingDuplicateBatchInfo) {
+        const dupErr: any = new Error(`Este arquivo já foi importado anteriormente (Lote ID: ${existingDuplicateBatchInfo.batchId}).`);
+        dupErr.isDuplicate = true;
+        dupErr.existingBatch = existingDuplicateBatchInfo;
+        dupErr.preview = previewData;
+        dupErr.fileHash = fileHash;
+        throw dupErr;
       }
 
       return previewData;
