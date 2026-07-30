@@ -15,16 +15,23 @@ export async function POST(request: NextRequest) {
     const profile = await requireApprovedProfile(user.id);
     await requirePermission(profile.role, "Upload");
 
-    const { batchId, mode } = await request.json();
+    const { batchId, mode, overrideReason } = await request.json();
 
     if (!batchId || !mode) {
       return NextResponse.json({ error: "batchId e mode ('replace' | 'append') são obrigatórios" }, { status: 400 });
     }
 
     // Registrar log de auditoria
-    await logAuditAction(user.id, "CONFIRM_IMPORT", "cm_sync_logs", { batchId, mode });
+    await logAuditAction(user.id, "CONFIRM_IMPORT", "cm_sync_logs", { batchId, mode, overrideReason });
 
-    const result = await ImportService.confirmImport(batchId, mode);
+    const fullOverrideDetails = overrideReason ? {
+      ...overrideReason,
+      user_id: user.id,
+      role: profile.role,
+      email: user.email,
+    } : undefined;
+
+    const result = await ImportService.confirmImport(batchId, mode, fullOverrideDetails);
 
     return NextResponse.json(result);
   } catch (error: any) {

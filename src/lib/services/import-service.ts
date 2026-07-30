@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
 import { CacheInvalidationService } from "@/lib/services/cache-invalidation-service";
+import { logAuditAction } from "@/lib/supabase/auth-helpers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -106,31 +107,49 @@ export class ImportService {
     fileBuffer: ArrayBuffer,
     fileName: string,
     fileSize: number,
-    triggeredBy: string
+    triggeredBy: string = "manual",
+    allowDuplicateOverride: boolean = false
   ): Promise<ImportPreviewResult> {
     const startTime = Date.now();
 
-    // 1. Calculate SHA-256 hash of the file
+    // 1. Compute SHA-256 hash of file content to detect duplicates
     const fileHash = crypto
       .createHash("sha256")
       .update(Buffer.from(fileBuffer))
       .digest("hex");
 
     // 2. Check if this exact file hash has already been successfully imported
-    const { data: duplicateCheck, error: dupError } = await supabase
-      .from("cm_sync_logs")
-      .select("id")
-      .eq("status", "SUCCESS")
-      .eq("source", "excel")
-      .filter("metadata->>file_hash", "eq", fileHash)
-      .limit(1);
+    if (!allowDuplicateOverride) {
+      const { data: duplicateCheck, error: dupError } = await supabase
+        .from("cm_sync_logs")
+        .select("id, started_at, finished_at, period_start, period_end, rows_inserted, triggered_by, metadata")
+        .eq("status", "SUCCESS")
+        .eq("source", "excel")
+        .filter("metadata->>file_hash", "eq", fileHash)
+        .order("started_at", { ascending: false })
+        .limit(1);
 
-    if (dupError) {
-      console.error("[analyzeExcel] duplicateCheck query error:", dupError);
-    }
+      if (dupError) {
+        console.error("[analyzeExcel] duplicateCheck query error:", dupError);
+      }
 
-    if (duplicateCheck && duplicateCheck.length > 0) {
-      throw new Error(`Este arquivo já foi importado anteriormente (Lote ID: ${duplicateCheck[0].id}).`);
+      if (duplicateCheck && duplicateCheck.length > 0) {
+        const existing = duplicateCheck[0];
+        const dupErr: any = new Error(`Este arquivo já foi importado anteriormente (Lote ID: ${existing.id}).`);
+        dupErr.isDuplicate = true;
+        dupErr.existingBatch = {
+          batchId: existing.id,
+          importedAt: existing.finished_at || existing.started_at,
+          importedBy: existing.metadata?.triggered_by_email || existing.triggered_by || "Sistema",
+          period: existing.metadata?.period || `${existing.period_start} a ${existing.period_end}`,
+          periodStart: existing.period_start,
+          periodEnd: existing.period_end,
+          totalRows: existing.metadata?.total_rows || existing.rows_inserted || 0,
+          totalNet: existing.metadata?.total_net || 0,
+        };
+        dupErr.fileHash = fileHash;
+        throw dupErr;
+      }
     }
 
     const allowedTriggers = ["manual", "cron_06", "cron_12", "cron_18", "reconciliation"];
@@ -635,8 +654,71 @@ export class ImportService {
   /**
    * Promotes the staged rows of a batch into production using a transaction-safe Postgres function
    */
-  static async confirmImport(batchId: string, mode: "replace" | "append"): Promise<{ success: boolean; rowsPromoted: number }> {
+  static async confirmImport(
+    batchId: string,
+    mode: "replace" | "append",
+    overrideReason?: {
+      motivo_padrao: string;
+      motivo_descricao?: string;
+      user_id?: string;
+      role?: string;
+      email?: string;
+    }
+  ): Promise<{ success: boolean; rowsPromoted: number }> {
     const startTime = Date.now();
+
+    // Recálculo 100% Server-Side do período a partir dos dados em cm_faturamento_staging
+    const { data: minDateData } = await supabase
+      .from("cm_faturamento_staging")
+      .select("dt_emissao")
+      .eq("batch_id", batchId)
+      .not("dt_emissao", "is", null)
+      .order("dt_emissao", { ascending: true })
+      .limit(1);
+
+    const { data: maxDateData } = await supabase
+      .from("cm_faturamento_staging")
+      .select("dt_emissao")
+      .eq("batch_id", batchId)
+      .not("dt_emissao", "is", null)
+      .order("dt_emissao", { ascending: false })
+      .limit(1);
+
+    const serverPeriodStart = minDateData?.[0]?.dt_emissao || null;
+    const serverPeriodEnd = maxDateData?.[0]?.dt_emissao || null;
+
+    const { data: currentLog } = await supabase
+      .from("cm_sync_logs")
+      .select("metadata")
+      .eq("id", batchId)
+      .single();
+
+    const currentFileHash = currentLog?.metadata?.file_hash;
+    let oldBatchIdToSupersede: string | null = null;
+
+    if (currentFileHash && serverPeriodStart && serverPeriodEnd) {
+      const { data: existingSuccessLog } = await supabase
+        .from("cm_sync_logs")
+        .select("id, period_start, period_end")
+        .eq("status", "SUCCESS")
+        .eq("source", "excel")
+        .eq("period_start", serverPeriodStart)
+        .eq("period_end", serverPeriodEnd)
+        .filter("metadata->>file_hash", "eq", currentFileHash)
+        .neq("id", batchId)
+        .order("started_at", { ascending: false })
+        .limit(1);
+
+      if (existingSuccessLog && existingSuccessLog.length > 0) {
+        if (!overrideReason || !overrideReason.motivo_padrao) {
+          throw new Error("A reimportação deste lote exige autorização de Administrador e motivo justificado.");
+        }
+        if (overrideReason.motivo_padrao === "Outro" && !overrideReason.motivo_descricao?.trim()) {
+          throw new Error("Para o motivo 'Outro', a descrição textual é obrigatória.");
+        }
+        oldBatchIdToSupersede = existingSuccessLog[0].id;
+      }
+    }
     const telemetry: {
       batch_id: string;
       mode: string;
@@ -814,6 +896,38 @@ export class ImportService {
         },
         "SUCCESS"
       );
+
+      // Se foi um override homologado, atualizar relacionamentos de lote e registrar auditoria
+      if (oldBatchIdToSupersede) {
+        const { data: newLog } = await supabase.from("cm_sync_logs").select("metadata").eq("id", batchId).single();
+        const newMeta = {
+          ...(newLog?.metadata || {}),
+          is_override: true,
+          replacement_of_batch_id: oldBatchIdToSupersede,
+          motivo_padrao: overrideReason?.motivo_padrao,
+          motivo_descricao: overrideReason?.motivo_descricao || null,
+          override_authorized_by: overrideReason?.user_id || overrideReason?.email,
+        };
+        await supabase.from("cm_sync_logs").update({ metadata: newMeta }).eq("id", batchId);
+
+        const { data: oldLog } = await supabase.from("cm_sync_logs").select("metadata").eq("id", oldBatchIdToSupersede).single();
+        const oldMeta = {
+          ...(oldLog?.metadata || {}),
+          superseded_by_batch_id: batchId,
+        };
+        await supabase.from("cm_sync_logs").update({ metadata: oldMeta }).eq("id", oldBatchIdToSupersede);
+
+        if (overrideReason?.user_id) {
+          await logAuditAction(overrideReason.user_id, "IMPORT_EXCEL_OVERRIDE_EXECUTED", "cm_sync_logs", {
+            old_batch_id: oldBatchIdToSupersede,
+            new_batch_id: batchId,
+            motivo_padrao: overrideReason.motivo_padrao,
+            motivo_descricao: overrideReason.motivo_descricao || null,
+            role: overrideReason.role,
+            email: overrideReason.email,
+          });
+        }
+      }
 
       // Disparar evento de invalidação de cache desacoplado
       await CacheInvalidationService.onImportSuccess(batchId);

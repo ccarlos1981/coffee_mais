@@ -104,6 +104,13 @@ export default function ImportHubPage() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Duplicate modal & Override state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<{ canOverride: boolean; existingBatch: any } | null>(null);
+  const [overrideMotivoPadrao, setOverrideMotivoPadrao] = useState("");
+  const [overrideMotivoDescricao, setOverrideMotivoDescricao] = useState("");
+  const [pendingOverrideReason, setPendingOverrideReason] = useState<{ motivo_padrao: string; motivo_descricao?: string } | null>(null);
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -208,7 +215,7 @@ export default function ImportHubPage() {
   };
 
   // Upload and analyze Excel (Preview step)
-  const processUpload = async () => {
+  const processUpload = async (allowOverride: boolean = false) => {
     if (!file) return;
     setStatus("uploading");
     setProgress(10);
@@ -218,6 +225,9 @@ export default function ImportHubPage() {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("userEmail", userEmail);
+      if (allowOverride) {
+        formData.append("allowDuplicateOverride", "true");
+      }
 
       const response = await fetch("/api/import/excel/upload", {
         method: "POST",
@@ -227,6 +237,15 @@ export default function ImportHubPage() {
       const resultData = await response.json();
 
       if (!response.ok || !resultData.success) {
+        if (response.status === 409 && resultData.isDuplicate) {
+          setDuplicateInfo({
+            canOverride: resultData.canOverride,
+            existingBatch: resultData.existingBatch,
+          });
+          setShowDuplicateModal(true);
+          setStatus("idle");
+          return;
+        }
         throw new Error(resultData.error || "Falha na análise do arquivo");
       }
 
@@ -236,6 +255,18 @@ export default function ImportHubPage() {
       setError(err.message || "Erro desconhecido durante o upload");
       setStatus("error");
     }
+  };
+
+  const handleConfirmDuplicateOverride = () => {
+    if (!overrideMotivoPadrao) return;
+    if (overrideMotivoPadrao === "Outro" && !overrideMotivoDescricao.trim()) return;
+
+    setPendingOverrideReason({
+      motivo_padrao: overrideMotivoPadrao,
+      motivo_descricao: overrideMotivoPadrao === "Outro" ? overrideMotivoDescricao.trim() : undefined,
+    });
+    setShowDuplicateModal(false);
+    processUpload(true);
   };
 
   // Confirm Excel staging promotion to production
@@ -255,6 +286,7 @@ export default function ImportHubPage() {
         body: JSON.stringify({
           batchId: preview.batchId,
           mode: reimportMode,
+          overrideReason: pendingOverrideReason || undefined,
         }),
       });
 
@@ -322,6 +354,11 @@ export default function ImportHubPage() {
     setPreview(null);
     setLogs([]);
     setShowInconsistencies(false);
+    setShowDuplicateModal(false);
+    setDuplicateInfo(null);
+    setOverrideMotivoPadrao("");
+    setOverrideMotivoDescricao("");
+    setPendingOverrideReason(null);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -462,7 +499,7 @@ export default function ImportHubPage() {
                 </div>
                 <div className="flex gap-3">
                   <button
-                    onClick={processUpload}
+                    onClick={() => processUpload(false)}
                     className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-gold-light transition-all"
                   >
                     <Upload className="w-4 h-4" />
@@ -1374,6 +1411,127 @@ export default function ImportHubPage() {
               </table>
             </div>
           )}
+
+      {/* Duplicate SHA-256 Modal */}
+      {showDuplicateModal && duplicateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-5">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-foreground">Planilha Já Importada Anteriormente</h3>
+                <p className="text-xs text-muted mt-1">
+                  Esta planilha exata (hash SHA-256 idêntico) já foi promovida com sucesso no sistema.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-elevated rounded-xl p-4 border border-border text-xs space-y-2">
+              <div className="font-semibold text-gold mb-2 flex items-center justify-between">
+                <span>Detalhes da Carga Vigente</span>
+                <span className="font-mono text-[10px] bg-background/50 px-2 py-0.5 rounded border border-border">
+                  {duplicateInfo.existingBatch.batchId?.slice(0, 8)}...
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-muted">
+                <div><span className="text-foreground font-medium">Data da Carga:</span> {duplicateInfo.existingBatch.importedAt ? new Date(duplicateInfo.existingBatch.importedAt).toLocaleString("pt-BR") : "-"}</div>
+                <div><span className="text-foreground font-medium">Usuário:</span> {duplicateInfo.existingBatch.importedBy}</div>
+                <div><span className="text-foreground font-medium">Período:</span> {duplicateInfo.existingBatch.period}</div>
+                <div><span className="text-foreground font-medium">Volume:</span> {(duplicateInfo.existingBatch.totalRows || 0).toLocaleString("pt-BR")} reg.</div>
+              </div>
+              {duplicateInfo.existingBatch.totalNet > 0 && (
+                <div className="pt-2 border-t border-border/50 text-foreground font-bold flex justify-between">
+                  <span>Faturamento Líquido:</span>
+                  <span className="text-emerald-400 font-mono">
+                    {Number(duplicateInfo.existingBatch.totalNet).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {!duplicateInfo.canOverride ? (
+              <div className="space-y-4">
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs leading-relaxed">
+                  Esta planilha já está ativa no sistema. Apenas usuários com perfil <strong>Administrador</strong> possuem permissão para autorizar a reimportação e substituição deste lote.
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => {
+                      setShowDuplicateModal(false);
+                      resetUpload();
+                    }}
+                    className="px-4 py-2 text-xs font-bold rounded-lg bg-zinc-800 hover:bg-zinc-700 text-foreground border border-border transition-all"
+                  >
+                    Entendi
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 pt-2 border-t border-border/50">
+                <p className="text-xs font-bold text-amber-400">
+                  Deseja autorizar a reimportação e substituir o lote vigente?
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-semibold text-muted block">
+                    Motivo da Reimportação (Obrigatório) <span className="text-red-400">*</span>
+                  </label>
+                  <select
+                    value={overrideMotivoPadrao}
+                    onChange={(e) => setOverrideMotivoPadrao(e.target.value)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:border-amber-500/50"
+                  >
+                    <option value="">Selecione o motivo...</option>
+                    <option value="Correção Fiscal">Correção Fiscal</option>
+                    <option value="Correção de Faturamento">Correção de Faturamento</option>
+                    <option value="Reprocessamento Operacional">Reprocessamento Operacional</option>
+                    <option value="Homologação / Testes">Homologação / Testes</option>
+                    <option value="Outro">Outro</option>
+                  </select>
+                </div>
+
+                {overrideMotivoPadrao === "Outro" && (
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-semibold text-muted block">
+                      Descrição Detalhada do Motivo <span className="text-red-400">*</span>
+                    </label>
+                    <textarea
+                      value={overrideMotivoDescricao}
+                      onChange={(e) => setOverrideMotivoDescricao(e.target.value)}
+                      placeholder="Descreva detalhadamente a justificativa para a reimportação..."
+                      className="w-full bg-background border border-border rounded-lg p-3 text-xs text-foreground focus:outline-none focus:border-amber-500/50 min-h-[70px] resize-none"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      setShowDuplicateModal(false);
+                      resetUpload();
+                    }}
+                    className="px-4 py-2 text-xs font-bold rounded-lg bg-zinc-800 hover:bg-zinc-700 text-foreground border border-border transition-all"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleConfirmDuplicateOverride}
+                    disabled={
+                      !overrideMotivoPadrao ||
+                      (overrideMotivoPadrao === "Outro" && !overrideMotivoDescricao.trim())
+                    }
+                    className="px-4 py-2 text-xs font-bold rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black border border-amber-400/40 shadow-lg shadow-amber-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ⚠️ Reimportar e Substituir Lote
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
         </div>
       </main>
     </div>

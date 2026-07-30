@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
-    const userEmail = formData.get("userEmail") as string || "system";
+    const userEmail = (formData.get("userEmail") as string) || "system";
+    const allowDuplicateOverride = formData.get("allowDuplicateOverride") === "true";
 
     if (!file) {
       return NextResponse.json({ error: "Nenhum arquivo enviado" }, { status: 400 });
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest) {
       buffer,
       file.name,
       file.size,
-      userEmail
+      userEmail,
+      allowDuplicateOverride
     );
 
     return NextResponse.json({
@@ -43,6 +45,22 @@ export async function POST(request: NextRequest) {
       preview,
     });
   } catch (error: any) {
+    if (error?.isDuplicate) {
+      const user = await requireAuth().catch(() => null);
+      const profile = user ? await requireApprovedProfile(user.id).catch(() => null) : null;
+      const isAdmin = profile?.role === "Admin" || profile?.role === "Admin Master";
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          isDuplicate: true,
+          canOverride: isAdmin,
+          existingBatch: error.existingBatch,
+        },
+        { status: 409 }
+      );
+    }
     return handleAuthError(error);
   }
 }
