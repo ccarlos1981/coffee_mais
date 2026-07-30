@@ -2,6 +2,7 @@
 
 import PptxGenJS from 'pptxgenjs';
 import { toPng } from 'html-to-image';
+import { PresentationTelemetry } from '@/lib/presentation-framework/core';
 
 /**
  * Remove acentos e caracteres especiais de uma string para nome de arquivo seguro.
@@ -46,6 +47,10 @@ export async function exportRdmToPptx({
   isAborted?: () => boolean;
   includeComments?: boolean;
 }): Promise<boolean> {
+  const startTime = Date.now();
+  PresentationTelemetry.track('export_started', {
+    metadata: { totalSlides: slides.length, manager, monthName, year },
+  });
   const pptx = new PptxGenJS();
 
   // Configuração widescreen 16:9
@@ -185,5 +190,9 @@ export async function exportRdmToPptx({
   const fileName     = `RDM_${cleanManager}_${cleanMonth}_${year}.pptx`;
 
   await pptx.writeFile({ fileName });
+  PresentationTelemetry.track('export_completed', {
+    durationMs: Date.now() - startTime,
+    metadata: { fileName, slideCount: total },
+  });
   return true;
 }
