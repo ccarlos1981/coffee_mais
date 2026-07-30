@@ -124,9 +124,21 @@ export interface CommentItem {
   isResolved?: boolean;
 }
 
+export interface AnalyticsWidgetSpec {
+  metric?: string;
+  dimensions?: string[];
+  filters?: Record<string, unknown>;
+  aggregation?: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  formatting?: 'currency' | 'number' | 'percentage';
+  drillDownSupport?: boolean;
+  legend?: boolean;
+  colorScheme?: string[];
+}
+
 export interface NormalizedWidgetData {
   title?: string;
   subtitle?: string;
+  analyticsSpec?: AnalyticsWidgetSpec;
   metrics?: Array<{
     label: string;
     value: string | number;
@@ -142,6 +154,10 @@ export interface NormalizedWidgetData {
   };
   chartData?: Array<{
     name: string;
+    [key: string]: string | number;
+  }>;
+  radarData?: Array<{
+    subject: string;
     [key: string]: string | number;
   }>;
   rankingData?: Array<{

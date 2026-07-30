@@ -111,7 +111,7 @@ import { CustomSlideRenderer } from '@/lib/presentation-framework/react';
 
 ---
 
-## 4. Widgets Oficiais Disponíveis (Fase 1 + Sprints 3.1 & 3.2):
+## 4. Widgets Oficiais Disponíveis (Fase 1 + Sprints 3.1, 3.2 & 3.3):
   1. `kpi_card`: Cartões de Indicadores Chave
   2. `table`: Tabela de Dados Formatados
   3. `bar_chart`: Gráficos de Barras
@@ -123,6 +123,7 @@ import { CustomSlideRenderer } from '@/lib/presentation-framework/react';
   9. `gauge`: Velocímetro de Atingimento de Meta (Sprint 3.1)
   10. `comments`: Caixa de Comentários / Contexto (Sprint 3.2)
   11. `action_plan`: Plano de Ação Executivo (Sprint 3.2)
+  12. `radar`: Gráfico Radar Teia Analítica (Sprint 3.3)
 
 ## 4. Métricas Oficiais de Baseline de Performance (v1.0 Baseline)
 

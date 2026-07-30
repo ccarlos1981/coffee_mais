@@ -1420,6 +1420,28 @@ A partir de 29/07/2026, o módulo **RDM (Reunião de Desempenho Mensal)** passa 
 
 Status Arquitetural: `RDM_RESILIENCE_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## Baseline Oficial — Validação em Duas Camadas / Defense in Depth (Baseline Permanente)
+
+A partir de 29/07/2026, toda regra crítica de negócio da Plataforma Coffee++ deverá ser obrigatoriamente validada em duas camadas independentes.
+
+### Diretrizes Mandatórias:
+1. **Frontend (UX)**: Realizar validações preventivas, impedindo que o usuário conclua operações inválidas e apresentando mensagens claras de orientação.
+2. **Backend**: Revalidar integralmente todas as regras críticas antes da persistência, independentemente da origem da requisição (Frontend, API, RPC, integrações, automações ou processos internos).
+3. **Proibição de Validação Única**: Nenhuma regra crítica de negócio poderá depender exclusivamente da validação realizada no Frontend.
+4. **Escopo de Aplicação**: Aplicável a toda a plataforma, cobrindo invariantes de negócio como:
+   - Intervalos de datas (Data Final ≥ Data Inicial);
+   - Obrigatoriedade de campos;
+   - Transições de workflow;
+   - Regras de aprovação;
+   - Consistência entre entidades relacionadas;
+   - Limites de valores;
+   - Demais invariantes de negócio.
+
+Status Arquitetural: `DEFENSE_IN_DEPTH_VALIDATION = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 

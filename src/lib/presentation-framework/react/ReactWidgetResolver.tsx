@@ -13,6 +13,7 @@ import { WaterfallWidget } from './widgets/WaterfallWidget';
 import { GaugeWidget } from './widgets/GaugeWidget';
 import { CommentsWidget } from './widgets/CommentsWidget';
 import { ActionPlanWidget } from './widgets/ActionPlanWidget';
+import { RadarWidget } from './widgets/RadarWidget';
 
 export function renderWidgetUI(type: WidgetType, data: NormalizedWidgetData): React.ReactNode {
   switch (type) {
@@ -38,6 +39,8 @@ export function renderWidgetUI(type: WidgetType, data: NormalizedWidgetData): Re
       return <CommentsWidget data={data} />;
     case 'action_plan':
       return <ActionPlanWidget data={data} />;
+    case 'radar':
+      return <RadarWidget data={data} />;
     default:
       return (
         <div style={{ padding: '16px', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', border: '1px border-white/10' }}>

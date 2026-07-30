@@ -11,7 +11,9 @@ export * from './widgets/WaterfallWidget';
 export * from './widgets/GaugeWidget';
 export * from './widgets/CommentsWidget';
 export * from './widgets/ActionPlanWidget';
+export * from './widgets/RadarWidget';
 export * from './components/SlideBuilderWizard';
+
 
 
 export * from './components/PresentationFrameworkDashboard';
