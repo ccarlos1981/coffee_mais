@@ -1470,6 +1470,26 @@ A partir de 30/07/2026, a arquitetura de invalidação coordenada de cache de ap
 
 Status Arquitetural: `DASHBOARD_CACHE_STATUS = STABLE` & `CACHE_INVALIDATION_STATUS = HOMOLOGATED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 68. Baseline Oficial — Padrão Corporativo de Orquestração Orientada a Eventos de Domínio (Baseline Permanente)
+
+A partir de 30/07/2026, o padrão **Event-Driven Infrastructure Orchestration** passa a ser o diretriz corporativa obrigatória para todos os novos módulos e serviços da plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Separation of Concerns Rígida**: `DomainService` → `DomainEvent` → `EventCoordinator` → `InfrastructureServices`.
+2. **Proibição Absoluta de Contaminação**: Nenhum serviço de domínio poderá instanciar, importar ou manipular diretamente caches, websockets, mecanismos de notificação (push/email/whatsapp), telemetria visual ou SDKs de integrações externas.
+3. **Orquestração via Coordenadores**: Todos os efeitos colaterais de infraestrutura decorrentes de uma alteração de negócio deverão ser orquestrados exclusivamente por um `Coordinator` (ex: `CacheInvalidationService`, `NotificationCoordinator`).
+4. **Padrão de Nomenclatura Oficial**:
+   - Domínio: `*Service` (ex: `ImportService`, `CrmService`)
+   - Orquestrador: `*Coordinator` / `*InvalidationService` (ex: `CacheInvalidationService`)
+   - Armazenamento de Cache: `*Cache` (ex: `DashboardCache`)
+   - Eventos: `*Event` (ex: `ImportSuccessEvent`)
+5. **Garantia de Evolução sem Quebras**: Alterações nas tecnologias de infraestrutura (ex: substituição de cache em memória por Redis ou troca de gateway de e-mail) devem ser realizadas estritamente no `Coordinator` ou `InfrastructureService`, sem modificar nenhuma linha dos serviços de domínio.
+
+Status Arquitetural: `EVENT_DRIVEN_ORCHESTRATION_PATTERN = MANDATORY` & `BASELINE = CONFIRMED`.
+
+
 
 
 
