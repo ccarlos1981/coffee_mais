@@ -1441,6 +1441,21 @@ A partir de 29/07/2026, toda regra crítica de negócio da Plataforma Coffee++ d
 
 Status Arquitetural: `DEFENSE_IN_DEPTH_VALIDATION = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 66. Baseline Oficial — Estabilização do Hub de Importação e Desacoplamento de Jobs Analíticos (Baseline Permanente)
+
+A partir de 30/07/2026, o Hub de Importação de Dados e o mecanismo de recálculo assíncrono passam a operar sob baseline definitivo e congelado.
+
+### Diretrizes Mandatórias:
+1. **Desacoplamento Obrigatório de Jobs Analíticos**: A requisição síncrona do Hub de Importação encerra-se estritamente após a promoção de faturamento, atualização da `base_atendimento`, validação da auditoria de 5 camadas e refresh das views de vendas. Nenhuma rotina analítica secundária (como `refresh_clientes_atividade()`) poderá ser executada de forma síncrona dentro da requisição do Hub.
+2. **Execução Assíncrona e Isolamento de Erros**: O recálculo de atividade de clientes deve ser enfileirado e processado em segundo plano (`cm_clientes_atividade_jobs`). Nenhuma exceção nessa etapa poderá provocar rollback ou invalidar o status da importação.
+3. **Controle de Concorrência via Mutex**: O processamento em background deve obrigatoriamente utilizar Advisory Lock no PostgreSQL (`pg_try_advisory_lock`) para evitar execuções simultâneas ou colisões de estado.
+4. **Governança de Alterações**: Novas alterações na arquitetura do Hub de Importação somente poderão ocorrer mediante abertura formal de novo incidente ou evolução funcional aprovada pela governança da plataforma.
+
+Status Arquitetural: `IMPORT_HUB_STATUS = STABLE` & `INCIDENT_STATUS = CLOSED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
