@@ -196,6 +196,21 @@ class WidgetRegistryImpl {
         valid: !!config.title,
       }),
     });
+
+    // ── Sprint 3.3 Analytics Widgets ──
+    // 12. Radar Chart
+    this.register({
+      id: 'radar',
+      name: 'Gráfico Radar (Teia Analítica)',
+      version: '1.0.0',
+      iconName: 'PieChart',
+      category: 'charts',
+      supportsPreview: true,
+      supportsExport: true,
+      validate: (config) => ({
+        valid: !!config.title,
+      }),
+    });
   }
 }
 

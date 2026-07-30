@@ -1054,3 +1054,42 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    bc70c83..3758590  main -> main
 [29/07/2026 15:45] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 2f6368c] auto-save: 29/07/2026 22:06
+ 37 files changed, 3717 insertions(+), 17 deletions(-)
+ create mode 100644 docs/BETA_PROGRAM_REPORT.md
+ create mode 100644 docs/PRESENTATION_FRAMEWORK_GUIDE.md
+ create mode 100644 docs/adr/ADR-001-PRESENTATION-FRAMEWORK.md
+ create mode 100644 src/app/processo-comercial/rdm/providers/RdmDataAdapter.ts
+ create mode 100644 src/app/processo-comercial/rdm/providers/RdmStorageAdapter.ts
+ create mode 100644 src/lib/presentation-framework/core/BetaTelemetryStore.ts
+ create mode 100644 src/lib/presentation-framework/core/DataProvider.ts
+ create mode 100644 src/lib/presentation-framework/core/LayoutEngine.ts
+ create mode 100644 src/lib/presentation-framework/core/Sanitizer.ts
+ create mode 100644 src/lib/presentation-framework/core/StorageProvider.ts
+ create mode 100644 src/lib/presentation-framework/core/Telemetry.ts
+ create mode 100644 src/lib/presentation-framework/core/TemplateEngine.ts
+ create mode 100644 src/lib/presentation-framework/core/VersionMigrator.ts
+ create mode 100644 src/lib/presentation-framework/core/WidgetRegistry.ts
+ create mode 100644 src/lib/presentation-framework/core/WidgetSDK.ts
+ create mode 100644 src/lib/presentation-framework/core/index.ts
+ create mode 100644 src/lib/presentation-framework/core/templates.ts
+ create mode 100644 src/lib/presentation-framework/core/types.ts
+ create mode 100644 src/lib/presentation-framework/react/CustomSlideRenderer.tsx
+ create mode 100644 src/lib/presentation-framework/react/ReactWidgetResolver.tsx
+ create mode 100644 src/lib/presentation-framework/react/components/PresentationFrameworkDashboard.tsx
+ create mode 100644 src/lib/presentation-framework/react/components/SlideBuilderWizard.tsx
+ create mode 100644 src/lib/presentation-framework/react/index.ts
+ create mode 100644 src/lib/presentation-framework/react/widgets/ActionPlanWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/BarChartWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/CommentsWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/GaugeWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/HeatmapWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/KpiCardWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/LineChartWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/RankingWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/TableWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/TextBlockWidget.tsx
+ create mode 100644 src/lib/presentation-framework/react/widgets/WaterfallWidget.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   3758590..2f6368c  main -> main
+[29/07/2026 22:06] ✅ Alterações enviadas com sucesso para o GitHub.

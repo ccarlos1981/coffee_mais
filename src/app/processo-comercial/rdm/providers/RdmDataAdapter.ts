@@ -224,6 +224,27 @@ export class RdmDataAdapter implements IDataProvider {
         };
       }
 
+      case 'radar': {
+        return {
+          title: widget.title,
+          subtitle: widget.subtitle,
+          analyticsSpec: {
+            metric: 'Atingimento de Indicadores',
+            dimensions: ['Volume', 'Faturamento', 'Investimento', 'Positivação', 'Ticket Médio', 'Preço Médio'],
+            formatting: 'percentage',
+            legend: true,
+          },
+          radarData: [
+            { subject: 'Volume', Meta: 100, Real: Math.round(farol.volume?.pctMonth ?? 92) },
+            { subject: 'Faturamento', Meta: 100, Real: Math.round(farol.faturamento?.pctMonth ?? 96) },
+            { subject: 'Investimento', Meta: 100, Real: Math.round(farol.investimento?.pctMonth ?? 88) },
+            { subject: 'Positivação', Meta: 100, Real: Math.round(farol.positivacao?.pctMonth ?? 104) },
+            { subject: 'Ticket Médio', Meta: 100, Real: 95 },
+            { subject: 'Preço Médio', Meta: 100, Real: 98 },
+          ],
+        };
+      }
+
       case 'text_block':
       default: {
         return {
