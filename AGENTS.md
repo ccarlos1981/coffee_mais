@@ -1489,6 +1489,32 @@ A partir de 30/07/2026, o padrão **Event-Driven Infrastructure Orchestration** 
 
 Status Arquitetural: `EVENT_DRIVEN_ORCHESTRATION_PATTERN = MANDATORY` & `BASELINE = CONFIRMED`.
 
+---
+
+## 69. Baseline Oficial — Reimportação Controlada de Faturamento (Baseline Permanente)
+
+A partir de 30/07/2026, a arquitetura e diretrizes operacionais de **Reimportação Controlada de Faturamento** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Separação Rígida de Responsabilidades (Upload vs Confirm)**:
+   - O endpoint de `Upload` (`/api/import/excel/upload`) realiza exclusivamente leitura, validação de formato, staging e análise preventiva de duplicidades.
+   - O endpoint de `Confirm` (`/api/import/excel/confirm`) realiza exclusivamente alteração de estado, promoção de faturamento, validação de override, auditoria e invalidação de cache.
+2. **Decisão de Override 100% Server-Side**:
+   - O override de importação jamais poderá ser autorizado ou forçado por parâmetros, flags ou booleanos enviados pela aplicação cliente (frontend).
+   - A decisão deve ser avaliada exclusivamente no backend, exigindo autenticação ativa via token JWT, autorização por perfil (`Admin` ou `Admin Master`), recálculo server-side do período via staging e justificativa padronizada obrigatória.
+3. **Imutabilidade Histórica de Lotes**:
+   - O histórico de sincronização é imutável. O `status = 'SUCCESS'` do lote original em `cm_sync_logs` jamais deve ser alterado ou sobrescrito.
+   - O relacionamento entre lotes é registrado via ponteiros de substituição em metadados (`superseded_by_batch_id` no lote antigo e `replacement_of_batch_id` no lote novo).
+4. **Auditoria Corporativa Mandatória**:
+   - Toda reimportação com substituição de lote deve obrigatoriamente registrar um evento de auditoria corporativa via `logAuditAction` contendo: `user_id`, `role`, `timestamp`, `motivo_padrao`, `motivo_descricao` (quando aplicável), `old_batch_id` e `new_batch_id`.
+5. **Invalidação Obrigatória de Cache**:
+   - Toda promoção concluída com êxito deve obrigatoriamente acionar o `CacheInvalidationService.onImportSuccess(newBatchId)` para zerar os caches visuais afetados e forçar a reconstrução imediata com dados atualizados do PostgreSQL.
+6. **Segurança por Design (Zero Trust Client Flags)**:
+   - Nenhuma decisão transacional crítica da plataforma pode depender de flags enviadas pelo cliente. Toda permissão e alinhamento de dados (como `period_start` e `period_end`) deve ser recalculada integralmente no servidor antes da gravação final.
+
+Status Arquitetural: `CONTROLLED_REIMPORT_STATUS = STABLE` & `GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
