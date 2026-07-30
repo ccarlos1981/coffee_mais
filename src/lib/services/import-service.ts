@@ -785,6 +785,17 @@ export class ImportService {
           console.warn("MV refresh enqueue failed (non-fatal):", mvErr);
           telemetry.mv_refresh_enqueued = false;
         }
+
+        // 5b. Enfileirar recálculo de atividade comercial em background (não-bloqueante / desacoplado)
+        try {
+          telemetry.rpcs_executed.push("fn_enqueue_clientes_atividade_refresh");
+          await supabase.rpc("fn_enqueue_clientes_atividade_refresh", {
+            p_batch_id: batchId,
+            p_trigger_source: "IMPORT_JOB",
+          });
+        } catch (atvErr) {
+          console.warn("Clientes atividade refresh enqueue failed (non-fatal):", atvErr);
+        }
       });
 
       const totalDuration = Date.now() - startTime;
