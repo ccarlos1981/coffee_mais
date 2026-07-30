@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
+import { CacheInvalidationService } from "@/lib/services/cache-invalidation-service";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -813,6 +814,9 @@ export class ImportService {
         },
         "SUCCESS"
       );
+
+      // Disparar evento de invalidação de cache desacoplado
+      await CacheInvalidationService.onImportSuccess(batchId);
 
       return { success: true, rowsPromoted };
     } catch (error: any) {
