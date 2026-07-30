@@ -1455,6 +1455,22 @@ A partir de 30/07/2026, o Hub de Importação de Dados e o mecanismo de recálcu
 
 Status Arquitetural: `IMPORT_HUB_STATUS = STABLE` & `INCIDENT_STATUS = CLOSED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 67. Baseline Oficial — Invalidação Coordenada de Cache de Apresentação (Baseline Permanente)
+
+A partir de 30/07/2026, a arquitetura de invalidação coordenada de cache de apresentação passa a constituir baseline oficial e permanente do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Invalidação Automática Pós-Importação**: Sempre que uma importação oficial for concluída com status `SUCCESS` e auditoria de 5 camadas aprovada, todos os caches de apresentação afetados deverão ser invalidados imediatamente através do `CacheInvalidationService`.
+2. **Desacoplamento entre Serviços de Domínio e Caches**: O `ImportService` (e qualquer outro serviço de carga de dados) é expressamente proibido de conhecer ou invocar diretamente implementarções de caches visuais (como `DashboardCache` ou `Map.clear()`). Toda invalidação deve ser intermediada pelo `CacheInvalidationService`.
+3. **Métodos Específicos de Invalidação**: Caches de rotas e componentes devem expor métodos de invalidação específicos e reutilizáveis (ex: `DashboardCache.invalidate()`).
+4. **Preservação do Cache em Navegação Normal**: O mecanismo de cache com `CACHE_TTL = 5 minutos` deve ser preservado para todas as consultas normais de navegação, sendo limpo estritamente por eventos oficiais de atualização de dados.
+5. **Isolamento Total de Exceções**: A camada de invalidação de cache opera em blocos não-bloqueantes com tratamento de erro isolado, garantindo que inconsistências raras de cache jamais afetem a persistência ou o status final das cargas de dados.
+
+Status Arquitetural: `DASHBOARD_CACHE_STATUS = STABLE` & `CACHE_INVALIDATION_STATUS = HOMOLOGATED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
