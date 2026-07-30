@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 import { AnalyticsEngine, parseAnalyticsFiltersFromParams } from "@/lib/governance/analytics";
+import { DashboardCache } from "@/lib/cache/dashboard-cache";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const API_CACHE = new Map<string, { timestamp: number; data: unknown }>();
-const CACHE_TTL = 1000 * 60 * 5;
 
 function aggregateFromMV(
   rows: any[],
@@ -222,10 +220,10 @@ export async function GET(request: Request) {
     const filters = parseAnalyticsFiltersFromParams(searchParams);
 
     const cacheKey = JSON.stringify({ ...filters });
-    const cached = API_CACHE.get(cacheKey);
+    const cachedData = DashboardCache.get(cacheKey);
     const isDev = process.env.NODE_ENV === 'development';
-    if (!isDev && cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return NextResponse.json(cached.data);
+    if (!isDev && cachedData) {
+      return NextResponse.json(cachedData);
     }
 
     const data = await AnalyticsEngine.getVendasSummary(filters);
@@ -261,7 +259,7 @@ export async function GET(request: Request) {
       prevYear: pyAgg,
     };
 
-    API_CACHE.set(cacheKey, { timestamp: Date.now(), data: payload });
+    DashboardCache.set(cacheKey, payload);
     return NextResponse.json(payload);
   } catch (error: any) {
     return handleAuthError(error);
