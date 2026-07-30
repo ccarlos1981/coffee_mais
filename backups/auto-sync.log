@@ -1093,3 +1093,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    3758590..2f6368c  main -> main
 [29/07/2026 22:06] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 043883d] auto-save: 30/07/2026 09:00
+ 5 files changed, 9141 insertions(+)
+ create mode 100644 src/app/api/admin/refresh-atividade/route.ts
+ create mode 100644 supabase/migrations/20260730_decouple_clientes_atividade_refresh.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   06dc71c..043883d  main -> main
+[30/07/2026 09:00] ✅ Alterações enviadas com sucesso para o GitHub.
