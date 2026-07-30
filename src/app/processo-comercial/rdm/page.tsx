@@ -15,6 +15,10 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Cell, LabelList,
 } from "recharts";
+import { CustomSlideConfig } from "@/lib/presentation-framework/core";
+import { CustomSlideRenderer, SlideBuilderWizard } from "@/lib/presentation-framework/react";
+import { RdmDataAdapter } from "./providers/RdmDataAdapter";
+import { RdmStorageAdapter } from "./providers/RdmStorageAdapter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricBlock {
@@ -3446,6 +3450,7 @@ export default function RdmPage() {
 
   // Export Modal & Config
   const [showExportModal,     setShowExportModal]     = useState(false);
+  const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
   const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
   const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
     'capa', 'agenda', 'farol_metas', 'dre', 'fat_mensal', 'vol_mensal',
@@ -3505,26 +3510,47 @@ export default function RdmPage() {
     }
   };
 
+  // Custom Slides via Presentation Framework Storage Provider
+  const [customSlides, setCustomSlides] = useState<CustomSlideConfig[]>([]);
+
+  useEffect(() => {
+    const storageAdapter = new RdmStorageAdapter(manager, month, year);
+    setCustomSlides(storageAdapter.getCustomSlides());
+  }, [manager, month, year]);
+
+  const rdmDataAdapter = useMemo(() => new RdmDataAdapter(data), [data]);
+
   // ── Slides definition ──
   const monthName = MONTHS[month - 1];
 
-  const slides = [
-    { key: 'capa',            label: 'Capa' },
-    { key: 'agenda',           label: 'Pauta' },
-    { key: 'farol_metas',      label: 'Farol de Metas' },
-    { key: 'dre',              label: 'Resultado DRE' },
-    { key: 'fat_mensal',       label: 'Resultado Faturamento' },
-    { key: 'vol_mensal',       label: 'Resultado Volume' },
-    { key: 'vol_preco_medio',  label: 'Volume e Preço Médio' },
-    { key: 'preco_yoy',        label: 'Resultado Preço KA' },
-    { key: 'preco_tabela',     label: 'Preço por Canal/Matriz' },
-    { key: 'vol_matriz',       label: 'Volume por Matriz' },
-    { key: 'preco_familia',    label: 'Preço por Família' },
-    { key: 'plano_acao',        label: 'Plano de Ação' },
-    { key: 'projecao_vendas',   label: 'Projeção de Vendas' },
-    { key: 'agenda_rotas',      label: 'Agenda de Rotas' },
-    { key: 'obrigado',           label: 'Encerramento' },
-  ];
+  const slides = useMemo(() => {
+    const official = [
+      { key: 'capa',            label: 'Capa' },
+      { key: 'agenda',           label: 'Pauta' },
+      { key: 'farol_metas',      label: 'Farol de Metas' },
+      { key: 'dre',              label: 'Resultado DRE' },
+      { key: 'fat_mensal',       label: 'Resultado Faturamento' },
+      { key: 'vol_mensal',       label: 'Resultado Volume' },
+      { key: 'vol_preco_medio',  label: 'Volume e Preço Médio' },
+      { key: 'preco_yoy',        label: 'Resultado Preço KA' },
+      { key: 'preco_tabela',     label: 'Preço por Canal/Matriz' },
+      { key: 'vol_matriz',       label: 'Volume por Matriz' },
+      { key: 'preco_familia',    label: 'Preço por Família' },
+      { key: 'plano_acao',        label: 'Plano de Ação' },
+      { key: 'projecao_vendas',   label: 'Projeção de Vendas' },
+      { key: 'agenda_rotas',      label: 'Agenda de Rotas' },
+      { key: 'obrigado',           label: 'Encerramento' },
+    ];
+    const customItems = customSlides.map(cs => ({ key: cs.key, label: cs.label }));
+    const insertIdx = official.findIndex(s => s.key === 'obrigado');
+    if (insertIdx >= 0) {
+      official.splice(insertIdx, 0, ...customItems);
+    } else {
+      official.push(...customItems);
+    }
+    return official;
+  }, [customSlides]);
+
   const totalSlides = slides.length;
 
   // ── Navigation ──
@@ -3889,6 +3915,18 @@ export default function RdmPage() {
       return <SlideObrigado />;
     }
 
+    // Render custom slide via Presentation Framework (ADR-001)
+    const customSlide = customSlides.find(cs => cs.key === slideKey || cs.id === slideKey);
+    if (customSlide) {
+      return (
+        <CustomSlideRenderer
+          slide={customSlide}
+          dataProvider={rdmDataAdapter}
+          monthName={monthName}
+        />
+      );
+    }
+
     return null;
   }
 
@@ -3977,6 +4015,25 @@ export default function RdmPage() {
         </div>
 
         <div className="rdm-nav-right">
+          <button
+            onClick={() => setShowBuilderWizard(true)}
+            className="rdm-new-slide-btn"
+            title="Criar novo slide personalizado com o Slide Builder"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px',
+              borderRadius: 6,
+              border: '1px solid rgba(201, 169, 110, 0.5)',
+              background: 'linear-gradient(135deg, rgba(201, 169, 110, 0.2) 0%, rgba(160, 120, 64, 0.2) 100%)',
+              color: '#ffffff',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            <span>➕ Novo Slide</span>
+          </button>
           <button
             onClick={() => setShowExportModal(true)}
             className="rdm-export-nav-btn"
@@ -4388,6 +4445,24 @@ export default function RdmPage() {
           </div>
         </div>
       )}
+
+      {/* ── Slide Builder Wizard Modal (ADR-001 Phase 2) ── */}
+      <SlideBuilderWizard
+        isOpen={showBuilderWizard}
+        onClose={() => setShowBuilderWizard(false)}
+        onConfirm={(newSlide) => {
+          const storageAdapter = new RdmStorageAdapter(manager, month, year);
+          storageAdapter.saveCustomSlide(newSlide);
+          setCustomSlides(storageAdapter.getCustomSlides());
+          setTimeout(() => {
+            setSlideIdx(prevIdx => Math.min(prevIdx + 1, slides.length));
+          }, 100);
+        }}
+        dataProvider={rdmDataAdapter}
+        storageProvider={new RdmStorageAdapter(manager, month, year)}
+        currentSlideIndex={slideIdx}
+        monthName={monthName}
+      />
     </div>
   );
 }
