@@ -55,7 +55,19 @@ coverage/
 # Antigravity/AI Agents
 .agents/
 
-# Backup folders
+# Backup & Local Heavy Folders
+promotor_app/
+backups/
 backup_*/
+Dados da Coffee mais/
+Power Bi da Forno de Minas/
+_bmad/
+sql/
+scripts/
+scratch/
+*.zip
+*.jsonl
+*.xlsb
+*.xlsx
+*.xls
 
-backups/*.zip
