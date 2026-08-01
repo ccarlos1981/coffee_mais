@@ -1,3 +1,34 @@
+# Índice Executivo — Coffee++
+
+## Governança
+- Seção 10 — Governança Financeira
+- Seção 14 — Analytics Engine
+- Seção 67 — Governança MCP
+- Seção 68 — Operação Segura da Infraestrutura MCP
+- Seção 69 — Catálogo Oficial de Baselines
+
+## Arquiteturas LTS
+- Analytics Engine V1
+- Presentation Framework
+- Import Hub
+- Dashboard Favorites
+- Customer Ownership
+- Investment Engine
+- Authentication Layer
+- Notification Engine
+- Telemetry
+- MCP Infrastructure
+
+## Regras Permanentes
+- Fontes Oficiais
+- Ownership Comercial
+- Favoritos
+- Importação
+- Segurança
+- Auditoria
+
+---
+
 # Project-Scoped Rules: Coffee Mais Hub de Importação
 
 ## Modo de Estabilização Ativo
@@ -2055,8 +2086,228 @@ A partir de 28/07/2026, a arquitetura e a suíte de componentes do **Executive I
 
 Status Arquitetural: `EXECUTIVE_INTELLIGENCE_REPORT = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
 
+## 67. Baseline Oficial — Governança da Infraestrutura MCP (Baseline Permanente)
 
+A partir de 01/08/2026, a governança da infraestrutura MCP torna-se uma diretriz permanente e oficial do Coffee++, operando em camada completamente separada e independente do código da aplicação.
 
+### Objetivo:
+Garantir que a infraestrutura MCP permaneça estável, reproduzível e independente da aplicação Coffee++.
 
+### Contexto e Motivação:
+Em 01/08/2026, um problema de infraestrutura MCP (npm registry configurado com HTTP plano em `~/.npmrc`, causando `"context deadline exceeded"`) foi diagnosticado e corrigido. Este baseline garante que problemas similares não se repitam e que sejam tratados na camada correta (infraestrutura), jamais como bugs da aplicação Coffee++.
 
+### Diretrizes Mandatórias:
+
+1. **Separação Absoluta de Diagnóstico**: Toda investigação deve separar claramente:
+   - Problemas da infraestrutura MCP (npm, Node.js, TLS, tokens, PATH, `.npmrc`, CLIs).
+   - Problemas do código da aplicação Coffee++.
+   - Problemas de banco de dados (Supabase/Postgres).
+   Erros de inicialização de MCP servers (Firebase, GitHub, Supabase, Sequential Thinking) devem ser investigados e corrigidos exclusivamente na camada de infraestrutura. É expressamente proibido alterar código do Coffee++ para contornar falhas de MCP.
+
+2. **Registro HTTPS Obrigatório**: O npm registry deve utilizar exclusivamente `https://registry.npmjs.org/`. Qualquer referência a `http://registry.npmjs.org` (HTTP plano) em `~/.npmrc`, `.npmrc` de projeto, variáveis de ambiente ou configuração MCP é considerada violação de segurança e deve ser corrigida imediatamente.
+
+3. **TLS 1.2+ Obrigatório**: É proibido utilizar configurações que desabilitem TLS/SSL em ambiente de desenvolvimento permanente. Todas as conexões de MCP servers com registries, APIs e serviços externos devem utilizar TLS 1.2 ou superior. A configuração `strict-ssl = false` no npm é expressamente proibida.
+
+4. **Health Check Mandatório**: O comando `npm run health:mcp` é a referência oficial para validar a infraestrutura antes de iniciar alterações no projeto. Toda alteração em Node.js, npm, Firebase CLI, GitHub CLI, Supabase CLI ou configuração dos MCPs deverá ser seguida da execução obrigatória do `npm run health:mcp`. Deve ser executado:
+   - Após qualquer atualização de Node.js, npm ou nvm.
+   - Após qualquer alteração em `~/.npmrc` ou configurações de MCP.
+   - Sempre que um MCP server apresentar erro de inicialização.
+   - Periodicamente como verificação preventiva.
+
+5. **Nenhum Diagnóstico sem Validação de Infraestrutura**: Nenhum diagnóstico poderá concluir que o problema está no Coffee++ sem antes validar a infraestrutura MCP via `npm run health:mcp`.
+
+6. **Diagnóstico Estruturado Obrigatório**: Mensagens genéricas como "MCP Error" ou "context deadline exceeded" não são consideradas diagnósticos válidos. Toda falha deve identificar obrigatoriamente:
+   - MCP server afetado.
+   - Causa raiz (root cause).
+   - Evidência técnica (log, output, stack trace).
+   - Ação corretiva recomendada.
+
+7. **Cinco MCP Servers Oficiais**: Os servidores MCP oficiais do ecossistema Coffee++ são:
+   - `firebase-mcp-server` — Firebase CLI + OAuth browser login.
+   - `github-mcp-server` — GitHub API via Personal Access Token (PAT).
+   - `supabase-mcp-server` — Supabase Management API via Access Token.
+   - `sequential-thinking-mcp-server` — Motor de raciocínio sequencial (stateless).
+   - Workspace Local — Ferramentas locais do IDE.
+
+8. **Tokens e Credenciais**: Tokens de autenticação (`GITHUB_PERSONAL_ACCESS_TOKEN`, `SUPABASE_ACCESS_TOKEN`, Firebase OAuth) são configurados exclusivamente nos arquivos `mcp_config.json` do IDE. É proibido hardcodar tokens no código da aplicação ou em variáveis de ambiente do projeto.
+
+9. **Auditoria Mandatória de Encerramento**: Ao final de qualquer ciclo de manutenção da infraestrutura MCP, é obrigatória a execução do `npm run health:mcp` com todos os checks passando (0 FAIL).
+
+### Componentes Oficiais:
+- **Script**: `scripts/health-mcp.ts`
+- **Comando**: `npm run health:mcp`
+- **Configurações**: `~/.gemini/antigravity-ide/mcp_config.json`, `~/.gemini/config/mcp_config.json`
+
+Status Arquitetural: `MCP_INFRASTRUCTURE_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 68. Baseline Oficial — Operação Segura da Infraestrutura MCP (Baseline Permanente)
+
+A partir de 01/08/2026, as diretrizes de operação segura da infraestrutura MCP tornam-se baseline permanente e oficial do Coffee++.
+
+### Objetivo:
+Garantir que toda evolução do Coffee++ ocorra sobre uma infraestrutura MCP íntegra, validada e desacoplada da lógica de negócio da aplicação.
+
+### Diretrizes Mandatórias:
+
+1. **Validação Prévia Obrigatória**: Antes de qualquer refatoração arquitetural, atualização de dependências, alteração de ambiente ou investigação de falhas sistêmicas, deverá ser executado obrigatoriamente: `npm run health:mcp`.
+
+2. **Proibição de Diagnóstico sem Validação**: Nenhuma investigação poderá atribuir causa ao Coffee++ sem que a infraestrutura MCP tenha sido previamente validada com sucesso.
+
+3. **Identificação Explícita de Camada**: Toda conclusão técnica deverá indicar explicitamente em qual camada o problema foi identificado:
+   - Infraestrutura MCP.
+   - Aplicação (Coffee++).
+   - Banco de Dados / Supabase.
+   - Serviços externos.
+
+4. **Diagnóstico Completo Obrigatório**: Todo diagnóstico deverá apresentar obrigatoriamente:
+   - Evidências técnicas.
+   - Logs.
+   - Stack trace (quando existir).
+   - Causa raiz.
+   - Impacto.
+   - Ação corretiva.
+
+5. **MCP como Camada de Acesso**: A infraestrutura MCP é considerada exclusivamente uma camada de acesso, automação e diagnóstico.
+
+6. **Proibição de Regras de Negócio no MCP**: É proibido implementar regras de negócio, validações funcionais ou decisões comerciais dentro da infraestrutura MCP.
+
+7. **Independência da Aplicação**: O Coffee++ não poderá depender do estado operacional dos MCPs para executar sua lógica de negócio. Os MCPs devem ser utilizados apenas para desenvolvimento, auditoria, manutenção e automação.
+
+8. **Revalidação Pós-Alteração**: Toda alteração em Node.js, npm, Firebase CLI, GitHub CLI, Supabase CLI ou configuração dos servidores MCP deverá ser seguida obrigatoriamente da execução completa do `npm run health:mcp`.
+
+9. **Homologação Oficial**: O comando `health:mcp` passa a ser a referência oficial para homologação da infraestrutura antes de qualquer deploy, investigação ou refatoração de grande porte.
+
+10. **Correção Antes da Continuidade**: Qualquer falha de infraestrutura identificada deverá ser corrigida antes da continuidade do desenvolvimento, evitando diagnósticos incorretos sobre o código da aplicação.
+
+Status Arquitetural: `MCP_INFRASTRUCTURE_OPERATION = LOCKED` & `MCP_HEALTHCHECK = MANDATORY` & `APPLICATION_AND_MCP = FULLY_DECOUPLED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 69. Catálogo Oficial de Baselines Arquiteturais (LTS)
+
+A partir de 01/08/2026, o catálogo oficial de baselines arquiteturais torna-se a referência permanente e centralizada do Coffee++.
+
+### Objetivo:
+Centralizar os componentes estruturais oficialmente homologados do Coffee++, permitindo que qualquer nova funcionalidade, refatoração ou auditoria identifique imediatamente quais arquiteturas possuem baseline permanente e regras próprias de governança.
+
+### Componentes Arquiteturais Homologados:
+
+| Componente | Status | Governança |
+|------------|--------|------------|
+| Analytics Engine V1 | ✅ LOCKED | Fonte única para consultas analíticas |
+| Financial Governance | ✅ LOCKED | Cinco fontes oficiais e regras financeiras |
+| Dashboard Favorites | ✅ LOCKED | Favoritos persistidos via banco e RLS |
+| Customer Ownership | ✅ LOCKED | Cadastro Único como fonte oficial de ownership |
+| Investment Engine | ✅ LOCKED | Campanhas, ações e ownership comercial |
+| Import Hub | ✅ LOCKED | Pipeline oficial de importação e validação |
+| Presentation Framework | ✅ LOCKED | Componentes visuais corporativos |
+| Authentication Layer | ✅ LOCKED | Autenticação, perfis e autorização |
+| Notification Engine | ✅ LOCKED | Notificações e mensageria |
+| Telemetry | ✅ LOCKED | Logs, auditoria e observabilidade |
+| MCP Infrastructure | ✅ LOCKED | Infraestrutura de desenvolvimento e automação |
+
+### Regras Gerais:
+
+1. **Verificação Prévia Obrigatória**: Todo novo módulo deverá verificar previamente se já existe uma baseline arquitetural aplicável.
+
+2. **Proibição de Implementações Paralelas**: É proibida a criação de implementações paralelas para componentes já homologados.
+
+3. **Evolução por Extensão**: Toda evolução deverá ocorrer por extensão da baseline existente, preservando compatibilidade e retrocompatibilidade sempre que possível.
+
+4. **Critérios de Homologação**: Qualquer nova arquitetura somente poderá ser considerada oficial após:
+   - Implementação concluída.
+   - Validação funcional.
+   - Compilação sem erros.
+   - Documentação técnica.
+   - Registro formal no AGENTS.md.
+
+5. **Atualização Contínua**: Este catálogo representa a relação oficial das arquiteturas permanentes do Coffee++ e deve ser mantido atualizado sempre que uma nova baseline for homologada.
+
+Status Arquitetural: `ARCHITECTURE_BASELINES = OFFICIAL` & `LTS_COMPONENTS = REGISTERED` & `PROJECT_GOVERNANCE = CENTRALIZED` & `BASELINE_CATALOG = ACTIVE`.
+
+---
+
+## 70. Baseline Oficial — Governança de Conformidade Arquitetural Contínua (Baseline Permanente)
+
+A partir de 01/08/2026, a governança de conformidade arquitetural contínua torna-se diretriz permanente e oficial do Coffee++.
+
+### Objetivo:
+Garantir que toda evolução do Coffee++ permaneça aderente às arquiteturas homologadas, às baselines permanentes e às regras de governança registradas neste documento.
+
+### Diretrizes Mandatórias:
+
+1. **Verificação Prévia de Baseline**: Toda nova funcionalidade deverá identificar previamente se existe uma arquitetura, baseline ou componente oficial aplicável antes da implementação.
+
+2. **Proibição de Duplicação de Responsabilidades**: Nenhuma implementação poderá duplicar responsabilidades já pertencentes a componentes homologados (Analytics Engine, Import Hub, Presentation Framework, Ownership, Authentication, Notification Engine, Telemetry, etc.).
+
+3. **Atualização Documental Obrigatória**: Sempre que uma alteração modificar uma arquitetura homologada, deverá ser avaliado se é necessário atualizar:
+   - AGENTS.md.
+   - ADR correspondente (`docs/adr/`).
+   - Documentação de Arquitetura (`docs/architecture/`).
+   - Runbook operacional (`docs/runbooks/`).
+
+4. **Compatibilidade com Regras Permanentes**: Toda mudança estrutural deverá preservar compatibilidade com as regras permanentes já registradas, salvo quando houver decisão arquitetural formal aprovando uma nova baseline.
+
+5. **Rastreabilidade Código–Documentação–Governança**: Alterações em APIs, banco de dados, materialized views, RPCs, componentes compartilhados ou infraestrutura deverão manter rastreabilidade entre código, documentação e governança.
+
+6. **Critérios de Promoção a Baseline LTS**: Novos componentes somente poderão ser promovidos ao status de Baseline LTS após:
+   - Implementação concluída.
+   - Validação funcional.
+   - Validação técnica.
+   - Compilação sem erros.
+   - Documentação técnica concluída.
+   - Registro formal no Catálogo Oficial de Baselines (Seção 69).
+
+7. **Validações Técnicas Pré-Homologação**: Antes de qualquer homologação final deverão ser executadas todas as validações técnicas aplicáveis ao componente alterado (build, tipagem, auditorias, testes e verificações de integridade).
+
+8. **Sincronização Documentação–Arquitetura**: A documentação do projeto deverá permanecer sincronizada com a arquitetura implementada, evitando divergências entre código, operação e governança.
+
+Status Arquitetural: `ARCHITECTURE_COMPLIANCE = MANDATORY` & `DOCUMENTATION_SYNC = REQUIRED` & `GOVERNANCE_TRACEABILITY = ENABLED` & `CONTINUOUS_ARCHITECTURE_REVIEW = ACTIVE`.
+
+---
+
+## 71. Política de Evolução da Governança (Encerramento da Estrutura)
+
+A partir de 01/08/2026, a estrutura do AGENTS.md passa a ser governada por política formal de evolução controlada.
+
+### Objetivo:
+Preservar a qualidade, a clareza e a sustentabilidade do AGENTS.md como documento oficial de governança do Coffee++, evitando crescimento desnecessário e duplicação de regras.
+
+### Diretrizes Permanentes:
+
+1. **Escopo Exclusivo**: O AGENTS.md representa exclusivamente as diretrizes permanentes de arquitetura, governança e operação do Coffee++.
+
+2. **Critério para Novas Seções**: Novas seções somente poderão ser criadas quando representarem uma nova capacidade arquitetural permanente do sistema (ex.: novo Engine, novo Framework, nova Camada de Infraestrutura ou novo Componente Corporativo).
+
+3. **Exclusões do AGENTS.md**: Funcionalidades, correções, incidentes, melhorias de UX, ajustes de banco de dados ou evoluções de módulos existentes não deverão gerar novas seções no AGENTS.md.
+
+4. **Documentação no Local Apropriado**: Toda documentação específica deverá ser registrada no local correto:
+   - `docs/adr/` — Decisões arquiteturais.
+   - `docs/architecture/` — Documentação técnica.
+   - `docs/runbooks/` — Operação e suporte.
+   - Walkthroughs — Implementação e homologação.
+
+5. **Complementação sobre Duplicação**: Sempre que possível, novas regras deverão complementar ou atualizar uma seção existente, evitando duplicidade de conteúdo.
+
+6. **Referência Centralizada**: O Catálogo Oficial de Baselines (Seção 69) passa a ser a referência para identificar quais componentes possuem governança própria.
+
+7. **Princípio de Sustentabilidade**: A manutenção do AGENTS.md deverá priorizar simplicidade, rastreabilidade e estabilidade ao longo do ciclo de vida do projeto.
+
+### Diretriz de Manutenção:
+A partir desta versão, o AGENTS.md entra em regime de manutenção contínua.
+
+Novas funcionalidades, módulos ou correções não deverão ampliar este documento, salvo quando introduzirem uma nova capacidade arquitetural permanente.
+
+As evoluções do Coffee++ deverão ser registradas preferencialmente em:
+- ADRs (`docs/adr/`);
+- Documentação de Arquitetura (`docs/architecture/`);
+- Runbooks Operacionais (`docs/runbooks/`);
+- Walkthroughs de implementação.
+
+O AGENTS.md permanece como o documento normativo de mais alto nível do projeto e deverá evoluir prioritariamente por revisão das diretrizes existentes, preservando simplicidade, consistência e estabilidade.
+
+Status Arquitetural: `AGENTS_STRUCTURE = STABLE` & `GOVERNANCE_GROWTH = CONTROLLED` & `DOCUMENTATION_STRATEGY = CONSOLIDATED` & `BASELINE_EVOLUTION = MANAGED`.
