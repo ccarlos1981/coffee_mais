@@ -5,6 +5,7 @@ import { X, Download, Share2, Printer, CheckCircle2, ShieldCheck, Mail, Send, Co
 import { toast } from "sonner";
 import { CartaAnuenciaItem, registrarCompartilhamento } from "./actions";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
+import { formatarDataValidade } from "./validade-helper";
 
 interface CartaPreviewModalProps {
   carta: CartaAnuenciaItem | null;
@@ -34,13 +35,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
     year: "numeric",
   });
 
-  const dataValidadeFmt = carta.valida_ate
-    ? new Date(carta.valida_ate).toLocaleDateString("pt-BR", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })
-    : "Sem data limite de expiração";
+  const dataValidadeFmt = formatarDataValidade(carta.validade_ate);
 
   const handlePrint = async () => {
     await registrarCompartilhamento(carta.id, "DOWNLOAD", { detalhe: "Impressão A4 disparada" });

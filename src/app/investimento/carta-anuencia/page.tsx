@@ -34,6 +34,7 @@ import {
   obterFiltrosGerenteUf,
   cancelarCartaAnuencia,
 } from "./actions";
+import { formatarDataValidade } from "./validade-helper";
 import { CartaPreviewModal } from "./CartaPreviewModal";
 import { NovaCartaModal } from "./NovaCartaModal";
 import { EditarCartaModal } from "./EditarCartaModal";
@@ -396,9 +397,7 @@ export default function CartaAnuenciaPage() {
                     <tbody className="divide-y divide-border">
                       {cartas.map((item, idx) => {
                         const dataEmissaoFmt = new Date(item.data_emissao).toLocaleDateString("pt-BR");
-                        const dataValidadeFmt = item.valida_ate
-                          ? new Date(item.valida_ate).toLocaleDateString("pt-BR")
-                          : "Sem limite";
+                        const dataValidadeFmt = formatarDataValidade(item.validade_ate);
 
                         return (
                           <tr key={`${item.id}-${idx}`} className="hover:bg-muted/30 transition-colors">

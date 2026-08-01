@@ -1514,6 +1514,27 @@ A partir de 30/07/2026, a arquitetura e diretrizes operacionais de **Reimportaç
 
 Status Arquitetural: `CONTROLLED_REIMPORT_STATUS = STABLE` & `GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 70. Baseline Oficial — Validade das Cartas de Anuência por Ciclo e Competência (Baseline Permanente)
+
+A partir de 01/08/2026, a arquitetura e diretrizes operacionais de **Validade das Cartas de Anuência por Ciclo e Competência** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Coluna Oficial Única (`validade_ate DATE`)**: A tabela `cm_cartas_anuencia` utiliza exclusivamente o campo `validade_ate DATE` para persistência da data limite de validade da quitação. É expressamente proibida a criação ou manutenção paralela da antiga coluna `valida_ate`.
+2. **Centralização Total no Helper da Aplicação**: Todo cálculo de validade deve ser realizado exclusivamente pela função compartilhada `calcularValidadeCartaAnuencia(competencia)` em `src/app/investimento/carta-anuencia/validade-helper.ts`. É proibido duplicar regras em Triggers no PostgreSQL ou em componentes frontend.
+3. **Fluxo Oficial de Escrita**: `UI` → `Server Action` → `calcularValidadeCartaAnuencia()` → `Persistência em validade_ate`. O banco de dados apenas armazena a data calculada.
+4. **Regras de Negócio Homologadas**:
+   - **1º Ciclo (Janeiro, Fevereiro, Março)**: Validade em `31 de março` do mesmo ano da competência (`YYYY-03-31`).
+   - **2º Ciclo (Junho, Julho, Agosto)**: Validade em `31 de agosto` do mesmo ano da competência (`YYYY-08-31`).
+   - Competências não homologadas não possuem preenchimento automático arbitrário.
+5. **Imutabilidade Histórica**: A validade gravada em `validade_ate` no momento da emissão passa a compor o documento histórico e imutável. Alterações retroativas ou re-cálculos automáticos em cartas já emitidas são proibidos sem migração formal aprovada.
+6. **Proibição de Bloqueio por Expirado (Uso Informativo Exclusivo)**: A expiração da Carta de Anuência jamais poderá bloquear ou impedir a consulta, visualização, impressão ou exportação em PDF do documento. A verificação de expiração (`expirada` / `verificarCartaExpirada`) destina-se exclusivamente a fins informativos visuais (ex: badges e alertas visuais de "Expirada").
+7. **Interface e Formatação**: Todos os pontos do módulo (Listagem, Modais, Preview, PDF e Impressão) devem exibir a validade formatada no padrão PT-BR (`31/08/2026` / `31/03/2026`) consumindo a função `formatarDataValidade(validade_ate)`.
+
+Status Arquitetural: `CARTAS_ANUENCIAS_VALIDADE_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 

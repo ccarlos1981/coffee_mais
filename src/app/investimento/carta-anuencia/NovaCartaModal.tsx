@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
 import { gerarCartaAnuencia, obterCompetencias, CompetenciaItem, obterLogoOficialRede, processarEUploadLogoRede } from "./actions";
 import { LogoUpload } from "./components/LogoUpload";
+import { calcularValidadeCartaAnuencia, formatarDataValidade } from "./validade-helper";
 
 interface NovaCartaModalProps {
   onClose: () => void;
@@ -31,6 +32,16 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
   const [searchingLogo, setSearchingLogo] = useState(false);
+
+  // Auto-calcular a validade quando a competência muda
+  useEffect(() => {
+    if (selectedCompetencia) {
+      const v = calcularValidadeCartaAnuencia(selectedCompetencia);
+      setValidaAte(v || "");
+    } else {
+      setValidaAte("");
+    }
+  }, [selectedCompetencia]);
 
   useEffect(() => {
     async function loadData() {
@@ -144,7 +155,7 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
         cnpj,
         competencia_id: competenciaObj?.id,
         competencia: selectedCompetencia,
-        valida_ate: validaAte || undefined,
+        validade_ate: validaAte || undefined,
         storage_path: finalStoragePath,
         observacoes,
       });
@@ -227,7 +238,7 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
               </div>
             </div>
 
-            {/* Competência Selector */}
+            {/* Competência Selector & Validade Automática */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
@@ -248,17 +259,14 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
                 </select>
               </div>
 
-              {/* Data Limite de Validade */}
+              {/* Data Limite de Validade (Cálculo Automático) */}
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
-                  Válida Até (Opcional)
+                  Validade da Quitação (Automática)
                 </label>
-                <input
-                  type="date"
-                  value={validaAte}
-                  onChange={(e) => setValidaAte(e.target.value)}
-                  className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none"
-                />
+                <div className="h-10 px-3 rounded-xl border border-input bg-muted/40 text-sm text-foreground flex items-center font-mono font-semibold">
+                  {validaAte ? formatarDataValidade(validaAte) : "— Selecione a Competência —"}
+                </div>
               </div>
             </div>
 
