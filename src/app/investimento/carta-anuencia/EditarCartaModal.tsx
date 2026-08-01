@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { obterRedesMatrizes } from "@/app/investimento/lancar/actions";
 import { CartaAnuenciaItem, editarCartaAnuencia, obterCompetencias, CompetenciaItem, obterLogoOficialRede, processarEUploadLogoRede } from "./actions";
 import { LogoUpload } from "./components/LogoUpload";
+import { calcularValidadeCartaAnuencia, formatarDataValidade } from "./validade-helper";
 
 interface EditarCartaModalProps {
   carta: CartaAnuenciaItem | null;
@@ -32,6 +33,14 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
   const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
 
   const isBloqueada = carta ? (carta.status === "ASSINADA" || carta.status === "CANCELADA") : false;
+
+  // Auto-recalcular validade quando a competência for alterada
+  useEffect(() => {
+    if (selectedCompetencia) {
+      const v = calcularValidadeCartaAnuencia(selectedCompetencia);
+      if (v) setValidaAte(v);
+    }
+  }, [selectedCompetencia]);
 
   useEffect(() => {
     if (!carta) return;
@@ -68,7 +77,8 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
         setSelectedRedeCode(c.rede_id);
         setSelectedCompetencia(c.competencia);
         setCnpj(c.cnpj || "");
-        setValidaAte(c.valida_ate ? c.valida_ate.substring(0, 10) : "");
+        const validadeBase = c.validade_ate ? c.validade_ate.substring(0, 10) : (calcularValidadeCartaAnuencia(c.competencia) || "");
+        setValidaAte(validadeBase);
         setObservacoes(c.observacoes || "");
         setCurrentStoragePath(c.logo_snapshot_path || c.logo_rede_url || null);
       } catch (err) {
@@ -122,7 +132,7 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
         cnpj,
         competencia_id: competenciaObj?.id || carta.competencia_id || undefined,
         competencia: selectedCompetencia,
-        valida_ate: validaAte || undefined,
+        validade_ate: validaAte || undefined,
         storage_path: finalStoragePath,
         observacoes,
       });
@@ -252,15 +262,11 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
 
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1">
-                  Válida Até (Opcional)
+                  Validade da Quitação (Automática)
                 </label>
-                <input
-                  type="date"
-                  value={validaAte}
-                  onChange={(e) => setValidaAte(e.target.value)}
-                  disabled={isBloqueada}
-                  className="w-full h-10 px-3 rounded-xl border border-input bg-background text-sm text-foreground focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                />
+                <div className="h-10 px-3 rounded-xl border border-input bg-muted/40 text-sm text-foreground flex items-center font-mono font-semibold">
+                  {validaAte ? formatarDataValidade(validaAte) : "— Selecione a Competência —"}
+                </div>
               </div>
             </div>
 

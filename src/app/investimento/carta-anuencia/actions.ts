@@ -6,6 +6,7 @@ import { AnalyticsEngine } from "@/lib/governance/analytics/engine";
 import { revalidatePath } from "next/cache";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
 import { calculateBufferHash, getImageDimensionsFromBuffer } from "@/lib/server-image-helpers";
+import { calcularValidadeCartaAnuencia, verificarCartaExpirada } from "./validade-helper";
 
 export interface CartaAnuenciaItem {
   id: string;
@@ -19,7 +20,7 @@ export interface CartaAnuenciaItem {
   competencia: string;
   data_emissao: string;
   data_assinatura?: string | null;
-  valida_ate?: string | null;
+  validade_ate?: string | null;
   status: "PENDENTE" | "EMITIDA" | "ENVIADA" | "ASSINADA" | "CANCELADA";
   logo_id?: string | null;
   logo_snapshot_path?: string | null;
@@ -485,7 +486,7 @@ export async function listarCartasAnuencia(filters?: {
   let result = (data || []).map((item) => {
     const key = (item.rede_nome || item.rede_id || "").toLowerCase().trim();
     const meta = metaMap.get(key) || { manager: null, uf: null };
-    const expirada = !!(item.valida_ate && item.valida_ate < hoje);
+    const expirada = verificarCartaExpirada(item.validade_ate);
 
     const dynamicLogoUrl = getStoragePublicUrl(item.logo_snapshot_path || item.logo_rede_url, "logos-redes");
 
@@ -520,10 +521,9 @@ export async function obterResumoDashboard() {
 
   const [{ count: totalCartas }, { data: cartas }] = await Promise.all([
     adminClient.from("cm_cartas_anuencia").select("*", { count: "exact", head: true }),
-    adminClient.from("cm_cartas_anuencia").select("status, data_emissao, data_assinatura, valida_ate"),
+    adminClient.from("cm_cartas_anuencia").select("status, data_emissao, data_assinatura, validade_ate"),
   ]);
 
-  const hoje = new Date().toISOString().substring(0, 10);
   let emitidas = 0;
   let pendentes = 0;
   let assinadasVigentes = 0;
@@ -534,7 +534,7 @@ export async function obterResumoDashboard() {
 
   (cartas || []).forEach((c) => {
     if (c.status === "ASSINADA") {
-      const expirada = !!(c.valida_ate && c.valida_ate < hoje);
+      const expirada = verificarCartaExpirada(c.validade_ate);
       if (expirada) {
         assinadasExpiradas++;
       } else {
@@ -599,7 +599,6 @@ export async function obterDadosFarolExecutivo(filters?: {
   const { data: cartasAtivas } = await cartasQuery;
 
   const cartasMap = new Map<string, CartaAnuenciaItem>();
-  const hoje = new Date().toISOString().substring(0, 10);
 
   (cartasAtivas || []).forEach((c) => {
     const key = c.rede_id.toLowerCase().trim();
@@ -607,7 +606,7 @@ export async function obterDadosFarolExecutivo(filters?: {
       cartasMap.set(key, {
         ...c,
         logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
-        expirada: !!(c.valida_ate && c.valida_ate < hoje),
+        expirada: verificarCartaExpirada(c.validade_ate),
       });
     }
   });
@@ -657,7 +656,7 @@ export async function gerarCartaAnuencia(input: {
   cnpj?: string;
   competencia_id?: string;
   competencia: string;
-  valida_ate?: string;
+  validade_ate?: string;
   storage_path?: string;
   observacoes?: string;
 }) {
@@ -704,6 +703,10 @@ export async function gerarCartaAnuencia(input: {
 
   const qrCodeHash = Buffer.from(`${numeroCarta}:${input.rede_id}:${input.competencia}:${Date.now()}`).toString("base64url");
 
+  // Calcular validade oficial via helper da aplicação
+  const validadeCalculada = calcularValidadeCartaAnuencia(input.competencia);
+  const finalValidadeAte = validadeCalculada || input.validade_ate || null;
+
   const { data: novaCarta, error: errInsert } = await adminClient
     .from("cm_cartas_anuencia")
     .insert({
@@ -715,7 +718,7 @@ export async function gerarCartaAnuencia(input: {
       cnpj: input.cnpj || null,
       competencia_id: input.competencia_id || null,
       competencia: input.competencia,
-      valida_ate: input.valida_ate || null,
+      validade_ate: finalValidadeAte,
       status: "EMITIDA",
       logo_id: officialLogoRecord?.id || null,
       logo_snapshot_path: finalSnapshotPath,
@@ -755,6 +758,7 @@ export async function gerarCartaAnuencia(input: {
       versao: novaVersao,
       rede_nome: input.rede_nome,
       competencia: input.competencia,
+      validade_ate: finalValidadeAte,
       logo_snapshot_path: finalSnapshotPath,
     },
   });
@@ -776,7 +780,7 @@ export async function editarCartaAnuencia(input: {
   cnpj?: string;
   competencia_id?: string;
   competencia: string;
-  valida_ate?: string;
+  validade_ate?: string;
   storage_path?: string;
   observacoes?: string;
 }) {
@@ -809,13 +813,17 @@ export async function editarCartaAnuencia(input: {
   const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
   const finalSnapshotPath = input.storage_path || officialLogoRecord?.storage_path || cartaAtual.logo_snapshot_path;
 
+  // Recalcular validade via helper da aplicação se a competência mudou
+  const validadeCalculada = calcularValidadeCartaAnuencia(input.competencia);
+  const finalValidadeAte = validadeCalculada || input.validade_ate || cartaAtual.validade_ate || null;
+
   const camposAlterados: Record<string, { de: any; para: any }> = {};
 
   if (cartaAtual.rede_id !== input.rede_id) camposAlterados.rede_id = { de: cartaAtual.rede_id, para: input.rede_id };
   if (cartaAtual.rede_nome !== input.rede_nome) camposAlterados.rede_nome = { de: cartaAtual.rede_nome, para: input.rede_nome };
   if ((cartaAtual.cnpj || "") !== (input.cnpj || "")) camposAlterados.cnpj = { de: cartaAtual.cnpj, para: input.cnpj };
   if (cartaAtual.competencia !== input.competencia) camposAlterados.competencia = { de: cartaAtual.competencia, para: input.competencia };
-  if ((cartaAtual.valida_ate || "") !== (input.valida_ate || "")) camposAlterados.valida_ate = { de: cartaAtual.valida_ate, para: input.valida_ate };
+  if ((cartaAtual.validade_ate || "") !== (finalValidadeAte || "")) camposAlterados.validade_ate = { de: cartaAtual.validade_ate, para: finalValidadeAte };
   if ((cartaAtual.observacoes || "") !== (input.observacoes || "")) camposAlterados.observacoes = { de: cartaAtual.observacoes, para: input.observacoes };
   if ((cartaAtual.logo_snapshot_path || "") !== (finalSnapshotPath || "")) {
     camposAlterados.logo_snapshot_path = { de: cartaAtual.logo_snapshot_path, para: finalSnapshotPath };
@@ -829,7 +837,7 @@ export async function editarCartaAnuencia(input: {
       cnpj: input.cnpj || null,
       competencia_id: input.competencia_id || null,
       competencia: input.competencia,
-      valida_ate: input.valida_ate || null,
+      validade_ate: finalValidadeAte,
       logo_id: officialLogoRecord?.id || cartaAtual.logo_id,
       logo_snapshot_path: finalSnapshotPath,
       observacoes: input.observacoes || null,
