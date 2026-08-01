@@ -1111,3 +1111,19 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    12c8c3f..f405b8f  main -> main
 [01/08/2026 11:14] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 8d730c8] auto-save: 01/08/2026 14:29
+ 14 files changed, 1210 insertions(+), 1 deletion(-)
+ create mode 100644 docs/adr/ADR-001-Analytics-Engine.md
+ create mode 100644 docs/adr/ADR-002-Favorites.md
+ create mode 100644 docs/adr/ADR-003-Customer-Ownership.md
+ create mode 100644 docs/adr/ADR-004-MCP-Governance.md
+ create mode 100644 docs/architecture/analytics-engine.md
+ create mode 100644 docs/architecture/import-hub.md
+ create mode 100644 docs/architecture/investments.md
+ create mode 100644 docs/runbooks/analytics.md
+ create mode 100644 docs/runbooks/deploy.md
+ create mode 100644 docs/runbooks/incident-response.md
+ create mode 100644 docs/runbooks/mcp.md
+To https://github.com/ccarlos1981/coffee_mais.git
+   89aba44..8d730c8  main -> main
+[01/08/2026 14:29] ✅ Alterações enviadas com sucesso para o GitHub.
