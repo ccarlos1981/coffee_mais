@@ -1534,6 +1534,169 @@ A partir de 01/08/2026, a arquitetura e diretrizes operacionais de **Validade da
 
 Status Arquitetural: `CARTAS_ANUENCIAS_VALIDADE_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 71. Regra Permanente — Homologação de Dashboards Analíticos (Baseline Permanente)
+
+A partir de 02/08/2026, a **Regra Permanente — Homologação de Dashboards Analíticos** torna-se o baseline oficial e definitivo da plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Auditoria Inicial Obrigatória**: Antes de qualquer implementação, deve ser realizada uma auditoria completa identificando fontes de dados, regras existentes, dependências arquiteturais, componentes envolvidos e potenciais duplicações de lógica. Nenhuma implementação poderá iniciar sem essa auditoria.
+2. **Fonte Única de Verdade**: Toda métrica financeira ou analítica deverá utilizar exclusivamente a `AnalyticsEngine` ou outro componente oficialmente homologado como fonte de verdade. É expressamente proibido implementar cálculos financeiros diretamente no Frontend.
+3. **Auditoria da Semântica dos Dados**: Antes da criação ou alteração de qualquer indicador, deverá ser comprovada documentalmente a semântica dos campos utilizados. É proibido assumir o significado de qualquer campo do banco de dados apenas pelo nome.
+4. **Auditoria de Paridade Financeira (Desvio Máximo = 0%)**: Após a implementação, deverá ser executada obrigatoriamente uma auditoria comparando os indicadores do dashboard com as fontes oficiais (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`, etc.), validando Faturamento, Investimentos, Percentuais, Preços e Consolidações. O desvio financeiro aceitável é rigorosamente **0%**.
+5. **Critérios Obrigatórios de Homologação**:
+   - Auditoria inicial concluída;
+   - `AnalyticsEngine` utilizada como fonte oficial;
+   - Auditoria da semântica dos dados concluída;
+   - Auditoria de paridade financeira aprovada (**0% de divergência**);
+   - `npx tsc --noEmit` executado com 0 erros;
+   - `npm run build` executado com sucesso;
+   - Walkthrough técnico documentado;
+   - Regras de negócio atualizadas na documentação oficial (`AGENTS.md`).
+
+Status Arquitetural: `DASHBOARD_AUDIT_STANDARD = LOCKED` & `FINANCIAL_PARITY_REQUIRED = TRUE` & `OFFICIAL_ANALYTICS_SOURCE = AnalyticsEngine` & `MAX_ALLOWED_FINANCIAL_DEVIATION = 0%`.
+
+---
+
+## 72. Registro Arquitetural — Consumo de Master Data em AnalyticsEngine (Baseline Permanente)
+
+A partir de 02/08/2026, as diretrizes do **Consumo de Master Data em AnalyticsEngine** tornam-se o baseline arquitetural definitivo da plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Exclusividade de Campos Físicos**: Ao implementar consultas analíticas na `AnalyticsEngine`, utilizar exclusivamente os campos físicos existentes na tabela consultada.
+2. **Proibição de Atributos Presumidos**: É expressamente proibido assumir que atributos provenientes de views, joins ou enriquecimentos (ex.: `gerente`, `uf`, `canal`, `regional`) existam fisicamente na tabela transacional principal.
+3. **Enriquecimento via Fonte Oficial de Master Data**: Quando esses atributos pertencerem ao Cadastro Mestre/Master Data, eles deverão ser obtidos exclusivamente pela fonte oficial correspondente (ex.: `v_redes_matrizes_detalhes`) e utilizados apenas na camada de enriquecimento dos dados no backend, preservando a separação entre dados transacionais e dados cadastrais.
+4. **Objetivos Institucionais**:
+   - Evitar consultas inválidas ao banco de dados;
+   - Preservar a integridade do modelo relacional;
+   - Manter a `AnalyticsEngine` desacoplada do Master Data;
+   - Impedir dependências implícitas de campos inexistentes.
+
+Status Arquitetural: `ANALYTICS_MASTER_DATA_DECOUPLING = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 73. Regra Permanente — Separação entre Dados Transacionais e Master Data (Baseline Permanente)
+
+A partir de 02/08/2026, a **Separação entre Dados Transacionais e Master Data** torna-se o baseline arquitetural obrigatório e permanente da Plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Dados Transacionais**:
+   - As tabelas transacionais deverão armazenar exclusivamente informações próprias do evento de negócio (ações, vendas, apurações, investimentos, pagamentos, etc.).
+   - Não deverão ser utilizadas para armazenar atributos cadastrais sujeitos a alteração.
+2. **Master Data**:
+   - Informações cadastrais como Gerente, Rede, Matriz, Canal, Regional, UF, Cidade, Segmentação e demais atributos de cadastro deverão ser obtidas exclusivamente das fontes oficiais de Master Data (`v_redes_matrizes_detalhes`, `cm_clientes`, etc.).
+   - É proibido duplicar essas informações em tabelas transacionais apenas para facilitar consultas.
+3. **Enriquecimento de Dados**:
+   - O enriquecimento entre dados transacionais e cadastrais deverá ocorrer somente na camada de serviço (`AnalyticsEngine`, Services ou Views oficiais).
+   - O Frontend não deverá executar lógica de enriquecimento nem assumir relacionamentos implícitos.
+4. **Evolução do Modelo**:
+   - Sempre que um novo atributo cadastral for necessário, deverá ser avaliado se pertence ao domínio transacional ou ao Master Data antes da implementação.
+   - Novos atributos cadastrais deverão ser adicionados exclusivamente às estruturas oficiais de cadastro.
+5. **Objetivos Institucionais**:
+   - Preservar a integridade do modelo relacional;
+   - Evitar redundância de dados;
+   - Reduzir inconsistências entre módulos;
+   - Facilitar manutenção e evolução do sistema;
+   - Garantir uma única fonte oficial para informações cadastrais.
+
+Status Arquitetural: `MASTER_DATA_SEPARATION = LOCKED` & `TRANSACTIONAL_DATA_ISOLATION = REQUIRED` & `MASTER_DATA_SINGLE_SOURCE = TRUE`.
+
+---
+
+## 74. Regra Permanente — Consolidação Hierárquica de Dashboards Analíticos (Baseline Permanente)
+
+A partir de 02/08/2026, a **Consolidação Hierárquica de Dashboards Analíticos** torna-se o baseline arquitetural obrigatório e permanente da Plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Consistência Hierárquica**: Toda agregação deverá possuir consistência matemática entre todos os níveis da hierarquia (ex.: `Família → Rede → Total Geral`). O valor consolidado do nível pai deverá ser exatamente igual à soma/ponderação de seus níveis filhos. Não são permitidas divergências entre níveis de consolidação.
+2. **Médias Ponderadas**: Sempre que houver consolidação de indicadores financeiros (Preço Médio, Desconto Médio, Investimento Médio ou equivalentes), é proibida a utilização de médias simples. Deverão ser utilizadas exclusivamente médias ponderadas segundo a regra oficial do indicador (ex.: $\sum(\text{Preço} \times \text{Volume}) \div \sum(\text{Volume})$).
+3. **Agregação Exclusivamente na Camada Analítica**: Toda consolidação deverá ocorrer exclusivamente na `AnalyticsEngine` (ou componente analítico oficialmente homologado). O Frontend deverá apenas consumir e apresentar os dados. É proibida qualquer agregação financeira no Client.
+4. **Drill-down**: Sempre que um dashboard possuir navegação hierárquica, os níveis inferiores deverão ser derivados da mesma estrutura utilizada para gerar o consolidado. É proibido recalcular indicadores diferentes em cada nível da hierarquia.
+5. **Paridade Financeira**: Todo novo dashboard deverá comprovar paridade entre níveis hierárquicos, paridade com a fonte oficial de dados e desvio financeiro máximo permitido de **0,0000%**.
+
+Status Arquitetural: `HIERARCHICAL_ANALYTICS = LOCKED` & `WEIGHTED_AGGREGATION_REQUIRED = TRUE` & `FRONTEND_FINANCIAL_AGGREGATION = FORBIDDEN` & `HIERARCHICAL_PARITY_REQUIRED = TRUE`.
+
+---
+
+### Critério Institucional de Homologação de Dashboards Analíticos
+
+Além das diretrizes desta seção, todo dashboard analítico da Plataforma Coffee++ somente poderá ser considerado oficialmente homologado quando atender cumulativamente aos seguintes critérios:
+
+- Auditoria inicial concluída e documentada;
+- Semântica dos dados validada e comprovada;
+- `AnalyticsEngine` (ou componente analítico oficialmente homologado) utilizada como única fonte de verdade;
+- Consolidação hierárquica validada em todos os níveis da informação;
+- Médias ponderadas aplicadas sempre que exigidas pelas regras de negócio;
+- Paridade financeira comprovada com desvio máximo de **0,0000%**;
+- Ausência de lógica financeira implementada no Frontend;
+- Walkthrough técnico documentado;
+- Especificação funcional atualizada em `AGENTS.md`, quando houver alteração de regra de negócio;
+- `npx tsc --noEmit` executado com **0 erros**;
+- `npm run build` executado com sucesso.
+
+### Objetivos da Homologação
+
+Garantir que todos os dashboards executivos da Plataforma Coffee++ apresentem consistência matemática, rastreabilidade, reprodutibilidade dos indicadores e conformidade com as diretrizes de governança analítica da plataforma.
+
+Status Arquitetural: `DASHBOARD_HOMOLOGATION_CHECKLIST = REQUIRED` & `ANALYTICS_GOVERNANCE_COMPLIANCE = MANDATORY`.
+
+---
+
+### Evidência de Aplicação das Baselines
+
+As baselines arquiteturais e de governança definidas neste documento estabelecem os critérios permanentes da Plataforma Coffee++.
+
+A comprovação de conformidade de cada implementação (dashboards, módulos, serviços ou componentes) **não deverá ser registrada neste documento**, mas sim na documentação técnica específica do respectivo módulo, por meio de:
+
+- `implementation_plan.md`;
+- `walkthrough.md`;
+- Especificação Funcional Oficial;
+- Manual Operacional, quando aplicável;
+- Relatórios formais de auditoria e homologação.
+
+O **AGENTS.md** deverá permanecer exclusivamente como documento de governança, arquitetura e diretrizes permanentes da plataforma, evitando o acúmulo de históricos de implementação.
+
+Status Arquitetural: `AGENTS_GOVERNANCE_ONLY = TRUE` & `IMPLEMENTATION_EVIDENCE_OUTSIDE_AGENTS = REQUIRED` & `ARCHITECTURAL_BASELINES = PERMANENT`.
+
+---
+
+## 75. Regra Permanente — Walkthrough Técnico de Implementações (Baseline Permanente)
+
+A partir de 02/08/2026, a **Regra Permanente — Walkthrough Técnico de Implementações** torna-se o baseline arquitetural obrigatório e permanente da Plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Obrigatoriedade**: Todo módulo estratégico da Plataforma Coffee++ que introduzir alteração arquitetural, funcional ou analítica relevante deverá possuir um Walkthrough Técnico oficial como evidência da implementação.
+2. **Objetivos Institucionais**: O Walkthrough Técnico tem como finalidade registrar:
+   - Diagnóstico da situação anterior;
+   - Decisões arquiteturais adotadas;
+   - Regras de negócio implementadas;
+   - Validações e auditorias executadas;
+   - Evidências de homologação;
+   - Componentes impactados;
+   - Status final da implementação.
+3. **Escopo e Limites Documentais**: O Walkthrough Técnico é um documento de implementação e homologação. Ele não substitui `AGENTS.md` (governança permanente), Especificação Funcional (regras de negócio) nem Manual Operacional (orientação ao usuário). Cada documento possui responsabilidade própria e complementar.
+4. **Estrutura Mínima Obrigatória (9 Seções)**: Todo Walkthrough Técnico deverá conter, no mínimo:
+   1. Objetivo da implementação;
+   2. Auditoria inicial;
+   3. Alterações realizadas;
+   4. Regras e fórmulas implementadas;
+   5. Evidências de validação;
+   6. Lições aprendidas e decisões arquiteturais;
+   7. Critérios de homologação;
+   8. Arquivos impactados;
+   9. Controle documental.
+
+Status Arquitetural: `TECHNICAL_WALKTHROUGH_REQUIRED = TRUE` & `IMPLEMENTATION_EVIDENCE_REQUIRED = TRUE` & `TECHNICAL_HOMOLOGATION_DOCUMENT = MANDATORY`.
+
+
+
+
+
+
+
+
 
 
 

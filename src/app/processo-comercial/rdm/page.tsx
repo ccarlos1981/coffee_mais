@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
+import { isSameManager } from "@/lib/domain/canonical";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Maximize2, Minimize2,
   Save, Loader2, Download, CheckSquare, Square, X
@@ -395,13 +398,15 @@ function SlideShell({ title, monthName, children }: { title: string; monthName: 
 
 // ─── Slide 1: Pauta ───────────────────────────────────────────────────────────
 const AGENDA_ITEMS = [
+  "Follow up (FUP)",
   "Farol de Metas",
-  "Follow up",
   "Resultado DRE",
+  "Investimentos",
   "Faturamento e Volume por Regional",
   "Volume por família",
-  "Prioridades",
   "Plano de Ação",
+  "Projeção de Vendas",
+  "Agenda de Rotas",
 ];
 
 function SlideAgenda({ monthName }: { monthName: string }) {
@@ -424,13 +429,956 @@ function SlideAgenda({ monthName }: { monthName: string }) {
   );
 }
 
-// ─── Slide 3: Resultado DRE (placeholder) ───────────────────────────────────
+// ─── Slide 3: Follow up (FUP) ────────────────────────────────────────────────
+function SlideFollowUp({
+  monthName,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+  saved,
+}: {
+  monthName: string;
+  comment: string;
+  onCommentChange: (v: string) => void;
+  onCommentSave: () => void;
+  saving: boolean;
+  saved?: boolean;
+}) {
+  const [rows, setRows] = useState<ActionPlanRow[]>([]);
+  const hasLoaded = useRef(false);
+
+  useEffect(() => {
+    if (comment) {
+      try {
+        const parsed = JSON.parse(comment);
+        if (Array.isArray(parsed)) {
+          setRows(parsed);
+          hasLoaded.current = true;
+          return;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+    setRows([
+      {
+        oQue: "Sem Distribuidor para atender a área (baixo potencial)",
+        como: "Buscar um Distribuidor parceiro, para o atendimento da área",
+        quem: "Cristiano + equipe",
+        quando: "F26",
+        status: "Fazendo triagem das oportunidades"
+      }
+    ]);
+    hasLoaded.current = true;
+  }, [comment]);
+
+  const updateRows = (newRows: ActionPlanRow[]) => {
+    setRows(newRows);
+    onCommentChange(JSON.stringify(newRows));
+  };
+
+  const handleChange = (index: number, field: keyof ActionPlanRow, value: string) => {
+    const newRows = [...rows];
+    newRows[index] = { ...newRows[index], [field]: value };
+    updateRows(newRows);
+  };
+
+  const addRow = () => {
+    const newRows = [...rows, { oQue: "", como: "", quem: "", quando: "", status: "" }];
+    updateRows(newRows);
+  };
+
+  const deleteRow = (index: number) => {
+    const newRows = rows.filter((_, i) => i !== index);
+    updateRows(newRows);
+  };
+
+  const thStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    border: '1px solid #111',
+    fontWeight: 700,
+    textAlign: 'center',
+    fontSize: '0.85rem',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    background: '#1a3a5c',
+    letterSpacing: '0.04em',
+    width: '20%',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '0',
+    border: '1px solid #111',
+    background: '#ffffff',
+    verticalAlign: 'top',
+  };
+
+  const textareaStyle: React.CSSProperties = {
+    width: '100%',
+    height: '100%',
+    minHeight: '75px',
+    border: 'none',
+    resize: 'none',
+    outline: 'none',
+    padding: '10px 12px',
+    fontSize: '0.72rem',
+    fontWeight: 500,
+    color: '#111111',
+    background: 'transparent',
+    lineHeight: '1.4',
+    fontFamily: 'var(--font-sans, system-ui, sans-serif)',
+  };
+
+  return (
+    <SlideShell title="Follow up (FUP)" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '12px' }}>
+        {/* Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+          <p className="rdm-fat-subtitle" style={{ margin: 0 }}>
+            FOLLOW UP DE AÇÕES E PROJETOS
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={addRow}
+              style={{
+                fontSize: '0.62rem', padding: '4px 10px', borderRadius: 4,
+                border: '1px solid #1a3a5c', background: '#fff', color: '#1a3a5c',
+                fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseOver={e => { e.currentTarget.style.background = 'rgba(26,58,92,0.06)'; }}
+              onMouseOut={e => { e.currentTarget.style.background = '#fff'; }}
+            >
+              + Adicionar Linha
+            </button>
+            <button
+              onClick={onCommentSave}
+              disabled={saving}
+              style={{
+                fontSize: '0.62rem', padding: '4px 12px', borderRadius: 4,
+                border: 'none', background: saving ? '#94a3b8' : saved ? '#16a34a' : '#2d5016', color: '#fff',
+                fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {saving ? 'Salvando...' : saved ? '✓ Salvo!' : 'Salvar Follow Up'}
+            </button>
+          </div>
+        </div>
+
+        {/* Action / Follow Up Table */}
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #111', borderRadius: '4px', background: '#fff' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>O quê</th>
+                <th style={thStyle}>Como</th>
+                <th style={thStyle}>Quem</th>
+                <th style={thStyle}>Quando</th>
+                <th style={thStyle}>Status</th>
+                <th style={{ ...thStyle, width: '40px', background: '#1a3a5c', border: '1px solid #111' }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={index}>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.oQue}
+                      onChange={e => handleChange(index, 'oQue', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Sem Distribuidor para atender a área..."
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.como}
+                      onChange={e => handleChange(index, 'como', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Buscar um Distribuidor parceiro..."
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.quem}
+                      onChange={e => handleChange(index, 'quem', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Cristiano + equipe"
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.quando}
+                      onChange={e => handleChange(index, 'quando', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="F26"
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    <textarea
+                      value={row.status}
+                      onChange={e => handleChange(index, 'status', e.target.value)}
+                      style={textareaStyle}
+                      placeholder="Fazendo triagem..."
+                    />
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'center', verticalAlign: 'middle', width: '40px' }}>
+                    <button
+                      onClick={() => deleteRow(index)}
+                      style={{
+                        background: 'none', border: 'none', color: '#ef4444',
+                        cursor: 'pointer', fontSize: '1rem', padding: '4px',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        margin: 'auto',
+                      }}
+                      title="Excluir linha"
+                    >
+                      🗑️
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 4: Resultado DRE (placeholder) ───────────────────────────────────
 function SlideDre({ monthName }: { monthName: string }) {
   return (
     <SlideShell title="Resultado DRE" monthName={monthName}>
       <div className="rdm-dre-placeholder">
         <span className="rdm-dre-label">DRE</span>
         <p className="rdm-dre-sub">Dados em breve</p>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide: Investimentos — Resumo das Fases ──────────────────────────────────
+function SlideInvestFases({
+  monthName,
+  month,
+  year,
+  manager,
+}: {
+  monthName: string;
+  month: number;
+  year: number;
+  manager: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [fasesData, setFasesData] = useState<{
+    fase: number;
+    title: string;
+    description: string;
+    count: number;
+    val: number;
+  }[]>([]);
+  const [totals, setTotals] = useState({ totalVal: 0, totalCount: 0, atrasadasCount: 0 });
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: acoes, error } = await supabase
+        .from("cm_acoes_investimento")
+        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, data_fim")
+        .eq("is_planejamento", false);
+
+      if (error) throw error;
+
+      let filtered = acoes || [];
+      if (manager !== "CRISTIANO") {
+        const { data: matrizes } = await supabase
+          .from("v_redes_matrizes_detalhes")
+          .select("nome, gerente, codigo");
+        const managerMap: Record<string, string> = {};
+        (matrizes || []).forEach((m: any) => {
+          if (m.nome) managerMap[m.nome.toUpperCase().trim()] = m.gerente;
+          if (m.codigo) managerMap[String(m.codigo).trim()] = m.gerente;
+        });
+        filtered = filtered.filter((a: any) => {
+          const rKey = (a.rede || "").toUpperCase().trim();
+          const cKey = String(a.codigo_matriz || "").trim();
+          const g = managerMap[rKey] || managerMap[cKey];
+          return isSameManager(g, manager);
+        });
+      }
+
+      const fasesMap: Record<number, { count: number; val: number }> = {
+        1: { count: 0, val: 0 },
+        2: { count: 0, val: 0 },
+        3: { count: 0, val: 0 },
+        4: { count: 0, val: 0 },
+        5: { count: 0, val: 0 },
+        6: { count: 0, val: 0 },
+      };
+
+      let tVal = 0;
+      let tCount = 0;
+      let atrasadas = 0;
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      filtered.forEach((a: any) => {
+        const f = a.fase_atual || 1;
+        const v = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        if (fasesMap[f]) {
+          fasesMap[f].count += 1;
+          fasesMap[f].val += v;
+        }
+        tVal += v;
+        tCount += 1;
+        if (f === 3 && a.data_fim && a.data_fim < todayStr) {
+          atrasadas += 1;
+        }
+      });
+
+      setTotals({ totalVal: tVal, totalCount: tCount, atrasadasCount: atrasadas });
+
+      setFasesData([
+        { fase: 1, title: "Fase 1 — Planejamento", description: "Lançamento inicial e detalhamento", count: fasesMap[1].count, val: fasesMap[1].val },
+        { fase: 2, title: "Fase 2 — Aprovação Trade", description: "Análise técnica do calendário Trade", count: fasesMap[2].count, val: fasesMap[2].val },
+        { fase: 3, title: "Fase 3 — Execução / Comercial", description: "Ação ativa no ponto de venda", count: fasesMap[3].count, val: fasesMap[3].val },
+        { fase: 4, title: "Fase 4 — Apuração / Evidências", description: "Envio de comprovantes e notas", count: fasesMap[4].count, val: fasesMap[4].val },
+        { fase: 5, title: "Fase 5 — Aprovação Financeiro", description: "Conferência e liberação fiscal", count: fasesMap[5].count, val: fasesMap[5].val },
+        { fase: 6, title: "Fase 6 — Liquidado / Concluído", description: "Pagamento realizado e encerrado", count: fasesMap[6].count, val: fasesMap[6].val },
+      ]);
+    } catch (e) {
+      console.error("Erro ao carregar resumo de fases:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [manager]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  return (
+    <SlideShell title="Investimentos — Resumo das Fases" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '12px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 12px' }}>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748b', fontWeight: 600 }}>INVESTIMENTO TOTAL</p>
+            <p style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: 800 }}>{formatCurrency(totals.totalVal)}</p>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 12px' }}>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748b', fontWeight: 600 }}>TOTAL DE AÇÕES</p>
+            <p style={{ margin: 0, fontSize: '1.1rem', color: '#0f172a', fontWeight: 800 }}>{totals.totalCount} ações</p>
+          </div>
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6, padding: '8px 12px' }}>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: '#64748b', fontWeight: 600 }}>AÇÕES CONCLUÍDAS</p>
+            <p style={{ margin: 0, fontSize: '1.1rem', color: '#16a34a', fontWeight: 800 }}>{(fasesData[4]?.count ?? 0) + (fasesData[5]?.count ?? 0)} ações</p>
+          </div>
+          <div style={{ background: totals.atrasadasCount > 0 ? '#fef2f2' : '#f8fafc', border: totals.atrasadasCount > 0 ? '1px solid #fca5a5' : '1px solid #e2e8f0', borderRadius: 6, padding: '8px 12px' }}>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: totals.atrasadasCount > 0 ? '#991b1b' : '#64748b', fontWeight: 600 }}>AÇÕES ATRASADAS</p>
+            <p style={{ margin: 0, fontSize: '1.1rem', color: totals.atrasadasCount > 0 ? '#dc2626' : '#0f172a', fontWeight: 800 }}>{totals.atrasadasCount} em alerta</p>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, flex: 1, overflowY: 'auto' }}>
+          {fasesData.map((f) => (
+            <div
+              key={f.fase}
+              style={{
+                border: '1px solid #cbd5e1',
+                borderRadius: 6,
+                padding: '10px 14px',
+                background: '#ffffff',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              }}
+            >
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#1a3a5c' }}>{f.title}</span>
+                  <span style={{ fontSize: '0.65rem', background: '#e2e8f0', color: '#334155', fontWeight: 700, padding: '2px 6px', borderRadius: 10 }}>
+                    {f.count} ações
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: '0.62rem', color: '#64748b' }}>{f.description}</p>
+              </div>
+              <div style={{ marginTop: 10, borderTop: '1px solid #f1f5f9', paddingTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: '0.62rem', color: '#94a3b8', fontWeight: 600 }}>VALOR TOTAL</span>
+                <span style={{ fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{formatCurrency(f.val)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide: Investimento por Cliente (Foto 2) ──────────────────────────────────
+function SlideInvestCliente({
+  monthName,
+  month,
+  year,
+  manager,
+}: {
+  monthName: string;
+  month: number;
+  year: number;
+  manager: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<{
+    gerente: string;
+    rede: string;
+    fat: number;
+    percInvest: number | null;
+    expect: number;
+    naoProv: number;
+    prov: number;
+    atrasadas: number;
+  }[]>([]);
+
+  const [gerenteTotals, setGerenteTotals] = useState<{
+    gerente: string;
+    fat: number;
+    percInvest: number | null;
+    expect: number;
+    naoProv: number;
+    prov: number;
+    atrasadas: number;
+  } | null>(null);
+
+  const mesKey = `${year}-${String(month).padStart(2, "0")}`;
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: acoes } = await supabase
+        .from("cm_acoes_investimento")
+        .select("id, rede, valor_investimento, mes_referencia, fase_atual, expectativa_volume, data_fim")
+        .eq("is_planejamento", false)
+        .is("financeiro_pago_em", null);
+
+      const { data: matrizes } = await supabase
+        .from("v_redes_matrizes_detalhes")
+        .select("nome, gerente, codigo");
+
+      const gMap: Record<string, string> = {};
+      (matrizes || []).forEach((m: any) => {
+        if (m.nome) gMap[m.nome.toUpperCase().trim()] = m.gerente || "Sem Gerente";
+        if (m.codigo) gMap[String(m.codigo).trim()] = m.gerente || "Sem Gerente";
+      });
+
+      const { data: salesRows } = await supabase
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
+        .select("rede, fat")
+        .eq("mes", mesKey)
+        .limit(10000);
+
+      const fMap: Record<string, number> = {};
+      (salesRows || []).forEach((r: any) => {
+        const rk = (r.rede || "").toUpperCase().trim();
+        if (rk) fMap[rk] = (fMap[rk] || 0) + (Number(r.fat) || 0);
+      });
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const aggMap: Record<string, {
+        gerente: string;
+        rede: string;
+        expect: number;
+        naoProv: number;
+        prov: number;
+        atrasadas: number;
+      }> = {};
+
+      (acoes || []).forEach((a: any) => {
+        if ((a.fase_atual ?? 0) === 1) return;
+        const redeKey = (a.rede || "SEM REDE").toUpperCase().trim();
+        const cKey = String(a.codigo_matriz || "").trim();
+        const gName = gMap[redeKey] || gMap[cKey] || "Sem Gerente";
+
+        if (manager !== "CRISTIANO" && !isSameManager(gName, manager)) return;
+
+        const val = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        const isRefMonth = a.mes_referencia === mesKey;
+        const isAtrasada = a.fase_atual === 3 && a.data_fim && a.data_fim < todayStr;
+
+        if (isRefMonth || isAtrasada) {
+          if (!aggMap[redeKey]) {
+            aggMap[redeKey] = { gerente: gName, rede: redeKey, expect: 0, naoProv: 0, prov: 0, atrasadas: 0 };
+          }
+
+          if (isRefMonth) {
+            aggMap[redeKey].expect += val;
+            aggMap[redeKey].naoProv += val;
+          }
+
+          if (isAtrasada) {
+            aggMap[redeKey].atrasadas += 1;
+          }
+        }
+      });
+
+      const list = Object.values(aggMap).map(item => {
+        const fat = fMap[item.rede] || 0;
+        const totalInvest = item.naoProv + item.prov;
+        const percInvest = fat > 0 ? (totalInvest / fat) * 100 : null;
+        return {
+          ...item,
+          fat,
+          percInvest,
+        };
+      }).sort((a, b) => (b.expect || b.fat) - (a.expect || a.fat));
+
+      let tFat = 0, tExpect = 0, tNaoProv = 0, tProv = 0, tAtrasadas = 0;
+      list.forEach(r => {
+        tFat += r.fat;
+        tExpect += r.expect;
+        tNaoProv += r.naoProv;
+        tProv += r.prov;
+        tAtrasadas += r.atrasadas;
+      });
+      const totalInvest = tNaoProv + tProv;
+      const tPercInvest = tFat > 0 ? (totalInvest / tFat) * 100 : null;
+
+      setGerenteTotals({
+        gerente: manager === "CRISTIANO" ? "CRISTIANO SANTOS Total" : `${manager} Total`,
+        fat: tFat,
+        percInvest: tPercInvest,
+        expect: tExpect,
+        naoProv: tNaoProv,
+        prov: tProv,
+        atrasadas: tAtrasadas,
+      });
+
+      setRows(list);
+    } catch (e) {
+      console.error("Erro ao carregar Invest. Cliente:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [manager, mesKey]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const thStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    border: '1px solid #cbd5e1',
+    fontWeight: 700,
+    textAlign: 'center',
+    fontSize: '0.68rem',
+    color: '#0f172a',
+    background: '#f1f5f9',
+    textTransform: 'uppercase',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    border: '1px solid #e2e8f0',
+    fontSize: '0.68rem',
+    fontWeight: 500,
+    textAlign: 'center',
+  };
+
+  return (
+    <SlideShell title="Invest. Cliente" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '10px' }}>
+        <p className="rdm-fat-subtitle" style={{ margin: 0 }}>
+          Referência: {monthName}/{year}
+        </p>
+
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left' }}>Responsável</th>
+                <th style={{ ...thStyle, textAlign: 'left' }}>Rede</th>
+                <th style={thStyle}>Fat. {monthName.slice(0, 3)}/{String(year).slice(2)}</th>
+                <th style={thStyle}>% Invest.</th>
+                <th style={thStyle}>Expect. Investimento</th>
+                <th style={{ ...thStyle, color: '#b45309' }}>Não Provisionado</th>
+                <th style={thStyle}>Provisionado</th>
+                <th style={{ ...thStyle, color: '#c2410c' }}>Ações Atrasadas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ background: i % 2 === 0 ? '#ffffff' : '#f8fafc' }}>
+                  <td style={{ ...tdStyle, textAlign: 'left', color: '#64748b' }}>{r.gerente}</td>
+                  <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 700, color: '#0f172a' }}>{r.rede}</td>
+                  <td style={tdStyle}>{r.fat > 0 ? formatCurrency(r.fat) : '—'}</td>
+                  <td style={{ ...tdStyle, color: r.percInvest && r.percInvest > 50 ? '#dc2626' : '#16a34a', fontWeight: 700 }}>
+                    {r.percInvest !== null ? `${r.percInvest.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>{formatCurrency(r.expect)}</td>
+                  <td style={{ ...tdStyle, color: '#d97706', fontWeight: 700 }}>{formatCurrency(r.naoProv)}</td>
+                  <td style={tdStyle}>{r.prov > 0 ? formatCurrency(r.prov) : '—'}</td>
+                  <td style={tdStyle}>
+                    {r.atrasadas > 0 ? (
+                      <span style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', padding: '1px 6px', borderRadius: 10, fontWeight: 800 }}>
+                        {r.atrasadas}
+                      </span>
+                    ) : '—'}
+                  </td>
+                </tr>
+              ))}
+              {gerenteTotals && (
+                <tr style={{ background: '#fef3c7', fontWeight: 800, borderTop: '2px solid #f59e0b' }}>
+                  <td colSpan={2} style={{ ...tdStyle, textAlign: 'left', color: '#92400e', fontWeight: 800 }}>
+                    👥 {gerenteTotals.gerente}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#92400e', fontWeight: 800 }}>{formatCurrency(gerenteTotals.fat)}</td>
+                  <td style={{ ...tdStyle, color: '#b45309', fontWeight: 800 }}>
+                    {gerenteTotals.percInvest !== null ? `${gerenteTotals.percInvest.toFixed(1)}%` : '—'}
+                  </td>
+                  <td style={{ ...tdStyle, color: '#92400e', fontWeight: 800 }}>{formatCurrency(gerenteTotals.expect)}</td>
+                  <td style={{ ...tdStyle, color: '#b45309', fontWeight: 800 }}>{formatCurrency(gerenteTotals.naoProv)}</td>
+                  <td style={{ ...tdStyle, color: '#92400e', fontWeight: 800 }}>{formatCurrency(gerenteTotals.prov)}</td>
+                  <td style={{ ...tdStyle, color: '#991b1b', fontWeight: 800 }}>
+                    {gerenteTotals.atrasadas > 0 ? gerenteTotals.atrasadas : '—'}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide: Investimento por Rede (Foto 3) ────────────────────────────────────
+function SlideInvestRede({
+  monthName,
+  month,
+  year,
+  manager,
+}: {
+  monthName: string;
+  month: number;
+  year: number;
+  manager: string;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [expandedRedes, setExpandedRedes] = useState<Set<string>>(new Set());
+  const [kpis, setKpis] = useState({
+    fatTotal: 0,
+    investTotal: 0,
+    pctInvestTotal: 0,
+    pctVsFlat: 0,
+    qtdRedes: 0,
+    acoesApuradas: 0,
+  });
+  const [redesData, setRedesData] = useState<{
+    rede: string;
+    gerente: string;
+    fatTotal: number;
+    investTotal: number;
+    pctInvestTotal: number;
+    precoFlat: number;
+    precoPromo: number;
+    pctInvVsFlat: number;
+    familias: {
+      nome: string;
+      fat: number;
+      invest: number;
+      pctInvest: number;
+      precoFlat: number;
+      precoPromo: number;
+      pctInvVsFlat: number;
+    }[];
+  }[]>([]);
+
+  const mesKey = `${year}-${String(month).padStart(2, "0")}`;
+
+  const toggleRede = (rede: string) => {
+    setExpandedRedes(prev => {
+      const next = new Set(prev);
+      if (next.has(rede)) next.delete(rede);
+      else next.add(rede);
+      return next;
+    });
+  };
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: salesRows } = await supabase.rpc('execute_readonly_query', {
+        query_text: `
+          SELECT COALESCE(rede,'SEM REDE') as rede, COALESCE(tipo_produto,'Outros') as familia, SUM(fat) as fat, SUM(qty) as qty
+          FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+          WHERE mes = '${mesKey}'
+          GROUP BY rede, tipo_produto
+        `
+      });
+
+      const { data: acoes } = await supabase
+        .from("cm_acoes_investimento")
+        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, familias_detalhes")
+        .eq("is_planejamento", false);
+
+      const { data: matrizes } = await supabase
+        .from("v_redes_matrizes_detalhes")
+        .select("nome, gerente, canal, codigo");
+
+      const gMap: Record<string, { gerente: string; canal: string }> = {};
+      (matrizes || []).forEach((m: any) => {
+        const info = {
+          gerente: m.gerente || "Sem Gerente",
+          canal: m.canal || "KA",
+        };
+        if (m.nome) gMap[m.nome.toUpperCase().trim()] = info;
+        if (m.codigo) gMap[String(m.codigo).trim()] = info;
+      });
+
+      const redeMap: Record<string, {
+        gerente: string;
+        canal: string;
+        fat: number;
+        invest: number;
+        qty: number;
+        familias: Record<string, { fat: number; invest: number; qty: number }>;
+      }> = {};
+
+      let totalFatAll = 0;
+      let totalInvestAll = 0;
+      let countAcoes = 0;
+
+      (salesRows || []).forEach((s: any) => {
+        const rKey = (s.rede || "SEM REDE").toUpperCase().trim();
+        const gInfo = gMap[rKey] || { gerente: "Sem Gerente", canal: "KA" };
+
+        if (manager !== "CRISTIANO" && !isSameManager(gInfo.gerente, manager)) return;
+
+        if (!redeMap[rKey]) {
+          redeMap[rKey] = { gerente: gInfo.gerente, canal: gInfo.canal, fat: 0, invest: 0, qty: 0, familias: {} };
+        }
+
+        const fat = Number(s.fat) || 0;
+        const qty = Number(s.qty) || 0;
+        const fam = s.familia || "Outros";
+
+        redeMap[rKey].fat += fat;
+        redeMap[rKey].qty += qty;
+        totalFatAll += fat;
+
+        if (!redeMap[rKey].familias[fam]) {
+          redeMap[rKey].familias[fam] = { fat: 0, invest: 0, qty: 0 };
+        }
+        redeMap[rKey].familias[fam].fat += fat;
+        redeMap[rKey].familias[fam].qty += qty;
+      });
+
+      (acoes || []).forEach((a: any) => {
+        if (a.mes_referencia !== mesKey) return;
+
+        const rKey = (a.rede || "SEM REDE").toUpperCase().trim();
+        const cKey = String(a.codigo_matriz || "").trim();
+        const gInfo = gMap[rKey] || gMap[cKey] || { gerente: "Sem Gerente", canal: "KA" };
+
+        if (manager !== "CRISTIANO" && !isSameManager(gInfo.gerente, manager)) return;
+
+        if (!redeMap[rKey]) {
+          redeMap[rKey] = { gerente: gInfo.gerente, canal: gInfo.canal, fat: 0, invest: 0, qty: 0, familias: {} };
+        }
+
+        const totalActionInv = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        redeMap[rKey].invest += totalActionInv;
+        totalInvestAll += totalActionInv;
+        countAcoes += 1;
+
+        const details = Array.isArray(a.familias_detalhes) ? a.familias_detalhes : [];
+        if (details.length > 0) {
+          details.forEach((fd: any) => {
+            const fName = fd.familia_nome || fd.familia_id || a.familia_produto || "Outros";
+            const fInv = (Number(fd.investimento) || 0) * (Number(fd.expectativa_volume) || 1);
+            const actualInv = fInv > 0 ? fInv : (totalActionInv / details.length);
+
+            if (!redeMap[rKey].familias[fName]) {
+              redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0 };
+            }
+            redeMap[rKey].familias[fName].invest += actualInv;
+          });
+        } else {
+          const fName = a.familia_produto || "Outros";
+          if (!redeMap[rKey].familias[fName]) {
+            redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0 };
+          }
+          redeMap[rKey].familias[fName].invest += totalActionInv;
+        }
+      });
+
+      const list = Object.entries(redeMap).map(([rName, data]) => {
+        const pctInvestTotal = data.fat > 0 ? (data.invest / data.fat) * 100 : 0;
+        const precoFlat = data.qty > 0 ? data.fat / data.qty : 0;
+        const precoPromo = data.qty > 0 ? Math.max(0, (data.fat - data.invest) / data.qty) : 0;
+        const pctInvVsFlat = precoFlat > 0 ? ((precoFlat - precoPromo) / precoFlat) * 100 : 0;
+
+        const famList = Object.entries(data.familias).map(([fName, fData]) => {
+          const fPctInvest = fData.fat > 0 ? (fData.invest / fData.fat) * 100 : 0;
+          const fPrecoFlat = fData.qty > 0 ? fData.fat / fData.qty : 0;
+          const fPrecoPromo = fData.qty > 0 ? Math.max(0, (fData.fat - fData.invest) / fData.qty) : 0;
+          const fPctInvVsFlat = fPrecoFlat > 0 ? ((fPrecoFlat - fPrecoPromo) / fPrecoFlat) * 100 : 0;
+          return {
+            nome: fName,
+            fat: fData.fat,
+            invest: fData.invest,
+            pctInvest: fPctInvest,
+            precoFlat: fPrecoFlat,
+            precoPromo: fPrecoPromo,
+            pctInvVsFlat: fPctInvVsFlat,
+          };
+        }).sort((a, b) => b.fat - a.fat);
+
+        return {
+          rede: rName,
+          gerente: `${data.gerente} • ${data.canal}`,
+          fatTotal: data.fat,
+          investTotal: data.invest,
+          pctInvestTotal,
+          precoFlat,
+          precoPromo,
+          pctInvVsFlat,
+          familias: famList,
+        };
+      }).sort((a, b) => b.investTotal - a.investTotal);
+
+      setKpis({
+        fatTotal: totalFatAll,
+        investTotal: totalInvestAll,
+        pctInvestTotal: totalFatAll > 0 ? (totalInvestAll / totalFatAll) * 100 : 0,
+        pctVsFlat: 20.0,
+        qtdRedes: list.length,
+        acoesApuradas: countAcoes,
+      });
+
+      setRedesData(list);
+    } catch (e) {
+      console.error("Erro ao carregar Investimento por Rede:", e);
+    } finally {
+      setLoading(false);
+    }
+  }, [manager, mesKey]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const thStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    borderBottom: '2px solid #e2e8f0',
+    fontWeight: 700,
+    textAlign: 'right',
+    fontSize: '0.65rem',
+    color: '#475569',
+    background: '#fafafa',
+  };
+
+  const tdStyle: React.CSSProperties = {
+    padding: '6px 10px',
+    borderBottom: '1px solid #f1f5f9',
+    fontSize: '0.68rem',
+    textAlign: 'right',
+    fontWeight: 600,
+  };
+
+  return (
+    <SlideShell title="Investimento por Rede" monthName={monthName}>
+      <div className="rdm-fat-wrap" style={{ gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#64748b', fontWeight: 700 }}>💳 FAT TT</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{formatCurrency(kpis.fatTotal)}</p>
+          </div>
+          <div style={{ background: '#fdf4ff', border: '1px solid #f0abfc', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#c026d3', fontWeight: 700 }}>$ INVEST. TT</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#d946ef', fontWeight: 800 }}>{formatCurrency(kpis.investTotal)}</p>
+          </div>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#64748b', fontWeight: 700 }}>↗ % INV. TT</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{kpis.pctInvestTotal.toFixed(1)}%</p>
+          </div>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#64748b', fontWeight: 700 }}>📊 % INV. VS FLAT</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{kpis.pctVsFlat.toFixed(1)}%</p>
+          </div>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#64748b', fontWeight: 700 }}>🏬 QTD. REDES</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{kpis.qtdRedes} redes</p>
+          </div>
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '6px 10px' }}>
+            <p style={{ margin: 0, fontSize: '0.58rem', color: '#64748b', fontWeight: 700 }}>✅ AÇÕES APURADAS</p>
+            <p style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a', fontWeight: 800 }}>{kpis.acoesApuradas} ações</p>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, textAlign: 'left' }}>Rede / Família</th>
+                <th style={thStyle}>Fat TT</th>
+                <th style={{ ...thStyle, color: '#d946ef', background: '#fdf4ff' }}>Invest. TT</th>
+                <th style={thStyle}>% Inv. TT</th>
+                <th style={thStyle}>Preço Flat</th>
+                <th style={thStyle}>Preço Promo</th>
+                <th style={{ ...thStyle, color: '#2563eb' }}>% Inv. vs Flat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {redesData.map((r) => {
+                const isExpanded = expandedRedes.has(r.rede);
+                return (
+                  <React.Fragment key={r.rede}>
+                    <tr style={{ background: '#ffffff', cursor: 'pointer' }} onClick={() => toggleRede(r.rede)}>
+                      <td style={{ ...tdStyle, textAlign: 'left', fontWeight: 700 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.75rem', color: '#64748b', width: 14 }}>
+                            {isExpanded ? '▼' : '►'}
+                          </span>
+                          <div>
+                            <span style={{ color: '#d946ef', fontWeight: 800 }}>{r.rede}</span>
+                            <span style={{ display: 'block', fontSize: '0.58rem', color: '#94a3b8', fontWeight: 500 }}>{r.gerente}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{r.fatTotal > 0 ? formatCurrency(r.fatTotal) : '—'}</td>
+                      <td style={{ ...tdStyle, color: '#d946ef', background: '#fdf4ff', fontWeight: 800 }}>{formatCurrency(r.investTotal)}</td>
+                      <td style={tdStyle}>
+                        <span style={{ background: '#fce7f3', color: '#be185d', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
+                          {r.pctInvestTotal > 0 ? `${r.pctInvestTotal.toFixed(1)}%` : '—'}
+                        </span>
+                      </td>
+                      <td style={tdStyle}>{r.precoFlat > 0 ? `R$ ${r.precoFlat.toFixed(2).replace('.', ',')}` : '—'}</td>
+                      <td style={tdStyle}>{r.precoPromo > 0 ? `R$ ${r.precoPromo.toFixed(2).replace('.', ',')}` : '—'}</td>
+                      <td style={{ ...tdStyle, color: '#2563eb', fontWeight: 700 }}>
+                        {r.pctInvVsFlat > 0 ? `${r.pctInvVsFlat.toFixed(1)}%` : '—'}
+                      </td>
+                    </tr>
+
+                    {isExpanded && r.familias.map((f) => (
+                      <tr key={f.nome} style={{ background: '#fafafa' }}>
+                        <td style={{ ...tdStyle, textAlign: 'left', paddingLeft: 32, color: '#475569', fontWeight: 600 }}>
+                          └ {f.nome}
+                        </td>
+                        <td style={{ ...tdStyle, color: '#64748b' }}>{f.fat > 0 ? formatCurrency(f.fat) : '—'}</td>
+                        <td style={{ ...tdStyle, color: '#d946ef', background: '#fdf4ff' }}>{formatCurrency(f.invest)}</td>
+                        <td style={{ ...tdStyle, color: '#be185d' }}>{f.pctInvest > 0 ? `${f.pctInvest.toFixed(1)}%` : '—'}</td>
+                        <td style={{ ...tdStyle, color: '#64748b' }}>{f.precoFlat > 0 ? `R$ ${f.precoFlat.toFixed(2).replace('.', ',')}` : '—'}</td>
+                        <td style={{ ...tdStyle, color: '#64748b' }}>{f.precoPromo > 0 ? `R$ ${f.precoPromo.toFixed(2).replace('.', ',')}` : '—'}</td>
+                        <td style={{ ...tdStyle, color: '#2563eb' }}>{f.pctInvVsFlat > 0 ? `${f.pctInvVsFlat.toFixed(1)}%` : '—'}</td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     </SlideShell>
   );
@@ -1640,12 +2588,14 @@ function SlidePlanoAcao({
   onCommentChange,
   onCommentSave,
   saving,
+  saved,
 }: {
   monthName: string;
   comment: string;
   onCommentChange: (v: string) => void;
   onCommentSave: () => void;
   saving: boolean;
+  saved?: boolean;
 }) {
   const [rows, setRows] = useState<ActionPlanRow[]>([]);
   const hasLoaded = useRef(false);
@@ -1762,11 +2712,12 @@ function SlidePlanoAcao({
               disabled={saving}
               style={{
                 fontSize: '0.62rem', padding: '4px 12px', borderRadius: 4,
-                border: 'none', background: saving ? '#94a3b8' : '#2d5016', color: '#fff',
+                border: 'none', background: saving ? '#94a3b8' : saved ? '#16a34a' : '#2d5016', color: '#fff',
                 fontFamily: 'var(--font-geist-sans, system-ui)', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
               }}
             >
-              {saving ? 'Salvando...' : 'Salvar Plano'}
+              {saving ? 'Salvando...' : saved ? '✓ Salvo!' : 'Salvar Plano'}
             </button>
           </div>
         </div>
@@ -3424,10 +4375,16 @@ function SlideFarol({
 export default function RdmPage() {
   const router = useRouter();
 
-  // Filtros
+  // Filtros (Mês padrão: mês anterior)
   const [manager, setManager] = useState("CRISTIANO");
-  const [year,    setYear]    = useState(new Date().getFullYear());
-  const [month,   setMonth]   = useState(new Date().getMonth() + 1);
+  const [year,    setYear]    = useState(() => {
+    const now = new Date();
+    return now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+  });
+  const [month,   setMonth]   = useState(() => {
+    const now = new Date();
+    return now.getMonth() === 0 ? 12 : now.getMonth();
+  });
 
   // Data
   const [data,    setData]    = useState<RdmApiResponse | null>(null);
@@ -3453,9 +4410,11 @@ export default function RdmPage() {
   const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
   const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
   const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
-    'capa', 'agenda', 'farol_metas', 'dre', 'fat_mensal', 'vol_mensal',
-    'vol_preco_medio', 'preco_yoy', 'preco_tabela', 'vol_matriz',
-    'preco_familia', 'plano_acao', 'projecao_vendas', 'agenda_rotas', 'obrigado'
+    'capa', 'agenda', 'follow_up', 'farol_metas', 'dre',
+    'invest_fases', 'invest_cliente', 'invest_rede',
+    'fat_mensal', 'vol_mensal', 'vol_preco_medio', 'preco_yoy',
+    'preco_tabela', 'vol_matriz', 'preco_familia', 'plano_acao',
+    'projecao_vendas', 'agenda_rotas', 'obrigado'
   ]));
   const [includeComments,    setIncludeComments]    = useState(true);
   const [includeCapa,        setIncludeCapa]        = useState(true);
@@ -3527,8 +4486,12 @@ export default function RdmPage() {
     const official = [
       { key: 'capa',            label: 'Capa' },
       { key: 'agenda',           label: 'Pauta' },
+      { key: 'follow_up',        label: 'Follow up (FUP)' },
       { key: 'farol_metas',      label: 'Farol de Metas' },
       { key: 'dre',              label: 'Resultado DRE' },
+      { key: 'invest_fases',     label: 'Resumo das Fases' },
+      { key: 'invest_cliente',   label: 'Investimento por Cliente' },
+      { key: 'invest_rede',      label: 'Investimento por Rede' },
       { key: 'fat_mensal',       label: 'Resultado Faturamento' },
       { key: 'vol_mensal',       label: 'Resultado Volume' },
       { key: 'vol_preco_medio',  label: 'Volume e Preço Médio' },
@@ -3743,6 +4706,19 @@ export default function RdmPage() {
       return <SlideAgenda monthName={monthName} />;
     }
 
+    if (slideKey === 'follow_up') {
+      return (
+        <SlideFollowUp
+          monthName={monthName}
+          comment={comments['follow_up'] ?? ''}
+          onCommentChange={v => setComments(prev => ({ ...prev, follow_up: v }))}
+          onCommentSave={() => saveComment('follow_up')}
+          saving={savingKey === 'follow_up'}
+          saved={savedKey === 'follow_up'}
+        />
+      );
+    }
+
     if (slideKey === 'farol_metas') {
       return (
         <SlideFarol
@@ -3758,6 +4734,39 @@ export default function RdmPage() {
 
     if (slideKey === 'dre') {
       return <SlideDre monthName={monthName} />;
+    }
+
+    if (slideKey === 'invest_fases') {
+      return (
+        <SlideInvestFases
+          monthName={monthName}
+          month={data.month}
+          year={data.year}
+          manager={manager}
+        />
+      );
+    }
+
+    if (slideKey === 'invest_cliente') {
+      return (
+        <SlideInvestCliente
+          monthName={monthName}
+          month={data.month}
+          year={data.year}
+          manager={manager}
+        />
+      );
+    }
+
+    if (slideKey === 'invest_rede') {
+      return (
+        <SlideInvestRede
+          monthName={monthName}
+          month={data.month}
+          year={data.year}
+          manager={manager}
+        />
+      );
     }
 
     if (slideKey === 'fat_mensal') {
@@ -3879,6 +4888,7 @@ export default function RdmPage() {
           onCommentChange={v => setComments(prev => ({ ...prev, plano_acao: v }))}
           onCommentSave={() => saveComment('plano_acao')}
           saving={savingKey === 'plano_acao'}
+          saved={savedKey === 'plano_acao'}
         />
       );
     }
