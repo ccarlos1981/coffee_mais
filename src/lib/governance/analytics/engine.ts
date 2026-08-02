@@ -1981,6 +1981,491 @@ export class AnalyticsEngine {
       rankingGerentesScore,
     };
   }
+
+  /**
+   * Dashboard Executivo — Investimento por Rede
+   * 
+   * Consolida Faturamento Total (Fat TT), Investimento Executado (Invest TT),
+   * Preços Médios Flat/Promo e % Inv. vs Preço Flat para cada Rede parceira no período.
+   * 
+   * Regra 1 (Prioritária): Se apuracao_valor_realizado estiver preenchido (>0), assume-se o desembolso exato.
+   * Regra 2 (Fallback): Investimento Executado = Investimento Unitário × Volume Real Apurado.
+   * Elegibilidade: Apenas ações apuradas (apuracao_preenchida_em IS NOT NULL ou fase_atual >= 4) e is_planejamento = false.
+   */
+  static async getInvestimentoPorRede(filters: AnalyticsFilters): Promise<InvestimentoPorRedeResult> {
+    const curStartMonth = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : null);
+    const curEndMonth = filters.endMonth || (filters.endDate ? filters.endDate.substring(0, 7) : null);
+
+    if (!curStartMonth || !curEndMonth) {
+      throw new Error("[AnalyticsEngine] Parâmetros 'startMonth'/'endMonth' são obrigatórios.");
+    }
+
+    const curFilters = { ...filters, startMonth: curStartMonth, endMonth: curEndMonth };
+
+    // 1. Fetch Matrizes / Redes Info para Mapeamento Operacional
+    const sqlMatrizes = `
+      SELECT UPPER(TRIM(nome)) as nome, gerente, uf, canal
+      FROM public.v_redes_matrizes_detalhes
+    `;
+    let matrizesRows: any[] = [];
+    try {
+      matrizesRows = await this.executeSql(sqlMatrizes);
+    } catch (err) {
+      console.warn("[AnalyticsEngine] Erro ao buscar v_redes_matrizes_detalhes:", err);
+    }
+
+    const multiMap: Record<string, Array<{ nome: string; gerente: string; uf: string; canal: string }>> = {};
+    matrizesRows.forEach((m: any) => {
+      if (m.nome) {
+        const key = m.nome.toUpperCase().trim();
+        if (!multiMap[key]) multiMap[key] = [];
+        multiMap[key].push({
+          nome: m.nome,
+          gerente: m.gerente || "Sem Gerente",
+          uf: m.uf || "N/I",
+          canal: m.canal || "N/I",
+        });
+      }
+    });
+
+    const resolveRedeInfo = (redeRaw: string) => {
+      const key = (redeRaw || "N/I").toUpperCase().trim();
+      const list = multiMap[key];
+      if (!list || list.length === 0) {
+        return { nome: redeRaw || "N/I", gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
+      }
+
+      if (filters.manager && filters.manager !== 'all') {
+        const targetManagers = filters.manager.split(',').map(m => m.trim().toUpperCase());
+        const match = list.find(item => targetManagers.includes(item.gerente.toUpperCase().trim()));
+        if (match) return match;
+      }
+
+      if (filters.uf && filters.uf !== 'all') {
+        const targetUfs = filters.uf.split(',').map(u => u.trim().toUpperCase());
+        const match = list.find(item => targetUfs.includes(item.uf.toUpperCase().trim()));
+        if (match) return match;
+      }
+
+      return list[0];
+    };
+
+    // 2. Fetch Faturamento Total (Fat TT) de mv_vendas_mensal
+    // Filtro por data e matriz na query SQL. Gerente/UF/Canal são regulados via Master Data (redesMap).
+    const salesFilters = {
+      startMonth: curStartMonth,
+      endMonth: curEndMonth,
+      matriz: filters.matriz,
+    };
+    const whereVendas = buildWhereClause(salesFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
+    const sqlVendas = `
+      SELECT UPPER(TRIM(rede)) as rede, tipo_produto, SUM(fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${whereVendas}
+      GROUP BY UPPER(TRIM(rede)), tipo_produto
+    `;
+    const vendasRows = await this.executeSql<{ rede: string; tipo_produto: string; fat: number }>(sqlVendas);
+
+    // 3. Fetch Ações de Investimento da tabela cm_acoes_investimento
+    const supabase = getSupabaseClient();
+    let queryInvs = supabase
+      .from("cm_acoes_investimento")
+      .select(`
+        id, rede, mes_referencia, familia_produto, abrangencia,
+        valor_investimento, preco_flat, preco_acao, expectativa_volume,
+        apuracao_preenchida_em, apuracao_qtd_vendida, apuracao_valor_realizado,
+        fase_atual, is_planejamento, familias_detalhes, skus_detalhes,
+        rejection_reason
+      `)
+      .eq("is_planejamento", false)
+      .gte("mes_referencia", curStartMonth)
+      .lte("mes_referencia", curEndMonth);
+
+    if (filters.matriz) {
+      const matrizes = filters.matriz.split(',').map(m => m.trim());
+      queryInvs = queryInvs.in("rede", matrizes);
+    }
+
+    const { data: invsData, error: invsErr } = await queryInvs;
+    if (invsErr) {
+      throw new Error(`[AnalyticsEngine] Erro ao buscar ações de investimento: ${invsErr.message}`);
+    }
+
+    const rawInvest = invsData || [];
+
+    // Helper de normalização de Família de Produtos (Key estável + Nome Oficial)
+    const normalizeFamilia = (rawName: string): { key: string; name: string } => {
+      const norm = (rawName || "").trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      if (norm.includes("MOIDO")) return { key: "MOIDO", name: "Moído" };
+      if (norm.includes("GRAO")) return { key: "GRAO", name: "Grão" };
+      if (norm.includes("DRIP")) return { key: "DRIP", name: "Drip" };
+      if (norm.includes("CAPSULA")) return { key: "CAPSULA", name: "Capsula" };
+      if (norm.includes("1KG") || norm.includes("1 KG")) return { key: "1KG", name: "1KG" };
+      return { key: norm || "OUTROS", name: (rawName || "").trim() || "Outros" };
+    };
+
+    // Agrupadores por Rede e por Familia
+    type FamiliaAcc = {
+      familia: string;
+      fatTT: number;
+      investTT: number;
+      valorTotalFlat: number;
+      valorTotalPromo: number;
+      totalVolFlat: number;
+      totalVolPromo: number;
+      countFlatItems: number;
+      countPromoItems: number;
+      sumPrecoFlat: number;
+      sumPrecoPromo: number;
+      totalVolApurado: number;
+      acoesCount: number;
+    };
+
+    type RedeAcc = {
+      rede: string;
+      gerente: string;
+      uf: string;
+      canal: string;
+      acoesElegiveisCount: number;
+      familiasMap: Record<string, FamiliaAcc>;
+    };
+
+    const grouped: Record<string, RedeAcc> = {};
+
+    const createFamiliaAcc = (famName: string): FamiliaAcc => ({
+      familia: famName || "Outros",
+      fatTT: 0,
+      investTT: 0,
+      valorTotalFlat: 0,
+      valorTotalPromo: 0,
+      totalVolFlat: 0,
+      totalVolPromo: 0,
+      countFlatItems: 0,
+      countPromoItems: 0,
+      sumPrecoFlat: 0,
+      sumPrecoPromo: 0,
+      totalVolApurado: 0,
+      acoesCount: 0,
+    });
+
+    const getOrCreateRede = (redeRaw: string): RedeAcc => {
+      const redeKey = (redeRaw || "N/I").toUpperCase().trim();
+      if (!grouped[redeKey]) {
+        const info = resolveRedeInfo(redeRaw);
+        grouped[redeKey] = {
+          rede: redeRaw || "N/I",
+          gerente: info.gerente,
+          uf: info.uf,
+          canal: info.canal,
+          acoesElegiveisCount: 0,
+          familiasMap: {},
+        };
+      }
+      return grouped[redeKey];
+    };
+
+    // A) Processar Vendas (Fat TT) por Rede e por Família de Produtos
+    vendasRows.forEach(v => {
+      if (!v.rede) return;
+      const row = getOrCreateRede(v.rede);
+      const fatVal = Number(v.fat) || 0;
+
+      const { key: famKey, name: famName } = normalizeFamilia(v.tipo_produto);
+      if (!row.familiasMap[famKey]) {
+        row.familiasMap[famKey] = createFamiliaAcc(famName);
+      }
+      row.familiasMap[famKey].fatTT += fatVal;
+    });
+
+    let acoesDescartadasCount = 0;
+
+    // B) Processar Ações Elegíveis (Invest. TT e Preços Médios) por Família
+    rawInvest.forEach(a => {
+      // Elegibilidade Oficial: Ações não-rascunho (is_planejamento = false) e não rejeitadas
+      const isRejected = !!a.rejection_reason;
+      if (isRejected) {
+        acoesDescartadasCount++;
+        return;
+      }
+
+      const row = getOrCreateRede(a.rede);
+      row.acoesElegiveisCount++;
+
+      const hasRealizadoDirect = a.apuracao_valor_realizado !== null && a.apuracao_valor_realizado !== undefined && Number(a.apuracao_valor_realizado) > 0;
+      const hasFamilias = Array.isArray(a.familias_detalhes) && a.familias_detalhes.length > 0;
+      const hasSkus = Array.isArray(a.skus_detalhes) && a.skus_detalhes.length > 0;
+
+      const processItem = (famRawName: string, unitInvest: number, flatPrice: number, promoPrice: number, volNum: number, numItemsInAction: number) => {
+        const { key: famKey, name: famName } = normalizeFamilia(famRawName);
+        if (!row.familiasMap[famKey]) {
+          row.familiasMap[famKey] = createFamiliaAcc(famName);
+        }
+        const fAcc = row.familiasMap[famKey];
+        fAcc.acoesCount++;
+
+        const itemInvestExecutado = hasRealizadoDirect 
+          ? (Number(a.apuracao_valor_realizado) / numItemsInAction) 
+          : (unitInvest * volNum);
+        const itemFlatTeorico = flatPrice * volNum;
+        const itemPromoTeorico = promoPrice * volNum;
+
+        fAcc.investTT += itemInvestExecutado;
+        fAcc.valorTotalFlat += itemFlatTeorico;
+        fAcc.valorTotalPromo += itemPromoTeorico;
+        fAcc.totalVolApurado += volNum;
+
+        if (flatPrice > 0) {
+          fAcc.sumPrecoFlat += flatPrice;
+          fAcc.countFlatItems++;
+          if (volNum > 0) fAcc.totalVolFlat += volNum;
+        }
+        if (promoPrice > 0) {
+          fAcc.sumPrecoPromo += promoPrice;
+          fAcc.countPromoItems++;
+          if (volNum > 0) fAcc.totalVolPromo += volNum;
+        }
+      };
+
+      if (hasFamilias) {
+        a.familias_detalhes.forEach((fd: any) => {
+          const famName = fd.familia_nome || fd.familia || a.familia_produto || "Geral";
+          const unitInvest = Number(fd.investimento) || 0;
+          const volNum = Number(fd.volume_real || fd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || fd.expectativa_volume || a.expectativa_volume) || 0;
+          const flatPrice = Number(fd.preco_flat) || 0;
+          const promoPrice = Number(fd.preco_acao) || 0;
+          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.familias_detalhes.length);
+        });
+      } else if (hasSkus) {
+        a.skus_detalhes.forEach((sd: any) => {
+          const famName = sd.familia || a.familia_produto || "Geral";
+          const unitInvest = Number(sd.investimento) || 0;
+          const volNum = Number(sd.volume_real || sd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || sd.expectativa_volume || a.expectativa_volume) || 0;
+          const flatPrice = Number(sd.preco_flat) || 0;
+          const promoPrice = Number(sd.preco_acao) || 0;
+          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.skus_detalhes.length);
+        });
+      } else {
+        const famName = a.familia_produto || "Geral";
+        const unitInvest = Number(a.valor_investimento) || 0;
+        const volNum = Number(a.apuracao_qtd_vendida || a.expectativa_volume) || 0;
+        const flatPrice = Number(a.preco_flat) || 0;
+        const promoPrice = Number(a.preco_acao) || 0;
+        processItem(famName, unitInvest, flatPrice, promoPrice, volNum, 1);
+      }
+    });
+
+    // C) Filtrar Redes estritamente pelos atributos de Master Data (Gerente, UF, Canal, Matriz)
+    let filteredRedes = Object.values(grouped);
+
+    if (filters.manager) {
+      const targetManagers = filters.manager.split(',').map(m => m.trim().toUpperCase());
+      filteredRedes = filteredRedes.filter(r => targetManagers.includes(r.gerente.toUpperCase().trim()));
+    }
+
+    if (filters.uf) {
+      const targetUfs = filters.uf.split(',').map(u => u.trim().toUpperCase());
+      filteredRedes = filteredRedes.filter(r => targetUfs.includes(r.uf.toUpperCase().trim()));
+    }
+
+    if (filters.channel) {
+      const targetChannels = filters.channel.split(',').map(c => c.trim().toUpperCase());
+      filteredRedes = filteredRedes.filter(r => targetChannels.includes(r.canal.toUpperCase().trim()));
+    }
+
+    if (filters.matriz) {
+      const targetMatrizes = filters.matriz.split(',').map(m => m.trim().toUpperCase());
+      filteredRedes = filteredRedes.filter(r => targetMatrizes.includes(r.rede.toUpperCase().trim()));
+    }
+
+    // D) Formatar Famílias e consolidar Redes com Médias Ponderadas
+    const allFamiliasSet = new Set<string>();
+
+    const resultRows: InvestimentoPorRedeRow[] = filteredRedes
+      .map(r => {
+        const familiasList: InvestimentoFamiliaRow[] = Object.values(r.familiasMap)
+          .filter(f => f.fatTT > 0 || f.investTT > 0 || f.acoesCount > 0)
+          .map(f => {
+            allFamiliasSet.add(f.familia);
+            const pctInvTT = f.fatTT > 0 ? (f.investTT / f.fatTT) * 100 : 0;
+            // Média Ponderada Oficial do Preço Flat
+            const precoFlat = f.totalVolFlat > 0 
+              ? (f.valorTotalFlat / f.totalVolFlat) 
+              : (f.countFlatItems > 0 ? f.sumPrecoFlat / f.countFlatItems : 0);
+
+            // Média Ponderada Oficial do Preço Promo
+            const precoPromo = f.totalVolPromo > 0 
+              ? (f.valorTotalPromo / f.totalVolPromo) 
+              : (f.countPromoItems > 0 ? f.sumPrecoPromo / f.countPromoItems : 0);
+
+            const pctInvVsFlat = f.valorTotalFlat > 0 ? (f.investTT / f.valorTotalFlat) * 100 : 0;
+
+            return {
+              familia: f.familia,
+              fatTT: Number(f.fatTT.toFixed(2)),
+              investTT: Number(f.investTT.toFixed(2)),
+              pctInvTT: Number(pctInvTT.toFixed(2)),
+              precoFlat: Number(precoFlat.toFixed(2)),
+              precoPromo: Number(precoPromo.toFixed(2)),
+              valorTotalFlat: Number(f.valorTotalFlat.toFixed(2)),
+              pctInvVsFlat: Number(pctInvVsFlat.toFixed(2)),
+              volApurado: f.totalVolApurado,
+              acoesCount: f.acoesCount,
+            };
+          })
+          .sort((a, b) => b.investTT - a.investTT);
+
+        // Consolidação da Rede (Soma Exata das Famílias)
+        const networkFatTT = familiasList.reduce((acc, f) => acc + f.fatTT, 0);
+        const networkInvestTT = familiasList.reduce((acc, f) => acc + f.investTT, 0);
+        const networkValorTotalFlat = familiasList.reduce((acc, f) => acc + f.valorTotalFlat, 0);
+        const networkValorTotalPromo = Object.values(r.familiasMap).reduce((acc, f) => acc + f.valorTotalPromo, 0);
+        const networkTotalVolFlat = Object.values(r.familiasMap).reduce((acc, f) => acc + f.totalVolFlat, 0);
+        const networkTotalVolPromo = Object.values(r.familiasMap).reduce((acc, f) => acc + f.totalVolPromo, 0);
+        const networkCountFlat = Object.values(r.familiasMap).reduce((acc, f) => acc + f.countFlatItems, 0);
+        const networkCountPromo = Object.values(r.familiasMap).reduce((acc, f) => acc + f.countPromoItems, 0);
+        const networkSumPrecoFlat = Object.values(r.familiasMap).reduce((acc, f) => acc + f.sumPrecoFlat, 0);
+        const networkSumPrecoPromo = Object.values(r.familiasMap).reduce((acc, f) => acc + f.sumPrecoPromo, 0);
+
+        const networkPctInvTT = networkFatTT > 0 ? (networkInvestTT / networkFatTT) * 100 : 0;
+
+        // Média Ponderada Oficial para a Rede Consolidada
+        const networkPrecoFlat = networkTotalVolFlat > 0 
+          ? (networkValorTotalFlat / networkTotalVolFlat) 
+          : (networkCountFlat > 0 ? networkSumPrecoFlat / networkCountFlat : 0);
+
+        const networkPrecoPromo = networkTotalVolPromo > 0 
+          ? (networkValorTotalPromo / networkTotalVolPromo) 
+          : (networkCountPromo > 0 ? networkSumPrecoPromo / networkCountPromo : 0);
+
+        const networkPctInvVsFlat = networkValorTotalFlat > 0 ? (networkInvestTT / networkValorTotalFlat) * 100 : 0;
+
+        return {
+          rede: r.rede,
+          gerente: r.gerente,
+          uf: r.uf,
+          canal: r.canal,
+          fatTT: Number(networkFatTT.toFixed(2)),
+          investTT: Number(networkInvestTT.toFixed(2)),
+          pctInvTT: Number(networkPctInvTT.toFixed(2)),
+          precoFlat: Number(networkPrecoFlat.toFixed(2)),
+          precoPromo: Number(networkPrecoPromo.toFixed(2)),
+          valorTotalFlat: Number(networkValorTotalFlat.toFixed(2)),
+          pctInvVsFlat: Number(networkPctInvVsFlat.toFixed(2)),
+          acoesElegiveisCount: r.acoesElegiveisCount,
+          familias: familiasList,
+        };
+      })
+      .filter(r => r.fatTT > 0 || r.investTT > 0 || r.acoesElegiveisCount > 0)
+      .sort((a, b) => b.investTT - a.investTT); // Ordenação padrão pelo maior Investimento TT
+
+    // Totais Gerais Consolidados
+    const grandFatTT = resultRows.reduce((acc, curr) => acc + curr.fatTT, 0);
+    const grandInvestTT = resultRows.reduce((acc, curr) => acc + curr.investTT, 0);
+    const grandValorTotalFlat = resultRows.reduce((acc, curr) => acc + curr.valorTotalFlat, 0);
+    const grandPctInvTT = grandFatTT > 0 ? (grandInvestTT / grandFatTT) * 100 : 0;
+    const grandPctInvVsFlat = grandValorTotalFlat > 0 ? (grandInvestTT / grandValorTotalFlat) * 100 : 0;
+    const countFlat = resultRows.filter(r => r.precoFlat > 0).length;
+    const countPromo = resultRows.filter(r => r.precoPromo > 0).length;
+    const grandPrecoFlat = countFlat > 0 ? resultRows.reduce((acc, curr) => acc + curr.precoFlat, 0) / countFlat : 0;
+    const grandPrecoPromo = countPromo > 0 ? resultRows.reduce((acc, curr) => acc + curr.precoPromo, 0) / countPromo : 0;
+    const grandAcoesElegiveisCount = resultRows.reduce((acc, curr) => acc + curr.acoesElegiveisCount, 0);
+
+    // Filter Options a partir de Master Data (matrizesRows)
+    const managersSet = new Set<string>();
+    const ufsSet = new Set<string>();
+    const channelsSet = new Set<string>();
+    const matrizesSet = new Set<string>();
+
+    matrizesRows.forEach((m: any) => {
+      if (m.gerente && m.gerente !== "Sem Gerente") managersSet.add(m.gerente);
+      if (m.uf && m.uf !== "N/I") ufsSet.add(m.uf);
+      if (m.canal && m.canal !== "N/I") channelsSet.add(m.canal);
+      if (m.nome) matrizesSet.add(m.nome);
+    });
+
+    resultRows.forEach(r => {
+      if (r.gerente && r.gerente !== "Sem Gerente") managersSet.add(r.gerente);
+      if (r.uf && r.uf !== "N/I") ufsSet.add(r.uf);
+      if (r.canal && r.canal !== "N/I") channelsSet.add(r.canal);
+      if (r.rede) matrizesSet.add(r.rede);
+    });
+
+    return {
+      rows: resultRows,
+      grandTotal: {
+        fatTT: Number(grandFatTT.toFixed(2)),
+        investTT: Number(grandInvestTT.toFixed(2)),
+        pctInvTT: Number(grandPctInvTT.toFixed(2)),
+        precoFlat: Number(grandPrecoFlat.toFixed(2)),
+        precoPromo: Number(grandPrecoPromo.toFixed(2)),
+        valorTotalFlat: Number(grandValorTotalFlat.toFixed(2)),
+        pctInvVsFlat: Number(grandPctInvVsFlat.toFixed(2)),
+        acoesElegiveisCount: grandAcoesElegiveisCount,
+        acoesDescartadasCount,
+        qtdRedes: resultRows.length,
+        qtdFamilias: allFamiliasSet.size,
+      },
+      filterOptions: {
+        managers: Array.from(managersSet).sort(),
+        familias: Array.from(allFamiliasSet).sort(),
+        ufs: Array.from(ufsSet).sort(),
+        channels: Array.from(channelsSet).sort(),
+        matrizes: Array.from(matrizesSet).sort(),
+      },
+    };
+  }
+}
+
+export interface InvestimentoFamiliaRow {
+  familia: string;
+  fatTT: number;
+  investTT: number;
+  pctInvTT: number;
+  precoFlat: number;
+  precoPromo: number;
+  valorTotalFlat: number;
+  pctInvVsFlat: number;
+  volApurado: number;
+  acoesCount: number;
+}
+
+export interface InvestimentoPorRedeRow {
+  rede: string;
+  gerente: string;
+  uf: string;
+  canal: string;
+  fatTT: number;
+  investTT: number;
+  pctInvTT: number;
+  precoFlat: number;
+  precoPromo: number;
+  valorTotalFlat: number;
+  pctInvVsFlat: number;
+  acoesElegiveisCount: number;
+  familias: InvestimentoFamiliaRow[];
+}
+
+export interface InvestimentoPorRedeResult {
+  rows: InvestimentoPorRedeRow[];
+  grandTotal: {
+    fatTT: number;
+    investTT: number;
+    pctInvTT: number;
+    precoFlat: number;
+    precoPromo: number;
+    valorTotalFlat: number;
+    pctInvVsFlat: number;
+    acoesElegiveisCount: number;
+    acoesDescartadasCount: number;
+    qtdRedes: number;
+    qtdFamilias: number;
+  };
+  filterOptions: {
+    managers: string[];
+    familias: string[];
+    ufs: string[];
+    channels: string[];
+    matrizes: string[];
+  };
 }
 
 export const DRE_FRETE_PERCENTUAL = 0.03; // 3.00% fixo (Seção 56 do AGENTS.md)

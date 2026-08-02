@@ -1,11 +1,25 @@
 "use client";
 
-import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
-
 import { useState, useEffect, useMemo, useCallback, Fragment } from "react";
 import Link from "next/link";
-import { Filter, ChevronRight, BarChart3, Calendar, Layers, DollarSign, ArrowLeft } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import {
+  Filter,
+  ChevronRight,
+  BarChart3,
+  Calendar,
+  DollarSign,
+  ArrowLeft,
+  Info,
+  TrendingUp,
+  Building2,
+  Wallet,
+  CheckCircle2,
+  HelpCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Printer
+} from "lucide-react";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -18,56 +32,85 @@ const MONTHS_NAMES = [
 
 const YEARS = [2026, 2025, 2024, 2023, 2022];
 
-interface RedeMapInfo {
-  nome: string;
-  gerente: string;
-  uf: string;
-  canal: string;
-}
-
-interface MonthData {
-  fat: number;
-  inv: number;
-  preco_flat: number;
-  preco_acao: number;
-}
-
-interface FamiliaRow {
+export interface InvestimentoFamiliaRow {
   familia: string;
-  months: Record<string, MonthData>;
-  total: MonthData;
+  fatTT: number;
+  investTT: number;
+  pctInvTT: number;
+  precoFlat: number;
+  precoPromo: number;
+  valorTotalFlat: number;
+  pctInvVsFlat: number;
+  volApurado: number;
+  acoesCount: number;
 }
 
-interface RedeRow {
+export interface InvestimentoPorRedeRow {
   rede: string;
   gerente: string;
   uf: string;
   canal: string;
-  familias: Record<string, FamiliaRow>;
-  months: Record<string, MonthData>;
-  total: MonthData;
+  fatTT: number;
+  investTT: number;
+  pctInvTT: number;
+  precoFlat: number;
+  precoPromo: number;
+  valorTotalFlat: number;
+  pctInvVsFlat: number;
+  acoesElegiveisCount: number;
+  familias: InvestimentoFamiliaRow[];
 }
 
-export default function InvestimentoPorMesPage() {
+export interface InvestimentoPorRedeResult {
+  rows: InvestimentoPorRedeRow[];
+  grandTotal: {
+    fatTT: number;
+    investTT: number;
+    pctInvTT: number;
+    precoFlat: number;
+    precoPromo: number;
+    valorTotalFlat: number;
+    pctInvVsFlat: number;
+    acoesElegiveisCount: number;
+    acoesDescartadasCount: number;
+    qtdRedes: number;
+    qtdFamilias: number;
+  };
+  filterOptions: {
+    managers: string[];
+    familias: string[];
+    ufs: string[];
+    channels: string[];
+    matrizes: string[];
+  };
+}
+
+type SortField = 'rede' | 'fatTT' | 'investTT' | 'pctInvTT' | 'precoFlat' | 'precoPromo' | 'pctInvVsFlat';
+type SortDirection = 'asc' | 'desc';
+
+export default function InvestimentoPorRedePage() {
   const currentYear = new Date().getFullYear();
-  const [startMonth, setStartMonth] = useState<number>(1);
+  const currentMonth = new Date().getMonth() + 1;
+
+  const [startMonth, setStartMonth] = useState<number>(currentMonth);
   const [startYear, setStartYear] = useState<number>(currentYear);
-  const [endMonth, setEndMonth] = useState<number>(12);
+  const [endMonth, setEndMonth] = useState<number>(currentMonth);
   const [endYear, setEndYear] = useState<number>(currentYear);
 
   const [filterManager, setFilterManager] = useState<string[]>([]);
-  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
   const [filterUf, setFilterUf] = useState<string[]>([]);
   const [filterChannel, setFilterChannel] = useState<string[]>([]);
   const [filterMatriz, setFilterMatriz] = useState<string[]>([]);
-  const [filterProduct, setFilterProduct] = useState<string[]>([]); // Linha SKU (placeholder)
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [dataResult, setDataResult] = useState<InvestimentoPorRedeResult | null>(null);
+
+  // Ordenação
+  const [sortField, setSortField] = useState<SortField>('investTT');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Drill-down de arquitetura futura (para expandir ações por rede)
   const [expandedRedes, setExpandedRedes] = useState<Set<string>>(new Set());
-
-  const [rawVendas, setRawVendas] = useState<any[]>([]);
-  const [rawInvest, setRawInvest] = useState<any[]>([]);
-  const [redesMap, setRedesMap] = useState<Record<string, RedeMapInfo>>({});
 
   const toggleRede = (rede: string) => {
     setExpandedRedes(prev => {
@@ -78,60 +121,43 @@ export default function InvestimentoPorMesPage() {
     });
   };
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const sDate = `${startYear}-${String(startMonth).padStart(2, '0')}`;
       const eDate = `${endYear}-${String(endMonth).padStart(2, '0')}`;
 
-      // 1. Fetch Matrizes details for mapping
-      const { data: matrizes, error: mErr } = await supabase
-        .from("v_redes_matrizes_detalhes")
-        .select("nome, gerente, uf, canal");
-      
-      if (mErr) throw mErr;
-      
-      const rMap: Record<string, RedeMapInfo> = {};
-      (matrizes || []).forEach((m: any) => {
-        if (m.nome) {
-          rMap[m.nome.toUpperCase().trim()] = {
-            nome: m.nome,
-            gerente: m.gerente || "Sem Gerente",
-            uf: m.uf || "N/I",
-            canal: m.canal || "N/I"
-          };
-        }
+      const params = new URLSearchParams({
+        startMonth: sDate,
+        endMonth: eDate,
       });
-      setRedesMap(rMap);
 
-      // 2. Fetch Vendas
-      const { data: vendas, error: vErr } = await supabase
-        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
-        .select("mes, rede, tipo_produto, fat")
-        .gte("mes", sDate)
-        .lte("mes", eDate)
-        .limit(50000);
+      if (filterManager.length > 0) params.set("manager", filterManager.join(","));
+      if (filterUf.length > 0) params.set("uf", filterUf.join(","));
+      if (filterChannel.length > 0) params.set("channel", filterChannel.join(","));
+      if (filterMatriz.length > 0) params.set("rede", filterMatriz.join(","));
 
-      if (vErr) throw vErr;
-      setRawVendas(vendas || []);
-
-      // 3. Fetch Investimentos
-      const { data: invs, error: iErr } = await supabase
-        .from("cm_acoes_investimento")
-        .select("mes_referencia, rede, familia_produto, valor_investimento, preco_flat, preco_acao, familias_detalhes, skus_detalhes")
-        .eq("is_planejamento", false)
-        .gte("mes_referencia", sDate)
-        .lte("mes_referencia", eDate);
-      
-      if (iErr) throw iErr;
-      setRawInvest(invs || []);
-
+      const res = await fetch(`/api/investimento/por-rede?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Erro na requisição: ${res.statusText}`);
+      }
+      const data: InvestimentoPorRedeResult = await res.json();
+      setDataResult(data);
     } catch (err) {
-      console.error("Erro ao buscar dados:", err);
+      console.error("Erro ao carregar dados do AnalyticsEngine:", err);
     } finally {
       setLoading(false);
     }
-  }, [startMonth, startYear, endMonth, endYear]);
+  }, [startMonth, startYear, endMonth, endYear, filterManager, filterUf, filterChannel, filterMatriz]);
 
   useEffect(() => {
     loadData();
@@ -139,319 +165,62 @@ export default function InvestimentoPorMesPage() {
 
   const handleClearFilters = () => {
     setFilterManager([]);
-    setFilterFamilia([]);
     setFilterUf([]);
     setFilterChannel([]);
     setFilterMatriz([]);
-    setFilterProduct([]);
   };
 
-  const activeFilterCount = filterManager.length + filterFamilia.length + filterUf.length + filterChannel.length + filterMatriz.length + filterProduct.length;
+  const activeFilterCount = filterManager.length + filterUf.length + filterChannel.length + filterMatriz.length;
   const hasActiveFilters = activeFilterCount > 0;
 
-  // Gerar lista de meses no range selecionado
-  const monthsInRange = useMemo(() => {
-    const list: string[] = [];
-    let currentY = startYear;
-    let currentM = startMonth;
-    while (currentY < endYear || (currentY === endYear && currentM <= endMonth)) {
-      list.push(`${currentY}-${String(currentM).padStart(2, '0')}`);
-      currentM++;
-      if (currentM > 12) {
-        currentM = 1;
-        currentY++;
+  // Dados ordenados dinamicamente
+  const sortedRows = useMemo(() => {
+    if (!dataResult?.rows) return [];
+    return [...dataResult.rows].sort((a, b) => {
+      let valA: any = a[sortField];
+      let valB: any = b[sortField];
+
+      if (typeof valA === 'string') {
+        valA = valA.toLowerCase();
+        valB = valB.toLowerCase();
       }
-      // Safety break
-      if (list.length > 36) break;
-    }
-    return list;
-  }, [startMonth, startYear, endMonth, endYear]);
 
-  // Aggregate and Filter Data
-  const { tableData, filterOptions, grandTotal } = useMemo(() => {
-    const mapOptions = {
-      managers: new Set<string>(),
-      familias: new Set<string>(),
-      ufs: new Set<string>(),
-      channels: new Set<string>(),
-      matrizes: new Set<string>(),
-    };
-
-    const grouped: Record<string, RedeRow> = {};
-
-    const getOrCreateRede = (redeRaw: string) => {
-      const redeKey = (redeRaw || "N/I").toUpperCase().trim();
-      if (!grouped[redeKey]) {
-        const info = redesMap[redeKey] || { nome: redeRaw || "N/I", gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
-        grouped[redeKey] = {
-          rede: redeRaw || "N/I",
-          gerente: info.gerente,
-          uf: info.uf,
-          canal: info.canal,
-          familias: {},
-          months: {},
-          total: { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 }
-        };
-      }
-      return { redeKey, row: grouped[redeKey] };
-    };
-
-    const getOrCreateFamilia = (redeRow: RedeRow, familiaRaw: string) => {
-      const famKey = (familiaRaw || "N/I").toUpperCase().trim();
-      if (!redeRow.familias[famKey]) {
-        redeRow.familias[famKey] = {
-          familia: familiaRaw || "N/I",
-          months: {},
-          total: { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 }
-        };
-      }
-      return redeRow.familias[famKey];
-    };
-
-    // 1. Process Vendas
-    rawVendas.forEach((v: any) => {
-      const { redeKey, row } = getOrCreateRede(v.rede);
-      const famRow = getOrCreateFamilia(row, v.tipo_produto);
-      const mes = v.mes;
-      const fat = (Number(v.fat) || 0) / 1000;
-
-      if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-      if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-
-      row.months[mes].fat += fat;
-      famRow.months[mes].fat += fat;
-      row.total.fat += fat;
-      famRow.total.fat += fat;
-
-      mapOptions.managers.add(row.gerente);
-      mapOptions.ufs.add(row.uf);
-      mapOptions.channels.add(row.canal);
-      mapOptions.matrizes.add(row.rede);
-      mapOptions.familias.add(famRow.familia);
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
+  }, [dataResult?.rows, sortField, sortDirection]);
 
-    // 2. Process Investimentos
-    rawInvest.forEach((i: any) => {
-      const { redeKey, row } = getOrCreateRede(i.rede);
-      const mes = i.mes_referencia;
-
-      let processedAny = false;
-
-      if (i.familias_detalhes && Array.isArray(i.familias_detalhes) && i.familias_detalhes.length > 0) {
-        processedAny = true;
-        i.familias_detalhes.forEach((fd: any) => {
-          const famRow = getOrCreateFamilia(row, fd.familia_nome || 'N/I');
-          const inv = Number(fd.investimento) || 0;
-          const precoFlat = Number(fd.preco_flat) || 0;
-          const precoAcao = Number(fd.preco_acao) || 0;
-
-          if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-          if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-
-          row.months[mes].inv += inv;
-          famRow.months[mes].inv += inv;
-          row.total.inv += inv;
-          famRow.total.inv += inv;
-
-          if (precoFlat > 0) {
-            row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
-            famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
-            row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
-            famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
-          }
-          if (precoAcao > 0) {
-            row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
-            famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
-            row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
-            famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
-          }
-
-          mapOptions.familias.add(famRow.familia);
-        });
-      }
-
-      if (i.skus_detalhes && Array.isArray(i.skus_detalhes) && i.skus_detalhes.length > 0) {
-        processedAny = true;
-        i.skus_detalhes.forEach((sd: any) => {
-          const famRow = getOrCreateFamilia(row, "Múltiplos SKUs");
-          const inv = Number(sd.investimento) || 0;
-          const precoFlat = Number(sd.preco_flat) || 0;
-          const precoAcao = Number(sd.preco_acao) || 0;
-
-          if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-          if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-
-          row.months[mes].inv += inv;
-          famRow.months[mes].inv += inv;
-          row.total.inv += inv;
-          famRow.total.inv += inv;
-
-          if (precoFlat > 0) {
-            row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
-            famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
-            row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
-            famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
-          }
-          if (precoAcao > 0) {
-            row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
-            famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
-            row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
-            famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
-          }
-
-          mapOptions.familias.add(famRow.familia);
-        });
-      }
-
-      if (!processedAny) {
-        // Fallback for legacy records
-        const famRow = getOrCreateFamilia(row, i.familia_produto);
-        const inv = Number(i.valor_investimento) || 0;
-        const precoFlat = Number(i.preco_flat) || 0;
-        const precoAcao = Number(i.preco_acao) || 0;
-
-        if (!row.months[mes]) row.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-        if (!famRow.months[mes]) famRow.months[mes] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-
-        row.months[mes].inv += inv;
-        famRow.months[mes].inv += inv;
-        row.total.inv += inv;
-        famRow.total.inv += inv;
-
-        if (precoFlat > 0) {
-          row.months[mes].preco_flat = Math.max(row.months[mes].preco_flat, precoFlat);
-          famRow.months[mes].preco_flat = Math.max(famRow.months[mes].preco_flat, precoFlat);
-          row.total.preco_flat = Math.max(row.total.preco_flat, precoFlat);
-          famRow.total.preco_flat = Math.max(famRow.total.preco_flat, precoFlat);
-        }
-        if (precoAcao > 0) {
-          row.months[mes].preco_acao = Math.max(row.months[mes].preco_acao, precoAcao);
-          famRow.months[mes].preco_acao = Math.max(famRow.months[mes].preco_acao, precoAcao);
-          row.total.preco_acao = Math.max(row.total.preco_acao, precoAcao);
-          famRow.total.preco_acao = Math.max(famRow.total.preco_acao, precoAcao);
-        }
-
-        mapOptions.familias.add(famRow.familia);
-      }
-
-      mapOptions.managers.add(row.gerente);
-      mapOptions.ufs.add(row.uf);
-      mapOptions.channels.add(row.canal);
-      mapOptions.matrizes.add(row.rede);
-    });
-
-    // 3. Apply Filters
-    let filtered = Object.values(grouped).filter(r => {
-      if (r.total.inv <= 0) return false;
-      if (filterManager.length > 0 && !filterManager.includes(r.gerente)) return false;
-      if (filterUf.length > 0 && !filterUf.includes(r.uf)) return false;
-      if (filterChannel.length > 0 && !filterChannel.includes(r.canal)) return false;
-      if (filterMatriz.length > 0 && !filterMatriz.includes(r.rede)) return false;
-      return true;
-    });
-
-    // Filtro de família precisa ser aplicado dentro das redes, ou remover a rede se não sobrar família
-    filtered = filtered.filter(r => {
-        // Só exibir famílias que tiveram investimento
-        let fams = Object.values(r.familias).filter(f => f.total.inv > 0);
-        
-        if (filterFamilia.length > 0) {
-          fams = fams.filter(f => filterFamilia.includes(f.familia));
-        }
-
-        if (fams.length === 0) return false;
-        
-        // Recalcular totais da rede baseados apenas nas famílias filtradas
-        r.familias = {};
-        r.months = {};
-        r.total = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-        
-        fams.forEach(f => {
-          r.familias[f.familia.toUpperCase()] = f;
-          Object.keys(f.months).forEach(m => {
-            if (!r.months[m]) r.months[m] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-            r.months[m].fat += f.months[m].fat;
-            r.months[m].inv += f.months[m].inv;
-            r.months[m].preco_flat = Math.max(r.months[m].preco_flat, f.months[m].preco_flat);
-            r.months[m].preco_acao = Math.max(r.months[m].preco_acao, f.months[m].preco_acao);
-          });
-          r.total.fat += f.total.fat;
-          r.total.inv += f.total.inv;
-          r.total.preco_flat = Math.max(r.total.preco_flat, f.total.preco_flat);
-          r.total.preco_acao = Math.max(r.total.preco_acao, f.total.preco_acao);
-        });
-        
-        return true;
-      });
-
-    const getPctInternal = (inv: number, fat: number) => fat > 0 ? (inv / fat) * 100 : 0;
-    
-    filtered.sort((a, b) => {
-      const pctA = getPctInternal(a.total.inv, a.total.fat);
-      const pctB = getPctInternal(b.total.inv, b.total.fat);
-      if (Math.abs(pctA - pctB) > 0.01) return pctB - pctA;
-      return b.total.inv - a.total.inv;
-    });
-
-    const gTotal = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0, months: {} as Record<string, MonthData> };
-    filtered.forEach(r => {
-      gTotal.fat += r.total.fat;
-      gTotal.inv += r.total.inv;
-      gTotal.preco_flat = Math.max(gTotal.preco_flat, r.total.preco_flat);
-      gTotal.preco_acao = Math.max(gTotal.preco_acao, r.total.preco_acao);
-      Object.keys(r.months).forEach(m => {
-        if (!gTotal.months[m]) gTotal.months[m] = { fat: 0, inv: 0, preco_flat: 0, preco_acao: 0 };
-        gTotal.months[m].fat += r.months[m].fat;
-        gTotal.months[m].inv += r.months[m].inv;
-        gTotal.months[m].preco_flat = Math.max(gTotal.months[m].preco_flat, r.months[m].preco_flat);
-        gTotal.months[m].preco_acao = Math.max(gTotal.months[m].preco_acao, r.months[m].preco_acao);
-      });
-    });
-
-    return {
-      tableData: filtered,
-      grandTotal: gTotal,
-      filterOptions: {
-        managers: Array.from(mapOptions.managers).sort(),
-        familias: Array.from(mapOptions.familias).sort(),
-        ufs: Array.from(mapOptions.ufs).sort(),
-        channels: Array.from(mapOptions.channels).sort(),
-        matrizes: Array.from(mapOptions.matrizes).sort(),
-        products: [] // placeholder for Linha SKU
-      }
-    };
-  }, [rawVendas, rawInvest, redesMap, filterManager, filterFamilia, filterUf, filterChannel, filterMatriz]);
-
-  const renderMonthLabel = (YYYYMM: string) => {
-    const parts = YYYYMM.split('-');
-    if (parts.length !== 2) return YYYYMM;
-    const mIdx = parseInt(parts[1], 10) - 1;
-    return `${MONTHS_NAMES[mIdx]}/${parts[0].slice(2)}`;
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity" />;
+    return sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-fuchsia-400" /> : <ArrowDown className="w-3.5 h-3.5 text-fuchsia-400" />;
   };
 
-  const getPct = (inv: number, fat: number) => {
-    if (fat <= 0) return 0;
-    return (inv / fat) * 100;
+  const getPctBadgeClass = (pct: number) => {
+    if (pct <= 0) return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+    if (pct < 10) return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+    if (pct <= 25) return "bg-amber-500/10 text-amber-400 border-amber-500/30";
+    return "bg-rose-500/10 text-rose-400 border-rose-500/30";
   };
 
   return (
     <div className="flex h-screen bg-background font-sans">
-      {/* ═══ SIDEBAR ═══ */}
+      {/* ═══ SIDEBAR FILTROS ═══ */}
       <aside className="w-[280px] flex-shrink-0 bg-background-elevated border-r border-border overflow-y-auto hidden lg:flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.02)] relative z-20">
         <div className="p-6 sticky top-0 bg-background-elevated/80 backdrop-blur-xl border-b border-border z-10">
-          <Link href="/" className="inline-flex items-center gap-2 text-foreground-secondary hover:text-foreground transition-colors mb-6 group">
+          <Link href="/investimento" className="inline-flex items-center gap-2 text-foreground-secondary hover:text-foreground transition-colors mb-6 group">
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
             <span className="text-sm font-medium">Voltar ao Painel</span>
           </Link>
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-cyan-500" />
+              <Filter className="w-5 h-5 text-fuchsia-500" />
               Filtros
             </h2>
             <ThemeToggle />
           </div>
           <p className="text-xs text-foreground-muted leading-relaxed">
-            Visão consolidada de Investimentos por Mês.
+            Filtros consolidados do Dashboard por Rede.
           </p>
         </div>
 
@@ -461,10 +230,10 @@ export default function InvestimentoPorMesPage() {
               <p className="dash-sidebar-title" style={{ marginTop: 0 }}>Mês Inicial</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
                 <select value={startMonth} onChange={(e) => setStartMonth(Number(e.target.value))} className="dash-filter-select">
-                  {MONTHS_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  {MONTHS_NAMES.map((m, i) => <option key={`start-month-${i}`} value={i + 1}>{m}</option>)}
                 </select>
                 <select value={startYear} onChange={(e) => setStartYear(Number(e.target.value))} className="dash-filter-select">
-                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                  {YEARS.map(y => <option key={`start-year-${y}`} value={y}>{y}</option>)}
                 </select>
               </div>
             </div>
@@ -473,42 +242,32 @@ export default function InvestimentoPorMesPage() {
               <p className="dash-sidebar-title">Mês Final</p>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5 }}>
                 <select value={endMonth} onChange={(e) => setEndMonth(Number(e.target.value))} className="dash-filter-select">
-                  {MONTHS_NAMES.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  {MONTHS_NAMES.map((m, i) => <option key={`end-month-${i}`} value={i + 1}>{m}</option>)}
                 </select>
                 <select value={endYear} onChange={(e) => setEndYear(Number(e.target.value))} className="dash-filter-select">
-                  {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+                  {YEARS.map(y => <option key={`end-year-${y}`} value={y}>{y}</option>)}
                 </select>
               </div>
             </div>
 
             <div>
               <p className="dash-sidebar-title">Gerente</p>
-              <MultiSelect value={filterManager} onChange={setFilterManager} options={filterOptions.managers} className="dash-filter-select" placeholder="Todos" />
-            </div>
-
-            <div>
-              <p className="dash-sidebar-title">Família</p>
-              <MultiSelect value={filterFamilia} onChange={setFilterFamilia} options={filterOptions.familias} className="dash-filter-select" placeholder="Todas" />
+              <MultiSelect value={filterManager} onChange={setFilterManager} options={dataResult?.filterOptions.managers || []} className="dash-filter-select" placeholder="Todos" />
             </div>
 
             <div>
               <p className="dash-sidebar-title">Região (UF)</p>
-              <MultiSelect value={filterUf} onChange={setFilterUf} options={filterOptions.ufs} className="dash-filter-select" placeholder="Todos" />
+              <MultiSelect value={filterUf} onChange={setFilterUf} options={dataResult?.filterOptions.ufs || []} className="dash-filter-select" placeholder="Todas" />
             </div>
 
             <div>
               <p className="dash-sidebar-title">Canal</p>
-              <MultiSelect value={filterChannel} onChange={setFilterChannel} options={filterOptions.channels} className="dash-filter-select" placeholder="Todos" />
+              <MultiSelect value={filterChannel} onChange={setFilterChannel} options={dataResult?.filterOptions.channels || []} className="dash-filter-select" placeholder="Todos" />
             </div>
 
             <div>
               <p className="dash-sidebar-title">Rede</p>
-              <MultiSelect value={filterMatriz} onChange={setFilterMatriz} options={filterOptions.matrizes} className="dash-filter-select" placeholder="Todas" />
-            </div>
-
-            <div>
-              <p className="dash-sidebar-title">Linha SKU</p>
-              <MultiSelect value={filterProduct} onChange={setFilterProduct} options={filterOptions.products} className="dash-filter-select" placeholder="Todas" />
+              <MultiSelect value={filterMatriz} onChange={setFilterMatriz} options={dataResult?.filterOptions.matrizes || []} className="dash-filter-select" placeholder="Todas" />
             </div>
           </div>
 
@@ -520,193 +279,447 @@ export default function InvestimentoPorMesPage() {
           )}
 
           <ExportButton 
-            data={tableData.map(r => ({
+            data={sortedRows.map(r => ({
               Rede: r.rede,
               Gerente: r.gerente,
-              Total_Fat: Number(r.total.fat.toFixed(2)),
-              Total_Inv: Number(r.total.inv.toFixed(2)),
-              Total_Pct: Number(getPct(r.total.inv, r.total.fat).toFixed(2))
+              UF: r.uf,
+              Canal: r.canal,
+              Fat_TT: r.fatTT,
+              Invest_TT: r.investTT,
+              Pct_Inv_TT: `${r.pctInvTT}%`,
+              Preco_Flat: r.precoFlat,
+              Preco_Promo: r.precoPromo,
+              Pct_Inv_vs_Preco_Flat: `${r.pctInvVsFlat}%`,
+              Acoes_Elegiveis: r.acoesElegiveisCount
             }))}
-            filename={`Investimento_por_Mes`}
+            filename={`Investimento_por_Rede`}
             className="w-full mt-4 justify-center"
             variant="outline"
           />
         </div>
       </aside>
 
-      {/* ═══ MAIN CONTENT ═══ */}
+      {/* ═══ CONTEÚDO PRINCIPAL ═══ */}
       <main className="flex-1 overflow-auto bg-[url('/noise.png')] bg-repeat opacity-95 relative flex flex-col">
-        <div className="p-8 max-w-[1600px] mx-auto w-full flex-1 flex flex-col">
+        <div className="p-6 sm:p-8 max-w-[1600px] mx-auto w-full flex-1 flex flex-col space-y-6">
           
-          <header className="mb-8 flex items-center justify-between">
+          {/* Cabeçalho Oficial */}
+          <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
-                Investimento por Mês
+              <h1 className="text-2xl sm:text-3xl font-bold text-foreground tracking-tight flex items-center gap-3">
+                <Building2 className="w-7 h-7 text-fuchsia-500" />
+                Investimento por Rede
               </h1>
-              <p className="text-foreground-secondary mt-2 flex items-center gap-2">
-                Acompanhamento mensal de Investimento vs Faturamento
+              <p className="text-sm text-foreground-secondary mt-1">
+                Análise consolidada do faturamento, investimento executado e preços médios por rede.
               </p>
+            </div>
+
+            <div className="flex items-center gap-3 self-start sm:self-auto">
+              <button
+                onClick={() => window.print()}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground bg-card hover:bg-card/80 border border-border px-3 py-1.5 rounded-xl shadow-sm transition-all cursor-pointer"
+                title="Exportar PDF / Imprimir Relatório Executivo"
+              >
+                <Printer className="w-4 h-4 text-fuchsia-500" />
+                <span>Exportar PDF</span>
+              </button>
+              <div className="flex items-center gap-2 text-xs text-foreground-muted bg-card border border-border px-3 py-1.5 rounded-xl shadow-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <span>Fonte Oficial: <strong>AnalyticsEngine V1</strong></span>
+              </div>
             </div>
           </header>
 
-          <div className="glass-card flex-1 flex flex-col overflow-hidden relative">
+          {/* Cards KPI Resumo (6 Indicadores Executivos) */}
+          {dataResult && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <Wallet className="w-4 h-4 text-emerald-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Fat TT</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-foreground">
+                  {formatCurrency(dataResult.grandTotal.fatTT)}
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <DollarSign className="w-4 h-4 text-fuchsia-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-fuchsia-500">Invest. TT</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-fuchsia-400">
+                  {formatCurrency(dataResult.grandTotal.investTT)}
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <TrendingUp className="w-4 h-4 text-cyan-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">% Inv. TT</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-foreground">
+                  {formatPercent(dataResult.grandTotal.pctInvTT)}
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <BarChart3 className="w-4 h-4 text-indigo-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">% Inv. vs Flat</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-foreground">
+                  {formatPercent(dataResult.grandTotal.pctInvVsFlat)}
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <Building2 className="w-4 h-4 text-amber-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Qtd. Redes</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-foreground">
+                  {dataResult.grandTotal.qtdRedes} <span className="text-xs font-normal text-foreground-muted">redes</span>
+                </p>
+              </div>
+
+              <div className="bg-card border border-border rounded-2xl p-4 shadow-sm flex flex-col justify-between">
+                <div className="flex items-center gap-1.5 text-foreground-muted mb-1">
+                  <CheckCircle2 className="w-4 h-4 text-blue-500" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wider">Ações Apuradas</span>
+                </div>
+                <p className="text-lg sm:text-xl font-black text-foreground">
+                  {dataResult.grandTotal.acoesElegiveisCount} <span className="text-xs font-normal text-foreground-muted">ações</span>
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Tabela de Investimento por Rede (Compact & Sticky Design) */}
+          <div className="glass-card flex-1 flex flex-col overflow-hidden relative rounded-2xl border border-border shadow-sm">
             {loading ? (
-              <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-                <div className="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="absolute inset-0 z-50 flex flex-col gap-3 items-center justify-center bg-background/60 backdrop-blur-sm">
+                <div className="w-8 h-8 border-4 border-fuchsia-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-sm font-medium text-foreground-muted">Carregando dados da AnalyticsEngine...</p>
               </div>
             ) : null}
 
             <div className="overflow-auto flex-1">
-              <table className="w-full text-left border-collapse min-w-max text-[11px]">
-                <thead className="sticky top-0 z-30 shadow-[0_2px_10px_rgba(0,0,0,0.1)]">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead className="sticky top-0 z-30 bg-background-elevated border-b border-border shadow-sm">
                   <tr>
-                    <th rowSpan={2} className="p-3 border-b border-border border-r font-semibold text-foreground bg-background-elevated sticky left-0 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] align-bottom">
-                      Redes
+                    {/* 1. Rede / Drill-Down */}
+                    <th 
+                      onClick={() => handleSort('rede')}
+                      className="p-3 font-bold text-foreground bg-background-elevated sticky left-0 z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] cursor-pointer group hover:bg-foreground/5 transition-colors w-[260px]"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Rede / Família</span>
+                        {getSortIcon('rede')}
+                      </div>
                     </th>
-                    <th colSpan={5} className="p-2 text-center border-b border-r border-border font-bold text-foreground bg-background-elevated uppercase tracking-widest text-[10px]">
-                      Total Período
+
+                    {/* 2. Fat TT */}
+                    <th 
+                      onClick={() => handleSort('fatTT')}
+                      className="p-3 text-right font-bold text-foreground cursor-pointer group hover:bg-foreground/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>Fat</span>
+                          <span className="text-[10px] text-foreground-muted font-normal">TT</span>
+                        </div>
+                        {getSortIcon('fatTT')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-foreground-muted opacity-60 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            Faturamento total acumulado no período (fonte oficial AnalyticsEngine).
+                          </div>
+                        </div>
+                      </div>
                     </th>
-                    {monthsInRange.map(m => (
-                      <th key={m} colSpan={5} className="p-2 text-center border-b border-r border-border font-bold text-foreground bg-background-elevated uppercase tracking-widest text-[10px]">
-                        {renderMonthLabel(m)}
-                      </th>
-                    ))}
-                  </tr>
-                  <tr>
-                    <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Fat</th>
-                    <th className="p-2 text-right border-b border-border bg-background-elevated text-cyan-600 font-medium w-[90px]">Inv</th>
-                    <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[60px]">%</th>
-                    <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Pr. Flat</th>
-                    <th className="p-2 text-right border-b border-r border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Pr. Promo</th>
-                    
-                    {monthsInRange.map(m => (
-                      <Fragment key={`sub-${m}`}>
-                        <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Fat</th>
-                        <th className="p-2 text-right border-b border-border bg-background-elevated text-cyan-600 font-medium w-[90px]">Inv</th>
-                        <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[60px]">%</th>
-                        <th className="p-2 text-right border-b border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Pr. Flat</th>
-                        <th className="p-2 text-right border-b border-r border-border bg-background-elevated text-foreground-secondary font-medium w-[90px]">Pr. Promo</th>
-                      </Fragment>
-                    ))}
+
+                    {/* 3. Invest. TT */}
+                    <th 
+                      onClick={() => handleSort('investTT')}
+                      className="p-3 text-right font-bold text-fuchsia-400 cursor-pointer group hover:bg-foreground/5 transition-colors bg-fuchsia-500/5"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>Invest.</span>
+                          <span className="text-[10px] font-normal">TT</span>
+                        </div>
+                        {getSortIcon('investTT')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-fuchsia-400/80 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-52 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            Investimento total executado nas ações apuradas (Valor Unitário × Volume Real Apurado).
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+
+                    {/* 4. % Inv. TT */}
+                    <th 
+                      onClick={() => handleSort('pctInvTT')}
+                      className="p-3 text-right font-bold text-foreground cursor-pointer group hover:bg-foreground/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>% Inv.</span>
+                          <span className="text-[10px] text-foreground-muted font-normal">TT</span>
+                        </div>
+                        {getSortIcon('pctInvTT')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-foreground-muted opacity-60 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-48 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            Percentual do investimento sobre o faturamento total (Invest. TT ÷ Fat TT).
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+
+                    {/* 5. Preço Flat */}
+                    <th 
+                      onClick={() => handleSort('precoFlat')}
+                      className="p-3 text-right font-bold text-foreground cursor-pointer group hover:bg-foreground/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>Preço</span>
+                          <span className="text-[10px] text-foreground-muted font-normal">Flat</span>
+                        </div>
+                        {getSortIcon('precoFlat')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-foreground-muted opacity-60 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-52 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            Preço médio de tabela ponderado pelo volume real: Σ(Preço Flat × Volume) ÷ Σ(Volume).
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+
+                    {/* 6. Preço Promo */}
+                    <th 
+                      onClick={() => handleSort('precoPromo')}
+                      className="p-3 text-right font-bold text-foreground cursor-pointer group hover:bg-foreground/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>Preço</span>
+                          <span className="text-[10px] text-foreground-muted font-normal">Promo</span>
+                        </div>
+                        {getSortIcon('precoPromo')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-foreground-muted opacity-60 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-52 p-2 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            Preço médio promocional ponderado pelo volume real: Σ(Preço Promo × Volume) ÷ Σ(Volume).
+                          </div>
+                        </div>
+                      </div>
+                    </th>
+
+                    {/* 7. % Inv. vs Preço Flat */}
+                    <th 
+                      onClick={() => handleSort('pctInvVsFlat')}
+                      className="p-3 text-right font-bold text-foreground cursor-pointer group hover:bg-foreground/5 transition-colors"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>% Inv. vs</span>
+                          <span className="text-[10px] text-foreground-muted font-normal">Flat</span>
+                        </div>
+                        {getSortIcon('pctInvVsFlat')}
+                        <div className="group/tip relative flex items-center">
+                          <HelpCircle className="w-3.5 h-3.5 text-foreground-muted opacity-60 hover:opacity-100" />
+                          <div className="absolute bottom-full right-0 mb-2 hidden group-hover/tip:block w-56 p-2.5 bg-slate-900 text-white text-[10px] rounded-lg shadow-xl border border-slate-700 z-50 normal-case font-normal leading-tight">
+                            <strong>Indicador Executivo:</strong> % do valor flat teórico (Σ Preço Flat × Volume Real) consumido pelo investimento realizado.
+                          </div>
+                        </div>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-border">
-                  {tableData.length === 0 && !loading ? (
+                  {sortedRows.length === 0 && !loading ? (
                     <tr>
-                      <td colSpan={5 + (monthsInRange.length * 5)} className="p-8 text-center text-foreground-muted">
-                        Nenhum dado encontrado para os filtros selecionados.
+                      <td colSpan={7} className="p-12 text-center text-foreground-muted">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Building2 className="w-8 h-8 opacity-40" />
+                          <p className="font-semibold text-sm">Nenhuma rede encontrada para os filtros selecionados.</p>
+                          <p className="text-xs">Tente ajustar o período ou limpar os filtros na barra lateral.</p>
+                        </div>
                       </td>
                     </tr>
                   ) : (
-                    <>
-                      {tableData.map(row => {
-                        const isExpanded = expandedRedes.has(row.rede);
-                        const famList = Object.values(row.familias).sort((a, b) => {
-                          const pctA = getPct(a.total.inv, a.total.fat);
-                          const pctB = getPct(b.total.inv, b.total.fat);
-                          if (Math.abs(pctA - pctB) > 0.01) return pctB - pctA;
-                          return b.total.inv - a.total.inv;
-                        });
+                    sortedRows.map(row => {
+                      const isExpanded = expandedRedes.has(row.rede);
+                      const hasFamilias = row.familias && row.familias.length > 0;
 
-                        return (
-                          <Fragment key={row.rede}>
-                            {/* LINHA PRINCIPAL - REDE */}
-                            <tr className="hover:bg-foreground/5 transition-colors group cursor-pointer" onClick={() => toggleRede(row.rede)}>
-                              <td className="p-3 border-r border-border font-semibold text-foreground sticky left-0 bg-background-card group-hover:bg-background-elevated z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
-                                <div className="flex items-center gap-2">
-                                  <ChevronRight className={`w-4 h-4 text-foreground-muted transition-transform ${isExpanded ? "rotate-90" : ""}`} />
-                                  <span className="truncate max-w-[200px]" title={row.rede}>{row.rede}</span>
+                      return (
+                        <Fragment key={row.rede}>
+                          {/* LINHA PAI — REDE */}
+                          <tr 
+                            onClick={() => toggleRede(row.rede)}
+                            className="hover:bg-foreground/[0.03] transition-colors cursor-pointer group bg-card/60"
+                          >
+                            {/* 1. Rede */}
+                            <td className="p-3 border-r border-border font-semibold text-foreground sticky left-0 bg-background-card group-hover:bg-background-elevated z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] transition-colors">
+                              <div className="flex items-center gap-2">
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleRede(row.rede);
+                                  }}
+                                  className="p-1 rounded hover:bg-foreground/10 text-foreground-muted hover:text-foreground transition-colors"
+                                >
+                                  <ChevronRight className={`w-4 h-4 transition-transform ${isExpanded ? "rotate-90 text-fuchsia-500 font-bold" : ""}`} />
+                                </button>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="font-bold text-foreground group-hover:text-fuchsia-400 transition-colors truncate">
+                                    {row.rede}
+                                  </span>
+                                  <span className="text-[10px] text-foreground-muted font-normal truncate">
+                                    {row.gerente} {row.uf !== "N/I" ? `• ${row.uf}` : ''} {row.canal !== "N/I" ? `(${row.canal})` : ''}
+                                  </span>
                                 </div>
-                              </td>
-                              
-                              {/* TOTAL PERIODO */}
-                              <td className="p-2 text-right font-medium text-foreground">{formatCurrency(row.total.fat)}</td>
-                              <td className="p-2 text-right font-medium text-cyan-500" style={{ color: (row.total.inv > 0 && row.total.fat <= 0) ? 'var(--danger)' : undefined }}>{formatCurrency(row.total.inv)}</td>
-                              <td className="p-2 text-right font-bold border-border" style={{ color: (row.total.inv > 0 && row.total.fat <= 0) || getPct(row.total.inv, row.total.fat) > 10 ? 'var(--danger)' : 'var(--foreground)' }}>
-                                {formatPercent(getPct(row.total.inv, row.total.fat))}
-                              </td>
-                              <td className="p-2 text-right font-medium text-foreground-secondary">{row.total.preco_flat > 0 ? formatCurrency(row.total.preco_flat) : '-'}</td>
-                              <td className="p-2 text-right font-medium text-foreground-secondary border-r border-border">{row.total.preco_acao > 0 ? formatCurrency(row.total.preco_acao) : '-'}</td>
+                              </div>
+                            </td>
 
-                              {/* MESES */}
-                              {monthsInRange.map(m => {
-                                const d = row.months[m] || { fat: 0, inv: 0 };
-                                const pctVal = getPct(d.inv, d.fat);
-                                return (
-                                  <Fragment key={`cell-${row.rede}-${m}`}>
-                                    <td className="p-2 text-right text-foreground-secondary">{d.fat ? formatCurrency(d.fat) : '-'}</td>
-                                    <td className="p-2 text-right text-cyan-600/80" style={{ color: (d.inv > 0 && d.fat <= 0) ? 'var(--danger)' : undefined }}>{d.inv ? formatCurrency(d.inv) : '-'}</td>
-                                    <td className="p-2 text-right border-border" style={{ color: (d.inv > 0 && d.fat <= 0) || pctVal > 10 ? 'var(--danger)' : 'var(--foreground-muted)' }}>
-                                      {d.fat || d.inv ? formatPercent(pctVal) : '-'}
-                                    </td>
-                                    <td className="p-2 text-right text-foreground-muted">{d.preco_flat > 0 ? formatCurrency(d.preco_flat) : '-'}</td>
-                                    <td className="p-2 text-right border-r border-border text-foreground-muted">{d.preco_acao > 0 ? formatCurrency(d.preco_acao) : '-'}</td>
-                                  </Fragment>
-                                );
-                              })}
-                            </tr>
+                            {/* 2. Fat TT */}
+                            <td className="p-3 text-right font-semibold text-foreground">
+                              {row.fatTT > 0 ? formatCurrency(row.fatTT) : <span className="text-foreground-muted font-normal">-</span>}
+                            </td>
 
-                            {/* LINHAS EXPANDIDAS - FAMILIAS */}
-                            {isExpanded && famList.map(fam => (
-                              <tr key={`${row.rede}-${fam.familia}`} className="bg-foreground/[0.02] hover:bg-foreground/[0.04]">
-                                <td className="p-3 pl-8 border-r border-border font-medium text-foreground-secondary sticky left-0 bg-background-elevated z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                  <span className="truncate max-w-[180px] block" title={fam.familia}>{fam.familia}</span>
+                            {/* 3. Invest. TT */}
+                            <td className="p-3 text-right font-black text-fuchsia-400 bg-fuchsia-500/5">
+                              {row.investTT > 0 ? formatCurrency(row.investTT) : <span className="text-foreground-muted font-normal">R$ 0</span>}
+                            </td>
+
+                            {/* 4. % Inv. TT */}
+                            <td className="p-3 text-right font-bold">
+                              {row.fatTT > 0 ? (
+                                <span className={`inline-block px-2 py-0.5 rounded-md border text-[11px] ${getPctBadgeClass(row.pctInvTT)}`}>
+                                  {formatPercent(row.pctInvTT)}
+                                </span>
+                              ) : (
+                                <span className="text-foreground-muted font-normal">-</span>
+                              )}
+                            </td>
+
+                            {/* 5. Preço Flat */}
+                            <td className="p-3 text-right text-foreground-secondary font-medium">
+                              {row.precoFlat > 0 ? formatCurrency(row.precoFlat, 2) : <span className="text-foreground-muted font-normal">-</span>}
+                            </td>
+
+                            {/* 6. Preço Promo */}
+                            <td className="p-3 text-right text-foreground-secondary font-medium">
+                              {row.precoPromo > 0 ? formatCurrency(row.precoPromo, 2) : <span className="text-foreground-muted font-normal">-</span>}
+                            </td>
+
+                            {/* 7. % Inv. vs Preço Flat */}
+                            <td className="p-3 text-right font-bold text-foreground">
+                              {row.valorTotalFlat > 0 ? (
+                                <span className="text-indigo-400">
+                                  {formatPercent(row.pctInvVsFlat)}
+                                </span>
+                              ) : (
+                                <span className="text-foreground-muted font-normal">-</span>
+                              )}
+                            </td>
+                          </tr>
+
+                          {/* LINHAS FILHAS — FAMÍLIAS (DRILL-DOWN) */}
+                          {isExpanded && hasFamilias && (
+                            row.familias.map((fam) => (
+                              <tr 
+                                key={`${row.rede}-${fam.familia}`}
+                                className="bg-background-elevated/40 hover:bg-background-elevated/80 transition-colors text-[11px]"
+                              >
+                                {/* 1. Nome da Família Indentado */}
+                                <td className="p-2.5 border-r border-border sticky left-0 bg-background-elevated/90 z-20 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] pl-8">
+                                  <div className="flex items-center gap-2 text-foreground-secondary">
+                                    <span className="text-fuchsia-500/70 font-mono text-[10px]">↳</span>
+                                    <span className="font-medium text-foreground-secondary">
+                                      {fam.familia}
+                                    </span>
+                                  </div>
                                 </td>
-                                
-                                <td className="p-2 text-right text-foreground-secondary">{formatCurrency(fam.total.fat)}</td>
-                                <td className="p-2 text-right text-cyan-600/70" style={{ color: (fam.total.inv > 0 && fam.total.fat <= 0) ? 'var(--danger)' : undefined }}>{formatCurrency(fam.total.inv)}</td>
-                                <td className="p-2 text-right border-border text-foreground-muted" style={{ color: (fam.total.inv > 0 && fam.total.fat <= 0) ? 'var(--danger)' : undefined }}>
-                                  {formatPercent(getPct(fam.total.inv, fam.total.fat))}
-                                </td>
-                                <td className="p-2 text-right text-foreground-muted">{fam.total.preco_flat > 0 ? formatCurrency(fam.total.preco_flat) : '-'}</td>
-                                <td className="p-2 text-right border-r border-border text-foreground-muted">{fam.total.preco_acao > 0 ? formatCurrency(fam.total.preco_acao) : '-'}</td>
 
-                                {monthsInRange.map(m => {
-                                  const d = fam.months[m] || { fat: 0, inv: 0 };
-                                  return (
-                                    <Fragment key={`fcell-${fam.familia}-${m}`}>
-                                      <td className="p-2 text-right text-foreground-muted">{d.fat ? formatCurrency(d.fat) : '-'}</td>
-                                      <td className="p-2 text-right text-cyan-600/50" style={{ color: (d.inv > 0 && d.fat <= 0) ? 'var(--danger)' : undefined }}>{d.inv ? formatCurrency(d.inv) : '-'}</td>
-                                      <td className="p-2 text-right border-border text-foreground-muted/50" style={{ color: (d.inv > 0 && d.fat <= 0) ? 'var(--danger)' : undefined }}>
-                                        {d.fat || d.inv ? formatPercent(getPct(d.inv, d.fat)) : '-'}
-                                      </td>
-                                      <td className="p-2 text-right text-foreground-muted/50">{d.preco_flat > 0 ? formatCurrency(d.preco_flat) : '-'}</td>
-                                      <td className="p-2 text-right border-r border-border text-foreground-muted/50">{d.preco_acao > 0 ? formatCurrency(d.preco_acao) : '-'}</td>
-                                    </Fragment>
-                                  );
-                                })}
+                                {/* 2. Fat TT */}
+                                <td className="p-2.5 text-right font-medium text-foreground-secondary">
+                                  {fam.fatTT > 0 ? formatCurrency(fam.fatTT) : <span className="text-foreground-muted">-</span>}
+                                </td>
+
+                                {/* 3. Invest. TT */}
+                                <td className="p-2.5 text-right font-bold text-fuchsia-400/90 bg-fuchsia-500/[0.02]">
+                                  {fam.investTT > 0 ? formatCurrency(fam.investTT) : <span className="text-foreground-muted font-normal">R$ 0</span>}
+                                </td>
+
+                                {/* 4. % Inv. TT */}
+                                <td className="p-2.5 text-right">
+                                  {fam.fatTT > 0 ? (
+                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${getPctBadgeClass(fam.pctInvTT)}`}>
+                                      {formatPercent(fam.pctInvTT)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-foreground-muted">-</span>
+                                  )}
+                                </td>
+
+                                {/* 5. Preço Flat */}
+                                <td className="p-2.5 text-right text-foreground-muted">
+                                  {fam.precoFlat > 0 ? formatCurrency(fam.precoFlat, 2) : <span className="text-foreground-muted">-</span>}
+                                </td>
+
+                                {/* 6. Preço Promo */}
+                                <td className="p-2.5 text-right text-foreground-muted">
+                                  {fam.precoPromo > 0 ? formatCurrency(fam.precoPromo, 2) : <span className="text-foreground-muted">-</span>}
+                                </td>
+
+                                {/* 7. % Inv. vs Preço Flat */}
+                                <td className="p-2.5 text-right font-medium text-indigo-400/80">
+                                  {fam.valorTotalFlat > 0 ? formatPercent(fam.pctInvVsFlat) : <span className="text-foreground-muted">-</span>}
+                                </td>
                               </tr>
-                            ))}
-                          </Fragment>
-                        );
-                      })}
-                    </>
+                            ))
+                          )}
+                        </Fragment>
+                      );
+                    })
                   )}
                 </tbody>
-                {tableData.length > 0 && (
+
+                {/* Rodapé Totais Gerais */}
+                {dataResult && dataResult.rows.length > 0 && (
                   <tfoot className="sticky bottom-0 z-30 shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-                    <tr className="bg-background-elevated border-t-2 border-border">
-                      <td className="p-3 border-r border-border font-bold text-foreground sticky left-0 bg-background-elevated z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] uppercase text-[10px] tracking-widest">
+                    <tr className="bg-background-elevated border-t-2 border-border font-bold">
+                      <td className="p-3.5 border-r border-border text-foreground sticky left-0 bg-background-elevated z-40 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] uppercase text-[11px] tracking-wider">
                         TOTAL GERAL
                       </td>
-                      <td className="p-2 text-right font-bold text-foreground">{formatCurrency(grandTotal.fat)}</td>
-                      <td className="p-2 text-right font-bold text-cyan-500">{formatCurrency(grandTotal.inv)}</td>
-                      <td className="p-2 text-right font-bold text-foreground border-border">{formatPercent(getPct(grandTotal.inv, grandTotal.fat))}</td>
-                      <td className="p-2 text-right font-semibold text-foreground-secondary">{grandTotal.preco_flat > 0 ? formatCurrency(grandTotal.preco_flat) : '-'}</td>
-                      <td className="p-2 text-right font-semibold text-foreground-secondary border-r border-border">{grandTotal.preco_acao > 0 ? formatCurrency(grandTotal.preco_acao) : '-'}</td>
-                      
-                      {monthsInRange.map(m => {
-                        const d = grandTotal.months[m] || { fat: 0, inv: 0 };
-                        return (
-                          <Fragment key={`tcell-${m}`}>
-                            <td className="p-2 text-right font-semibold text-foreground-secondary">{formatCurrency(d.fat)}</td>
-                            <td className="p-2 text-right font-semibold text-cyan-600">{formatCurrency(d.inv)}</td>
-                            <td className="p-2 text-right font-semibold text-foreground-secondary border-border">{formatPercent(getPct(d.inv, d.fat))}</td>
-                            <td className="p-2 text-right font-semibold text-foreground-secondary">{d.preco_flat > 0 ? formatCurrency(d.preco_flat) : '-'}</td>
-                            <td className="p-2 text-right font-semibold text-foreground-secondary border-r border-border">{d.preco_acao > 0 ? formatCurrency(d.preco_acao) : '-'}</td>
-                          </Fragment>
-                        );
-                      })}
+                      <td className="p-3.5 text-right text-foreground text-sm font-extrabold">
+                        {formatCurrency(dataResult.grandTotal.fatTT)}
+                      </td>
+                      <td className="p-3.5 text-right text-fuchsia-400 text-sm font-black bg-fuchsia-500/10">
+                        {formatCurrency(dataResult.grandTotal.investTT)}
+                      </td>
+                      <td className="p-3.5 text-right text-foreground">
+                        <span className={`inline-block px-2 py-0.5 rounded-md border text-[11px] ${getPctBadgeClass(dataResult.grandTotal.pctInvTT)}`}>
+                          {formatPercent(dataResult.grandTotal.pctInvTT)}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right text-foreground-secondary font-semibold">
+                        {formatCurrency(dataResult.grandTotal.precoFlat, 2)}
+                      </td>
+                      <td className="p-3.5 text-right text-foreground-secondary font-semibold">
+                        {formatCurrency(dataResult.grandTotal.precoPromo, 2)}
+                      </td>
+                      <td className="p-3.5 text-right text-indigo-400 font-extrabold">
+                        {formatPercent(dataResult.grandTotal.pctInvVsFlat)}
+                      </td>
                     </tr>
                   </tfoot>
                 )}
