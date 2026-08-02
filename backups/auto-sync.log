@@ -1132,3 +1132,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    8d730c8..ff2fde3  main -> main
 [01/08/2026 17:35] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 26265b3] auto-save: 01/08/2026 20:59
+ 9 files changed, 230 insertions(+), 42 deletions(-)
+ create mode 100644 src/app/investimento/carta-anuencia/validade-helper.ts
+ create mode 100644 supabase/migrations/20260801_carta_anuencia_validade_rule.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   933faf6..26265b3  main -> main
+[01/08/2026 20:59] ✅ Alterações enviadas com sucesso para o GitHub.
