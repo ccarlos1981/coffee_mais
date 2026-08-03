@@ -1957,6 +1957,23 @@ body {
   border-radius: 4px;
 }
 
+.rdm-dot-cover {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  border-color: var(--accent-gold);
+  background: rgba(201, 169, 110, 0.25);
+  transform: rotate(45deg);
+}
+
+.rdm-dot-cover.rdm-dot-active {
+  background: var(--accent-gold);
+  border-color: var(--accent-gold);
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
 
 
 /* ═══════════════════════════════════════════════════════════════

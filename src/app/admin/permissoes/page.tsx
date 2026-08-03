@@ -116,6 +116,7 @@ const CATEGORIZED_MODULES = [
       "Meta Cia",
       "Metas",
       "Metas promotor",
+      "Metas por Rede",
       "Coffee_IA",
       "Atendimento",
       "Upload",

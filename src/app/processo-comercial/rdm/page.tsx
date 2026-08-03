@@ -363,7 +363,198 @@ function SlideCapa({ manager, monthName, year, onExport, exporting, exportProgre
   );
 }
 
-// ─── CoffeeSlide Shell ───────────────────────────────────────────────────────
+// ─── Section Cover Slides (Capas de Módulo) ──────────────────────────────────
+const SECTION_COVERS: Record<string, { number: number; title: string; subtitle: string }> = {
+  cover_fup:         { number: 1, title: 'Follow up',                subtitle: 'FUP — Acompanhamento dos itens pendentes' },
+  cover_farol:       { number: 2, title: 'Farol de Metas',           subtitle: 'Acompanhamento do desempenho vs. metas' },
+  cover_dre:         { number: 3, title: 'Resultado DRE',            subtitle: 'Demonstrativo de Resultado do Exercício' },
+  cover_invest:      { number: 4, title: 'Investimentos',            subtitle: 'Resumo de fases, investimento por cliente e rede' },
+  cover_resultado:   { number: 5, title: 'Faturamento e Volume',     subtitle: 'Análise por regional, família e preço' },
+  cover_plano:       { number: 6, title: 'Plano de Ação',            subtitle: 'Ações comerciais e iniciativas estratégicas' },
+  cover_projecao:    { number: 7, title: 'Projeção de Vendas',       subtitle: 'Estimativa de fechamento do mês' },
+  cover_rotas:       { number: 8, title: 'Agenda de Rotas',          subtitle: 'Roteiro e planejamento de visitas' },
+};
+
+function SlideSectionCover({ coverKey, monthName }: { coverKey: string; monthName: string }) {
+  const config = SECTION_COVERS[coverKey];
+  if (!config) return null;
+  const gold  = '#c9a96e';
+  const goldD = '#a07840';
+
+  const grain = `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E")`;
+  const beanWatermark = `url("data:image/svg+xml,%3Csvg width='320' height='440' viewBox='0 0 320 440' xmlns='http://www.w3.org/2000/svg'%3E%3Cellipse cx='160' cy='220' rx='130' ry='195' fill='none' stroke='%23c9a96e' stroke-width='1.5' opacity='0.07'/%3E%3Cellipse cx='160' cy='220' rx='100' ry='155' fill='none' stroke='%23c9a96e' stroke-width='1' opacity='0.04'/%3E%3Cpath d='M160 25 C160 25 80 120 80 220 C80 320 160 415 160 415' stroke='%23c9a96e' stroke-width='1.5' fill='none' opacity='0.08' stroke-linecap='round'/%3E%3C/svg%3E")`;
+
+  return (
+    <div
+      className="rdm-slide"
+      style={{
+        background: '#060606',
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      {/* ── Warm glow ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: `
+          radial-gradient(ellipse 45% 50% at 50% 50%, rgba(120,70,20,0.12) 0%, transparent 70%)
+        `,
+        zIndex: 0,
+      }} />
+
+      {/* ── Grain texture ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: grain,
+        backgroundRepeat: 'repeat',
+        backgroundSize: '200px 200px',
+        zIndex: 0,
+      }} />
+
+      {/* ── Coffee bean watermark — right side ── */}
+      <div style={{
+        position: 'absolute',
+        right: '-5%', top: '50%',
+        transform: 'translateY(-50%)',
+        width: 320, height: 440,
+        backgroundImage: beanWatermark,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'contain',
+        zIndex: 1,
+      }} />
+
+      {/* ── Top accent line ── */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: 2,
+        background: `linear-gradient(90deg, transparent 0%, ${goldD} 20%, ${gold} 50%, ${goldD} 80%, transparent 100%)`,
+        zIndex: 2,
+      }} />
+
+      {/* ── Left accent bar ── */}
+      <div style={{
+        position: 'absolute', left: 0, top: '20%', bottom: '20%', width: 2,
+        background: `linear-gradient(to bottom, transparent, ${gold} 35%, ${gold} 65%, transparent)`,
+        opacity: 0.35,
+        zIndex: 2,
+      }} />
+
+      {/* ── Main content ── */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '8%',
+        zIndex: 3,
+        textAlign: 'center',
+      }}>
+
+        {/* Section number */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, marginBottom: '1.5rem',
+        }}>
+          <div style={{ width: 40, height: 1, background: gold, opacity: 0.4 }} />
+          <span style={{
+            color: gold,
+            fontSize: '0.6rem',
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.4em',
+            fontFamily: 'var(--font-geist-sans, system-ui)',
+          }}>
+            Seção {String(config.number).padStart(2, '0')}
+          </span>
+          <div style={{ width: 40, height: 1, background: gold, opacity: 0.4 }} />
+        </div>
+
+        {/* Title */}
+        <div style={{
+          fontSize: 'clamp(1.8rem, 4.5vw, 3rem)',
+          fontWeight: 700,
+          color: '#ffffff',
+          fontFamily: 'Georgia, "Times New Roman", serif',
+          letterSpacing: '-0.01em',
+          lineHeight: 1.15,
+          textShadow: '0 0 60px rgba(201,169,110,0.15)',
+          marginBottom: '1rem',
+        }}>
+          {config.title}
+        </div>
+
+        {/* Subtitle */}
+        <div style={{
+          color: 'rgba(255,255,255,0.4)',
+          fontSize: 'clamp(0.6rem, 1.4vw, 0.82rem)',
+          fontWeight: 400,
+          letterSpacing: '0.05em',
+          fontFamily: 'var(--font-geist-sans, system-ui)',
+          maxWidth: 420,
+          lineHeight: 1.5,
+        }}>
+          {config.subtitle}
+        </div>
+
+        {/* Decorative gold line below subtitle */}
+        <div style={{
+          width: 50, height: 2, marginTop: '1.5rem',
+          background: `linear-gradient(90deg, transparent, ${gold}, transparent)`,
+          opacity: 0.5,
+        }} />
+
+      </div>
+
+      {/* ── Footer ── */}
+      <div style={{
+        position: 'absolute', bottom: '5.5%', left: '7%', right: '7%',
+        display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+        zIndex: 3,
+      }}>
+        <div>
+          <div style={{
+            color: 'rgba(255,255,255,0.22)',
+            fontSize: '0.48rem',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.26em',
+            fontFamily: 'var(--font-geist-sans, system-ui)',
+          }}>RDM · {monthName}</div>
+        </div>
+
+        {/* Coffee++ mark + dots */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ userSelect: 'none', lineHeight: 1, textAlign: 'right' }}>
+            <div style={{
+              color: '#ffffff',
+              fontSize: '0.85rem',
+              fontWeight: 700,
+              fontFamily: 'Georgia, "Times New Roman", serif',
+              letterSpacing: '0.01em',
+              opacity: 0.6,
+            }}>Coffee</div>
+            <div style={{
+              color: gold,
+              fontSize: '0.65rem',
+              fontWeight: 800,
+              fontFamily: 'var(--font-geist-mono, "Courier New", monospace)',
+              letterSpacing: '0.08em',
+              opacity: 0.6,
+            }}>++</div>
+          </div>
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: gold }} />
+            <div style={{ width: 5, height: 5, borderRadius: '50%', background: gold, opacity: 0.55 }} />
+            <div style={{ width: 3.5, height: 3.5, borderRadius: '50%', background: gold, opacity: 0.28 }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function SlideShell({ title, monthName, children }: { title: string; monthName: string; children: React.ReactNode }) {
   return (
     <div className="rdm-slide">
@@ -659,6 +850,55 @@ function SlideDre({ monthName }: { monthName: string }) {
   );
 }
 
+// ─── Helper: Multi-manager network resolution ─────────────────────────
+function getManagerInfoForRede(
+  rKey: string,
+  cKey: string,
+  targetManager: string,
+  matrizes: any[]
+): { isMatch: boolean; gerente: string; canal: string } {
+  const normRKey = (rKey || "").toUpperCase().trim();
+  const normCKey = (cKey || "").trim();
+
+  const matches = (matrizes || []).filter((m: any) => {
+    const mNome = (m.nome || "").toUpperCase().trim();
+    const mCodigo = String(m.codigo || "").trim();
+    return (mNome && mNome === normRKey) || (mCodigo && normCKey && mCodigo === normCKey);
+  });
+
+  if (matches.length === 0) {
+    return {
+      isMatch: targetManager === "CRISTIANO",
+      gerente: "Sem Gerente",
+      canal: "KA",
+    };
+  }
+
+  if (targetManager === "CRISTIANO") {
+    return {
+      isMatch: true,
+      gerente: matches[0].gerente || "Sem Gerente",
+      canal: matches[0].canal || "KA",
+    };
+  }
+
+  const specificMatch = matches.find((m: any) => isSameManager(m.gerente, targetManager));
+
+  if (specificMatch) {
+    return {
+      isMatch: true,
+      gerente: specificMatch.gerente || targetManager,
+      canal: specificMatch.canal || "KA",
+    };
+  }
+
+  return {
+    isMatch: false,
+    gerente: matches[0].gerente || "Sem Gerente",
+    canal: matches[0].canal || "KA",
+  };
+}
+
 // ─── Slide: Investimentos — Resumo das Fases ──────────────────────────────────
 function SlideInvestFases({
   monthName,
@@ -686,7 +926,7 @@ function SlideInvestFases({
     try {
       const { data: acoes, error } = await supabase
         .from("cm_acoes_investimento")
-        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, data_fim")
+        .select("id, rede, codigo_matriz, valor_investimento, expectativa_volume, fase_atual, data_fim")
         .eq("is_planejamento", false);
 
       if (error) throw error;
@@ -696,16 +936,12 @@ function SlideInvestFases({
         const { data: matrizes } = await supabase
           .from("v_redes_matrizes_detalhes")
           .select("nome, gerente, codigo");
-        const managerMap: Record<string, string> = {};
-        (matrizes || []).forEach((m: any) => {
-          if (m.nome) managerMap[m.nome.toUpperCase().trim()] = m.gerente;
-          if (m.codigo) managerMap[String(m.codigo).trim()] = m.gerente;
-        });
+
         filtered = filtered.filter((a: any) => {
           const rKey = (a.rede || "").toUpperCase().trim();
           const cKey = String(a.codigo_matriz || "").trim();
-          const g = managerMap[rKey] || managerMap[cKey];
-          return isSameManager(g, manager);
+          const info = getManagerInfoForRede(rKey, cKey, manager, matrizes || []);
+          return info.isMatch;
         });
       }
 
@@ -897,10 +1133,11 @@ function SlideInvestCliente({
         if ((a.fase_atual ?? 0) === 1) return;
         const redeKey = (a.rede || "SEM REDE").toUpperCase().trim();
         const cKey = String(a.codigo_matriz || "").trim();
-        const gName = gMap[redeKey] || gMap[cKey] || "Sem Gerente";
+        const info = getManagerInfoForRede(redeKey, cKey, manager, matrizes || []);
 
-        if (manager !== "CRISTIANO" && !isSameManager(gName, manager)) return;
+        if (!info.isMatch) return;
 
+        const gName = info.gerente;
         const val = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
         const isRefMonth = a.mes_referencia === mesKey;
         const isAtrasada = a.fase_atual === 3 && a.data_fim && a.data_fim < todayStr;
@@ -1051,7 +1288,7 @@ function SlideInvestCliente({
   );
 }
 
-// ─── Slide: Investimento por Rede (Foto 3) ────────────────────────────────────
+// ─── Slide: Investimento por Rede ─────────────────────────────────────────────
 function SlideInvestRede({
   monthName,
   month,
@@ -1107,33 +1344,20 @@ function SlideInvestRede({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: salesRows } = await supabase.rpc('execute_readonly_query', {
-        query_text: `
-          SELECT COALESCE(rede,'SEM REDE') as rede, COALESCE(tipo_produto,'Outros') as familia, SUM(fat) as fat, SUM(qty) as qty
-          FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
-          WHERE mes = '${mesKey}'
-          GROUP BY rede, tipo_produto
-        `
-      });
+      const { data: salesRows } = await supabase
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
+        .select("rede, tipo_produto, fat, qty")
+        .eq("mes", mesKey)
+        .limit(10000);
 
       const { data: acoes } = await supabase
         .from("cm_acoes_investimento")
-        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, familias_detalhes")
+        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, familias_detalhes, mes_referencia, codigo_matriz, familia_produto, preco_flat, preco_acao")
         .eq("is_planejamento", false);
 
       const { data: matrizes } = await supabase
         .from("v_redes_matrizes_detalhes")
         .select("nome, gerente, canal, codigo");
-
-      const gMap: Record<string, { gerente: string; canal: string }> = {};
-      (matrizes || []).forEach((m: any) => {
-        const info = {
-          gerente: m.gerente || "Sem Gerente",
-          canal: m.canal || "KA",
-        };
-        if (m.nome) gMap[m.nome.toUpperCase().trim()] = info;
-        if (m.codigo) gMap[String(m.codigo).trim()] = info;
-      });
 
       const redeMap: Record<string, {
         gerente: string;
@@ -1141,7 +1365,13 @@ function SlideInvestRede({
         fat: number;
         invest: number;
         qty: number;
-        familias: Record<string, { fat: number; invest: number; qty: number }>;
+        sumFlatWeighted: number;
+        sumAcaoWeighted: number;
+        sumVolWeighted: number;
+        familias: Record<string, {
+          fat: number; invest: number; qty: number;
+          sumFlatWeighted: number; sumAcaoWeighted: number; sumVolWeighted: number;
+        }>;
       }> = {};
 
       let totalFatAll = 0;
@@ -1150,24 +1380,23 @@ function SlideInvestRede({
 
       (salesRows || []).forEach((s: any) => {
         const rKey = (s.rede || "SEM REDE").toUpperCase().trim();
-        const gInfo = gMap[rKey] || { gerente: "Sem Gerente", canal: "KA" };
-
-        if (manager !== "CRISTIANO" && !isSameManager(gInfo.gerente, manager)) return;
+        const info = getManagerInfoForRede(rKey, "", manager, matrizes || []);
+        if (!info.isMatch) return;
 
         if (!redeMap[rKey]) {
-          redeMap[rKey] = { gerente: gInfo.gerente, canal: gInfo.canal, fat: 0, invest: 0, qty: 0, familias: {} };
+          redeMap[rKey] = { gerente: info.gerente, canal: info.canal, fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
         }
 
         const fat = Number(s.fat) || 0;
         const qty = Number(s.qty) || 0;
-        const fam = s.familia || "Outros";
+        const fam = s.tipo_produto || s.familia || "Outros";
 
         redeMap[rKey].fat += fat;
         redeMap[rKey].qty += qty;
         totalFatAll += fat;
 
         if (!redeMap[rKey].familias[fam]) {
-          redeMap[rKey].familias[fam] = { fat: 0, invest: 0, qty: 0 };
+          redeMap[rKey].familias[fam] = { fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0 };
         }
         redeMap[rKey].familias[fam].fat += fat;
         redeMap[rKey].familias[fam].qty += qty;
@@ -1178,50 +1407,90 @@ function SlideInvestRede({
 
         const rKey = (a.rede || "SEM REDE").toUpperCase().trim();
         const cKey = String(a.codigo_matriz || "").trim();
-        const gInfo = gMap[rKey] || gMap[cKey] || { gerente: "Sem Gerente", canal: "KA" };
-
-        if (manager !== "CRISTIANO" && !isSameManager(gInfo.gerente, manager)) return;
+        const info = getManagerInfoForRede(rKey, cKey, manager, matrizes || []);
+        if (!info.isMatch) return;
 
         if (!redeMap[rKey]) {
-          redeMap[rKey] = { gerente: gInfo.gerente, canal: gInfo.canal, fat: 0, invest: 0, qty: 0, familias: {} };
+          redeMap[rKey] = { gerente: info.gerente, canal: info.canal, fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
         }
 
-        const totalActionInv = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        const actionVol = Number(a.expectativa_volume) || 1;
+        const totalActionInv = (Number(a.valor_investimento) || 0) * actionVol;
         redeMap[rKey].invest += totalActionInv;
         totalInvestAll += totalActionInv;
         countAcoes += 1;
+
+        const actionFlat = Number(a.preco_flat) || 0;
+        const actionAcao = Number(a.preco_acao) || 0;
+        if (actionFlat > 0) {
+          redeMap[rKey].sumFlatWeighted += actionFlat * actionVol;
+          redeMap[rKey].sumVolWeighted += actionVol;
+        }
+        if (actionAcao > 0) {
+          redeMap[rKey].sumAcaoWeighted += actionAcao * actionVol;
+          if (actionFlat <= 0) redeMap[rKey].sumVolWeighted += actionVol;
+        }
 
         const details = Array.isArray(a.familias_detalhes) ? a.familias_detalhes : [];
         if (details.length > 0) {
           details.forEach((fd: any) => {
             const fName = fd.familia_nome || fd.familia_id || a.familia_produto || "Outros";
-            const fInv = (Number(fd.investimento) || 0) * (Number(fd.expectativa_volume) || 1);
+            const fVol = Number(fd.expectativa_volume) || actionVol;
+            const fInv = (Number(fd.investimento) || 0) * fVol;
             const actualInv = fInv > 0 ? fInv : (totalActionInv / details.length);
 
             if (!redeMap[rKey].familias[fName]) {
-              redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0 };
+              redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0 };
             }
             redeMap[rKey].familias[fName].invest += actualInv;
+
+            const fFlat = Number(fd.preco_flat) || actionFlat;
+            const fAcao = Number(fd.preco_acao) || actionAcao;
+            if (fFlat > 0) {
+              redeMap[rKey].familias[fName].sumFlatWeighted += fFlat * fVol;
+              redeMap[rKey].familias[fName].sumVolWeighted += fVol;
+            }
+            if (fAcao > 0) {
+              redeMap[rKey].familias[fName].sumAcaoWeighted += fAcao * fVol;
+              if (fFlat <= 0) redeMap[rKey].familias[fName].sumVolWeighted += fVol;
+            }
           });
         } else {
           const fName = a.familia_produto || "Outros";
           if (!redeMap[rKey].familias[fName]) {
-            redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0 };
+            redeMap[rKey].familias[fName] = { fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0 };
           }
           redeMap[rKey].familias[fName].invest += totalActionInv;
+
+          if (actionFlat > 0) {
+            redeMap[rKey].familias[fName].sumFlatWeighted += actionFlat * actionVol;
+            redeMap[rKey].familias[fName].sumVolWeighted += actionVol;
+          }
+          if (actionAcao > 0) {
+            redeMap[rKey].familias[fName].sumAcaoWeighted += actionAcao * actionVol;
+            if (actionFlat <= 0) redeMap[rKey].familias[fName].sumVolWeighted += actionVol;
+          }
         }
       });
 
       const list = Object.entries(redeMap).map(([rName, data]) => {
         const pctInvestTotal = data.fat > 0 ? (data.invest / data.fat) * 100 : 0;
-        const precoFlat = data.qty > 0 ? data.fat / data.qty : 0;
-        const precoPromo = data.qty > 0 ? Math.max(0, (data.fat - data.invest) / data.qty) : 0;
+        const precoFlat = data.sumVolWeighted > 0
+          ? data.sumFlatWeighted / data.sumVolWeighted
+          : (data.qty > 0 ? data.fat / data.qty : 0);
+        const precoPromo = data.sumVolWeighted > 0
+          ? (data.sumAcaoWeighted / data.sumVolWeighted)
+          : (data.qty > 0 ? Math.max(0, (data.fat - data.invest) / data.qty) : 0);
         const pctInvVsFlat = precoFlat > 0 ? ((precoFlat - precoPromo) / precoFlat) * 100 : 0;
 
         const famList = Object.entries(data.familias).map(([fName, fData]) => {
           const fPctInvest = fData.fat > 0 ? (fData.invest / fData.fat) * 100 : 0;
-          const fPrecoFlat = fData.qty > 0 ? fData.fat / fData.qty : 0;
-          const fPrecoPromo = fData.qty > 0 ? Math.max(0, (fData.fat - fData.invest) / fData.qty) : 0;
+          const fPrecoFlat = fData.sumVolWeighted > 0
+            ? fData.sumFlatWeighted / fData.sumVolWeighted
+            : (fData.qty > 0 ? fData.fat / fData.qty : 0);
+          const fPrecoPromo = fData.sumVolWeighted > 0
+            ? (fData.sumAcaoWeighted / fData.sumVolWeighted)
+            : (fData.qty > 0 ? Math.max(0, (fData.fat - fData.invest) / fData.qty) : 0);
           const fPctInvVsFlat = fPrecoFlat > 0 ? ((fPrecoFlat - fPrecoPromo) / fPrecoFlat) * 100 : 0;
           return {
             nome: fName,
@@ -4486,12 +4755,17 @@ export default function RdmPage() {
     const official = [
       { key: 'capa',            label: 'Capa' },
       { key: 'agenda',           label: 'Pauta' },
+      { key: 'cover_fup',        label: '§ Follow up' },
       { key: 'follow_up',        label: 'Follow up (FUP)' },
+      { key: 'cover_farol',      label: '§ Farol de Metas' },
       { key: 'farol_metas',      label: 'Farol de Metas' },
+      { key: 'cover_dre',        label: '§ Resultado DRE' },
       { key: 'dre',              label: 'Resultado DRE' },
+      { key: 'cover_invest',     label: '§ Investimentos' },
       { key: 'invest_fases',     label: 'Resumo das Fases' },
       { key: 'invest_cliente',   label: 'Investimento por Cliente' },
       { key: 'invest_rede',      label: 'Investimento por Rede' },
+      { key: 'cover_resultado',  label: '§ Faturamento e Volume' },
       { key: 'fat_mensal',       label: 'Resultado Faturamento' },
       { key: 'vol_mensal',       label: 'Resultado Volume' },
       { key: 'vol_preco_medio',  label: 'Volume e Preço Médio' },
@@ -4499,8 +4773,11 @@ export default function RdmPage() {
       { key: 'preco_tabela',     label: 'Preço por Canal/Matriz' },
       { key: 'vol_matriz',       label: 'Volume por Matriz' },
       { key: 'preco_familia',    label: 'Preço por Família' },
+      { key: 'cover_plano',      label: '§ Plano de Ação' },
       { key: 'plano_acao',        label: 'Plano de Ação' },
+      { key: 'cover_projecao',   label: '§ Projeção de Vendas' },
       { key: 'projecao_vendas',   label: 'Projeção de Vendas' },
+      { key: 'cover_rotas',      label: '§ Agenda de Rotas' },
       { key: 'agenda_rotas',      label: 'Agenda de Rotas' },
       { key: 'obrigado',           label: 'Encerramento' },
     ];
@@ -4704,6 +4981,11 @@ export default function RdmPage() {
 
     if (slideKey === 'agenda') {
       return <SlideAgenda monthName={monthName} />;
+    }
+
+    // ── Section cover slides ──
+    if (slideKey.startsWith('cover_')) {
+      return <SlideSectionCover coverKey={slideKey} monthName={monthName} />;
     }
 
     if (slideKey === 'follow_up') {
@@ -5000,7 +5282,7 @@ export default function RdmPage() {
             {slides.map((s, i) => (
               <button
                 key={s.key}
-                className={`rdm-dot${i === slideIdx ? " rdm-dot-active" : ""}`}
+                className={`rdm-dot${i === slideIdx ? " rdm-dot-active" : ""}${s.key.startsWith('cover_') ? " rdm-dot-cover" : ""}`}
                 onClick={() => goTo(i, i > slideIdx ? "next" : "prev")}
                 title={s.label}
               />
@@ -5116,7 +5398,7 @@ export default function RdmPage() {
           {slides.map((s, i) => (
             <button
               key={s.key}
-              className={`rdm-dot ${i === slideIdx ? 'rdm-dot-active' : ''}`}
+              className={`rdm-dot ${i === slideIdx ? 'rdm-dot-active' : ''}${s.key.startsWith('cover_') ? ' rdm-dot-cover' : ''}`}
               onClick={() => goTo(i, i > slideIdx ? 'next' : 'prev')}
               title={s.label}
             />
