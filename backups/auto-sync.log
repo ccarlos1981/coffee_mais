@@ -1150,3 +1150,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    1382760..8336890  main -> main
 [02/08/2026 11:15] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 19ca8c8] auto-save: 03/08/2026 16:36
+ 9 files changed, 20475 insertions(+), 52 deletions(-)
+ create mode 100644 src/app/api/gestao/metas-rede/route.ts
+ create mode 100644 src/app/gestao/metas-rede/page.tsx
+To https://github.com/ccarlos1981/coffee_mais.git
+   8336890..19ca8c8  main -> main
+[03/08/2026 16:36] ✅ Alterações enviadas com sucesso para o GitHub.
