@@ -1144,3 +1144,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    26265b3..1382760  main -> main
 [02/08/2026 00:18] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 8336890] auto-save: 02/08/2026 11:15
+ 9 files changed, 21742 insertions(+), 537 deletions(-)
+ create mode 100644 src/app/api/investimento/por-rede/route.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   1382760..8336890  main -> main
+[02/08/2026 11:15] ✅ Alterações enviadas com sucesso para o GitHub.

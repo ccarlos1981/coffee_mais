@@ -136,6 +136,7 @@ export const allModules: NavigationGroup[] = [
       { key: "meta_cia", title: "Meta Cia", description: "Visão Executiva", href: "/meta-cia", icon: Target, color: "from-blue-600 to-blue-800", ready: true },
       { key: "metas", title: "Metas por área", permission: "Metas", description: "Cadastro metas", href: "/metas", icon: Target, color: "from-violet-600 to-violet-800", ready: true },
       { key: "metas_promotor", title: "Metas promotor", description: "Cadastro metas promotor", href: "/metas-promotor", icon: Target, color: "from-purple-600 to-purple-800", ready: true },
+      { key: "metas_rede", title: "Metas por Rede", description: "Abertura de meta por rede", href: "/gestao/metas-rede", icon: TrendingUp, color: "from-cyan-600 to-cyan-800", ready: true },
       { key: "coffee_ia", title: "Coffee_IA", description: "Pergunte aos dados", href: "/coffee-ia", icon: Sparkles, color: "from-amber-500 to-yellow-600", ready: true },
       { key: "atendimento", title: "Atendimento", description: "Regras PDV e UFs", href: "/atendimento", icon: Users, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
       { key: "upload", title: "Upload", description: "Importar planilhas", href: "/upload", icon: Upload, color: "from-rose-600 to-rose-800", ready: true },

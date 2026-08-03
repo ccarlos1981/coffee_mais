@@ -75,3 +75,4 @@ Error fetching page for targets: TypeError: fetch failed
 Error fetching page for cm_faturamento_sankhya: TypeError: terminated
 Error fetching page for cm_faturamento_sankhya: TypeError: terminated
 Error fetching page for cm_faturamento_sankhya: TypeError: terminated
+Error fetching page for cm_faturamento_sankhya: TypeError: fetch failed
