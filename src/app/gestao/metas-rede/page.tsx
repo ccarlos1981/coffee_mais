@@ -81,77 +81,47 @@ export default function MetasRedePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. ALL redes per manager (complete carteira)
-      const { data: redesOficiais } = await supabase
-        .from("vw_redes_planejaveis_oficiais")
-        .select("rede, manager, manager_id, canal, regional, uf")
-        .eq("is_rede_planejavel", true);
+      const res = await fetch("/api/gestao/metas-rede?year=2026");
+      const json = await res.json();
 
-      // 2. Historical billing per rede per month
-      const { data: salesData } = await supabase
-        .from("mv_vendas_cliente_mensal")
-        .select("mes, manager, rede, fat, qty")
-        .in("mes", MONTHS_KEYS)
-        .not("rede", "is", null)
-        .limit(50000);
+      if (json.error) {
+        console.error("API error:", json.error);
+        return;
+      }
 
-      // 3. META targets per rede (August)
-      const { data: metaData } = await supabase
-        .from("cm_weekly_projections")
-        .select("manager, client_matrix, value, month, year")
-        .eq("kpi", "META")
-        .eq("year", YEAR)
-        .eq("month", META_MONTH)
-        .neq("client_matrix", "_TOTAL_");
+      const { planRedes, billing, metas, managerMetas, months: apiMonths } = json;
+      // billing = Record<REDE_UPPER, Record<mes, {fat, qty}>>
+      // planRedes = [{rede, manager}]
 
-      // 4. Manager total META
-      const { data: managerMetas } = await supabase
-        .from("cm_weekly_projections")
-        .select("manager, value, month, year")
-        .eq("kpi", "META")
-        .eq("client_matrix", "_TOTAL_")
-        .eq("year", YEAR)
-        .eq("month", META_MONTH);
-      // ── Build billing index by REDE (normalized, ignoring manager from billing view) ──
-      const billingByRede: Record<string, Record<string, { fat: number; qty: number }>> = {};
-      (salesData || []).forEach((s: any) => {
-        const rede = (s.rede || "").trim().toUpperCase();
-        if (!rede) return;
-        if (!billingByRede[rede]) billingByRede[rede] = {};
-        const mes = s.mes;
-        if (!billingByRede[rede][mes]) billingByRede[rede][mes] = { fat: 0, qty: 0 };
-        billingByRede[rede][mes].fat += Number(s.fat) || 0;
-        billingByRede[rede][mes].qty += Number(s.qty) || 0;
-      });
+      const monthKeys = apiMonths || MONTHS_KEYS;
+      const lastQ = monthKeys.slice(-3);
 
-      // ── Build base map from all official redes, merging billing by rede name ──
+      // Build map from PLANEJAVEIS (official redes per manager)
       const map: Record<string, Record<string, { months: Record<string, { fat: number; qty: number }> }>> = {};
+      const added = new Set<string>();
 
-      (redesOficiais || []).forEach((r: any) => {
+      (planRedes || []).forEach((r: any) => {
         const mgr = (r.manager || "SEM RESPONSÁVEL").trim();
         const rede = (r.rede || "").trim();
         if (!rede) return;
+        const key = `${mgr}|${rede}`;
+        if (added.has(key)) return;
+        added.add(key);
+
         if (!map[mgr]) map[mgr] = {};
-        // Merge billing data for this rede
-        const billing = billingByRede[rede.toUpperCase()] || {};
-        if (!map[mgr][rede]) {
-          map[mgr][rede] = { months: { ...billing } };
-        } else {
-          // Merge billing into existing months
-          Object.entries(billing).forEach(([mes, vals]) => {
-            if (!map[mgr][rede].months[mes]) {
-              map[mgr][rede].months[mes] = { fat: 0, qty: 0 };
-            }
-            map[mgr][rede].months[mes].fat += vals.fat;
-            map[mgr][rede].months[mes].qty += vals.qty;
-          });
-        }
+        // Match billing by rede name (uppercase)
+        const redeBilling = billing[rede.toUpperCase()] || {};
+        const months: Record<string, { fat: number; qty: number }> = {};
+        Object.entries(redeBilling).forEach(([mes, vals]: [string, any]) => {
+          months[mes] = { fat: Number(vals.fat) || 0, qty: Number(vals.qty) || 0 };
+        });
+        map[mgr][rede] = { months };
       });
 
-      // ── META map ──
+      // META map
       const metaMap: Record<string, Record<string, number>> = {};
       const initialInputs: Record<string, number> = {};
-      (metaData || []).forEach((m: any) => {
+      (metas || []).forEach((m: any) => {
         const mgr = (m.manager || "").trim();
         const rede = (m.client_matrix || "").trim();
         if (!mgr || !rede) return;
@@ -167,22 +137,20 @@ export default function MetasRedePage() {
         mgrMetaMap[mgr] = (mgrMetaMap[mgr] || 0) + (Number(m.value) || 0);
       });
 
-      const lastQ = MONTHS_KEYS.slice(-3);
-
       const result: ManagerBlock[] = Object.entries(map)
         .map(([mgr, redes]) => {
           const redeList: RedeRow[] = Object.entries(redes)
             .map(([rede, data]) => {
               let totalFat = 0;
               let totalQty = 0;
-              MONTHS_KEYS.forEach((m) => {
+              monthKeys.forEach((m: string) => {
                 totalFat += data.months[m]?.fat || 0;
                 totalQty += data.months[m]?.qty || 0;
               });
 
               let qFat = 0;
               let qQty = 0;
-              lastQ.forEach((m) => {
+              lastQ.forEach((m: string) => {
                 qFat += data.months[m]?.fat || 0;
                 qQty += data.months[m]?.qty || 0;
               });
@@ -197,9 +165,9 @@ export default function MetasRedePage() {
 
           const totalFatByMonth: Record<string, number> = {};
           const totalQtyByMonth: Record<string, number> = {};
-          MONTHS_KEYS.forEach((m) => { totalFatByMonth[m] = 0; totalQtyByMonth[m] = 0; });
+          monthKeys.forEach((m: string) => { totalFatByMonth[m] = 0; totalQtyByMonth[m] = 0; });
           redeList.forEach((r) => {
-            MONTHS_KEYS.forEach((m) => {
+            monthKeys.forEach((m: string) => {
               totalFatByMonth[m] += r.months[m]?.fat || 0;
               totalQtyByMonth[m] += r.months[m]?.qty || 0;
             });
