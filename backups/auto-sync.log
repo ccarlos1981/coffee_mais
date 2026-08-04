@@ -1162,3 +1162,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    19ca8c8..dd7b9c0  main -> main
 [03/08/2026 17:56] ✅ Alterações enviadas com sucesso para o GitHub.
+[main d517451] auto-save: 04/08/2026 00:42
+ 8 files changed, 630 insertions(+), 61 deletions(-)
+ create mode 100644 src/app/api/admin/telemetry/planning/route.ts
+ create mode 100644 src/lib/planning/commercial-planning-service.ts
+ create mode 100644 src/lib/planning/planning-telemetry.ts
+ create mode 100644 supabase/migrations/20260804_fix_vw_redes_planejaveis_oficiais.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   dd7b9c0..d517451  main -> main
+[04/08/2026 00:42] ✅ Alterações enviadas com sucesso para o GitHub.
