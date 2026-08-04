@@ -32,8 +32,9 @@ function main() {
 
   runStep('1. Auditoria Estática de Governança', 'npm run audit:analytics');
   runStep('2. Verificação de Paridade Financeira', 'npm run verify:parity');
-  runStep('3. Checagem de Tipos TypeScript', 'npx tsc --noEmit');
-  runStep('4. Compilação Oficial Next.js (Build)', 'npm run build');
+  runStep('3. Testes Automatizados de Planejamento Comercial', 'npm run test:planning');
+  runStep('4. Checagem de Tipos TypeScript', 'npx tsc --noEmit');
+  runStep('5. Compilação Oficial Next.js (Build)', 'npm run build');
 
   console.log('====================================================');
   console.log('🎉 TODOS OS TESTES E AUDITORIAS FORAM APROVADOS!');
