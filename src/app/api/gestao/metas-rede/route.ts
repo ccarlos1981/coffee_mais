@@ -1,75 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { CommercialPlanningService } from "@/lib/planning/commercial-planning-service";
+import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * GET /api/gestao/metas-rede
- * Simple, fast approach:
- * 1. Get planejaveis redes (deduplicated)
- * 2. Get billing per month (1 query per month, ~20k rows each)
- * 3. Aggregate billing by REDE (uppercase)
+ * Domain Handler for Commercial Planning (Metas por Rede).
+ * Integrates full structured logging, telemetry, query metrics, and audit logging.
  */
 export async function GET(req: NextRequest) {
-  const supabase = createAdminClient();
-  const year = 2026;
-  const months = ["2026-01","2026-02","2026-03","2026-04","2026-05","2026-06","2026-07"];
+  const startTime = Date.now();
+  const requestId = PlanningTelemetry.createRequestId();
+  const { searchParams } = new URL(req.url);
+  const yearParam = searchParams.get("year");
+  const managerParam = searchParams.get("manager") || "all";
+  const year = yearParam ? parseInt(yearParam, 10) : 2026;
+
+  let userId = "anonymous";
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) userId = user.id;
+  } catch (err) {
+    // Graceful fallback for public/internal calls
+  }
 
   try {
-    // 1. Planejaveis redes
-    const { data: rp } = await supabase
-      .from("vw_redes_planejaveis_oficiais")
-      .select("rede, manager")
-      .eq("is_rede_planejavel", true);
+    const payload = await CommercialPlanningService.getMetasRedeData(year);
+    const executionTimeMs = Date.now() - startTime;
 
-    // Deduplicate
-    const seen = new Set<string>();
-    const planRedes: { rede: string; manager: string }[] = [];
-    (rp || []).forEach((r: any) => {
-      const mgr = (r.manager || "").trim();
-      const rede = (r.rede || "").trim();
-      if (!rede) return;
-      const k = `${mgr}|${rede}`;
-      if (!seen.has(k)) { seen.add(k); planRedes.push({ rede, manager: mgr }); }
+    const jsonStr = JSON.stringify(payload);
+    const payloadSizeBytes = Buffer.byteLength(jsonStr, "utf8");
+
+    // Record telemetry log
+    await PlanningTelemetry.logRequest({
+      requestId,
+      timestamp: new Date().toISOString(),
+      userId,
+      managerId: managerParam,
+      year,
+      executionTimeMs,
+      queryTimings: payload.queryTimings || { viewSql: 0, salesMv: 0, metasTable: 0 },
+      recordCounts: {
+        redes: payload.planRedes ? payload.planRedes.length : 0,
+        sales: payload.billing ? Object.keys(payload.billing).length : 0,
+        metas: payload.metas ? payload.metas.length : 0
+      },
+      payloadSizeBytes,
+      status: "SUCCESS"
     });
 
-    // 2. Billing by REDE (uppercase) — 1 query per month
-    const billing: Record<string, Record<string, { fat: number; qty: number }>> = {};
+    const response = NextResponse.json(payload);
+    response.headers.set("X-Request-ID", requestId);
+    response.headers.set("X-Execution-Time-MS", String(executionTimeMs));
+    return response;
+  } catch (error: any) {
+    const executionTimeMs = Date.now() - startTime;
 
-    for (const mes of months) {
-      const { data, error } = await supabase
-        .from("mv_vendas_cliente_mensal")
-        .select("rede, fat, qty")
-        .eq("mes", mes)
-        .not("rede", "is", null)
-        .limit(50000);
+    await PlanningTelemetry.logRequest({
+      requestId,
+      timestamp: new Date().toISOString(),
+      userId,
+      managerId: managerParam,
+      year,
+      executionTimeMs,
+      queryTimings: { viewSql: 0, salesMv: 0, metasTable: 0 },
+      recordCounts: { redes: 0, sales: 0, metas: 0 },
+      payloadSizeBytes: 0,
+      status: "ERROR",
+      error: error?.message || "Internal server error"
+    });
 
-      if (error) { console.error(`billing ${mes}:`, error); continue; }
-
-      (data || []).forEach((row: any) => {
-        const rede = (row.rede || "").trim().toUpperCase();
-        if (!rede || rede === "NÃO MAPEADO") return;
-        if (!billing[rede]) billing[rede] = {};
-        if (!billing[rede][mes]) billing[rede][mes] = { fat: 0, qty: 0 };
-        billing[rede][mes].fat += Number(row.fat) || 0;
-        billing[rede][mes].qty += Number(row.qty) || 0;
-      });
-    }
-
-    // 3. META targets (August)
-    const { data: metaData } = await supabase
-      .from("cm_weekly_projections")
-      .select("manager, client_matrix, value")
-      .eq("kpi", "META").eq("year", year).eq("month", 8)
-      .neq("client_matrix", "_TOTAL_");
-
-    const { data: mgrMetas } = await supabase
-      .from("cm_weekly_projections")
-      .select("manager, value")
-      .eq("kpi", "META").eq("client_matrix", "_TOTAL_")
-      .eq("year", year).eq("month", 8);
-
-    return NextResponse.json({ planRedes, billing, metas: metaData || [], managerMetas: mgrMetas || [], months });
-  } catch (e: any) {
-    console.error("metas-rede error:", e);
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "Internal server error during metas-rede fetching." },
+      { status: 500, headers: { "X-Request-ID": requestId } }
+    );
   }
 }
