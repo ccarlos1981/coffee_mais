@@ -10,6 +10,13 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 // Service-role Supabase client to bypass RLS in the staging/import pipelines
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+export class IntegrityBarrierError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IntegrityBarrierError";
+  }
+}
+
 export interface ImportPreviewResult {
   batchId: string;
   filename: string;
@@ -731,6 +738,8 @@ export class ImportService {
       step_durations_ms: Record<string, number>;
       total_rows_staging?: number;
       rows_promoted?: number;
+      promotion_calls?: any[];
+      pre_finalization_validation?: any;
       audit_result?: any;
       mv_refresh_enqueued?: boolean;
       total_duration_ms?: number;
@@ -769,6 +778,8 @@ export class ImportService {
 
     await this.updateLogProgress(batchId, 90, "Preparando Importação");
 
+    let promotionStarted = false;
+
     try {
       // 1. Preparar importação (com bypass de trigger ativado na RPC SQL)
       await trackStep("preparar_importacao", async () => {
@@ -790,21 +801,37 @@ export class ImportService {
       const totalRows = count || 0;
       telemetry.total_rows_staging = totalRows;
       let rowsPromoted = 0;
-      const BATCH_SIZE = 5000;
-      let offset = 0;
+      const BATCH_SIZE = 1000;
 
-      // 3. Processar em batches sequenciais no backend
+      // Telemetria detalhada de cada chamada da RPC
+      const promotionLogs: Array<{
+        batch_id: string;
+        call_index: number;
+        p_last_id_sent: string;
+        last_id_returned: string;
+        inserted: number;
+        rows_promoted_accumulated: number;
+        duration_ms: number;
+        staging_remaining: number;
+      }> = [];
+
+      // 3. Processar em batches sequenciais no backend (sem offset numérico, guiado por progresso real)
       await trackStep("promover_lote", async () => {
+        promotionStarted = true;
         telemetry.rpcs_executed.push("promover_lote_faturamento");
         let lastId = "00000000-0000-0000-0000-000000000000";
-        while (offset < totalRows) {
+        let callIndex = 0;
+
+        while (rowsPromoted < totalRows) {
+          callIndex++;
+          const callStart = Date.now();
           const currentLimit = BATCH_SIZE;
-          const progressPercent = Math.min(95, Math.round(90 + (5 * (offset / totalRows))));
+          const progressPercent = Math.min(95, Math.round(90 + (5 * (rowsPromoted / totalRows))));
           
           await this.updateLogProgress(
             batchId,
             progressPercent,
-            `Persistindo na Tabela Oficial (${offset} de ${totalRows} registros)`
+            `Persistindo na Tabela Oficial (${rowsPromoted} de ${totalRows} registros)`
           );
 
           const { data, error: promoError } = await supabase.rpc("promover_lote_faturamento", {
@@ -813,17 +840,91 @@ export class ImportService {
             p_limit: currentLimit,
           });
 
-          if (promoError) throw promoError;
+          const callDuration = Date.now() - callStart;
+
+          if (promoError) {
+            telemetry.promotion_calls = promotionLogs;
+            throw promoError;
+          }
 
           const promoData = data as any;
-          lastId = promoData?.last_id || lastId;
-          rowsPromoted += (promoData?.inserted || 0);
-          offset += BATCH_SIZE;
+          const insertedInChunk = promoData?.inserted || 0;
+          const returnedLastId = promoData?.last_id || lastId;
+
+          rowsPromoted += insertedInChunk;
+          lastId = returnedLastId;
+
+          promotionLogs.push({
+            batch_id: batchId,
+            call_index: callIndex,
+            p_last_id_sent: lastId,
+            last_id_returned: returnedLastId,
+            inserted: insertedInChunk,
+            rows_promoted_accumulated: rowsPromoted,
+            duration_ms: callDuration,
+            staging_remaining: totalRows - rowsPromoted,
+          });
+
+          // Se a RPC retornar 0 inserções antes de atingir totalRows, interromper a tentativa de loop
+          if (insertedInChunk === 0) {
+            break;
+          }
         }
       });
       telemetry.rows_promoted = rowsPromoted;
+      telemetry.promotion_calls = promotionLogs;
 
-      // 4. Finalizar importação (atualiza faturamento_mensal em lote e limpa staging)
+      // BARREIRA DE INTEGRIDADE PRÉ-FINALIZAÇÃO (FASE 1)
+      await this.updateLogProgress(batchId, 96, "Validando integridade pré-finalização");
+
+      // a. Consulta contagem exata em cm_faturamento
+      const { count: actualPromotedCount, error: countCheckError } = await supabase
+        .from("cm_faturamento")
+        .select("id", { count: "exact", head: true })
+        .eq("batch_id", batchId);
+      if (countCheckError) throw countCheckError;
+
+      // b. Soma financeira via RPC server-side (elimina limite de linhas do PostgREST)
+      const { data: sumNetResult, error: sumError } = await supabase.rpc("fn_sum_net_by_batch", {
+        p_batch_id: batchId,
+      });
+      if (sumError) throw sumError;
+
+      const actualPromotedNet = Number(sumNetResult || 0);
+
+      const { data: syncLogBeforeFinalize } = await supabase
+        .from("cm_sync_logs")
+        .select("metadata")
+        .eq("id", batchId)
+        .single();
+
+      const expectedNet = Number(syncLogBeforeFinalize?.metadata?.total_net || 0);
+
+      // c. Validações Mandatórias (2 condições)
+      const isCountValid = totalRows === (actualPromotedCount || 0);
+      const isNetValid = expectedNet === 0 || Math.abs(actualPromotedNet - expectedNet) < 0.05;
+
+      telemetry.pre_finalization_validation = {
+        staging_count: totalRows,
+        rows_promoted: rowsPromoted,
+        cm_faturamento_count: actualPromotedCount || 0,
+        expected_net: expectedNet,
+        promoted_net: actualPromotedNet,
+        passed: isCountValid && isNetValid,
+      };
+
+      if (!isCountValid || !isNetValid) {
+        const errorMsg = `FALHA NA BARREIRA DE INTEGRIDADE PRÉ-FINALIZAÇÃO: ` +
+          `Staging Original: ${totalRows} | Promovidos no Banco: ${actualPromotedCount || 0} | ` +
+          `Net Esperado: R$ ${expectedNet.toFixed(2)} | Net Promovido: R$ ${actualPromotedNet.toFixed(2)}. ` +
+          `Finalização abortada e staging preservada.`;
+        
+        await this.updateLogProgress(batchId, 100, errorMsg, {}, "ERROR");
+        throw new IntegrityBarrierError(errorMsg);
+      }
+
+
+      // 4. Finalizar importação (somente se a barreira passou 100%)
       await this.updateLogProgress(batchId, 97, "Finalizando processamento e consolidando dados");
       await trackStep("finalizar_importacao", async () => {
         telemetry.rpcs_executed.push("finalizar_importacao_faturamento");
@@ -853,7 +954,7 @@ export class ImportService {
         const audit = Array.isArray(auditRes) && auditRes.length > 0 ? auditRes[0] : null;
 
         if (!audit || !audit.passed) {
-          throw new Error(
+          throw new IntegrityBarrierError(
             audit?.message || "Falha de auditoria (5 Camadas): Divergência detectada no banco de dados. Importação abortada."
           );
         }
@@ -939,14 +1040,22 @@ export class ImportService {
     } catch (error: any) {
       console.error("[ImportService] Error during confirmImport, executing rollback:", error);
       
-      // Executar rollback completo por batch_id
+      const isIntegrityError = error instanceof IntegrityBarrierError || (typeof promotionStarted !== "undefined" && promotionStarted);
+
+      // Executar rollback inteligente por batch_id
       try {
         // Deleta dados parciais inseridos na oficial
         await supabase.from("cm_faturamento").delete().eq("batch_id", batchId);
         // Limpa lista temporária de parceiros afetados
         await supabase.from("cm_import_affected_partners").delete().eq("batch_id", batchId);
-        // Limpa staging para este batch
-        await supabase.from("cm_faturamento_staging").delete().eq("batch_id", batchId);
+        
+        // TIPO A: Se for erro de integridade/promoção (ou se a promoção já começou), PRESERVAR a staging!
+        // TIPO B: Apenas se o erro ocorreu ANTES do início da promoção, limpa a staging.
+        if (!isIntegrityError) {
+          await supabase.from("cm_faturamento_staging").delete().eq("batch_id", batchId);
+        } else {
+          console.warn(`[ImportService] Staging PRESERVADA para o lote ${batchId} devido a erro de integridade/promoção.`);
+        }
       } catch (rollbackErr) {
         console.error("[ImportService] Rollback query failed:", rollbackErr);
       }
