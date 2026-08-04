@@ -40,7 +40,7 @@ interface PdvMapping {
   uf: string;
 }
 
-const MANAGERS_LIST = ["Julliano", "Leandro", "Luiz", "Inside Sales"];
+const MANAGERS_LIST = ["Julliano", "Leandro", "Luiz", "John Guedes", "Inside Sales"];
 const CHANNELS_LIST = [
   "ATACADO",
   "CASH & CARRY",

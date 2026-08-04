@@ -49,6 +49,14 @@ const MANAGERS_MAP: Record<string, ManagerInfo> = {
   "LUIZ": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
   "LUIZ (SU+CO+NE)": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
 
+  // John Guedes (1003)
+  "1003": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN GUEDES": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN GUEDES (CO+NO)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN GUEDES (CENTRO-OESTE/NORTE)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN (CO+NO)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+
   // Inside Sales (1004)
   "1004": { managerId: "1004", managerName: "Inside Sales", canonicalKey: "INSIDE SALES" },
   "INSIDE SALES": { managerId: "1004", managerName: "Inside Sales", canonicalKey: "INSIDE SALES" },

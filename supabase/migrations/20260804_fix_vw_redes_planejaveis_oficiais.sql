@@ -11,7 +11,7 @@ WITH base_grouped AS (
     c.responsavel AS manager,
     c.manager_id,
     COALESCE(MAX(c.tipo_parceiro), 'Outros') AS canal,
-    BOOL_OR(CASE WHEN LOWER(TRIM(COALESCE(c.ka, 'false'))) IN ('true', '1', 'sim') THEN TRUE ELSE FALSE END) AS ka,
+    (CASE WHEN BOOL_OR(LOWER(TRIM(COALESCE(c.ka, 'false'))) IN ('true', '1', 'sim')) THEN 'true' ELSE 'false' END)::text AS ka,
     FALSE AS is_star, -- Campo mantido para retrocompatibilidade do contrato (0 registros true na base)
     MAX(c.regional) AS regional,
     MAX(c.uf) AS uf,
@@ -55,7 +55,7 @@ SELECT
     WHEN (s.canal IS NULL OR s.canal NOT IN ('Inside Sales', 'Inside inter', 'Exportação'))
      AND (
        s.canal IN ('KA', 'Key Account', 'Varejo', 'SUPERMERCADO', 'ATACAREJO', 'DISTRIBUICAO', 'Distribuidor', 'CONVENIENCIA')
-       OR s.ka IS TRUE 
+       OR s.ka = 'true' 
        OR s.possui_investimento_trade IS TRUE
      )
     THEN TRUE
