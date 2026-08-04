@@ -1176,3 +1176,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    d517451..b13d0f3  main -> main
 [04/08/2026 03:42] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 4c8810c] auto-save: 04/08/2026 09:43
+ 7 files changed, 427 insertions(+), 16 deletions(-)
+ create mode 100644 docs/import-hub-v2-lts.md
+ create mode 100644 supabase/migrations/20260804_barreira_rpc_sum_net.sql
+ create mode 100644 supabase/migrations/20260804_fix_promover_lote_staging_cursor.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   b13d0f3..4c8810c  main -> main
+[04/08/2026 09:43] ✅ Alterações enviadas com sucesso para o GitHub.

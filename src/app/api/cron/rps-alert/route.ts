@@ -10,7 +10,7 @@ const SUPABASE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const CC_ALWAYS = ["trade@coffeemais.com", "cristiano.santos@coffeemais.com"];
-const OFFICIAL_MANAGERS = ["Julliano", "Leandro", "Luiz"];
+const OFFICIAL_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes"];
 
 function getBrazilTimeParts() {
   const formatter = new Intl.DateTimeFormat("en-US", {

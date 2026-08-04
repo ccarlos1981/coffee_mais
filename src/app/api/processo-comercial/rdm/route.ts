@@ -26,7 +26,7 @@ function getAdminClient() {
 }
 
 // Lista oficial de gerentes KA
-const KA_MANAGERS = ["Julliano", "Leandro", "Luiz"];
+const KA_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes"];
 
 // Opção "CRISTIANO" = total de todos os gerentes KA
 const CRISTIANO = "CRISTIANO";

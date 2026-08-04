@@ -1690,6 +1690,22 @@ A partir de 02/08/2026, a **Regra Permanente — Walkthrough Técnico de Impleme
 
 Status Arquitetural: `TECHNICAL_WALKTHROUGH_REQUIRED = TRUE` & `IMPLEMENTATION_EVIDENCE_REQUIRED = TRUE` & `TECHNICAL_HOMOLOGATION_DOCUMENT = MANDATORY`.
 
+---
+
+## 86. Baseline Oficial — Arquitetura Comercial V2 (Baseline Permanente)
+
+A partir de 04/08/2026, a **Arquitetura Comercial V2** passa a ser o baseline oficial, definitivo e permanente da hierarquia comercial, territorialidade e governança de gerentes do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Single Source of Truth de Cadastro**: O cadastro oficial de gerentes e perfis comerciais é exclusivamente a tabela `public.cm_user_profiles` (`employee_code` soberano).
+2. **Single Source of Truth de Resolução Canônica**: Todo mapeamento de nomes, aliases e IDs de gerentes em código TypeScript/TSX DEVE utilizar exclusivamente `src/lib/domain/canonical.ts` (`resolveCanonicalManager`).
+3. **Single Source of Truth de Territorialidade**: O mapeamento de UFs é definido exclusivamente por `public.manager_uf_mapping` e a regionalização por rede/estado em `public.cm_base_atendimento_regional`. É proibida a criação de filtros de estado hardcoded.
+4. **Proibição de Listas Locais**: É expressamente proibido declarar arrays locais com nomes ou IDs de gerentes (ex: `const MANAGERS = [...]`) em arquivos de rotas, Server Actions ou componentes React.
+5. **Preservação de Paridade e AnalyticsEngine**: Toda agregação ou cálculo comercial deve ser realizado exclusivamente via `AnalyticsEngine`, comprovando 0,0000% de desvio financeiro.
+
+Status Arquitetural: `COMMERCIAL_ARCHITECTURE_V2 = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 

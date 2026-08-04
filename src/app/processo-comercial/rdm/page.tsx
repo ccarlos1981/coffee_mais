@@ -92,14 +92,16 @@ const MANAGER_OPTIONS = [
   { value: "CRISTIANO", label: "CRISTIANO (Total)" },
   { value: "Julliano",  label: "Julliano (SPC)" },
   { value: "Leandro",   label: "Leandro (Sul)" },
-  { value: "Luiz",      label: "Luiz (SU+CO+NE)" },
+  { value: "Luiz",      label: "Luiz (Nordeste/Sudeste)" },
+  { value: "John Guedes", label: "John Guedes (CO+NO)" },
 ];
 
 const MANAGER_INFO: Record<string, { name: string; region: string }> = {
   CRISTIANO: { name: "CRISTIANO SANTOS", region: "Brasil" },
   Julliano:  { name: "JULLIANO",         region: "SPC – São Paulo Capital" },
   Leandro:   { name: "LEANDRO",          region: "SUL" },
-  Luiz:      { name: "LUIZ",             region: "SU+CO+NE" },
+  Luiz:      { name: "LUIZ",             region: "Nordeste / Sudeste" },
+  "John Guedes": { name: "JOHN GUEDES",  region: "Centro-Oeste / Norte" },
 };
 
 // ─── Semáforo de cores ────────────────────────────────────────────────────────

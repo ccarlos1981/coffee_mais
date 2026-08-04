@@ -211,7 +211,8 @@ export default function RpsPage() {
   const getManagerDisplayName = (name: string) => {
     if (name === "Julliano") return "Julliano (SPC)";
     if (name === "Leandro") return "Leandro (Sul)";
-    if (name === "Luiz") return "Luiz (SU+CO+NE)";
+    if (name === "Luiz") return "Luiz (Nordeste/Sudeste)";
+    if (name === "John Guedes") return "John Guedes (CO+NO)";
     return name;
   };
 

@@ -25,7 +25,8 @@ const MANAGER_OPTIONS = [
   { value: "ALL", label: "Todos os Gerentes" },
   { value: "Julliano", label: "Julliano (SPC)" },
   { value: "Leandro", label: "Leandro (Sul)" },
-  { value: "Luiz", label: "Luiz (SU+CO+NE)" },
+  { value: "Luiz", label: "Luiz (Nordeste/Sudeste)" },
+  { value: "John Guedes", label: "John Guedes (CO+NO)" },
   { value: "Cristiano", label: "Cristiano" },
 ];
 
@@ -53,6 +54,14 @@ const MANAGER_COLORS: Record<string, { bg: string; border: string; text: string;
     text: "#fbbf24", 
     dot: "#f59e0b",
     badge: "rgba(217, 119, 6, 0.85)",
+    badgeText: "#ffffff"
+  },
+  "John Guedes": {
+    bg: "rgba(236, 72, 153, 0.08)",
+    border: "rgba(236, 72, 153, 0.25)",
+    text: "#f472b6",
+    dot: "#ec4899",
+    badge: "rgba(219, 39, 119, 0.85)",
     badgeText: "#ffffff"
   },
   Cristiano: {

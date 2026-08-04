@@ -13,7 +13,7 @@ function getSupabaseAdminClient() {
 
 // Roles com acesso total
 const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional"];
-const ALL_MANAGERS = ["Julliano", "Leandro", "Luiz", "Cristiano"];
+const ALL_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes", "Cristiano"];
 
 // Helper para obter dias úteis (seg-sex) de um mês
 function getWeekdaysOfMonth(year: number, month: number): string[] {

@@ -1788,7 +1788,7 @@ export default function InvestimentoPage() {
 
   const acoesPorGerente = useMemo(() => {
     const counts: Record<string, number> = {};
-    const mainManagers = ["Leandro", "Julliano", "Luiz"];
+    const mainManagers = ["Leandro", "Julliano", "Luiz", "John Guedes"];
     mainManagers.forEach(mgr => {
       counts[mgr] = 0;
     });
@@ -1813,7 +1813,7 @@ export default function InvestimentoPage() {
   }, [filteredData]);
 
   const consolidadoGerenteMes = useMemo(() => {
-    const mainManagers = ["Leandro", "Julliano", "Luiz"];
+    const mainManagers = ["Leandro", "Julliano", "Luiz", "John Guedes"];
     const counts: Record<string, Record<string, { networks: Set<string>; actionsCount: number }>> = {};
 
     // Initialize counts for main managers

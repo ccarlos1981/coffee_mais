@@ -45,6 +45,7 @@ const PIE_COLORS = [
 const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; value: string; color: string }[] = [
   { label: "Leandro", type: "manager", value: "1001", color: "#6366f1" },
   { label: "Luiz", type: "manager", value: "1002", color: "#8b5cf6" },
+  { label: "John Guedes", type: "manager", value: "1003", color: "#10b981" },
   { label: "Julliano", type: "manager", value: "1000", color: "#a855f7" },
   { label: "Luisa", type: "manager", value: "1010", color: "#d946ef" },
   { label: "Inside", type: "manager", value: "1004", color: "#ec4899" },
@@ -63,6 +64,8 @@ const MANAGER_NAME_TO_ID: Record<string, string> = {
   "Leandro": "1001",
   "Leandro Saffi": "1001",
   "Luiz": "1002",
+  "John Guedes": "1003",
+  "John": "1003",
   "Julliano": "1000",
   "Luisa": "1010",
   "Inside Sales": "1004",

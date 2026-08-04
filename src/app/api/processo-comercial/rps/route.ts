@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     const isGerenteNacionalAdmin = checkIsGerenteNacionalAdmin(userRole, userEmail);
 
     // Definir quais gerentes este usuário pode ver
-    const allManagers = ["Julliano", "Leandro", "Luiz"];
+    const allManagers = ["Julliano", "Leandro", "Luiz", "John Guedes"];
     let activeManagers: string[];
 
     if (isGerenteNacionalAdmin || !userManagerName) {
