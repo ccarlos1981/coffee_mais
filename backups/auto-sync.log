@@ -1250,3 +1250,26 @@ To https://github.com/ccarlos1981/coffee_mais.git
 error: update_ref failed for ref 'refs/remotes/origin/main': cannot lock ref 'refs/remotes/origin/main': Unable to create '/Users/cristiano/Projetos/Coffe Mais/.git/refs/remotes/origin/main.lock': No space left on device
 Everything up-to-date
 [05/08/2026 07:52] ✅ Alterações enviadas com sucesso para o GitHub.
+[main f474038] auto-save: 05/08/2026 09:40
+ 28 files changed, 1651 insertions(+), 268 deletions(-)
+ create mode 100644 src/app/api/commercial-priorities/route.ts
+ create mode 100644 src/app/api/rgm/route.ts
+ create mode 100644 src/components/ui/executive-money-input.tsx
+ create mode 100644 src/lib/planning/planning-goal-allocator.ts
+ create mode 100644 src/lib/priorities/dto/priorities-dto.ts
+ create mode 100644 src/lib/priorities/index.ts
+ create mode 100644 src/lib/priorities/services/priorities-service.ts
+ create mode 100644 src/lib/rgm/dto/rgm-dto.ts
+ create mode 100644 src/lib/rgm/engines/ceo-board-engine.ts
+ create mode 100644 src/lib/rgm/engines/executive-action-plan-engine.ts
+ create mode 100644 src/lib/rgm/engines/mix-opportunity-engine.ts
+ create mode 100644 src/lib/rgm/engines/opportunity-engine.ts
+ create mode 100644 src/lib/rgm/engines/price-opportunity-engine.ts
+ create mode 100644 src/lib/rgm/engines/priority-matrix-engine.ts
+ create mode 100644 src/lib/rgm/engines/revenue-simulator-engine.ts
+ create mode 100644 src/lib/rgm/engines/share-wallet-engine.ts
+ create mode 100644 src/lib/rgm/engines/white-space-engine.ts
+ create mode 100644 src/lib/rgm/index.ts
+ create mode 100644 src/lib/rgm/services/rgm-service.ts
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[05/08/2026 09:40] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
