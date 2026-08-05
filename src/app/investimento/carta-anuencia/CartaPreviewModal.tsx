@@ -251,7 +251,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                 </p>
 
                 <div className="pt-4 text-right text-xs text-neutral-600 font-medium">
-                  *** TESTE PRODUCAO PIUMHI ***, {dataEmissaoFmt}.
+                  Piumhi, {dataEmissaoFmt}.
                 </div>
 
                 <div className="text-xs text-neutral-500 border-t border-dashed border-neutral-300 pt-3 flex justify-between">
