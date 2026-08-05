@@ -1807,6 +1807,22 @@ A partir de 04/08/2026, a **Decision Platform Enterprise V2** passa a integrar a
 
 Status Arquitetural: `DECISION_PLATFORM_V2 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
 
+---
+
+## 94. Baseline Oficial — Revenue Growth Management Platform (RGM) — Fase 8
+
+A partir de 04/08/2026, a **Revenue Growth Management Platform (RGM)** (Fase 8) passa a integrar o ecossistema Coffee++ como a camada prescritiva de alavancagem de receita e margem comercial.
+
+### Diretrizes Mandatórias:
+1. **Camada Prescritiva sobre a Decision Platform V2:** A RGM Platform opera unicamente como camada prescritiva sobre a `DecisionPlatformService` (LOCKED). Fica proibida qualquer alteração em serviços ou regras financeiras existentes.
+2. **Motores RGM Prescritivos:** 9 motores independentes em `src/lib/rgm/engines/` (`OpportunityEngine`, `WhiteSpaceEngine`, `ShareOfWalletEngine`, `PriorityMatrixEngine`, `PriceOpportunityEngine`, `MixOpportunityEngine`, `RevenueSimulatorEngine`, `ExecutiveActionPlanEngine`, `CEOBoardEngine`).
+3. **Simulação 100% em Memória:** Simulações de faturamento, preço, volume e expansão de mix ocorrem 100% em memória sem gravações ou mutações no banco de dados.
+4. **Single Source of Truth Preservada:** Mantidos 0,0000% de desvio financeiro e zero alteração de tabelas ou SQLs.
+5. **Componentes Congelados:** DTO `RGMViewModel`, `RGMService`, API HTTP `GET /api/rgm` e suíte automatizada de testes.
+
+Status Arquitetural: `REVENUE_GROWTH_MANAGEMENT_V1 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+
 
 
 

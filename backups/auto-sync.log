@@ -1194,3 +1194,59 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    4c8810c..f7833ac  main -> main
 [04/08/2026 17:42] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 322e536] auto-save: 04/08/2026 22:28
+ 56 files changed, 3671 insertions(+), 364 deletions(-)
+ create mode 100644 src/app/api/inovacoes/copilot/route.ts
+ create mode 100644 src/lib/cockpit/cockpit-service.ts
+ create mode 100644 src/lib/copilot/commands/chat-commands.ts
+ create mode 100644 src/lib/copilot/commands/chat-router.ts
+ create mode 100644 src/lib/copilot/copilot-service.ts
+ create mode 100644 src/lib/copilot/dto/copilot-dto.ts
+ create mode 100644 src/lib/copilot/engines/alert-engine.ts
+ create mode 100644 src/lib/copilot/engines/commercial-score-engine.ts
+ create mode 100644 src/lib/copilot/engines/executive-briefing-engine.ts
+ create mode 100644 src/lib/copilot/engines/explainable-kpi-engine.ts
+ create mode 100644 src/lib/copilot/engines/insight-engine.ts
+ create mode 100644 src/lib/copilot/engines/recommendation-engine.ts
+ create mode 100644 src/lib/copilot/engines/timeline-engine.ts
+ create mode 100644 src/lib/copilot/engines/what-if-engine.ts
+ create mode 100644 src/lib/copilot/index.ts
+ create mode 100644 src/lib/copilot/providers/ai-provider.ts
+ create mode 100644 src/lib/copilot/services/copilot-service.ts
+ create mode 100644 src/lib/decision-platform/dto/decision-dto.ts
+ create mode 100644 src/lib/decision-platform/index.ts
+ create mode 100644 src/lib/decision-platform/pipeline/decision-graph.ts
+ create mode 100644 src/lib/decision-platform/pipeline/decision-pipeline.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/briefing-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/forecast-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/growth-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/health-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/index.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/mix-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/pricing-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/priority-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/rules/risk-rules.ts
+ create mode 100644 src/lib/decision-platform/registry/score-registry.ts
+ create mode 100644 src/lib/decision-platform/services/decision-platform-service.ts
+ create mode 100644 src/lib/intelligence/dto/intelligence-dto.ts
+ create mode 100644 src/lib/intelligence/engines/action-plan-engine.ts
+ create mode 100644 src/lib/intelligence/engines/ceo-insights-engine.ts
+ create mode 100644 src/lib/intelligence/engines/commercial-health-engine.ts
+ create mode 100644 src/lib/intelligence/engines/executive-briefing-engine.ts
+ create mode 100644 src/lib/intelligence/engines/explainable-engine.ts
+ create mode 100644 src/lib/intelligence/engines/next-best-action-engine.ts
+ create mode 100644 src/lib/intelligence/engines/prioritization-engine.ts
+ create mode 100644 src/lib/intelligence/engines/risk-prediction-engine.ts
+ create mode 100644 src/lib/intelligence/index.ts
+ create mode 100644 src/lib/intelligence/orchestrators/commercial-intelligence-orchestrator.ts
+ create mode 100644 src/lib/intelligence/services/commercial-intelligence-service.ts
+ create mode 100644 src/lib/intelligence/utils/intelligence-utils.ts
+ create mode 100644 supabase/migrations/20260804_add_codigo_matriz_to_weekly_projections.sql
+ create mode 100644 supabase/migrations/20260804_create_workflow_metas_rede.sql
+ create mode 100644 supabase/migrations/20260804_regras_apuracao_comercial.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   f7833ac..322e536  main -> main
+[04/08/2026 22:28] ✅ Alterações enviadas com sucesso para o GitHub.
+error: update_ref failed for ref 'refs/remotes/origin/main': cannot lock ref 'refs/remotes/origin/main': Unable to create '/Users/cristiano/Projetos/Coffe Mais/.git/refs/remotes/origin/main.lock': No space left on device
+Everything up-to-date
+[05/08/2026 07:52] ✅ Alterações enviadas com sucesso para o GitHub.

@@ -2311,3 +2311,62 @@ As evoluções do Coffee++ deverão ser registradas preferencialmente em:
 O AGENTS.md permanece como o documento normativo de mais alto nível do projeto e deverá evoluir prioritariamente por revisão das diretrizes existentes, preservando simplicidade, consistência e estabilidade.
 
 Status Arquitetural: `AGENTS_STRUCTURE = STABLE` & `GOVERNANCE_GROWTH = CONTROLLED` & `DOCUMENTATION_STRATEGY = CONSOLIDATED` & `BASELINE_EVOLUTION = MANAGED`.
+
+---
+
+## 72. Baseline Oficial — Single Source of Truth de Autenticação e Autorização (`cm_user_profiles`)
+
+A partir de 05/08/2026, a tabela `cm_user_profiles` é a única fonte oficial e soberana para autenticação, perfis e permissões em toda a plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+
+1. **Fonte Única Soberana**: A tabela `public.cm_user_profiles` é a única estrutura autorizada para armazenamento, consulta e validação de perfis, cargos, papéis (roles) e permissões de usuários.
+2. **Proibição Absoluta de Tabelas Legadas ou Paralelas**: É expressamente proibida a criação ou utilização de consultas às tabelas `profiles`, `public.profiles` ou qualquer outra estrutura paralela de usuários no frontend, backend, Server Actions, APIs HTTP, Hooks, Helpers ou RPCs.
+3. **Reutilização Obrigatória**: Qualquer novo módulo, funcionalidade, API, Server Action, Hook ou Serviço que necessite consultar o perfil ou permissões do usuário logado deverá reutilizar exclusivamente os helpers de autenticação baseados em `cm_user_profiles` (`src/lib/supabase/auth-helpers.ts` ou `supabase.from("cm_user_profiles")`).
+4. **Validação Automática em Code Review**:
+   - É mandatório verificar a ausência de consultas a `from("profiles")` ou `from('profiles')`.
+   - Havendo qualquer ocorrência, a alteração deverá ser sumariamente reprovada e corrigida para `from("cm_user_profiles")`.
+5. **Preservação do Controle de Segurança**: Checagens de permissão de perfis executivos (`Admin`, `CEO`, `Presidência`, `Diretoria`) devem utilizar correspondência normalizada insensível a maiúsculas/minúsculas (`toLowerCase().trim()`).
+
+Status Arquitetural: `AUTHORIZATION_SINGLE_SOURCE_OF_TRUTH = cm_user_profiles` & `LEGACY_PROFILE_TABLE = FORBIDDEN` & `SECURITY_BASELINE = LOCKED`.
+
+---
+
+## 73. Diretriz Permanente — Implementação Baseada em Evidências (`IMPLEMENTATION_EVIDENCE`)
+
+A partir de 05/08/2026, qualquer nova funcionalidade ou alteração na plataforma Coffee++ seguirá obrigatoriamente o ciclo estrito de evidências:
+
+### Fluxo Obrigatório de Engenharia:
+1. **IMPLEMENTAÇÃO**: Desenvolver a funcionalidade ou alteração aprovada.
+2. **VALIDAÇÃO**:
+   - Executar suíte de testes automatizados aplicáveis.
+   - Executar `npx tsc --noEmit` com 0 erros.
+   - Executar `npm run build` com sucesso (quando aplicável).
+   - Validar visualmente a interface quando houver alterações de frontend.
+3. **HOMOLOGAÇÃO**: Emitir relatório de conclusão SOMENTE APÓS a validação completa com evidências empíricas.
+
+### Taxonomia Mandatória nos Relatórios:
+- 🟢 **IMPLEMENTADO E VALIDADO**: Funcionalidades comprovadamente implementadas, compiladas e verificadas.
+- 🟡 **IMPLEMENTADO MAS NÃO VALIDADO**: Código desenvolvido, porém sem comprovação de execução ou validação visual.
+- 🔴 **NÃO IMPLEMENTADO**: Funcionalidades apenas propostas, parciais ou pendentes.
+
+### Regra de Prioridade em Caso de Inconsistência:
+Havendo qualquer divergência entre o relatório e o comportamento real na aplicação, a prioridade passa a ser **estritamente a investigação da causa raiz**, sendo proibida a geração de relatórios de homologação prematuros.
+
+Princípio Permanente: *"Primeiro implementar. Depois validar. Somente então homologar."*
+
+Status Arquitetural: `IMPLEMENTATION_EVIDENCE = LOCKED` & `REPORTS_MUST_MATCH_REALITY = TRUE` & `EVIDENCE_FIRST = MANDATORY`.
+
+---
+
+## 74. Diretriz Permanente — Padronização de Evidências Visuais (`EVIDENCE_METADATA_STANDARD`)
+
+A partir de 05/08/2026, toda e qualquer evidência visual apresentada em relatórios, auditorias ou homologações de frontend deverá obrigatoriamente incluir os seguintes 4 metadados estruturados:
+
+### Formato Mandatório de Apresentação:
+1. **Caminho do arquivo gerado**: Caminho exato no repositório/artefatos (ex: `artifacts/tests/metas-rede/test2_meta_744k.png`).
+2. **Data/Hora da captura**: Timestamp em formato pt-BR (`DD/MM/YYYY HH:MM`).
+3. **Tela auditada**: Rota ou endpoint correspondente (ex: `/gestao/metas-rede`).
+4. **Cenário executado**: Parâmetros de entrada e resultado obtido em tela.
+
+Status Arquitetural: `EVIDENCE_METADATA_STANDARD = LOCKED` & `EVIDENCE_FORMATTING = MANDATORY`.
