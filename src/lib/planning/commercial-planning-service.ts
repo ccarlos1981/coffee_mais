@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
+export { PlanningGoalAllocator } from "./planning-goal-allocator";
 
 export interface PlanejavelRedeDTO {
   rede: string;
@@ -461,7 +462,7 @@ export class CommercialPlanningService {
                        metaMap.get(`${net.manager_id}|${redeUpper}`) ?? 0;
         const metaKg = avgPriceQ2 > 0 ? metaVal / avgPriceQ2 : 0;
 
-        const pctVsAvg3M = avg3MKg > 0 ? (metaKg / avg3MKg) * 100 : 0;
+        const pctVsAvg3M = avg3M > 0 && metaVal > 0 ? Number((((metaVal - avg3M) / avg3M) * 100).toFixed(2)) : 0;
 
         if (metaVal > 0) mgrPreenchidas++;
 

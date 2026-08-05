@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -15,10 +15,20 @@ import {
   Check,
   Calendar,
   Filter,
+  Sliders,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+  LayoutList,
+  Maximize2,
+  Minimize2,
+  Zap
 } from "lucide-react";
 import { formatCurrency, formatCompact } from "@/lib/formatters";
+import { ExecutiveMoneyInput } from "@/components/ui/executive-money-input";
 import { supabase } from "@/lib/supabase";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
+import { PlanningGoalAllocator } from "@/lib/planning/planning-goal-allocator";
 
 /* ─── Constants ─────────────────────────────────────────────────────────────── */
 const MONTH_NAMES_PT = [
@@ -32,10 +42,6 @@ const MONTH_SHORT_PT = [
 const YEARS_AVAILABLE = [2025, 2026, 2027];
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
-/**
- * Retorna dinamicamente os 3 últimos meses fechados imediatamente anteriores ao mês/ano da meta.
- * Ex: metaMonth = 8, year = 2026 -> ["2026-05", "2026-06", "2026-07"]
- */
 export function getPreceding3ClosedMonths(metaMonth: number, year: number): string[] {
   const result: string[] = [];
   for (let i = 3; i >= 1; i--) {
@@ -48,17 +54,6 @@ export function getPreceding3ClosedMonths(metaMonth: number, year: number): stri
     result.push(`${targetY}-${String(targetM).padStart(2, "0")}`);
   }
   return result;
-}
-
-/**
- * Retorna a classe de estilização condicional da coluna % vs Méd 3M
- */
-function getPct3MStyle(pct: number) {
-  if (pct <= 0) return "text-neutral-300 bg-neutral-50/30";
-  if (pct < 80) return "text-red-700 bg-red-50/60 font-bold";
-  if (pct <= 100) return "text-amber-700 bg-amber-50/60 font-bold";
-  if (pct <= 120) return "text-emerald-700 bg-emerald-50/60 font-bold";
-  return "text-emerald-900 bg-emerald-100/80 font-black";
 }
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
@@ -95,11 +90,53 @@ export default function MetasRedePage() {
   const [managers, setManagers] = useState<ManagerBlock[]>([]);
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
+  const [compactView, setCompactView] = useState<boolean>(false); // Visão Completa (Anual) por padrão
 
   // Editable meta values: key = "manager_id|codigo_matriz|rede" -> value in R$
   const [metaInputs, setMetaInputs] = useState<Record<string, number>>({});
+  // Top-down manager target inputs
+  const [managerMetaTargets, setManagerMetaTargets] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [userRole, setUserRole] = useState<string>("Gerente");
+
+  const inputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    async function checkRole() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: prof } = await supabase
+            .from("cm_user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (prof?.role) setUserRole(prof.role);
+        }
+      } catch (err) {
+        console.error("Erro ao carregar role do usuário:", err);
+      }
+    }
+    checkRole();
+  }, []);
+
+  const isTopDownAuthorized = useMemo(() => {
+    if (!userRole) return false;
+    const r = userRole.toLowerCase().trim();
+    const allowed = [
+      "admin",
+      "admin master",
+      "ceo",
+      "presidência",
+      "presidencia",
+      "presidente",
+      "diretoria",
+      "diretor",
+      "diretor comercial"
+    ];
+    return allowed.includes(r);
+  }, [userRole]);
 
   const toggleManager = (mgr: string) => {
     setExpandedManagers((prev) => {
@@ -135,6 +172,68 @@ export default function MetasRedePage() {
     [metaInputs]
   );
 
+  // Top-down Goal Allocator (Backend Logic in Service/Helper)
+  const handleTopDownManagerDistribution = (mgr: ManagerBlock, targetGoalR$: number) => {
+    const mgrBlockViewModel = {
+      manager: mgr.manager,
+      manager_id: mgr.manager_id,
+      totalRedes: mgr.redes.length,
+      grandTotalFat: mgr.grandTotalFat,
+      grandTotalMed3M: mgr.grandTotalMed3M,
+      grandTotalMed3MKg: 0,
+      grandTotalMeta: targetGoalR$,
+      mgrPace: 100,
+      mgrPreenchidas: mgr.redes.length,
+      mgrVolPrevKg: 0,
+      redes: mgr.redes.map(r => ({
+        rede: r.rede,
+        manager: r.manager,
+        manager_id: r.manager_id,
+        codigo_matriz: r.codigo_matriz,
+        fatQ2: r.totalFat,
+        qtyQ2: r.totalQty,
+        avgPriceQ2: r.avgPriceQ2,
+        avg3M: r.avg3M,
+        avg3MKg: 0,
+        metaVal: getMetaValue(r),
+        metaKg: 0,
+        pctVsAvg3M: 0,
+        monthlyHistory: r.months
+      }))
+    };
+
+    const { metaInputsPatch } = PlanningGoalAllocator.distributeManagerGoal(mgrBlockViewModel, targetGoalR$);
+
+    setManagerMetaTargets(prev => ({ ...prev, [mgr.manager_id || mgr.manager]: targetGoalR$ }));
+    setMetaInputs(prev => ({ ...prev, ...metaInputsPatch }));
+    setSaved(false);
+  };
+
+  // Quick fill multiplier (+0%, +5%, +10%)
+  const handleApplyQuickGrowthMultiplier = (mgr: ManagerBlock, multiplier: number) => {
+    const targetGoal = Math.round(mgr.grandTotalMed3M * multiplier);
+    handleTopDownManagerDistribution(mgr, targetGoal);
+  };
+
+  // Keyboard navigation inside table (Enter / ArrowDown / ArrowUp)
+  const handleKeyDownNavigation = (e: React.KeyboardEvent<HTMLInputElement>, currentKey: string, mgr: ManagerBlock, redeIdx: number) => {
+    if (e.key === "Enter" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextRede = mgr.redes[redeIdx + 1];
+      if (nextRede) {
+        const nextKey = `${nextRede.manager_id}|${nextRede.codigo_matriz}|${nextRede.rede}`;
+        inputRefs.current[nextKey]?.focus();
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevRede = mgr.redes[redeIdx - 1];
+      if (prevRede) {
+        const prevKey = `${prevRede.manager_id}|${prevRede.codigo_matriz}|${prevRede.rede}`;
+        inputRefs.current[prevKey]?.focus();
+      }
+    }
+  };
+
   const loadData = useCallback(async (targetMonth: number, targetYear: number) => {
     setLoading(true);
     try {
@@ -146,138 +245,76 @@ export default function MetasRedePage() {
         return;
       }
 
-      const { planRedes, billing, metas, managerMetas, months: apiMonths } = json;
+      const { managerBlocks, months: apiMonths } = json;
       const monthKeys = apiMonths || Array.from({ length: targetMonth - 1 }, (_, i) => `${targetYear}-${String(i + 1).padStart(2, "0")}`);
-      const last3ClosedMonths = getPreceding3ClosedMonths(targetMonth, targetYear);
-
-      // Build map from PLANEJAVEIS (official redes per manager)
-      const map: Record<string, { manager_id: string; redes: Record<string, { codigo_matriz: string; months: Record<string, { fat: number; qty: number }> }> }> = {};
-      const added = new Set<string>();
-
-      (planRedes || []).forEach((r: any) => {
-        const mgrName = (r.manager || "SEM RESPONSÁVEL").trim();
-        const mgrId = String(r.manager_id || "").trim();
-        const codMatriz = String(r.codigo_matriz || "").trim();
-        const rede = (r.rede || "").trim();
-        if (!rede) return;
-        const key = `${mgrId}|${codMatriz}|${rede}`;
-        if (added.has(key)) return;
-        added.add(key);
-
-        if (!map[mgrName]) map[mgrName] = { manager_id: mgrId, redes: {} };
-        
-        // Match billing by rede name (uppercase) or managerKey
-        const redeBilling = billing[rede.toUpperCase()] || billing[`${mgrId}|${rede.toUpperCase()}`] || {};
-        const months: Record<string, { fat: number; qty: number }> = {};
-        Object.entries(redeBilling).forEach(([mes, vals]: [string, any]) => {
-          months[mes] = { fat: Number(vals.fat) || 0, qty: Number(vals.qty) || 0 };
-        });
-        map[mgrName].redes[rede] = { codigo_matriz: codMatriz, months };
-      });
-
-      // META map
-      const metaMap: Record<string, number> = {};
       const initialInputs: Record<string, number> = {};
-      (metas || []).forEach((m: any) => {
-        const mgrName = (m.manager || "").trim();
-        const mgrId = String(m.manager_id || "").trim();
-        const codMatriz = String(m.codigo_matriz || "").trim();
-        const rede = (m.client_matrix || "").trim();
-        if (!rede) return;
-        const val = Number(m.value) || 0;
+      const initialMgrTargets: Record<string, number> = {};
 
-        if (mgrId && codMatriz) {
-          const k1 = `${mgrId}|${codMatriz}|${rede}`;
-          metaMap[k1] = (metaMap[k1] || 0) + val;
-          initialInputs[k1] = (initialInputs[k1] || 0) + val;
-        }
-        const k2 = `${mgrName}|${rede}`;
-        metaMap[k2] = (metaMap[k2] || 0) + val;
-        initialInputs[k2] = (initialInputs[k2] || 0) + val;
-      });
+      const result: ManagerBlock[] = (managerBlocks || []).map((mb: any) => {
+        const mgrKey = mb.manager_id || mb.manager;
+        initialMgrTargets[mgrKey] = mb.grandTotalMeta || 0;
 
-      const mgrMetaMap: Record<string, number> = {};
-      (managerMetas || []).forEach((m: any) => {
-        const mgr = (m.manager || "").trim();
-        mgrMetaMap[mgr] = (mgrMetaMap[mgr] || 0) + (Number(m.value) || 0);
-      });
-
-      const result: ManagerBlock[] = Object.entries(map)
-        .map(([mgrName, mgrObj]) => {
-          const redeList: RedeRow[] = Object.entries(mgrObj.redes)
-            .map(([rede, data]) => {
-              let totalFat = 0;
-              let totalQty = 0;
-              monthKeys.forEach((m: string) => {
-                totalFat += data.months[m]?.fat || 0;
-                totalQty += data.months[m]?.qty || 0;
-              });
-
-              let qFat = 0;
-              let qQty = 0;
-              let sumLast3M = 0;
-
-              last3ClosedMonths.forEach((m: string) => {
-                const fatM = data.months[m]?.fat || 0;
-                qFat += fatM;
-                qQty += data.months[m]?.qty || 0;
-                sumLast3M += fatM;
-              });
-              const avgPriceQ2 = qQty > 0 ? qFat / qQty : 0;
-              const avg3M = sumLast3M / 3;
-
-              const metaFatKey = `${mgrObj.manager_id}|${data.codigo_matriz}|${rede}`;
-              const metaFat = metaMap[metaFatKey] || metaMap[`${mgrName}|${rede}`] || 0;
-              const metaVol = avgPriceQ2 > 0 ? metaFat / avgPriceQ2 : 0;
-
-              return {
-                rede,
-                manager: mgrName,
-                manager_id: mgrObj.manager_id,
-                codigo_matriz: data.codigo_matriz,
-                months: data.months,
-                avgPriceQ2,
-                metaFat,
-                metaVol,
-                totalFat,
-                totalQty,
-                avg3M,
-              };
-            })
-            // FASE 3.6: Ordenar Redes por Média 3M decrescente (Desempate: alfabética)
-            .sort((a, b) => (b.avg3M !== a.avg3M ? b.avg3M - a.avg3M : a.rede.localeCompare(b.rede, "pt-BR")));
-
-          const totalFatByMonth: Record<string, number> = {};
-          const totalQtyByMonth: Record<string, number> = {};
-          monthKeys.forEach((m: string) => {
-            totalFatByMonth[m] = 0;
-            totalQtyByMonth[m] = 0;
-          });
-          redeList.forEach((r) => {
-            monthKeys.forEach((m: string) => {
-              totalFatByMonth[m] += r.months[m]?.fat || 0;
-              totalQtyByMonth[m] += r.months[m]?.qty || 0;
-            });
+        const redeList: RedeRow[] = (mb.redes || []).map((r: any) => {
+          let totalFat = 0;
+          let totalQty = 0;
+          Object.values(r.monthlyHistory || {}).forEach((val: any) => {
+            totalFat += Number(val.fat) || 0;
+            totalQty += Number(val.qty) || 0;
           });
 
-          const grandTotalMed3M = redeList.reduce((s, r) => s + r.avg3M, 0);
+          const metaFat = Number(r.metaVal) || 0;
+          const metaVol = Number(r.metaKg) || 0;
+
+          if (metaFat > 0) {
+            const k1 = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
+            const k2 = `${r.manager}|${r.rede}`;
+            initialInputs[k1] = metaFat;
+            initialInputs[k2] = metaFat;
+          }
 
           return {
-            manager: mgrName,
-            manager_id: mgrObj.manager_id,
-            metaTotal: mgrMetaMap[mgrName] || 0,
-            redes: redeList,
-            totalFat: totalFatByMonth,
-            totalQty: totalQtyByMonth,
-            grandTotalFat: redeList.reduce((s, r) => s + r.totalFat, 0),
-            grandTotalMed3M,
+            rede: r.rede,
+            manager: r.manager,
+            manager_id: r.manager_id,
+            codigo_matriz: r.codigo_matriz,
+            months: r.monthlyHistory || {},
+            avgPriceQ2: r.avgPriceQ2 || 0,
+            metaFat,
+            metaVol,
+            totalFat,
+            totalQty,
+            avg3M: r.avg3M || 0,
           };
-        })
-        // FASE 3.6: Ordenar Gerentes pela soma da Média 3M decrescente
-        .sort((a, b) => b.grandTotalMed3M - a.grandTotalMed3M);
+        });
+
+        const totalFatByMonth: Record<string, number> = {};
+        const totalQtyByMonth: Record<string, number> = {};
+        monthKeys.forEach((m: string) => {
+          totalFatByMonth[m] = 0;
+          totalQtyByMonth[m] = 0;
+        });
+        redeList.forEach((r) => {
+          monthKeys.forEach((m: string) => {
+            totalFatByMonth[m] += r.months[m]?.fat || 0;
+            totalQtyByMonth[m] += r.months[m]?.qty || 0;
+          });
+        });
+
+        return {
+          manager: mb.manager,
+          manager_id: mb.manager_id,
+          metaTotal: mb.grandTotalMeta || 0,
+          redes: redeList,
+          totalFat: totalFatByMonth,
+          totalQty: totalQtyByMonth,
+          grandTotalFat: mb.grandTotalFat || 0,
+          grandTotalMed3M: mb.grandTotalMed3M || 0,
+        };
+      });
 
       setManagers(result);
       setMetaInputs(initialInputs);
+      setManagerMetaTargets(initialMgrTargets);
       if (result.length > 0) {
         setExpandedManagers(new Set([result[0].manager]));
       }
@@ -301,21 +338,38 @@ export default function MetasRedePage() {
       .filter((m) => m.redes.length > 0 || m.manager.toLowerCase().includes(q));
   }, [managers, searchTerm]);
 
-  // Summary KPIs
-  const totalFat = managers.reduce((s, m) => s + m.grandTotalFat, 0);
-  const totalMed3M = managers.reduce((s, m) => s + m.grandTotalMed3M, 0);
-  const totalMetaInputted = Object.values(metaInputs).reduce((s, v) => s + v, 0) / 2; // Divided by 2 due to duplicate keys (mgrId and mgrName)
-  const totalRedes = managers.reduce((s, m) => s + m.redes.length, 0);
-  const redesComMeta = managers.reduce(
-    (acc, m) => acc + m.redes.filter((r) => getMetaValue(r) > 0).length,
-    0
-  );
+  // Executive Cards derived directly from metaInputs (Single Source of Truth)
+  const executiveCards = useMemo(() => {
+    let totalMed3M = 0;
+    let totalMetaInputted = 0;
+    let totalRedesCount = 0;
+    let totalRedesWithGoal = 0;
 
-  // Save handler (FASE 3.3 - Single Source of Truth Upsert)
+    managers.forEach((mgr) => {
+      totalMed3M += mgr.grandTotalMed3M;
+      totalRedesCount += mgr.redes.length;
+
+      mgr.redes.forEach((r) => {
+        const val = getMetaValue(r);
+        if (val > 0) {
+          totalMetaInputted += val;
+          totalRedesWithGoal++;
+        }
+      });
+    });
+
+    return {
+      totalMed3M,
+      totalMetaInputted,
+      totalRedesCount,
+      totalRedesWithGoal,
+    };
+  }, [managers, metaInputs, getMetaValue]);
+
+  // Save handler (Upsert into cm_weekly_projections)
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Collect unique network row inputs using soberan keys
       const rowsMap = new Map<string, any>();
 
       managers.forEach((mgr) => {
@@ -367,6 +421,14 @@ export default function MetasRedePage() {
     return getPreceding3ClosedMonths(selectedMonth, selectedYear);
   }, [selectedMonth, selectedYear]);
 
+  const yearClosedMonths = useMemo(() => {
+    return Array.from({ length: selectedMonth - 1 }, (_, i) => `${selectedYear}-${String(i + 1).padStart(2, "0")}`);
+  }, [selectedMonth, selectedYear]);
+
+  const tableDisplayedMonths = useMemo(() => {
+    return compactView ? dynamicPrecedingMonths : yearClosedMonths;
+  }, [compactView, dynamicPrecedingMonths, yearClosedMonths]);
+
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-[#1e293b]">
       {/* ── Navbar ─────────────────────────────────────────────────────── */}
@@ -391,7 +453,30 @@ export default function MetasRedePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* FASE 3.2 - Seletor Dinâmico de Mês e Ano */}
+            {/* View Mode Toggle (Visão Completa vs Visão Enxuta) */}
+            <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
+              <button
+                onClick={() => setCompactView(false)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                  !compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                }`}
+                title="Visão Histórica Anual Completa (Jan-Jul)"
+              >
+                <Maximize2 className="w-3 h-3 text-blue-500" />
+                <span>Completa (Anual)</span>
+              </button>
+              <button
+                onClick={() => setCompactView(true)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                  compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                }`}
+                title="Visão Enxuta Reunião Executiva (3M)"
+              >
+                <Minimize2 className="w-3 h-3 text-amber-500" />
+                <span>Enxuta (Reunião 3M)</span>
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-xl border border-neutral-200">
               <Calendar className="w-3.5 h-3.5 text-neutral-500 ml-1.5" />
               <select
@@ -420,15 +505,15 @@ export default function MetasRedePage() {
 
             <button
               onClick={expandAll}
-              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
+              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
             >
-              Expandir Tudo
+              Expandir
             </button>
             <button
               onClick={collapseAll}
-              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2.5 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
+              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
             >
-              Recolher Tudo
+              Recolher
             </button>
 
             <button
@@ -471,7 +556,7 @@ export default function MetasRedePage() {
             Abertura de Meta por Rede — {MONTH_NAMES_PT[selectedMonth - 1]} / {selectedYear}
           </h1>
           <p className="text-neutral-500 text-xs mt-1">
-            3 meses fechados: {dynamicPrecedingMonths.join(", ")} · Origem Soberana da RPS (`cm_weekly_projections`)
+            Modo: <span className="font-bold text-neutral-800">{compactView ? "Visão Enxuta Reunião (3M)" : `Histórico Anual Completo (${yearClosedMonths.length} meses)`}</span> · Média 3M Ref: {dynamicPrecedingMonths.join(", ")} · Single Source of Truth RPS
           </p>
         </div>
 
@@ -482,7 +567,7 @@ export default function MetasRedePage() {
               <BarChart3 className="w-4 h-4 text-blue-500" />
               <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Média 3M Total</span>
             </div>
-            <p className="text-lg font-black text-blue-700">{formatCurrency(totalMed3M)}</p>
+            <p className="text-lg font-black text-blue-700">{formatCurrency(executiveCards.totalMed3M)}</p>
             <p className="text-[10px] text-neutral-400">{dynamicPrecedingMonths.join(", ")}</p>
           </div>
           <div className="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
@@ -492,8 +577,8 @@ export default function MetasRedePage() {
                 Meta {MONTH_SHORT_PT[selectedMonth - 1]} Digitada
               </span>
             </div>
-            <p className="text-lg font-black text-amber-600">{formatCurrency(totalMetaInputted)}</p>
-            <p className="text-[10px] text-neutral-400">{redesComMeta} redes preenchidas</p>
+            <p className="text-lg font-black text-amber-600">{formatCurrency(executiveCards.totalMetaInputted)}</p>
+            <p className="text-[10px] text-neutral-400">{executiveCards.totalRedesWithGoal} redes preenchidas</p>
           </div>
           <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-1.5">
@@ -508,7 +593,7 @@ export default function MetasRedePage() {
               <Sparkles className="w-4 h-4 text-violet-500" />
               <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Redes Planejáveis</span>
             </div>
-            <p className="text-lg font-black text-neutral-900">{totalRedes}</p>
+            <p className="text-lg font-black text-neutral-900">{executiveCards.totalRedesCount}</p>
             <p className="text-[10px] text-neutral-400">Ordenadas por Média 3M</p>
           </div>
         </div>
@@ -539,106 +624,189 @@ export default function MetasRedePage() {
         {!loading &&
           filtered.map((mgr) => {
             const isOpen = expandedManagers.has(mgr.manager);
-            const mgrMetaSum = mgr.redes.reduce((s, r) => s + getMetaValue(r), 0);
-            const mgrPreenchidas = mgr.redes.filter((r) => getMetaValue(r) > 0).length;
-            const mgrTotalRedes = mgr.redes.length;
-            const mgrVolPrevKg = mgr.redes.reduce((s, r) => {
-              const inputVal = getMetaValue(r);
-              return s + (r.avgPriceQ2 > 0 && inputVal > 0 ? inputVal / r.avgPriceQ2 : 0);
-            }, 0);
-            const mgrPace = mgrMetaSum > 0 && mgr.grandTotalMed3M > 0 ? (mgrMetaSum / mgr.grandTotalMed3M) * 100 : 0;
+            const mgrKey = mgr.manager_id || mgr.manager;
+            const targetMgrMetaInput = managerMetaTargets[mgrKey] || mgr.metaTotal || 0;
+
+            const mgrBlockViewModel = {
+              manager: mgr.manager,
+              manager_id: mgr.manager_id,
+              totalRedes: mgr.redes.length,
+              grandTotalFat: mgr.grandTotalFat,
+              grandTotalMed3M: mgr.grandTotalMed3M,
+              grandTotalMed3MKg: 0,
+              grandTotalMeta: mgr.metaTotal,
+              mgrPace: 100,
+              mgrPreenchidas: mgr.redes.length,
+              mgrVolPrevKg: 0,
+              redes: mgr.redes.map(r => ({
+                rede: r.rede,
+                manager: r.manager,
+                manager_id: r.manager_id,
+                codigo_matriz: r.codigo_matriz,
+                fatQ2: r.totalFat,
+                qtyQ2: r.totalQty,
+                avgPriceQ2: r.avgPriceQ2,
+                avg3M: r.avg3M,
+                avg3MKg: 0,
+                metaVal: getMetaValue(r),
+                metaKg: 0,
+                pctVsAvg3M: 0,
+                monthlyHistory: r.months
+              }))
+            };
+
+            // Business Rules Execution in Helper (PlanningGoalAllocator)
+            const summary = PlanningGoalAllocator.calculateManagerSummary(mgrBlockViewModel, metaInputs, targetMgrMetaInput);
+            const isGoalAboveAvg = summary.growthStatus === 'ABOVE';
 
             return (
-              <div key={mgr.manager} className="mb-3 bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm">
-                {/* FASE 3.1 - Manager Header Resumo Executivo em Linha Única Horizontal */}
-                <button
-                  onClick={() => toggleManager(mgr.manager)}
-                  className="w-full flex items-center justify-between px-5 py-3 hover:bg-neutral-50 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                        isOpen ? "bg-amber-100 text-amber-600" : "bg-neutral-100 text-neutral-400"
-                      } transition-colors`}
+              <div
+                key={mgr.manager}
+                className={`mb-4 bg-white border rounded-xl overflow-hidden shadow-sm transition-all ${
+                  isGoalAboveAvg ? "border-emerald-300 border-l-4 border-l-emerald-500" : "border-neutral-200"
+                }`}
+              >
+                {/* Manager Header Horizontal Executive Accordion Bar */}
+                <div className="w-full flex flex-col md:flex-row md:items-center justify-between px-5 py-3.5 bg-neutral-50/70 border-b border-neutral-200/60 gap-3">
+                  <div className="flex items-center gap-2.5 flex-wrap min-w-0">
+                    <button
+                      onClick={() => toggleManager(mgr.manager)}
+                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:text-amber-600 hover:border-amber-300 transition-colors cursor-pointer"
                     >
                       {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </div>
-                    <span className="text-sm font-bold text-neutral-900 truncate">{mgr.manager}</span>
-                    <span className="text-[10px] font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full shrink-0 whitespace-nowrap">
+                    </button>
+                    <span className="text-sm font-black text-neutral-900 truncate">{mgr.manager}</span>
+                    <span className="text-[10px] font-bold text-neutral-500 bg-white border border-neutral-200 px-2 py-0.5 rounded-full shrink-0">
                       {mgr.redes.length} Redes
                     </span>
+
+                    {/* Top-down Distribution Controls & 1-Click Quick Growth Multipliers */}
+                    {isTopDownAuthorized && (
+                      <div className="flex items-center gap-1.5 bg-amber-50/80 border border-amber-200/80 px-2 py-1 rounded-lg">
+                        <Sliders className="w-3 h-3 text-amber-600" />
+                        <span className="text-[10px] font-bold text-amber-700 uppercase hidden lg:inline">Meta Direção:</span>
+                        <ExecutiveMoneyInput
+                          value={managerMetaTargets[mgrKey] || 0}
+                          onChangeValue={(val) => {
+                            handleTopDownManagerDistribution(mgr, val);
+                          }}
+                          placeholder="Meta R$"
+                          className="w-24 text-right text-xs font-bold text-amber-800 bg-white border border-amber-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 tabular-nums"
+                        />
+
+                        {/* Quick 1-Click Fill Buttons */}
+                        <div className="flex items-center gap-1 ml-1 border-l border-amber-200 pl-1.5">
+                          <button
+                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.0)}
+                            className="px-1.5 py-0.5 text-[9px] font-bold bg-white text-neutral-700 border border-neutral-200 rounded hover:bg-neutral-100 hover:text-neutral-900 transition-colors cursor-pointer"
+                            title="Preencher Meta com 100% da Média 3M"
+                          >
+                            100% 3M
+                          </button>
+                          <button
+                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.05)}
+                            className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors flex items-center gap-0.5 cursor-pointer"
+                            title="Preencher Meta com Média 3M + 5% de Crescimento"
+                          >
+                            <Zap className="w-2.5 h-2.5 text-emerald-600" />
+                            +5%
+                          </button>
+                          <button
+                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.10)}
+                            className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200 rounded hover:bg-violet-100 transition-colors flex items-center gap-0.5 cursor-pointer"
+                            title="Preencher Meta com Média 3M + 10% de Crescimento"
+                          >
+                            <Zap className="w-2.5 h-2.5 text-violet-600" />
+                            +10%
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-3 sm:gap-5 shrink-0 text-xs">
+                  {/* Executive Summary Metrics in Collapsed Row */}
+                  <div className="flex items-center gap-3 sm:gap-5 shrink-0 text-xs justify-between md:justify-end flex-wrap">
                     <div className="text-right">
-                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Fat</span>
-                      <span className="font-bold text-neutral-800">{formatCompact(mgr.grandTotalFat)}</span>
+                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Fat YTD ({yearClosedMonths.length}m)</span>
+                      <span className="font-bold text-neutral-800">{formatCompact(summary.totalFatYTD)}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-[9px] text-blue-500 font-bold uppercase block">Méd 3M</span>
-                      <span className="font-bold text-blue-700">{formatCompact(mgr.grandTotalMed3M)}</span>
+                      <span className="font-bold text-blue-700">{formatCompact(summary.totalMed3M)}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[9px] text-amber-500 font-bold uppercase block">
-                        Meta {MONTH_SHORT_PT[selectedMonth - 1]}
-                      </span>
-                      <span className={`font-black ${mgrMetaSum > 0 ? "text-amber-600" : "text-neutral-300"}`}>
-                        {mgrMetaSum > 0 ? formatCompact(mgrMetaSum) : "—"}
+                      <span className="text-[9px] text-amber-600 font-bold uppercase block">Meta {MONTH_SHORT_PT[selectedMonth - 1]}</span>
+                      <span className="font-black text-amber-700">{formatCompact(summary.currentMetaInputsSum)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[9px] text-violet-500 font-bold uppercase block">% vs 3M</span>
+                      <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                        summary.growthStatus === 'ABOVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        summary.growthStatus === 'BELOW' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-neutral-100 text-neutral-600'
+                      }`}>
+                        {summary.growthStatus === 'ABOVE' && <TrendingUp className="w-3 h-3 text-emerald-600" />}
+                        {summary.growthStatus === 'BELOW' && <TrendingDown className="w-3 h-3 text-red-600" />}
+                        {summary.growthStatus === 'EQUAL' && <Minus className="w-3 h-3 text-neutral-400" />}
+                        {summary.growthPct > 0
+                          ? `+${summary.growthPct.toFixed(2).replace(".", ",")}%`
+                          : summary.growthPct < 0
+                          ? `${summary.growthPct.toFixed(2).replace(".", ",")}%`
+                          : "0,0%"}
                       </span>
                     </div>
-                    {mgrPace > 0 && (
-                      <div className="text-right hidden sm:block">
-                        <span className="text-[9px] text-violet-500 font-bold uppercase block">Pace</span>
-                        <span className="font-bold text-violet-700">{mgrPace.toFixed(0)}%</span>
-                      </div>
-                    )}
-                    <div className="text-right hidden md:block">
-                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Preenchidas</span>
-                      <span className="font-bold text-emerald-600">
-                        {mgrPreenchidas}/{mgrTotalRedes}
-                      </span>
-                    </div>
-                    <div className="text-right hidden lg:block">
-                      <span className="text-[9px] text-emerald-500 font-bold uppercase block">Vol Prev</span>
-                      <span className="font-bold text-emerald-700">
-                        {mgrVolPrevKg > 0 ? `${formatCompact(mgrVolPrevKg)} Kg` : "—"}
-                      </span>
+
+                    {/* Remaining Balance Indicator Badge */}
+                    <div className="text-right">
+                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Status Saldo</span>
+                      {summary.remainingBalance === 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          Distribuído
+                        </span>
+                      ) : summary.remainingBalance > 0 ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" title={`Faltam R$ ${summary.remainingBalance.toLocaleString('pt-BR')} para distribuir`}>
+                          Faltam +{formatCompact(summary.remainingBalance)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full" title={`Meta ultrapassada em R$ ${Math.abs(summary.remainingBalance).toLocaleString('pt-BR')}`}>
+                          Excesso {formatCompact(summary.remainingBalance)}
+                        </span>
+                      )}
                     </div>
                   </div>
-                </button>
+                </div>
 
-                {/* Table */}
+                {/* Table Component */}
                 {isOpen && (
                   <div className="overflow-x-auto border-t border-neutral-100">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-neutral-50">
-                          <th className="text-left px-4 py-2.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider sticky left-0 bg-neutral-50 z-10 min-w-[180px]">
+                        <tr className="bg-neutral-50/80 border-b border-neutral-200/60">
+                          <th className="text-left px-4 py-2.5 text-[10px] font-bold text-neutral-500 uppercase tracking-wider sticky left-0 bg-neutral-50 z-10 min-w-[180px]">
                             Rede
                           </th>
-                          {dynamicPrecedingMonths.map((mKey) => {
+                          {tableDisplayedMonths.map((mKey) => {
                             const monthIndex = parseInt(mKey.split("-")[1], 10) - 1;
                             return (
-                              <th key={mKey} className="text-right px-3 py-2.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider min-w-[72px]">
+                              <th key={mKey} className="text-right px-3 py-2.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider min-w-[65px]">
                                 {MONTH_SHORT_PT[monthIndex]}
                               </th>
                             );
                           })}
-                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-blue-600 uppercase tracking-wider min-w-[80px] bg-blue-50">
+                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-blue-700 uppercase tracking-wider min-w-[80px] bg-blue-50/80">
                             Méd 3M
                           </th>
                           <th className="text-right px-3 py-2.5 text-[10px] font-bold text-neutral-500 uppercase tracking-wider min-w-[68px]">
                             R$/Kg
                           </th>
-                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-amber-600 uppercase tracking-wider min-w-[95px] bg-amber-50">
+                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider min-w-[110px] bg-amber-50/80">
                             Meta {MONTH_SHORT_PT[selectedMonth - 1]} R$
                           </th>
-                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider min-w-[70px] bg-emerald-50">
-                            Vol. Kg
+                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-violet-700 uppercase tracking-wider min-w-[85px] bg-violet-50/80">
+                            % vs 3M
                           </th>
-                          {/* FASE 3.5 - Nova Coluna % vs Méd 3M */}
-                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-violet-600 uppercase tracking-wider min-w-[75px] bg-violet-50">
-                            % vs Méd 3M
+                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider min-w-[70px] bg-emerald-50/80">
+                            Vol. Kg
                           </th>
                         </tr>
                       </thead>
@@ -647,26 +815,21 @@ export default function MetasRedePage() {
                           const inputVal = getMetaValue(r);
                           const volKg = r.avgPriceQ2 > 0 && inputVal > 0 ? inputVal / r.avgPriceQ2 : 0;
                           
-                          // FASE 3.5: Média 3M Kg & Percentual % vs Méd 3M
-                          const med3MKg = r.avgPriceQ2 > 0 && r.avg3M > 0 ? r.avg3M / r.avgPriceQ2 : 0;
-                          let pct3M = 0;
-                          if (med3MKg > 0 && volKg > 0) {
-                            pct3M = (volKg / med3MKg) * 100;
-                          } else if (r.avg3M > 0 && inputVal > 0) {
-                            pct3M = (inputVal / r.avg3M) * 100;
-                          }
+                          // Growth KPIs via Helper Logic (PlanningGoalAllocator)
+                          const growthKPI = PlanningGoalAllocator.calculateNetworkGrowth(inputVal, r.avg3M);
+                          const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
 
                           return (
                             <tr
-                              key={`${r.manager_id}|${r.codigo_matriz}|${r.rede}`}
+                              key={inputKey}
                               className={`border-t border-neutral-100 hover:bg-amber-50/30 transition-colors ${
-                                idx % 2 === 0 ? "bg-white" : "bg-neutral-50/50"
+                                idx % 2 === 0 ? "bg-white" : "bg-neutral-50/40"
                               }`}
                             >
-                              <td className="px-4 py-2 font-semibold text-neutral-700 sticky left-0 bg-white z-10">
+                              <td className="px-4 py-2 font-semibold text-neutral-800 sticky left-0 bg-white z-10">
                                 <span className="truncate block max-w-[170px]">{r.rede}</span>
                               </td>
-                              {dynamicPrecedingMonths.map((mKey) => {
+                              {tableDisplayedMonths.map((mKey) => {
                                 const fat = r.months[mKey]?.fat || 0;
                                 return (
                                   <td key={mKey} className="text-right px-3 py-2 tabular-nums text-neutral-500 font-medium">
@@ -674,53 +837,54 @@ export default function MetasRedePage() {
                                   </td>
                                 );
                               })}
-                              <td className="text-right px-3 py-2 tabular-nums font-bold text-blue-700 bg-blue-50/50">
+                              <td className="text-right px-3 py-2 tabular-nums font-bold text-blue-700 bg-blue-50/30">
                                 {r.avg3M > 0 ? formatCompact(r.avg3M) : "—"}
                               </td>
                               <td className="text-right px-3 py-2 tabular-nums text-neutral-500 font-medium">
                                 {r.avgPriceQ2 > 0 ? `${r.avgPriceQ2.toFixed(2).replace(".", ",")}` : <span className="text-neutral-300">—</span>}
                               </td>
 
-                              {/* FASE 3.4 - Meta Input com largura reduzida (~25%) */}
-                              <td className="px-2 py-1.5 bg-amber-50/50 text-center">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={100}
-                                  value={inputVal || ""}
-                                  placeholder="0"
-                                  onChange={(e) =>
+                              {/* Editable Input Meta R$ with Keyboard Navigation (Enter / ArrowDown / ArrowUp) */}
+                              <td className="px-2 py-1.5 bg-amber-50/30 text-center">
+                                <ExecutiveMoneyInput
+                                  inputRef={(el) => { inputRefs.current[inputKey] = el; }}
+                                  value={inputVal || 0}
+                                  onChangeValue={(rawReais) =>
                                     setMetaValue(
                                       r.manager_id,
                                       r.codigo_matriz,
                                       r.rede,
                                       r.manager,
-                                      Number(e.target.value) || 0
+                                      rawReais
                                     )
                                   }
-                                  className="w-20 min-w-[75px] text-right text-xs font-bold text-amber-700 bg-white border border-amber-200 rounded-md px-2 py-1 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 placeholder:text-neutral-300 tabular-nums"
+                                  placeholder="0"
+                                  onKeyDown={(e) => handleKeyDownNavigation(e, inputKey, mgr, idx)}
+                                  className="w-24 min-w-[85px] text-right text-xs font-bold text-amber-800 bg-white border border-amber-200 rounded-md px-2 py-1 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 placeholder:text-neutral-300 tabular-nums"
                                 />
                               </td>
 
-                              {/* Volume */}
-                              <td className="text-right px-3 py-2 tabular-nums font-bold bg-emerald-50/50">
+                              {/* Network Growth Indicator % vs 3M Badge */}
+                              <td className="text-center px-2 py-1.5 bg-violet-50/30">
+                                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  growthKPI.growthStatus === 'ABOVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                  growthKPI.growthStatus === 'BELOW' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-neutral-100 text-neutral-500'
+                                }`}>
+                                  {growthKPI.growthPct > 0
+                                    ? `+${growthKPI.growthPct.toFixed(2).replace(".", ",")}%`
+                                    : growthKPI.growthPct < 0
+                                    ? `${growthKPI.growthPct.toFixed(2).replace(".", ",")}%`
+                                    : "0,0%"}
+                                </span>
+                              </td>
+
+                              {/* Volume Kg */}
+                              <td className="text-right px-3 py-2 tabular-nums font-bold bg-emerald-50/30">
                                 {volKg > 0 ? (
                                   <span className="text-emerald-700">{formatCompact(volKg)}</span>
                                 ) : (
                                   <span className="text-neutral-300">—</span>
                                 )}
-                              </td>
-
-                              {/* FASE 3.5 - Nova Coluna % vs Méd 3M com Tooltip */}
-                              <td
-                                className={`text-center px-2 py-2 tabular-nums text-xs font-bold ${getPct3MStyle(pct3M)}`}
-                                title={`Meta ${MONTH_SHORT_PT[selectedMonth - 1]}: ${
-                                  volKg > 0 ? formatCompact(volKg) : 0
-                                } Kg\nMédia 3M: ${med3MKg > 0 ? formatCompact(med3MKg) : 0} Kg\nResultado: ${
-                                  pct3M > 0 ? pct3M.toFixed(1) + "%" : "—"
-                                }`}
-                              >
-                                {pct3M > 0 ? `${pct3M.toFixed(0)}%` : "—"}
                               </td>
                             </tr>
                           );

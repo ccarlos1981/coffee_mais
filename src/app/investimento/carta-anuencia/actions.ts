@@ -666,8 +666,8 @@ export async function gerarCartaAnuencia(input: {
 
   let userName = "Usuário do Sistema";
   if (user) {
-    const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
-    userName = profile?.full_name || profile?.name || user.email || userName;
+    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
+    userName = profile?.name || user.email || userName;
   }
 
   const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
@@ -806,8 +806,8 @@ export async function editarCartaAnuencia(input: {
 
   let userName = "Usuário do Sistema";
   if (user) {
-    const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
-    userName = profile?.full_name || profile?.name || user.email || userName;
+    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
+    userName = profile?.name || user.email || userName;
   }
 
   const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
@@ -896,8 +896,8 @@ export async function registrarCompartilhamento(
 
   let userName = "Usuário do Sistema";
   if (user) {
-    const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
-    userName = profile?.full_name || profile?.name || user.email || userName;
+    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
+    userName = profile?.name || user.email || userName;
   }
 
   const { data: carta } = await adminClient.from("cm_cartas_anuencia").select("status").eq("id", cartaId).single();
@@ -939,8 +939,8 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
 
   let userName = "Usuário do Sistema";
   if (user) {
-    const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
-    userName = profile?.full_name || profile?.name || user.email || userName;
+    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
+    userName = profile?.name || user.email || userName;
   }
 
   const dataAssinatura = new Date().toISOString();
@@ -999,8 +999,8 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
 
   let userName = "Usuário do Sistema";
   if (user) {
-    const { data: profile } = await adminClient.from("profiles").select("name, full_name").eq("id", user.id).single();
-    userName = profile?.full_name || profile?.name || user.email || userName;
+    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
+    userName = profile?.name || user.email || userName;
   }
 
   const { data, error } = await adminClient
