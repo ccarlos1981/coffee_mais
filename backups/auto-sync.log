@@ -1273,3 +1273,8 @@ Everything up-to-date
  create mode 100644 src/lib/rgm/services/rgm-service.ts
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [05/08/2026 09:40] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main f5b4f30] auto-save: 05/08/2026 13:01
+ 3 files changed, 166 insertions(+), 143 deletions(-)
+To https://github.com/ccarlos1981/coffee_mais.git
+   f474038..f5b4f30  main -> main
+[05/08/2026 13:01] ✅ Alterações enviadas com sucesso para o GitHub.
