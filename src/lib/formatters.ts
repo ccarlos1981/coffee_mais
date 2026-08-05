@@ -2,6 +2,24 @@
  * Formatadores para o padrão brasileiro (pt-BR)
  */
 
+/** Formata valor compacto: 1,5M, 742K, 300 */
+export function formatCompact(value: number | string | null | undefined): string {
+  if (value == null) return "0";
+  const num = typeof value === "number" ? value : parseFloat(value);
+  if (isNaN(num) || num === 0) return "0";
+
+  const abs = Math.abs(num);
+  if (abs >= 1_000_000) {
+    const val = num / 1_000_000;
+    return `${val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}M`;
+  }
+  if (abs >= 1_000) {
+    const val = num / 1_000;
+    return `${val.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 })}K`;
+  }
+  return num.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+}
+
 /** Formata valor em Reais: R$ 1.234 */
 export function formatCurrency(value: number | string | null | undefined, decimals = 0): string {
   if (value == null) return decimals > 0 ? `R$ 0,${"0".repeat(decimals)}` : `R$ 0`;

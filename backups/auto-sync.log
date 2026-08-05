@@ -1184,3 +1184,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    b13d0f3..4c8810c  main -> main
 [04/08/2026 09:43] ✅ Alterações enviadas com sucesso para o GitHub.
+[main f7833ac] auto-save: 04/08/2026 17:42
+ 22 files changed, 608 insertions(+), 14 deletions(-)
+ create mode 100644 docs/governance/import-pipeline-postmortem.md
+ create mode 100644 supabase/migrations/20260804_create_vw_clientes_sem_matriz.sql
+ create mode 100644 supabase/migrations/20260804_fix_fn_get_manager_employee_code.sql
+ create mode 100644 supabase/migrations/20260804_fix_mv_refresh_pipeline.sql
+ create mode 100644 supabase/migrations/20260804_reorganizacao_regional_john_guedes.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   4c8810c..f7833ac  main -> main
+[04/08/2026 17:42] ✅ Alterações enviadas com sucesso para o GitHub.

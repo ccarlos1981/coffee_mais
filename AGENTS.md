@@ -1705,6 +1705,115 @@ A partir de 04/08/2026, a **Arquitetura Comercial V2** passa a ser o baseline of
 
 Status Arquitetural: `COMMERCIAL_ARCHITECTURE_V2 = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 87. Baseline Oficial — Média das Redes Planejáveis (Méd 3M Dinâmica)
+
+A partir de 04/08/2026, o indicador e coluna **Méd 3M** no módulo de Metas por Rede (`src/app/gestao/metas-rede/page.tsx`) passa a ser o baseline oficial e permanente da plataforma.
+
+### Diretrizes Mandatórias:
+1. **Nomenclatura Oficial:** A coluna de histórico na tabela de Abertura de Meta por Rede é obrigatoriamente nomeada como **"Méd 3M"**.
+2. **Fórmula Oficial:** A média é calculada exclusivamente via Média Aritmética Fixa dos 3 últimos meses fechados:
+   $$\text{Méd 3M} = \frac{\text{Mês}_{-3} + \text{Mês}_{-2} + \text{Mês}_{-1}}{3}$$
+3. **Resolução Dinâmica:** A seleção dos 3 meses fechados é efetuada 100% dinamicamente via `getPreceding3ClosedMonths(metaMonth, year)` a partir do mês e ano da meta. É proibido qualquer hardcode de meses no código.
+4. **Isolamento de Componentes:** Fica congelada e proibida qualquer alteração de layout, CSS, ordenação ou contratos de API do módulo sem nova homologação formal.
+
+Status Arquitetural: `MED_3M_DYNAMIC_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 88. Baseline Oficial — Origem Soberana de Metas por Rede (Single Source of Truth na RPS)
+
+A partir de 04/08/2026, a arquitetura do módulo **Metas por Rede** (`src/app/gestao/metas-rede/page.tsx`) e sua integração com a RPS passa a ser o baseline oficial, soberano e permanente da plataforma Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Single Source of Truth:** A tabela `public.cm_weekly_projections` é a única fonte da verdade de persistência de metas por rede no sistema.
+2. **Integração com RPS:** A tela Metas por Rede é a origem oficial de cadastro. O salvamento executa o UPSERT direto em `cm_weekly_projections` vinculando obrigatoriamente `manager_id`, `codigo_matriz`, `manager` (nome canônico), `client_matrix` (rede), `year`, `month`, `kpi = 'META'` e `projection_value`.
+3. **Resumo Executivo no Accordion:** O cabeçalho por gerente exibe o resumo executivo horizontal em **linha única de altura fixa** (Fat, Méd 3M, Meta, Pace, Preenchidas, Vol Prev Kg).
+4. **Seletor Dinâmico de Período:** A alteração de mês e ano dispara o recálculo dinâmico da tela e das colunas de histórico via `getPreceding3ClosedMonths(month, year)`.
+5. **Coluna % vs Méd 3M:** Exibida após `Vol. Kg`, calculada via `(Meta Kg / Média 3M Kg) * 100` com coloração reativa e tooltip detalhado.
+6. **Ordenação Soberana:** Redes e gerentes são ordenados obrigatoriamente pela `Méd 3M` em ordem decrescente (desempate de redes: alfabética pt-BR).
+
+Status Arquitetural: `METAS_REDE_SOVEREIGN_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+---
+
+## 89. Baseline Oficial — Arquitetura Corporativa V4 (Metas por Rede)
+
+A partir de 04/08/2026, a arquitetura corporativa **Metas por Rede V4** torna-se a baseline oficial, soberana e permanente da plataforma Coffee++.
+
+### Diretrizes Mandatórias da Fase 4:
+1. **Unificação via `MetasRedeViewModel`:** A API `/api/gestao/metas-rede` e o `CommercialPlanningService.getMetasRedeViewModel(year, month)` entregam um DTO corporativo 100% pré-agregado e pré-ordenado no backend.
+2. **Cache Inteligente de Faturamento:** A consulta pesada de faturamento em `mv_vendas_cliente_mensal` utiliza cache em memória por `${year}-${month}` com TTL de 5 minutos, invalidado automaticamente a cada salvamento em `cm_weekly_projections`.
+3. **Telemetria e Observabilidade Expandida:** `PlanningTelemetry` monitora `sqlTimeMs`, `backendTimeMs`, `apiTimeMs`, `totalTimeMs`, `memoryUsedMb`, `cacheHit` e `cacheMiss`.
+4. **Auditoria de Salvamento:** Toda escrita em `cm_weekly_projections` grava log auditável com usuário, timestamp, manager_id, codigo_matriz, valores anterior/novo e origem.
+5. **Zero Regressão:** Mantidos 100% da paridade com a RPS, AnalyticsEngine, regras financeiras, ordenação por `Méd 3M` e layout executivo horizontal.
+
+Status Arquitetural: `METAS_REDE_CORPORATE_V4 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+---
+
+## 90. Baseline Oficial — Workflow Corporativo de Planejamento Comercial (Fase 5)
+
+A partir de 04/08/2026, o **Workflow Corporativo de Planejamento Comercial** (Fase 5) do módulo Metas por Rede torna-se o baseline oficial, soberano e permanente da plataforma Coffee++.
+
+### Diretrizes Mandatórias da Fase 5:
+1. **Estados Oficiais do Workflow:** Todo planejamento de meta possui um estado controlado em `cm_weekly_projections_workflow` (`DRAFT` 🟡 Em Elaboração, `REVIEW` 🔵 Em Revisão, `APPROVED` 🟢 Aprovado, `FROZEN` ⚫ Congelado).
+2. **Esteira de Transição Multinível:** Transições de status são rastreadas com `submitted_by`, `approved_by`, `approved_comments`, `frozen_by` e timestamps.
+3. **Locks e Travas de Edição:** Alterações de metas são permitidas exclusivamente quando `status = 'DRAFT'`. Estados `APPROVED` e `FROZEN` bloqueiam edições no frontend e no backend.
+4. **Single Source of Truth na RPS:** Mantidos 100% da paridade e consumo direto sobre `public.cm_weekly_projections`.
+
+Status Arquitetural: `WORKFLOW_PLANNING_V5 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+---
+
+## 91. Baseline Oficial — Cockpit Comercial Nacional (Fase 6)
+
+A partir de 04/08/2026, o **Cockpit Comercial Nacional** (Fase 6) torna-se o baseline oficial, soberano e permanente da plataforma Coffee++.
+
+### Diretrizes Mandatórias da Fase 6:
+1. **Consumo Exclusivo da `AnalyticsEngine V1`:** O Cockpit Comercial Nacional consome exclusivamente dados da `AnalyticsEngine.getCockpitComercial(filters)` e do `CommercialPlanningService.getCockpitNacionalViewModel(year, month)`. São proibidas SQLs locais ou discrepâncias de faturamento.
+2. **Componentes Congelados:** Módulo 1 (Dashboard Executivo Cards), Módulo 2 (Rankings Gerentes, Redes, UFs, Clientes), Módulo 3 (Mapa UF Executivo), Módulo 4 (Painel de Risco), Módulo 5 (Radar de Oportunidades), Módulo 6 (Simulador Executivo 100% em Memória), Módulo 7 (Drill Down Multinível), Módulo 8 (Alertas Corporativos), Módulo 9 (Export Engine).
+3. **Paridade Financeira de 0,0000%:** Mantidos 100% de paridade financeira em relação à baseline MyMetrics (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`).
+
+Status Arquitetural: `COCKPIT_COMERCIAL_NACIONAL_V6 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+---
+
+## 92. Baseline Oficial — AI Commercial Copilot (Fase 7)
+
+A partir de 04/08/2026, a camada de inteligência prescritiva **AI Commercial Copilot** (Fase 7) torna-se o baseline oficial, soberano e permanente da plataforma Coffee++.
+
+### Diretrizes Mandatórias da Fase 7:
+1. **Reutilização Integral do Baseline:** O AI Commercial Copilot consome exclusivamente `CockpitService`, `AnalyticsEngine V1` e `CommercialPlanningService`. São proibidas alterações em regras financeiras, fórmulas ou views oficiais.
+2. **Nódulos Prescritivos Homologados:** Módulo 1 (Executive Insights), Módulo 2 (Explainable KPI), Módulo 3 (Recomendações Prescritivas), Módulo 4 (Executive Chat Engine), Módulo 5 (What-If Simulator 100% em Memória), Módulo 6 (Executive Briefing), Módulo 7 (Score Comercial 0–100), Módulo 8 (Alertas Inteligentes 🔴 🟠 🟢), Módulo 9 (Executive Timeline), Módulo 10 (IA Executiva LLM Interface).
+3. **Paridade Financeira de 0,0000%:** Mantidos 100% de desvio financeiro zero em relação à baseline homologada.
+
+Status Arquitetural: `COFFEE_AI_COPILOT_V1 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+---
+
+## 93. Baseline Oficial — Decision Platform Enterprise V2
+
+A partir de 04/08/2026, a **Decision Platform Enterprise V2** passa a integrar a plataforma Coffee++ como a camada superior de orquestração executiva e auditabilidade de decisões.
+
+### Diretrizes Mandatórias:
+1. **Camada Superior de Orquestração:** A Decision Platform V2 opera unicamente como orquestradora sobre os módulos homologados (`AnalyticsEngine V1`, `CommercialPlanningService`, `CockpitService`, `CopilotService`, `CommercialIntelligenceService`). Fica proibida qualquer alteração em serviços ou regras financeiras existentes.
+2. **Decision Pipeline Sequencial:** O fluxo de decisão segue a esteira determinística: Cockpit → Insights → Diagnosis → Priorities → Recommendations → Action Plans → Executive Briefing → Decision Graph.
+3. **Rule Registry Centralizado:** Todas as regras corporativas residem em `src/lib/decision-platform/registry/rules/` (`GrowthRules`, `RiskRules`, `ForecastRules`, `PricingRules`, `MixRules`, `HealthRules`, `PriorityRules`, `BriefingRules`).
+4. **Score Registry Catálogo:** Catálogo padronizado de scores (`Health Score`, `Commercial Score`, `Growth Score`, `Opportunity Score`, `Priority Score`, `Risk Score`, `Forecast Confidence`) com fórmulas, escalas e rastreabilidade.
+5. **Decision Graph Inviolável:** Cada recomendação gerada pela plataforma registra obrigatoriamente a árvore completa de rastreabilidade (KPIs de entrada, regras aplicadas, pesos, score final, justificativa, impacto financeiro R$ e percentual de confiança).
+6. **Zero SQL & Zero DB Direct Access:** Processamento 100% em memória, mantendo 0,0000% de desvio financeiro e zero regressão.
+
+Status Arquitetural: `DECISION_PLATFORM_V2 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
+
+
+
+
+
+
+
+
 
 
 
