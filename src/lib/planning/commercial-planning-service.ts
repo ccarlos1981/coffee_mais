@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 export { PlanningGoalAllocator } from "./planning-goal-allocator";
 
 export interface PlanejavelRedeDTO {
@@ -40,13 +41,16 @@ export interface RedeViewModel {
   manager: string;
   manager_id: string;
   codigo_matriz: string;
+  canal?: string;
   fatQ2: number;
   qtyQ2: number;
   avgPriceQ2: number;
+  precoMedio3M: number;
   avg3M: number;
   avg3MKg: number;
   metaVal: number;
   metaKg: number;
+  volMetaKg: number;
   pctVsAvg3M: number;
   monthlyHistory: Record<string, MonthlyBillingDTO>;
 }
@@ -326,7 +330,7 @@ export class CommercialPlanningService {
       BILLING_CACHE.set(cacheKey, { data: billing, timestamp: Date.now() });
     }
 
-    // 4. Query 3: Fetch weekly projections / META targets for target month
+    // 4. Query 3: Fetch weekly projections for network metas, and fetch official manager metas from `targets`
     const q3Start = performance.now();
     const { data: metaData } = await supabase
       .from("cm_weekly_projections")
@@ -336,7 +340,15 @@ export class CommercialPlanningService {
       .eq("month", month)
       .neq("client_matrix", "_TOTAL_");
 
-    const { data: mgrMetas } = await supabase
+    // Single Source of Truth da Meta Oficial do Gerente: Tabela `targets` (Módulo Metas)
+    const { data: officialTargets } = await supabase
+      .from("targets")
+      .select("manager, manager_id, target_revenue, target_forecast")
+      .eq("year", year)
+      .eq("month", month);
+
+    // Fallback gracioso para cm_weekly_projections _TOTAL_ caso targets não possua registros no mês
+    const { data: mgrMetasFallback } = await supabase
       .from("cm_weekly_projections")
       .select("manager, projection_value, manager_id")
       .eq("kpi", "META")
@@ -347,12 +359,52 @@ export class CommercialPlanningService {
     const q3End = performance.now();
     const metasTableDuration = Number((q3End - q3Start).toFixed(2));
 
+    const managerMetasMap = new Map<string, { manager: string; manager_id: string; value: number }>();
+
+    (officialTargets || []).forEach((t: any) => {
+      const val = Number(t.target_revenue) || Number(t.target_forecast) || 0;
+      const mgrName = String(t.manager || "").trim();
+      const mgrId = String(t.manager_id || "").trim();
+
+      const isManagerWithChannel = mgrName.includes("(KA)") || mgrName.includes("(Dist)");
+      const isCorporateChannel = ["1004", "1005", "1006", "1007", "1008", "1009"].includes(mgrId) || 
+                                ["Inside Sales", "Ecommerce", "Marketplace", "Distribuidor", "Amazon 1P", "Private Label"].includes(mgrName);
+
+      // ETAPA 1: Ignorar estritamente registros legados sem canal para gerentes comerciais
+      if ((isManagerWithChannel || isCorporateChannel) && val > 0) {
+        const canonical = resolveCanonicalManager(mgrName || mgrId);
+        const key = `${canonical.managerId || mgrId}|${mgrName}`;
+        if (key) {
+          if (!managerMetasMap.has(key)) {
+            managerMetasMap.set(key, { manager: mgrName, manager_id: canonical.managerId || mgrId, value: 0 });
+          }
+          managerMetasMap.get(key)!.value += val;
+        }
+      }
+    });
+
+    (mgrMetasFallback || []).forEach((m: any) => {
+      const mgrId = String(m.manager_id || "").trim();
+      const mgrName = String(m.manager || "").trim();
+      const key = `${mgrId}|${mgrName}`;
+      if (key && !managerMetasMap.has(key)) {
+        managerMetasMap.set(key, {
+          manager: mgrName,
+          manager_id: mgrId,
+          value: Number(m.projection_value) || 0
+        });
+      }
+    });
+
+    const managerMetas = Array.from(managerMetasMap.values());
+
     return {
       planRedes: planRedesList.map(r => ({
         rede: r.rede,
         manager: r.manager,
         manager_id: r.manager_id,
-        codigo_matriz: r.codigo_matriz
+        codigo_matriz: r.codigo_matriz,
+        canal: r.canal
       })),
       billing,
       metas: (metaData || []).map((m: any) => ({
@@ -362,11 +414,7 @@ export class CommercialPlanningService {
         client_matrix: String(m.client_matrix || "").trim(),
         value: Number(m.projection_value) || 0
       })),
-      managerMetas: (mgrMetas || []).map((m: any) => ({
-        manager: String(m.manager || "").trim(),
-        manager_id: String(m.manager_id || "").trim(),
-        value: Number(m.projection_value) || 0
-      })),
+      managerMetas,
       months,
       queryTimings: {
         viewSql: viewSqlDuration,
@@ -415,6 +463,13 @@ export class CommercialPlanningService {
       managerGroupMap.get(mgrKey)!.networks.push(r);
     });
 
+    // Mapa da Meta Oficial do Gerente vinda da tabela `targets`
+    const officialManagerTargetMap = new Map<string, number>();
+    payload.managerMetas.forEach(mm => {
+      if (mm.manager_id) officialManagerTargetMap.set(mm.manager_id, mm.value);
+      if (mm.manager) officialManagerTargetMap.set(mm.manager.trim(), mm.value);
+    });
+
     let grandTotalFat = 0;
     let grandTotalMed3M = 0;
     let grandTotalMed3MKg = 0;
@@ -454,13 +509,15 @@ export class CommercialPlanningService {
         });
 
         // Price per Kg or fallback R$ 50/Kg
-        const avgPriceQ2 = qtyQ2 > 0 ? fatQ2 / qtyQ2 : 50;
+        const precoMedio3M = qtyQ2 > 0 ? fatQ2 / qtyQ2 : 0;
+        const avgPriceQ2 = precoMedio3M > 0 ? precoMedio3M : (qtyQ2 > 0 ? fatQ2 / qtyQ2 : 50);
         const avg3MKg = avgPriceQ2 > 0 ? avg3M / avgPriceQ2 : 0;
 
-        // Target Value
+        // Target Value & Volume (Kg)
         const metaVal = metaMap.get(`${net.manager_id}|${net.codigo_matriz}`) ??
                        metaMap.get(`${net.manager_id}|${redeUpper}`) ?? 0;
-        const metaKg = avgPriceQ2 > 0 ? metaVal / avgPriceQ2 : 0;
+        const volMetaKg = precoMedio3M > 0 ? metaVal / precoMedio3M : (avgPriceQ2 > 0 ? metaVal / avgPriceQ2 : 0);
+        const metaKg = volMetaKg;
 
         const pctVsAvg3M = avg3M > 0 && metaVal > 0 ? Number((((metaVal - avg3M) / avg3M) * 100).toFixed(2)) : 0;
 
@@ -477,13 +534,16 @@ export class CommercialPlanningService {
           manager: net.manager,
           manager_id: net.manager_id,
           codigo_matriz: net.codigo_matriz,
+          canal: net.canal,
           fatQ2,
           qtyQ2,
           avgPriceQ2,
+          precoMedio3M,
           avg3M,
           avg3MKg,
           metaVal,
           metaKg,
+          volMetaKg,
           pctVsAvg3M,
           monthlyHistory: redeHist
         };
@@ -494,10 +554,15 @@ export class CommercialPlanningService {
 
       const mgrPace = mgrMed3M > 0 ? (mgrMetaSum / mgrMed3M) * 100 : 0;
 
+      // Single Source of Truth: Usar a Meta Oficial do Gerente vinda da tabela `targets`
+      const officialManagerMeta = officialManagerTargetMap.get(group.manager_id) ??
+                                  officialManagerTargetMap.get(group.manager.trim()) ??
+                                  mgrMetaSum;
+
       grandTotalFat += mgrFat;
       grandTotalMed3M += mgrMed3M;
       grandTotalMed3MKg += mgrMed3MKg;
-      grandTotalMeta += mgrMetaSum;
+      grandTotalMeta += officialManagerMeta;
       grandTotalKg += mgrVolPrevKg;
       preenchidas += mgrPreenchidas;
 
@@ -508,7 +573,7 @@ export class CommercialPlanningService {
         grandTotalFat: mgrFat,
         grandTotalMed3M: mgrMed3M,
         grandTotalMed3MKg: mgrMed3MKg,
-        grandTotalMeta: mgrMetaSum,
+        grandTotalMeta: officialManagerMeta,
         mgrPace,
         mgrPreenchidas,
         mgrVolPrevKg,

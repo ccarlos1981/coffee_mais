@@ -76,6 +76,20 @@ export class PlanningGoalAllocator {
       };
     });
 
+    // Ajustar resíduo de arredondamento na primeira rede para garantir saldo R$ 0,00 exato
+    const sumAllocated = updatedRedes.reduce((acc, r) => acc + r.metaVal, 0);
+    const residue = targetGoalR$ - sumAllocated;
+    if (residue !== 0 && updatedRedes.length > 0) {
+      updatedRedes[0].metaVal += residue;
+      const net0 = updatedRedes[0];
+      const k1 = `${net0.manager_id}|${net0.codigo_matriz}|${net0.rede}`;
+      const k2 = `${net0.manager}|${net0.rede}`;
+      const k3 = `${net0.manager_id || net0.manager}|${net0.codigo_matriz || net0.rede}`;
+      metaInputsPatch[k1] = net0.metaVal;
+      metaInputsPatch[k2] = net0.metaVal;
+      metaInputsPatch[k3] = net0.metaVal;
+    }
+
     return { updatedRedes, metaInputsPatch };
   }
 

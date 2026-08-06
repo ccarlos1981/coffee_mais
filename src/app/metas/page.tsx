@@ -315,8 +315,8 @@ export default function MetasPage() {
         throw new Error("Opção de gerente inválida.");
       }
 
-      if (mgrOpt.manager_id === 'Total') {
-        throw new Error("Não é possível salvar metas para a soma total do KA. Por favor, edite cada gerente individualmente.");
+      if (selectedChannel === 'Toda Empresa') {
+        throw new Error("Não é possível salvar metas na visão 'Toda Empresa'. Por favor, selecione o canal (KA ou Distribuidor) e edite cada gerente individualmente.");
       }
 
       // Definir nome do manager concatenando o sufixo de canal para segregação no banco (manager_id permanece inalterado ex: 1002)
@@ -325,6 +325,13 @@ export default function MetasPage() {
         managerNameToSave = `${mgrOpt.manager} (Dist)`;
       } else if (selectedChannel === "KA") {
         managerNameToSave = `${mgrOpt.manager} (KA)`;
+      }
+
+      const isCorporateChannel = ["1004", "1005", "1006", "1007", "1008", "1009"].includes(mgrOpt.manager_id) || 
+                                ["Inside Sales", "Ecommerce", "Marketplace", "Distribuidor", "Amazon 1P", "Private Label"].includes(mgrOpt.manager);
+
+      if (!managerNameToSave.includes("(KA)") && !managerNameToSave.includes("(Dist)") && !isCorporateChannel) {
+        throw new Error("Selecione obrigatoriamente o canal (KA ou Distribuidor) para salvar as metas do gerente.");
       }
 
       const rowsToUpsert = [];

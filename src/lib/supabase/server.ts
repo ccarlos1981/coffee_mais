@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies, headers } from "next/headers";
+import { resilientFetch } from "./fetch-adapter";
 
 export async function createClient() {
   const cookieStore = await cookies();
@@ -35,11 +36,12 @@ export async function createClient() {
           }
         },
       },
-      global: authHeader ? {
-        headers: {
+      global: {
+        fetch: resilientFetch,
+        headers: authHeader ? {
           Authorization: authHeader
-        }
-      } : undefined
+        } : undefined
+      }
     }
   );
 

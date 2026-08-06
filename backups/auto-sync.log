@@ -1303,3 +1303,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    7cc6ec8..fd88ccf  main -> main
 [05/08/2026 21:42] ✅ Alterações enviadas com sucesso para o GitHub.
+[main b2db3ad] auto-save: 06/08/2026 08:13
+ 16 files changed, 1962 insertions(+), 265 deletions(-)
+ create mode 100644 src/app/api/vendas/executivo/route.ts
+ create mode 100644 src/app/oportunidades/page.tsx
+ create mode 100644 src/app/vendas/executivo/page.tsx
+ create mode 100644 src/lib/governance/executive/executiveCommercialService.ts
+ create mode 100644 src/lib/utils/business-days-calculator.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   fd88ccf..b2db3ad  main -> main
+[06/08/2026 08:13] ✅ Alterações enviadas com sucesso para o GitHub.
