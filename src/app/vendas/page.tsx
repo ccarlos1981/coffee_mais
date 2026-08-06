@@ -27,6 +27,7 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
+import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator";
 import {
   CommercialRole,
   isDistributorClient,
@@ -41,6 +42,11 @@ const MONTHS = [
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro",
 ];
 const YEARS = [2026, 2025, 2024, 2023, 2022];
+
+function cleanManagerName(name: string): string {
+  if (!name) return "";
+  return name.replace(/\s*\((KA|Dist|DIST|Key Accounts)\)/gi, "").trim();
+}
 
 const PIE_COLORS = [
   "#c8a96e", "#7d6b45", "#5a805a", "#a0522d",
@@ -252,7 +258,11 @@ export default function VendasDashboard() {
 
         if (!active) return;
 
-        setBusinessDays(bdRes.data || null);
+        const autoBd = calculateMonthBusinessDays(filterYear, filterMonth);
+        setBusinessDays({
+          total_days: bdRes.data?.total_days || autoBd.total_days,
+          elapsed_days: autoBd.elapsed_days,
+        });
         const allTargets: TargetRecord[] = targetRes.data || [];
 
         const rawJson = await apiRes.json();
@@ -287,7 +297,9 @@ export default function VendasDashboard() {
           allManagerIds.forEach(mId => {
             const sales = byManager.find(s => getManagerId(s) === mId);
             const target = allTargets.find(t => getManagerId(t) === mId);
-            const mName = sales?.manager || target?.manager || 'Outros';
+            const officialRole = OFFICIAL_COMMERCIAL_ROLES.find(r => r.managerId === mId);
+            const rawName = officialRole?.managerName || sales?.manager || target?.manager || 'Outros';
+            const mName = cleanManagerName(rawName);
 
             const distDef = DISTRIBUTORS_REGISTRY[mId];
             if (distDef) {
@@ -295,6 +307,42 @@ export default function VendasDashboard() {
               const allClients = (sales?.topClients || []).map(c => ({ ...c, maco: 0 }));
               const distClients = allClients.filter(c => isDistributorClient(c, mId));
               const kaClients = allClients.filter(c => !isDistributorClient(c, mId));
+
+              // 1. Busca de meta KA com prioridade absoluta para registros segregados com (KA)
+              const explicitKaTarget = allTargets.find(t => {
+                const tId = getManagerId(t);
+                if (tId === `${mId}-KA`) return true;
+                if (tId === mId) {
+                  const tName = (t.manager || '').toLowerCase();
+                  return tName.includes('(ka)');
+                }
+                return false;
+              });
+
+              const kaTarget = explicitKaTarget || allTargets.find(t => {
+                const tId = getManagerId(t);
+                if (tId === mId) {
+                  const tName = (t.manager || '').toLowerCase();
+                  return !tName.includes('(dist)') && tName !== 'distribuidor' && t.manager_id !== '1007';
+                }
+                return false;
+              });
+
+              // 2. Busca de meta Dist com prioridade absoluta para registros segregados com (Dist)
+              const explicitDistTarget = allTargets.find(t => {
+                const tId = getManagerId(t);
+                if (tId === `${mId}-DIST`) return true;
+                if (tId === mId) {
+                  const tName = (t.manager || '').toLowerCase();
+                  return tName.includes('(dist)') || tName.includes('(distribuidor)');
+                }
+                if (mId === '1007' || mName.toLowerCase() === 'distribuidor') {
+                  return tId === '1007' || t.manager?.toLowerCase() === 'distribuidor';
+                }
+                return false;
+              });
+
+              const distTarget = explicitDistTarget || (mId === '1007' ? allTargets.find(t => t.manager_id === '1007' || t.manager?.toLowerCase() === 'distribuidor') : undefined);
 
               // Linha KA
               const kaLabel = `${mName} (KA)`;
@@ -315,8 +363,8 @@ export default function VendasDashboard() {
                     paceQty: sales?.paceQty || 0,
                     paceMaco: 0,
                     topClients: kaClients,
-                    metaFat: target?.target_revenue || 0,
-                    metaUnd: target?.target_tons || 0,
+                    metaFat: kaTarget?.target_revenue || 0,
+                    metaUnd: kaTarget?.target_tons || 0,
                     metaMaco: 0,
                   });
                 }
@@ -342,8 +390,8 @@ export default function VendasDashboard() {
                       paceQty: 0,
                       paceMaco: 0,
                       topClients: distClients,
-                      metaFat: 0,
-                      metaUnd: 0,
+                      metaFat: distTarget?.target_revenue || 0,
+                      metaUnd: distTarget?.target_tons || 0,
                       metaMaco: 0,
                     });
                   }
@@ -506,6 +554,15 @@ export default function VendasDashboard() {
   }, [managerRows]);
 
   const pct = (real: number, meta: number) => (meta > 0 ? (real / meta) * 100 : 0);
+  const calcTendPct = (real: number, meta: number) => {
+    if (!meta || meta <= 0 || !businessDays || !businessDays.elapsed_days || businessDays.elapsed_days <= 0 || !businessDays.total_days || businessDays.total_days <= 0) {
+      return 0;
+    }
+    const val = ((real * businessDays.total_days) / (meta * businessDays.elapsed_days)) * 100;
+    if (isNaN(val) || !isFinite(val)) return 0;
+    return val;
+  };
+
   const pctColor = (val: number) => (val >= 100 ? "var(--success)" : val >= 80 ? "var(--warning)" : "var(--danger)");
 
   const timeElapsedPct = useMemo(() => {
@@ -524,7 +581,7 @@ export default function VendasDashboard() {
     }
   };
 
-  const faturamentoPct = pct(totals.fat, totals.metaFat);
+  const faturamentoPct = calcTendPct(totals.fat, totals.metaFat);
 
   const compareVariation = (current: number, previous: number) => {
     if (previous === 0) return { pct: 0, direction: "neutral" as const };
@@ -589,6 +646,11 @@ export default function VendasDashboard() {
             <Link href="/vendas" className="cm-nav-link active">
               <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 <BarChart3 style={{ width: 12, height: 12 }} /> Dashboard
+              </span>
+            </Link>
+            <Link href="/vendas/executivo" className="cm-nav-link">
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <TrendingUp style={{ width: 12, height: 12 }} /> Executivo
               </span>
             </Link>
             <Link href="/metas" className="cm-nav-link">Metas</Link>
@@ -703,42 +765,42 @@ export default function VendasDashboard() {
 
         {/* ═══ TOP SECTION: KPIs + Gauge + Pie ═══ */}
         <div className="desktop-only">
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 180px 240px", gap: 14, marginBottom: 16 }}>
+          <div className="vendas-top-grid">
             <div className="kpi-grid" style={{ marginBottom: 0 }}>
               {/* FATURAMENTO */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="vendas-kpi-pair">
                 <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
                 <KPICard
                   label="Real Fat."
                   value={formatCurrency(totals.fat / 1000, 0)}
                   variant="real"
-                  pctVal={pct(totals.fat, totals.metaFat)}
+                  pctVal={calcTendPct(totals.fat, totals.metaFat)}
                   compare={compareVariation(totals.fat, previousMonth.fat)}
                   compareLabel="mês ant."
                 />
               </div>
               
               {/* UNIDADES */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="vendas-kpi-pair">
                 <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
                 <KPICard
                   label="Real Unid."
                   value={formatNumber(totals.qty, 0)}
                   variant="real"
-                  pctVal={pct(totals.qty, totals.metaUnd)}
+                  pctVal={calcTendPct(totals.qty, totals.metaUnd)}
                   compare={compareVariation(totals.qty, previousMonth.qty)}
                   compareLabel="mês ant."
                 />
               </div>
 
               {/* MACO */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="vendas-kpi-pair">
                 <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
                 <KPICard
                   label="Real MaCo"
                   value={formatCurrency(totals.maco / 1000, 0)}
                   variant="real"
-                  pctVal={pct(totals.maco, totals.metaMaco)}
+                  pctVal={calcTendPct(totals.maco, totals.metaMaco)}
                   compare={compareVariation(totals.maco, previousYear.maco)}
                   compareLabel="ano ant."
                 />
@@ -746,12 +808,12 @@ export default function VendasDashboard() {
             </div>
 
             {/* Gauge */}
-            <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div className="glass-card vendas-gauge-card">
               <GaugeChart value={faturamentoPct} label="Atingimento" />
             </div>
 
             {/* Pie */}
-            <div className="glass-card" style={{ padding: 14 }}>
+            <div className="glass-card vendas-donut-card">
               <DonutChart data={familiaData} />
             </div>
           </div>
@@ -759,7 +821,7 @@ export default function VendasDashboard() {
 
         {/* ═══ Pace Row ═══ */}
         <div className="desktop-only">
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 16 }}>
+          <div className="vendas-pace-grid">
             <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
             <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
             <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
@@ -778,9 +840,9 @@ export default function VendasDashboard() {
 
         {/* ═══ MAIN TABLE (DESKTOP) ═══ */}
         <div className="desktop-only">
-          <div className="glass-card" style={{ overflow: "hidden" }}>
-            <div style={{ overflowX: "auto" }}>
-              <table className="data-table">
+          <div className="glass-card vendas-table-card">
+            <div className="vendas-table-wrapper">
+              <table className="data-table vendas-main-table">
                 <thead>
                   <tr>
                     <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
@@ -791,17 +853,17 @@ export default function VendasDashboard() {
                   <tr>
                     <th className="col-group-fat col-divider">Meta</th>
                     <th className="col-group-fat">Real</th>
-                    <th className="col-group-fat">%</th>
+                    <th className="col-group-fat">Tend %</th>
                     <th className="col-group-fat">Pace</th>
                     <th className="col-group-fat">Venda Fut.</th>
                     <th className="col-group-fat">Fat + Venda Fut.</th>
                     <th className="col-group-fat">%Ating.</th>
                     <th className="col-group-und col-divider">Meta</th>
                     <th className="col-group-und">Real</th>
-                    <th className="col-group-und">%</th>
+                    <th className="col-group-und">Tend %</th>
                     <th className="col-group-maco col-divider">Meta</th>
                     <th className="col-group-maco">Real</th>
-                    <th className="col-group-maco">%</th>
+                    <th className="col-group-maco">Tend %</th>
                     <th className="col-group-maco">Pace</th>
                   </tr>
                 </thead>
@@ -815,9 +877,9 @@ export default function VendasDashboard() {
                   ) : (
                     <>
                       {managerRows.map((row) => {
-                        const pFat = pct(row.fat, row.metaFat);
-                        const pUnd = pct(row.qty, row.metaUnd);
-                        const pMaco = pct(row.maco, row.metaMaco);
+                        const pFat = calcTendPct(row.fat, row.metaFat);
+                        const pUnd = calcTendPct(row.qty, row.metaUnd);
+                        const pMaco = calcTendPct(row.maco, row.metaMaco);
                         const isExpanded = expandedManager === row.manager;
 
                         return [
@@ -922,8 +984,8 @@ export default function VendasDashboard() {
                           <td>TOTAL</td>
                           <td className="col-divider">{formatCurrency(totals.metaFat / 1000)}</td>
                           <td>{formatCurrency(totals.fat / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
-                            {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
                           </td>
                           <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                             {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
@@ -935,13 +997,13 @@ export default function VendasDashboard() {
                           </td>
                           <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                           <td>{formatNumber(totals.qty, 0)}</td>
-                          <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
-                            {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                            {totals.metaUnd > 0 ? formatPercent(calcTendPct(totals.qty, totals.metaUnd)) : "-"}
                           </td>
                           <td className="col-divider">{formatCurrency(totals.metaMaco / 1000)}</td>
                           <td>{formatCurrency(totals.maco / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
-                            {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                            {totals.metaMaco > 0 ? formatPercent(calcTendPct(totals.maco, totals.metaMaco)) : "-"}
                           </td>
                           <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                             {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
@@ -975,7 +1037,7 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>%</th>
+                      <th>Tend %</th>
                       <th>Pace</th>
                       <th>Venda Fut.</th>
                       <th>Fat + Vd Fut</th>
@@ -992,7 +1054,7 @@ export default function VendasDashboard() {
                     ) : (
                       <>
                         {managerRows.map((row) => {
-                          const pFat = pct(row.fat, row.metaFat);
+                          const pFat = calcTendPct(row.fat, row.metaFat);
                           const isExpanded = expandedManager === row.manager;
                           return [
                             <tr key={row.manager}>
@@ -1078,8 +1140,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatCurrency(totals.metaFat / 1000)}</td>
                             <td>{formatCurrency(totals.fat / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
-                              {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
                             </td>
                             <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                               {totals.paceFat > 0 ? formatCurrency(totals.paceFat / 1000) : "-"}
@@ -1113,7 +1175,7 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>%</th>
+                      <th>Tend %</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1126,7 +1188,7 @@ export default function VendasDashboard() {
                     ) : (
                       <>
                         {managerRows.map((row) => {
-                          const pUnd = pct(row.qty, row.metaUnd);
+                          const pUnd = calcTendPct(row.qty, row.metaUnd);
                           const isExpanded = expandedManager === row.manager;
                           return [
                             <tr key={row.manager}>
@@ -1192,8 +1254,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatNumber(totals.metaUnd, 0)}</td>
                             <td>{formatNumber(totals.qty, 0)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
-                              {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                              {totals.metaUnd > 0 ? formatPercent(calcTendPct(totals.qty, totals.metaUnd)) : "-"}
                             </td>
                           </tr>
                         )}
@@ -1219,7 +1281,7 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>%</th>
+                      <th>Tend %</th>
                       <th>Pace</th>
                     </tr>
                   </thead>
@@ -1233,7 +1295,7 @@ export default function VendasDashboard() {
                     ) : (
                       <>
                         {managerRows.map((row) => {
-                          const pMaco = pct(row.maco, row.metaMaco);
+                          const pMaco = calcTendPct(row.maco, row.metaMaco);
                           const isExpanded = expandedManager === row.manager;
                           return [
                             <tr key={row.manager}>
@@ -1302,8 +1364,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatCurrency(totals.metaMaco / 1000)}</td>
                             <td>{formatCurrency(totals.maco / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
-                              {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                              {totals.metaMaco > 0 ? formatPercent(calcTendPct(totals.maco, totals.metaMaco)) : "-"}
                             </td>
                             <td className="pct-cell" style={{ color: "var(--foreground)" }}>
                               {totals.paceMaco > 0 ? formatCurrency(totals.paceMaco / 1000) : "-"}
@@ -1417,7 +1479,7 @@ export default function VendasDashboard() {
                   label="Real Fat."
                   value={formatCurrency(totals.fat / 1000, 0)}
                   variant="real"
-                  pctVal={pct(totals.fat, totals.metaFat)}
+                  pctVal={calcTendPct(totals.fat, totals.metaFat)}
                   compare={compareVariation(totals.fat, previousMonth.fat)}
                   compareLabel="mês ant."
                 />
@@ -1426,7 +1488,7 @@ export default function VendasDashboard() {
                   label="Real Unid."
                   value={formatNumber(totals.qty, 0)}
                   variant="real"
-                  pctVal={pct(totals.qty, totals.metaUnd)}
+                  pctVal={calcTendPct(totals.qty, totals.metaUnd)}
                   compare={compareVariation(totals.qty, previousMonth.qty)}
                   compareLabel="mês ant."
                 />
@@ -1435,7 +1497,7 @@ export default function VendasDashboard() {
                   label="Real MaCo"
                   value={formatCurrency(totals.maco / 1000, 0)}
                   variant="real"
-                  pctVal={pct(totals.maco, totals.metaMaco)}
+                  pctVal={calcTendPct(totals.maco, totals.metaMaco)}
                   compare={compareVariation(totals.maco, previousYear.maco)}
                   compareLabel="ano ant."
                 />

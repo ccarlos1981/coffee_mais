@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
+import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntelligenceEngine";
 import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
@@ -232,23 +233,28 @@ export default function RpsPage() {
     return (businessDays.elapsed_days / businessDays.total_days) * 100;
   }, [businessDays]);
 
-  // Carrega dias úteis do banco de dados
+  // Carrega dias úteis do banco de dados (total_days estático) e calcula elapsed_days dinamicamente
   const loadBusinessDays = useCallback(async (year: number, month: number) => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from("business_days")
         .select("total_days, elapsed_days")
         .eq("year", year)
         .eq("month", month)
         .maybeSingle();
 
-      if (!error && data) {
-        setBusinessDays(data);
-      } else {
-        setBusinessDays(null);
-      }
+      const autoBd = calculateMonthBusinessDays(year, month);
+      setBusinessDays({
+        total_days: data?.total_days || autoBd.total_days,
+        elapsed_days: autoBd.elapsed_days,
+      });
     } catch (err) {
       console.error("Erro ao carregar dias úteis:", err);
+      const autoBd = calculateMonthBusinessDays(year, month);
+      setBusinessDays({
+        total_days: autoBd.total_days,
+        elapsed_days: autoBd.elapsed_days,
+      });
     }
   }, []);
 

@@ -53,6 +53,11 @@ const STATUS_LABELS: Record<OperationalStatus, { label: string; color: string; b
 };
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
+export function cleanManagerName(name: string): string {
+  if (!name) return "";
+  return name.replace(/\s*\((KA|Dist|DIST|Key Accounts)\)/gi, "").trim();
+}
+
 export function getPreceding3ClosedMonths(metaMonth: number, year: number): string[] {
   const result: string[] = [];
   for (let i = 3; i >= 1; i--) {
@@ -721,7 +726,7 @@ export default function MetasRedePage() {
                       )}
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-black text-neutral-900 text-base">{mgr.manager}</span>
+                          <span className="font-black text-neutral-900 text-base">{cleanManagerName(mgr.manager)}</span>
                           {/* REFINAMENTO 2: STATUS OPERACIONAL DA META */}
                           <select
                             value={status}
