@@ -1859,17 +1859,20 @@ Status Arquitetural: `ENGINEERING_MODE = BUSINESS_VALUE` & `BUSINESS_FIRST = TRU
 
 ---
 
-## 97. Baseline Oficial — Release 3 — Demanda 006 — Otimização do Layout do Dashboard de Vendas (/vendas)
+## 98. Baseline Oficial — Acesso Read-Only ao Módulo Financeiro (Boletos) para Gerentes
 
-A partir de 06/08/2026, a otimização visual do Dashboard de Vendas (`/vendas`) torna-se o baseline permanente e oficial do Coffee++.
+A partir de 06/08/2026, a autorização de acesso em modo leitura ao Módulo Financeiro (`/financeiro/boletos`) para usuários com perfil **GERENTE** torna-se o baseline permanente e oficial do Coffee++.
 
 ### Diretrizes Mandatórias:
-1. **Ocultação Exclusiva de UI**: As colunas *Pace (Faturamento)*, *Venda Fut.*, *Fat + Venda Fut.* e *Pace (MaCo)* permanecem ocultadas exclusivamente na camada de renderização JSX, preservando 100% das fórmulas, cálculos, estados React e objetos computados em memória.
-2. **Reaproveitamento de Área Útil**: A tabela principal desktop opera com 11 colunas e largura responsiva de 100%, eliminando scroll horizontal nas resoluções 1366×768, 1440×900, 1600×900 e 1920×1080 com zoom a 100%.
-3. **Preservação de Motores e Contratos**: Fica proibida qualquer alteração em `AnalyticsEngine V1`, `ForecastEngine`, `SimulationEngine`, `CommercialIntelligenceEngine`, `CommercialAssistantEngine`, `commercial-structure.ts`, APIs, banco de dados ou arquivos de exportação em decorrência desta simplificação visual.
-4. **Auditoria Obrigatória**: Nenhuma evolução do Dashboard de Vendas poderá ser submetida sem aprovação prévia em `npm run health:analytics`, `npx tsc --noEmit` e `npm run build` com 0 desvio financeiro.
+1. **Escopo Read-Only**: Usuários com perfil GERENTE possuem permissão exclusivamente para visualizar, pesquisar, filtrar, ordenar e exportar boletos. É expressamente proibida qualquer ação de importação de planilhas, adição manual, edição, exclusão ou alteração de dados.
+2. **Ocultação DOM no Frontend**: Os componentes de escrita (*Importar Planilha*, *Adicionar Manual*, formulários e ações de edição/exclusão da tabela) são completamente omitidos da renderização DOM para perfis GERENTE (não apenas desabilitados).
+3. **Validação de Autorização no Backend**: Toda validação de acesso é realizada obrigatoriamente no servidor (Server Actions e API HTTP `/api/trade/boletos/importar`) com verificação do token de autenticação e consulta à role em `cm_user_profiles`. O servidor responde com HTTP `403 Forbidden` a qualquer tentativa não autorizada de escrita.
+4. **Identidade da Exportação com a Grid**: O botão *Exportar* gera planilhas Excel (`.xlsx`) exclusivamente a partir do mesmo DTO já filtrado e ordenado exibido na grid (`filteredBoletos`), mantendo paridade absoluta de registros, filtros ativos e formatação.
+5. **Preservação Total do Ecossistema**: Fica proibida qualquer alteração na `AnalyticsEngine`, banco de dados, RLS, migrations, views oficiais, fórmulas ou regras de negócio em decorrência deste controle de acesso.
+6. **Auditoria Mandatória**: Toda evolução deste módulo exige aprovação em `npm run health:analytics`, `npx tsc --noEmit` e `npm run build` com 0 desvio financeiro e 0 regressões.
 
-Status Arquitetural: `RELEASE_3_DEMANDA_006 = LOCKED` & `BASELINE = CONFIRMED`.
+Status Arquitetural: `BOLETOS_READONLY_GERENTE = LOCKED` & `BASELINE = CONFIRMED`.
+
 
 
 
