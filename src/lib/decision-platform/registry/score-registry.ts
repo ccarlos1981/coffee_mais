@@ -1,5 +1,6 @@
 import { DecisionScoreDefinition } from "../dto/decision-dto";
 import { HealthRules } from "./rules/health-rules";
+import { OFFICIAL_ANALYTICS_SOURCES } from "../../governance/analytics/sources";
 
 export class ScoreRegistry {
   private static scoresCatalog: Record<string, DecisionScoreDefinition> = {
@@ -11,7 +12,7 @@ export class ScoreRegistry {
       weightPct: 30,
       classification: "Saudável",
       description: "Mede a saúde financeira e comercial combinando Pace, Meta e Forecast.",
-      traceability: ["AnalyticsEngine V1", "mv_vendas_cliente_mensal", "cm_weekly_projections"]
+      traceability: ["AnalyticsEngine V1", OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL, "cm_weekly_projections"]
     },
     commercialScore: {
       scoreKey: "commercialScore",

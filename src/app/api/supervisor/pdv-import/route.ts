@@ -82,25 +82,28 @@ export async function POST(request: Request) {
           continue;
         }
 
-        // Upsert into base_atendimento
-        const { error: baseError } = await supabaseAdmin
-          .from("base_atendimento")
-          .upsert({
-            cod_parceiro: codParceiro,
-            nome_parceiro: row.nome_pdv.trim(),
-            nome_fantasia: row.nome_pdv.trim(),
-            razao_social: row.nome_pdv.trim(),
-            rede: row.rede ? row.rede.trim() : "Independente",
-            canal: row.canal ? row.canal.trim() : "VAREJO F OUT",
-            uf: row.uf.trim().toUpperCase(),
-            cidade: row.cidade.trim(),
-            endereco: row.endereco ? row.endereco.trim() : "",
-            faturamento_mensal: row.faturamento_mensal ? Number(row.faturamento_mensal) : 0.00,
-            cluster_canal: row.cluster ? row.cluster.trim() : "D",
-            cnpj: row.cnpj ? row.cnpj.trim() : null,
-            manager: row.supervisor ? row.supervisor.trim() : "Inside Sales",
-            updated_at: new Date().toISOString()
-          }, { onConflict: "cod_parceiro" });
+        // Ingestão via RPC Centralizada de Importação (Governança Controlada)
+        const pdvItem = {
+          cod_parceiro: codParceiro,
+          nome_parceiro: row.nome_pdv.trim(),
+          nome_fantasia: row.nome_pdv.trim(),
+          razao_social: row.nome_pdv.trim(),
+          rede: row.rede ? row.rede.trim() : "Independente",
+          canal: row.canal ? row.canal.trim() : "VAREJO F OUT",
+          uf: row.uf.trim().toUpperCase(),
+          cidade: row.cidade.trim(),
+          endereco: row.endereco ? row.endereco.trim() : "",
+          faturamento_mensal: row.faturamento_mensal ? Number(row.faturamento_mensal) : 0.00,
+          cluster_canal: row.cluster ? row.cluster.trim() : "D",
+          cnpj: row.cnpj ? row.cnpj.trim() : null,
+          manager: row.supervisor ? row.supervisor.trim() : "Inside Sales",
+        };
+
+        const { error: baseError } = await supabaseAdmin.rpc("rpc_importar_atendimento_sankhya", {
+          p_items: [pdvItem],
+          p_batch_id: `pdv_import_${job.id}`,
+          p_force_override: false,
+        });
 
         if (baseError) throw baseError;
 

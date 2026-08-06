@@ -87,23 +87,17 @@ export function buildDateFilter(startMonth?: string | null, endMonth?: string | 
   return clauses;
 }
 
+import { buildCommercialRoleSqlFilter } from '@/lib/domain/commercial-structure';
+
 /**
  * Construtor de filtro de Gerente padronizado.
- * `manager_id` é a chave primária oficial de busca.
+ * `manager_id` ou chave composta de CommercialRole (ex: "1002-KA", "1002-DIST") é a referência de busca.
  */
-export function buildManagerFilter(manager_id?: string | null, manager?: string | null, tableAlias?: string): string | null {
-  const prefix = tableAlias ? `${tableAlias}.` : '';
-  
-  if (manager_id && manager_id !== 'all') {
-    const ids = manager_id.split(',').map(m => escapeSqlValue(m.trim())).join(',');
-    return `${prefix}manager_id IN (${ids})`;
-  }
-  if (manager && manager !== 'all') {
-    const managers = manager.split(',').map(m => escapeSqlValue(m.trim())).join(',');
-    // Permite correspondência por manager_id ou manager para manter retrocompatibilidade
-    return `(${prefix}manager_id IN (${managers}) OR ${prefix}manager IN (${managers}))`;
-  }
-  return null;
+export function buildManagerFilter(manager_id?: string | null, manager?: string | null, tableAlias?: string, targetTable?: string): string | null {
+  const targetFilter = manager_id && manager_id !== 'all' ? manager_id : (manager && manager !== 'all' ? manager : null);
+  if (!targetFilter) return null;
+
+  return buildCommercialRoleSqlFilter(targetFilter, tableAlias, targetTable);
 }
 
 /**

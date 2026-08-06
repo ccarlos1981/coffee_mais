@@ -2,17 +2,19 @@
 
 import React, { useState, useCallback } from "react";
 import Link from "next/link";
-import { ChevronRight, Bot, ShieldCheck, AlertTriangle } from "lucide-react";
+import { ChevronRight, Bot, ShieldCheck, AlertTriangle, RefreshCw } from "lucide-react";
 import { AssistantMessage, AssistantResponseData } from "@/lib/governance/analytics/assistant";
 import { AssistantFilterBar, AssistantFiltersState } from "./components/AssistantFilterBar";
+import { AssistantTopQueries } from "./components/AssistantTopQueries";
 import { AssistantSuggestedQueries } from "./components/AssistantSuggestedQueries";
 import { AssistantChat } from "./components/AssistantChat";
 import { AssistantDrawer } from "./components/AssistantDrawer";
+import { ExportButton } from "@/components/ExportButton";
 
 export default function AssistenteComercialPage() {
   const defaultFilters: AssistantFiltersState = {
-    startMonth: "2026-06",
-    endMonth: "2026-06",
+    startMonth: "2026-07",
+    endMonth: "2026-07",
     manager: "all",
     uf: "all",
     channel: "all",
@@ -22,14 +24,26 @@ export default function AssistenteComercialPage() {
   const initialMessage: AssistantMessage = {
     id: "msg-welcome",
     sender: "ASSISTANT",
-    text: "Olá! Sou o Assistente Comercial da Coffee++. Como posso ajudar com os diagnósticos de faturamento, forecast, DRE, CRM ou simulação comercial?",
+    text: "Olá! Sou o Copiloto Executivo do Coffee++. Posso responder a qualquer pergunta sobre faturamento, forecast, metas por rede, distribuidores, margem MACO ou simulações estratégicas.",
     timestamp: "Agora",
     category: "GERAL",
+    dataInsight: {
+      kpis: [
+        { label: "Faturamento", value: "R$ 2.480.000", color: "text-foreground" },
+        { label: "Meta Cia", value: "R$ 2.500.000", color: "text-emerald-500" },
+        { label: "GAP Financeiro", value: "R$ -20.000", color: "text-rose-500" },
+        { label: "Atingimento", value: "99,2%", color: "text-gold" }
+      ]
+    }
   };
 
   const [filters, setFilters] = useState<AssistantFiltersState>(defaultFilters);
   const [messages, setMessages] = useState<AssistantMessage[]>([initialMessage]);
-  const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([]);
+  const [suggestedFollowUps, setSuggestedFollowUps] = useState<string[]>([
+    "Qual a necessidade diária de vendas até o final do mês?",
+    "Quais os 5 maiores riscos da carteira hoje?",
+    "Vale mais investir R$ 50k em Trade ou dar desconto?"
+  ]);
   const [selectedDrawerItem, setSelectedDrawerItem] = useState<AssistantMessage | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,10 +118,9 @@ export default function AssistenteComercialPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* 1. Cabeçalho Executivo & Governança */}
+      {/* 1. CABEÇALHO EXECUTIVO & GOVERNANÇA */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
-          {/* Breadcrumbs */}
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
             <Link href="/" className="hover:text-foreground transition-colors">
               Home
@@ -122,25 +135,35 @@ export default function AssistenteComercialPage() {
             </div>
             <div>
               <h1 className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
-                Assistente Comercial — IA Executiva
+                Copiloto Executivo do Coffee++
               </h1>
               <p className="text-xs text-muted-foreground">
-                Consultas Executivas em Linguagem Natural Consumindo Fontes Oficiais Homologadas
+                Inteligência Conversacional Multiengine Orientada à Tomada de Decisão
               </p>
             </div>
           </div>
         </div>
 
-        {/* Badge de Governança Financeira */}
-        <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-2xl text-xs shadow-sm self-start md:self-auto">
-          <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          <span className="font-mono text-[11px] font-bold text-foreground">
-            ASSISTANT_ENGINE = ISOLATED
-          </span>
+        <div className="flex items-center gap-3">
+          <ExportButton
+            data={messages.map((m) => ({
+              Remetente: m.sender,
+              Mensagem: m.text,
+              DataHora: m.timestamp,
+              Categoria: m.category || "GERAL"
+            }))}
+            filename="historico_assistente_executivo"
+          />
+          <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-2xl text-xs shadow-sm">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <span className="font-mono text-[11px] font-bold text-foreground">
+              COMMERCIAL_ASSISTANT = READ_ONLY
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* 2. Barra de Filtros */}
+      {/* 2. BARRA DE FILTROS DE CONTEXTO */}
       <AssistantFilterBar
         filters={filters}
         onFilterChange={setFilters}
@@ -148,23 +171,35 @@ export default function AssistenteComercialPage() {
         loading={loading}
       />
 
-      {/* Mensagem de Erro se houver */}
       {error && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             <span>{error}</span>
           </div>
+          <button
+            onClick={() => setError(null)}
+            className="px-3 py-1 bg-rose-500/20 hover:bg-rose-500/30 rounded-xl transition-all font-semibold flex items-center gap-1"
+          >
+            <RefreshCw className="w-3 h-3" />
+            Fechar
+          </button>
         </div>
       )}
 
-      {/* 3. Sugestões de Perguntas */}
+      {/* 3. PERGUNTAS DA DIRETORIA (ATALHOS FIXOS C-LEVEL) */}
+      <AssistantTopQueries
+        onSelectQuery={handleSendMessage}
+        loading={loading}
+      />
+
+      {/* 4. BIBLIOTECA POR CATEGORIAS (~80 PERGUNTAS ESTRUTURADAS) */}
       <AssistantSuggestedQueries
         onSelectQuery={handleSendMessage}
         loading={loading}
       />
 
-      {/* 4. Chat com IA Executiva */}
+      {/* 5. CANVAS CONVERSACIONAL EXECUÇÃO E MEMÓRIA DE SESSÃO */}
       <AssistantChat
         messages={messages}
         onSendMessage={handleSendMessage}
@@ -173,7 +208,7 @@ export default function AssistenteComercialPage() {
         loading={loading}
       />
 
-      {/* 5. Drawer Lateral Read-Only */}
+      {/* DRAWER DE DETALHAMENTO */}
       <AssistantDrawer
         message={selectedDrawerItem}
         onClose={() => setSelectedDrawerItem(null)}

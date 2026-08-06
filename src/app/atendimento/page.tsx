@@ -215,7 +215,11 @@ export default function AtendimentoPage() {
       if (pdvUpdates.length > 0) {
         for (let i = 0; i < pdvUpdates.length; i += 500) {
           const batch = pdvUpdates.slice(i, i + 500);
-          const { error } = await supabase.from("base_atendimento").upsert(batch, { onConflict: "cod_parceiro" });
+          const { error } = await supabase.rpc("rpc_importar_atendimento_sankhya", {
+            p_items: batch,
+            p_batch_id: `ui_save_${Date.now()}`,
+            p_force_override: false,
+          });
           if (error) throw error;
         }
       }

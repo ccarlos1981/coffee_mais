@@ -27,6 +27,13 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
+import {
+  CommercialRole,
+  isDistributorClient,
+  getDrilldownLabel,
+  DISTRIBUTORS_REGISTRY,
+  OFFICIAL_COMMERCIAL_ROLES,
+} from "@/lib/domain/commercial-structure";
 
 /* ───────────────── constants ───────────────── */
 const MONTHS = [
@@ -43,11 +50,13 @@ const PIE_COLORS = [
 
 /* ── Quick Filter Presets ── */
 const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; value: string; color: string }[] = [
-  { label: "Leandro", type: "manager", value: "1001", color: "#6366f1" },
-  { label: "Luiz", type: "manager", value: "1002", color: "#8b5cf6" },
-  { label: "John Guedes", type: "manager", value: "1003", color: "#10b981" },
-  { label: "Julliano", type: "manager", value: "1000", color: "#a855f7" },
-  { label: "Luisa", type: "manager", value: "1010", color: "#d946ef" },
+  { label: "Leandro (KA)", type: "manager", value: "1001-KA", color: "#6366f1" },
+  { label: "Leandro (Dist)", type: "manager", value: "1001-DIST", color: "#4f46e5" },
+  { label: "Luiz (KA)", type: "manager", value: "1002-KA", color: "#8b5cf6" },
+  { label: "Luiz (Dist)", type: "manager", value: "1002-DIST", color: "#7c3aed" },
+  { label: "John (KA)", type: "manager", value: "1003-KA", color: "#10b981" },
+  { label: "John (Dist)", type: "manager", value: "1003-DIST", color: "#059669" },
+  { label: "Julliano (KA)", type: "manager", value: "1000-KA", color: "#a855f7" },
   { label: "Inside", type: "manager", value: "1004", color: "#ec4899" },
   { label: "KA", type: "channel", value: "KA", color: "#f59e0b" },
   { label: "Distrib.", type: "channel", value: "Distribuidor", color: "#10b981" },
@@ -62,12 +71,18 @@ const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; v
 
 const MANAGER_NAME_TO_ID: Record<string, string> = {
   "Leandro": "1001",
+  "Leandro (KA)": "1001-KA",
+  "Leandro (Dist)": "1001-DIST",
   "Leandro Saffi": "1001",
   "Luiz": "1002",
+  "Luiz (KA)": "1002-KA",
+  "Luiz (Dist)": "1002-DIST",
   "John Guedes": "1003",
+  "John Guedes (KA)": "1003-KA",
+  "John Guedes (Dist)": "1003-DIST",
   "John": "1003",
   "Julliano": "1000",
-  "Luisa": "1010",
+  "Julliano (KA)": "1000-KA",
   "Inside Sales": "1004",
   "Ecommerce": "1005",
   "Marketplace": "1006",
@@ -98,6 +113,7 @@ interface ClientRow {
 interface ManagerData {
   manager: string;
   manager_id?: string;
+  role?: CommercialRole;
   fat: number;
   qty: number;
   maco: number;
@@ -273,36 +289,91 @@ export default function VendasDashboard() {
             const target = allTargets.find(t => getManagerId(t) === mId);
             const mName = sales?.manager || target?.manager || 'Outros';
 
-            if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
+            const distDef = DISTRIBUTORS_REGISTRY[mId];
+            if (distDef) {
+              // Gerente possui cadastro no domínio de Commercial Roles (Luiz, John Guedes, Leandro, Julliano)
+              const allClients = (sales?.topClients || []).map(c => ({ ...c, maco: 0 }));
+              const distClients = allClients.filter(c => isDistributorClient(c, mId));
+              const kaClients = allClients.filter(c => !isDistributorClient(c, mId));
 
-            // Filter by channel selection
-            if (filterChannel.length > 0) {
-              const isKA = filterChannel.includes("KA");
-
-              if (STANDALONE_CHANNEL_MANAGERS.has(mName)) {
-                // Canal que mapeia direto para manager de mesmo nome
-                if (!filterChannel.includes(mName)) return;
-              } else {
-                // KA managers: Leandro Saffi, Julliano, Luiz, etc.
-                if (!isKA) return;
+              // Linha KA
+              const kaLabel = `${mName} (KA)`;
+              const kaKey = `${mId}-KA`;
+              if (filterManager.length === 0 || filterManager.includes(kaKey) || filterManager.includes(kaLabel) || filterManager.includes(mId) || filterManager.includes(mName)) {
+                if (filterChannel.length === 0 || filterChannel.includes("KA")) {
+                  const kaFat = kaClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                  const kaQty = kaClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+                  rows.push({
+                    manager: kaLabel,
+                    manager_id: kaKey,
+                    role: "KA",
+                    fat: kaClients.length > 0 ? kaFat : (distClients.length === 0 ? (sales?.fat || 0) : 0),
+                    qty: kaClients.length > 0 ? kaQty : (distClients.length === 0 ? (sales?.qty || 0) : 0),
+                    maco: 0,
+                    vendaFutura: sales?.vendaFutura || 0,
+                    paceFat: sales?.paceFat || 0,
+                    paceQty: sales?.paceQty || 0,
+                    paceMaco: 0,
+                    topClients: kaClients,
+                    metaFat: target?.target_revenue || 0,
+                    metaUnd: target?.target_tons || 0,
+                    metaMaco: 0,
+                  });
+                }
               }
-            }
 
-            rows.push({
-              manager: mName,
-              manager_id: mId,
-              fat: sales?.fat || 0,
-              qty: sales?.qty || 0,
-              maco: 0,
-              vendaFutura: sales?.vendaFutura || 0,
-              paceFat: sales?.paceFat || 0,
-              paceQty: sales?.paceQty || 0,
-              paceMaco: 0,
-              topClients: (sales?.topClients || []).map(c => ({ ...c, maco: 0 })),
-              metaFat: target?.target_revenue || 0,
-              metaUnd: target?.target_tons || 0,
-              metaMaco: 0,
-            });
+              // Linha DIST (apenas se possuir distribuidores cadastrados no domínio)
+              if (distDef.redes.length > 0 || distDef.partnerCodes.length > 0) {
+                const distLabel = `${mName} (Dist)`;
+                const distKey = `${mId}-DIST`;
+                if (filterManager.length === 0 || filterManager.includes(distKey) || filterManager.includes(distLabel)) {
+                  if (filterChannel.length === 0 || filterChannel.includes("Distribuidor")) {
+                    const distFat = distClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                    const distQty = distClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+                    rows.push({
+                      manager: distLabel,
+                      manager_id: distKey,
+                      role: "DIST",
+                      fat: distFat,
+                      qty: distQty,
+                      maco: 0,
+                      vendaFutura: 0,
+                      paceFat: 0,
+                      paceQty: 0,
+                      paceMaco: 0,
+                      topClients: distClients,
+                      metaFat: 0,
+                      metaUnd: 0,
+                      metaMaco: 0,
+                    });
+                  }
+                }
+              }
+            } else {
+              // Gerente sem segregação comercial de roles (ex: Inside Sales, Ecommerce, Marketplace, etc.)
+              if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
+
+              if (filterChannel.length > 0) {
+                if (STANDALONE_CHANNEL_MANAGERS.has(mName) && !filterChannel.includes(mName)) return;
+              }
+
+              rows.push({
+                manager: mName,
+                manager_id: mId,
+                role: "KA",
+                fat: sales?.fat || 0,
+                qty: sales?.qty || 0,
+                maco: 0,
+                vendaFutura: sales?.vendaFutura || 0,
+                paceFat: sales?.paceFat || 0,
+                paceQty: sales?.paceQty || 0,
+                paceMaco: 0,
+                topClients: (sales?.topClients || []).map(c => ({ ...c, maco: 0 })),
+                metaFat: target?.target_revenue || 0,
+                metaUnd: target?.target_tons || 0,
+                metaMaco: 0,
+              });
+            }
           });
 
           rows.sort((a, b) => {
@@ -797,17 +868,17 @@ export default function VendasDashboard() {
                                     textTransform: "uppercase", letterSpacing: "0.1em",
                                     marginBottom: 8,
                                   }}>
-                                    Top Matrizes — {row.manager}
+                                    {getDrilldownLabel(row.role, row.manager)}
                                   </p>
                                   {row.topClients.length === 0 ? (
-                                    <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                    <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>{row.role === 'DIST' ? 'Sem distribuidores no período.' : 'Sem matrizes no período.'}</p>
                                   ) : (
                                     <div style={{ maxHeight: 300, overflowY: "auto" }}>
                                       <table className="drill-table">
                                         <thead>
                                           <tr>
                                             <th style={{ width: 30 }}>#</th>
-                                            <th>Matriz</th>
+                                            <th>{row.role === 'DIST' ? 'Distribuidor' : 'Matriz'}</th>
                                             <th>Faturamento</th>
                                             <th>vs Mês Ant.</th>
                                             <th>vs Ano Ant.</th>
@@ -958,17 +1029,17 @@ export default function VendasDashboard() {
                                       textTransform: "uppercase", letterSpacing: "0.1em",
                                       marginBottom: 8,
                                     }}>
-                                      Top Matrizes — {row.manager}
+                                      {getDrilldownLabel(row.role, row.manager)}
                                     </p>
                                     {row.topClients.length === 0 ? (
-                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>{row.role === 'DIST' ? 'Sem distribuidores no período.' : 'Sem matrizes no período.'}</p>
                                     ) : (
                                       <div style={{ maxHeight: 200, overflowY: "auto" }}>
                                         <table className="drill-table">
                                           <thead>
                                             <tr>
                                               <th style={{ width: 20 }}>#</th>
-                                              <th>Matriz</th>
+                                              <th>{row.role === 'DIST' ? 'Distribuidor' : 'Matriz'}</th>
                                               <th>Faturamento</th>
                                               <th>vs Mês A.</th>
                                               <th>vs Ano A.</th>
@@ -1084,17 +1155,17 @@ export default function VendasDashboard() {
                                       textTransform: "uppercase", letterSpacing: "0.1em",
                                       marginBottom: 8,
                                     }}>
-                                      Top Matrizes — {row.manager}
+                                      {getDrilldownLabel(row.role, row.manager)}
                                     </p>
                                     {row.topClients.length === 0 ? (
-                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>{row.role === 'DIST' ? 'Sem distribuidores no período.' : 'Sem matrizes no período.'}</p>
                                     ) : (
                                       <div style={{ maxHeight: 200, overflowY: "auto" }}>
                                         <table className="drill-table">
                                           <thead>
                                             <tr>
                                               <th style={{ width: 20 }}>#</th>
-                                              <th>Matriz</th>
+                                              <th>{row.role === 'DIST' ? 'Distribuidor' : 'Matriz'}</th>
                                               <th>Unidades</th>
                                             </tr>
                                           </thead>
@@ -1194,17 +1265,17 @@ export default function VendasDashboard() {
                                       textTransform: "uppercase", letterSpacing: "0.1em",
                                       marginBottom: 8,
                                     }}>
-                                      Top Matrizes — {row.manager}
+                                      {getDrilldownLabel(row.role, row.manager)}
                                     </p>
                                     {row.topClients.length === 0 ? (
-                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>Sem matrizes no período.</p>
+                                      <p style={{ fontSize: "0.7rem", color: "var(--foreground-dim)" }}>{row.role === 'DIST' ? 'Sem distribuidores no período.' : 'Sem matrizes no período.'}</p>
                                     ) : (
                                       <div style={{ maxHeight: 200, overflowY: "auto" }}>
                                         <table className="drill-table">
                                           <thead>
                                             <tr>
                                               <th style={{ width: 20 }}>#</th>
-                                              <th>Matriz</th>
+                                              <th>{row.role === 'DIST' ? 'Distribuidor' : 'Matriz'}</th>
                                               <th>MaCo</th>
                                             </tr>
                                           </thead>

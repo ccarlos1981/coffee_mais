@@ -35,23 +35,37 @@ export function canonicalizeKey(value: string | null | undefined): string {
 const MANAGERS_MAP: Record<string, ManagerInfo> = {
   // Julliano (1000)
   "1000": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
+  "1000-KA": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "JULLIANO": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
+  "JULLIANO (KA)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "JULLIANO (SPC)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
 
   // Leandro Saffi / Leandro (1001)
   "1001": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
+  "1001-KA": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
+  "1001-DIST": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
   "LEANDRO": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
+  "LEANDRO (KA)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
+  "LEANDRO (DIST)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
   "LEANDRO SAFFI": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
   "LEANDRO (SUL)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
 
   // Luiz (1002)
   "1002": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
+  "1002-KA": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
+  "1002-DIST": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
   "LUIZ": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
+  "LUIZ (KA)": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
+  "LUIZ (DIST)": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
   "LUIZ (SU+CO+NE)": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },
 
   // John Guedes (1003)
   "1003": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "1003-KA": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "1003-DIST": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
   "JOHN GUEDES": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN GUEDES (KA)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
+  "JOHN GUEDES (DIST)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
   "JOHN": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
   "JOHN GUEDES (CO+NO)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },
   "JOHN GUEDES (CENTRO-OESTE/NORTE)": { managerId: "1003", managerName: "John Guedes", canonicalKey: "JOHN GUEDES" },

@@ -38,12 +38,16 @@ const CHANNELS = [
   { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" }
 ];
 
+import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
+
 const KA_MANAGERS = [
   { id: "Total", manager_id: "Total", manager: "KA Total (Somado)", name: "KA Total (Somado)" },
-  { id: "1001", manager_id: "1001", manager: "Leandro", name: "Leandro" },
-  { id: "1002", manager_id: "1002", manager: "Luiz", name: "Luiz" },
-  { id: "1003", manager_id: "1003", manager: "John Guedes", name: "John Guedes" },
-  { id: "1000", manager_id: "1000", manager: "Julliano", name: "Julliano" }
+  ...OFFICIAL_COMMERCIAL_ROLES.map(r => ({
+    id: r.key,
+    manager_id: r.key,
+    manager: r.label,
+    name: r.label,
+  }))
 ];
 
 const YEARS = [2024, 2025, 2026, 2027];
