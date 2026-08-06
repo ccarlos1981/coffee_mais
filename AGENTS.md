@@ -1873,6 +1873,504 @@ A partir de 06/08/2026, a autorização de acesso em modo leitura ao Módulo Fin
 
 Status Arquitetural: `BOLETOS_READONLY_GERENTE = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 99. Baseline Oficial — Copiloto Comercial Inteligente de Lançamento
+
+### Objetivo
+
+O Copiloto Comercial Inteligente constitui a camada oficial de apoio à decisão do módulo de Lançamento de Investimentos.
+
+Seu objetivo é orientar o gerente antes da confirmação do lançamento, utilizando exclusivamente informações históricas homologadas, sem interferir na decisão do usuário e sem alterar qualquer regra financeira da Plataforma Coffee++.
+
+---
+
+### Diretrizes Obrigatórias
+
+1. O Copiloto atua exclusivamente em modo **Read-Only**.
+
+2. É proibido alterar:
+   - AnalyticsEngine;
+   - Banco de Dados;
+   - Views oficiais;
+   - RLS;
+   - Regras financeiras;
+   - Apuração;
+   - Fluxo de aprovação.
+
+3. O Copiloto jamais poderá bloquear o lançamento.
+
+4. O botão "Confirmar Lançamento" permanece sempre disponível.
+
+---
+
+### Critério de Comparabilidade
+
+As comparações históricas deverão utilizar exclusivamente ações equivalentes.
+
+Uma ação somente poderá ser utilizada como referência quando possuir simultaneamente:
+
+- mesma Rede;
+- mesma Abrangência (Família ou SKU);
+- mesmo Item;
+- mesmo Tipo da Ação (Sell In / Sell Out);
+- mesmo Tipo Comercial;
+- ação homologada.
+
+É proibida a comparação entre cenários distintos.
+
+---
+
+### Hierarquia da Experiência
+
+O painel deverá sempre seguir esta ordem de leitura:
+
+1. Diagnóstico Geral
+2. Indicadores Comparativos
+3. Histórico Recente
+4. O que mudou
+5. Recomendação Comercial
+
+---
+
+### Linguagem Institucional
+
+O Copiloto deve comunicar-se como um Diretor Comercial experiente.
+
+É proibido utilizar linguagem técnica como:
+
+- algoritmo;
+- score;
+- engine;
+- IA;
+- machine learning.
+
+Sempre explicar o motivo das recomendações em linguagem executiva.
+
+---
+
+### Inteligência Comercial
+
+As recomendações deverão considerar simultaneamente:
+
+- Investimento;
+- Volume Esperado;
+- ROI Estimado;
+- Eficiência Comercial;
+- Custo por Unidade.
+
+Sempre justificar o diagnóstico.
+
+---
+
+### Gatilho de Exibição
+
+O Copiloto somente poderá ser exibido quando todos os campos obrigatórios do lançamento estiverem preenchidos.
+
+Caso contrário, permanece totalmente oculto.
+
+---
+
+### Governança
+
+Esta funcionalidade integra oficialmente a Plataforma Coffee++ como camada institucional de apoio à decisão comercial.
+
+Qualquer evolução futura deverá preservar:
+
+- ausência de impacto financeiro;
+- ausência de impacto em AnalyticsEngine;
+- ausência de impacto em Banco/RLS;
+- comportamento exclusivamente consultivo.
+
+Status:
+HOMOLOGADO
+
+Baseline Permanente.
+
+---
+
+## 100. Baseline Oficial — Copiloto Comercial Inteligente V2 — Comparação Lado a Lado
+
+### Objetivo
+O Copiloto Comercial Inteligente passa a utilizar como referência prioritária a última ação real equivalente, substituindo comparações baseadas em médias históricas.
+
+### Diretrizes Permanentes
+
+- A comparação deverá utilizar exclusivamente ações equivalentes:
+  - mesma Rede (Código Matriz);
+  - mesma UF;
+  - mesmo Gerente;
+  - mesma Abrangência (Família ou SKU);
+  - mesmo Item;
+  - mesmo Tipo Comercial;
+  - mesmo Sell In / Sell Out.
+
+- A prioridade de busca deverá obedecer:
+  1. último lançamento equivalente;
+  2. lançamento equivalente imediatamente anterior;
+  3. histórico cronológico dos três últimos lançamentos equivalentes.
+
+- É proibido utilizar médias, agregações ou combinações entre ações distintas como referência principal.
+
+- O layout oficial do Copiloto deverá apresentar comparação visual lado a lado entre:
+  - Último Lançamento Real;
+  - Nova Proposta.
+
+- Cada indicador deverá apresentar tendência visual (▲ ▼ =) e variação percentual para:
+  - Preço Flat;
+  - Preço Promo;
+  - Investimento;
+  - Expectativa de Volume;
+  - ROI Estimado;
+  - Eficiência Comercial;
+  - Custo por Unidade.
+
+- Caso não exista histórico equivalente, deverá ser exibida mensagem institucional informando tratar-se do primeiro lançamento comparável.
+
+### Restrições Permanentes
+
+Esta funcionalidade opera exclusivamente em modo Read-Only.
+
+É vedada qualquer alteração em:
+- AnalyticsEngine;
+- Banco de Dados;
+- RLS;
+- Apuração;
+- Regras Financeiras.
+
+O Copiloto possui caráter exclusivamente consultivo e jamais poderá bloquear o lançamento do investimento.
+
+Status:
+HOMOLOGADO
+
+Baseline Permanente.
+
+---
+
+## 101. Baseline Oficial — Copiloto Comercial V2 — Comparação Executiva Lado a Lado
+
+### Diretrizes Permanentes
+
+- O Copiloto Comercial deverá apresentar a comparação entre o último lançamento equivalente e a nova proposta em formato lado a lado.
+- Os cabeçalhos deverão exibir explicitamente os meses comparados (ex.: JULHO/2026 × AGOSTO/2026).
+- A comparação deverá contemplar obrigatoriamente os seguintes indicadores:
+  - Preço Flat;
+  - Preço Promo;
+  - Investimento;
+  - % Investimento (utilizando exclusivamente a fórmula institucional vigente);
+  - Expectativa de Volume;
+  - ROI Estimado;
+  - Eficiência Comercial;
+  - Custo por Unidade.
+- Cada indicador deverá apresentar tendência visual (▲ ▼ =) e variação quando aplicável.
+- Quando existirem três ou mais lançamentos equivalentes, deverá ser exibida uma linha do tempo cronológica dos lançamentos reais.
+- A comparação utilizará exclusivamente lançamentos reais equivalentes, vedado o uso de médias ou agregações.
+
+### Restrições Permanentes
+
+- Operação exclusivamente Read-Only.
+- Proibida qualquer alteração em AnalyticsEngine, Banco de Dados, RLS, Apuração ou Regras Financeiras.
+- O Copiloto possui caráter consultivo e não poderá bloquear o lançamento do investimento.
+
+Status:
+HOMOLOGADO
+
+Baseline Permanente.
+
+---
+
+## 102. Baseline Oficial — Copiloto Comercial V2 — Histórico Equivalente (Single Source of Truth)
+
+### Single Source of Truth
+- A comparação histórica no Copiloto Comercial consome uma ÚNICA fonte oficial de referência: o **Último Lançamento Real Equivalente**.
+- Fica permanentemente PROIBIDO o uso de médias, médias ponderadas, agregações, consolidações ou médias históricas como referência principal.
+
+### Regra Oficial de Equivalência
+Toda comparação deve obedecer rigorosamente aos 8 pilares institucionais:
+- mesma Rede;
+- mesmo Código Matriz;
+- mesma UF;
+- mesmo Gerente;
+- mesma Abrangência;
+- mesma Família OU mesmo SKU;
+- mesmo Tipo Comercial;
+- mesmo Sell In / Sell Out.
+
+### Seleção do Histórico (Workflow Real)
+- A busca consome exclusivamente ações reais válidas do workflow oficial do Coffee++ (`fase_atual >= 1` e `is_planejamento IS NOT TRUE`).
+- Fica permanentemente vedado o uso de `.gte("fase_atual", 5)` que eliminava o histórico válido do sistema.
+- Prioridade de busca: 1. Último lançamento equivalente; 2. Penúltimo lançamento equivalente; 3. Terceiro lançamento equivalente.
+
+### Indicadores Oficiais Mandatórios
+A comparação executiva Lado a Lado apresenta obrigatoriamente 4 colunas (`INDICADOR COMERCIAL`, `MÊS ANTERIOR`, `PROPOSTA ATUAL`, `VARIAÇÃO`):
+- Preço Flat
+- Preço Promo
+- Desconto (%) `[((Preço Flat - Preço Promo) / Preço Flat) × 100]`
+- Investimento
+- Expectativa de Volume
+- ROI
+- Eficiência Comercial
+- Custo por Unidade
+
+### Badges de Variação
+- 🟢 **Verde**: melhoria comercial;
+- 🔴 **Vermelho**: piora comercial;
+- ⚪ **Cinza**: estabilidade / igual.
+
+### Primeiro Lançamento
+Quando não existir nenhuma ação equivalente, exibir a mensagem institucional:
+*"Primeiro lançamento equivalente desta combinação. Esta proposta iniciará o histórico comercial desta Rede para esta Família/SKU."*
+Vedada a renderização de tabelas vazias.
+
+### Restrições Permanentes
+- Operação 100% Read-Only.
+- Zero impacto em AnalyticsEngine, Banco de Dados, RLS, Apuração e Regras Financeiras.
+- Caráter consultivo e não bloqueante.
+
+Status:
+HOMOLOGADO — PRODUÇÃO
+
+Baseline Permanente.
+
+---
+
+## 103. Termo de Encerramento Oficial — Copiloto Comercial Inteligente (Ciclo 1)
+
+A partir de 06/08/2026, o primeiro ciclo de evolução do **Copiloto Comercial Inteligente** (`src/app/investimento/lancar`) encontra-se oficialmente encerrado, homologado e congelado em produção.
+
+### Consolidação Arquitetural do Módulo:
+- **Baseline 99**: Diagnóstico Executivo Read-Only e recomendações consultivas.
+- **Baseline 100**: Comparação histórica Lado a Lado contra ações equivalentes.
+- **Baseline 101**: 8 Indicadores comerciais mandatórios e meses reais nos cabeçalhos.
+- **Baseline 102**: Single Source of Truth baseada no último lançamento real equivalente e substituição pelo indicador institucional `% DESCONTO`.
+
+### Política de Evolução:
+Ajustes visuais, UX e refatorações puramente cosméticas não originam novas Baselines. Novas Baselines (104, 105...) são restritas a alterações estruturais de arquitetura, fluxo operacional, schema de banco ou novas fontes de dados.
+
+Status Geral: `COPILOTO COMERCIAL — CICLO 1 ENCERRADO` | `ARQUITETURA = LOCKED` | `GOVERNANÇA = CONFIRMED` | `BASELINE = PERMANENTE`.
+
+---
+
+## 104. Política Oficial de Evolução Contínua — Módulos Homologados (Baseline Permanente)
+
+A partir de 06/08/2026, é instituída a política permanente da Plataforma Coffee++ para governança e evolução de todos os módulos que atingirem o status `HOMOLOGADO` & `LOCKED & CONFIRMED`.
+
+### Diretrizes Mandatórias:
+
+1. **Classificação por Releases (Sem Nova Baseline)**:
+   - Todas as evoluções de UX, UI, layout, performance, responsividade, acessibilidade, usabilidade, textos, componentes visuais e refinamentos de recomendações consultivas devem ser tratadas exclusivamente como **Releases** (ex.: Release X.1, Release X.2).
+   - Releases não alteram baselines arquiteturais e preservam integralmente os baselines vigentes.
+
+2. **Gatilhos para Novas Baselines**:
+   - Uma nova Baseline somente poderá ser criada quando houver:
+     - Alteração arquitetural estrutural;
+     - Novo fluxo operacional;
+     - Mudança permanente de regra de negócio;
+     - Mudança de modelo de governança;
+     - Nova fonte oficial de dados;
+     - Alteração física/estrutural do módulo.
+
+3. **Homologação Mandatória por Sprint / Release**:
+   - Nenhuma Release pode ser promovida a produção sem a emissão de Walkthrough Técnico, Relatório Oficial de Homologação e aprovação nos comandos:
+     - `npx tsc --noEmit` (0 erros)
+     - `npm run build` (100% Sucesso)
+
+4. **Preservação de Infraestrutura e Governança**:
+   - É expressamente proibida qualquer regressão em `AnalyticsEngine`, Banco de Dados, Views, RLS, Apuração e Regras Financeiras em evoluções classificadas como Releases.
+
+Status Institucional: `POLÍTICA INSTITUCIONAL = LOCKED & CONFIRMED` & `BASELINE = PERMANENTE`.
+
+---
+
+## 105. Termo Institucional de Consolidação da Governança (Plataforma Coffee++)
+
+A partir de 06/08/2026, é declarada oficialmente a consolidação definitiva da governança técnica da Plataforma Coffee++.
+
+### Estado Atual do Ecossistema:
+- **Arquitetura**: CONSOLIDADA
+- **Governança**: PADRONIZADA
+- **Processo de Homologação**: INSTITUCIONALIZADO
+- **Rastreabilidade**: GARANTIDA
+- **Evolução Contínua**: CONTROLADA POR RELEASES
+
+### Fluxo Oficial de Desenvolvimento:
+`Planejamento → Desenvolvimento → Walkthrough → Homologação → Release → Produção`
+
+Status Geral: `PLATAFORMA COFFEE++ = LOCKED & CONFIRMED` | `GOVERNANÇA = CONSOLIDADA` | `EVOLUÇÃO = INSTITUCIONALIZADA`.
+
+---
+
+## 106. Constituição da Engenharia — Política de Documentação
+
+A Plataforma Coffee++ adota a seguinte hierarquia oficial de documentação:
+
+### AGENTS.md
+Documento permanente de arquitetura e governança.
+
+Contém exclusivamente:
+- Baselines;
+- Políticas institucionais;
+- Regras permanentes;
+- Single Source of Truth;
+- Padrões oficiais.
+
+### Walkthrough Técnico
+Documento de implementação.
+
+Contém:
+- decisões técnicas;
+- arquitetura da implementação;
+- arquivos alterados;
+- validações.
+
+### Relatório de Homologação
+Documento de evidências.
+
+Contém:
+- validações;
+- testes;
+- auditorias;
+- builds;
+- TypeScript;
+- evidências.
+
+### Release
+Documento de evolução funcional.
+
+Contém:
+- melhorias;
+- correções;
+- UX;
+- performance;
+- funcionalidades.
+
+### Critério Institucional
+
+Antes de registrar qualquer informação no AGENTS.md deverá ser respondida a seguinte pergunta:
+
+*"Esta informação continuará sendo válida independentemente da versão da plataforma?"*
+
+Se NÃO...
+
+...a informação pertence a outro documento.
+
+Status Institucional: `CONSTITUIÇÃO DA ENGENHARIA = LOCKED & CONFIRMED` & `GOVERNANÇA = PERMANENTE`.
+
+---
+
+## 107. Política Oficial de Qualidade de Engenharia
+
+### Objetivo
+Garantir que todas as evoluções da Plataforma Coffee++ mantenham os mesmos padrões de qualidade, governança e rastreabilidade já estabelecidos.
+
+### Critérios Obrigatórios para Entrega
+Toda implementação deverá atender, obrigatoriamente, aos seguintes critérios antes da homologação:
+- Compilação TypeScript sem erros (`npx tsc --noEmit`);
+- Build de produção aprovado (`npm run build`);
+- Preservação da arquitetura vigente;
+- Ausência de regressões funcionais conhecidas;
+- Atualização da documentação correspondente (quando aplicável);
+- Homologação funcional concluída.
+
+### Critérios para Atualização do AGENTS.md
+O AGENTS.md somente poderá ser atualizado quando houver:
+- criação de uma nova Baseline;
+- alteração permanente de arquitetura;
+- nova política institucional;
+- mudança permanente de governança;
+- alteração de uma fonte oficial de dados (Single Source of Truth).
+
+Melhorias de UX, correções, otimizações, Releases, Hotfixes e ajustes visuais não justificam atualização do AGENTS.md.
+
+### Princípios Permanentes
+Toda evolução da Plataforma Coffee++ deverá respeitar os seguintes princípios:
+- Segurança antes de conveniência;
+- Governança antes de implementação;
+- Simplicidade antes de complexidade;
+- Rastreabilidade antes de velocidade;
+- Preservação da arquitetura antes de novas funcionalidades;
+- Evolução incremental antes de refatorações desnecessárias.
+
+Status: `POLÍTICA PERMANENTE` | `CLASSIFICAÇÃO = GOVERNANÇA DE QUALIDADE` | `SITUAÇÃO = LOCKED & CONFIRMED`.
+
+---
+
+## 108. Política Oficial de Arquitetura Evolutiva
+
+### Objetivo
+Garantir a evolução contínua da Plataforma Coffee++ preservando estabilidade, governança e rastreabilidade arquitetural.
+
+### Princípio da Evolução Incremental
+Toda evolução deverá priorizar:
+- reutilização dos componentes existentes;
+- extensão da arquitetura vigente;
+- compatibilidade retroativa;
+- baixo impacto operacional;
+- mínima alteração estrutural.
+
+Refatorações completas somente serão autorizadas quando houver justificativa técnica formal aprovada.
+
+### Princípio da Preservação Arquitetural
+É vedado substituir arquiteturas consolidadas quando os objetivos puderem ser alcançados através de evolução incremental.
+
+Toda nova funcionalidade deverá buscar:
+- reutilizar serviços existentes;
+- reutilizar componentes existentes;
+- reutilizar padrões oficiais;
+- preservar APIs públicas;
+- preservar contratos funcionais.
+
+### Critério de Decisão Arquitetural
+Antes de qualquer alteração estrutural deverá ser respondido:
+1. É possível evoluir a arquitetura existente?
+2. Existe impacto em módulos homologados?
+3. Existe quebra de compatibilidade?
+4. Existe alteração de Single Source of Truth?
+5. Existe alteração permanente de governança?
+
+Se todas as respostas forem **NÃO**, a implementação deverá ser realizada como evolução incremental.
+
+### Princípios Permanentes
+A Plataforma Coffee++ adota oficialmente os seguintes princípios arquiteturais:
+- Evoluir antes de substituir.
+- Reutilizar antes de recriar.
+- Simplificar antes de expandir.
+- Preservar antes de refatorar.
+- Documentar antes de homologar.
+- Homologar antes de publicar.
+
+### Complemento da Seção 108 — Regra da Menor Mudança Necessária
+
+A Plataforma Coffee++ adota oficialmente o **Princípio da Menor Mudança Necessária**.
+
+Toda evolução deverá buscar atender ao objetivo funcional realizando a menor alteração possível na arquitetura existente.
+
+Antes de qualquer implementação, deverão ser observadas obrigatoriamente as seguintes prioridades:
+1. Configuração antes de código.
+2. Reutilização antes de criação.
+3. Extensão antes de substituição.
+4. Composição antes de duplicação.
+5. Evolução antes de refatoração.
+6. Refatoração antes de reescrita completa.
+
+Toda proposta de alteração deverá demonstrar que avaliou essas alternativas antes de optar por mudanças estruturais.
+
+Esta diretriz complementa a Política Oficial de Arquitetura Evolutiva e passa a integrar permanentemente os princípios de engenharia da Plataforma Coffee++.
+
+---
+
+## Disposição Final
+
+O `AGENTS.md` constitui a referência oficial de arquitetura, governança e padrões permanentes da Plataforma Coffee++.
+
+Sua atualização deverá ocorrer exclusivamente quando houver necessidade de registrar decisões arquiteturais permanentes, novas políticas institucionais ou alterações estruturais da plataforma.
+
+Todo conteúdo de natureza transitória, incluindo Releases, Walkthroughs Técnicos, Relatórios de Homologação, Hotfixes, ajustes de UX/UI, otimizações, evidências de compilação ou validações operacionais, deverá permanecer em sua documentação específica, preservando o `AGENTS.md` como um documento enxuto, perene e de alta confiabilidade.
+
+Esta disposição passa a integrar permanentemente a política de governança documental da Plataforma Coffee++.
+
+Status: `POLÍTICA PERMANENTE` | `SITUAÇÃO = LOCKED & CONFIRMED`.
+
 
 
 

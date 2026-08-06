@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Packa
 import Link from "next/link";
 import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
+import { LaunchInvestmentAdvisor } from "./LaunchInvestmentAdvisor";
 
 interface InvestmentFormProps {
   redes: Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
@@ -185,9 +186,11 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     if (!details?.preco_flat || !details?.preco_acao) return null;
     const flat = parseNumericValue(details.preco_flat);
     const acao = parseNumericValue(details.preco_acao);
-    if (flat > 0) {
+    if (flat > 0 && acao < flat) {
       const desc = (flat - acao) / flat;
-      if (desc > 0.40) return `Aviso: Desconto de ${(desc * 100).toFixed(0)}% está acima do limite de 40%`;
+      if (desc > 0.10) {
+        return `Atenção: Desconto de ${(desc * 100).toFixed(0)}% ultrapassa o limite institucional de 10%.`;
+      }
     }
     return null;
   };
@@ -938,10 +941,10 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                             </div>
                             {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
                             {getDescontoAlerta(familiaDetails[familia]) && (
-                              <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {getDescontoAlerta(familiaDetails[familia])}
-                              </p>
+                              <div className="text-[11px] text-red-500 font-bold flex items-center gap-1.5 mt-1.5 p-2 rounded-lg bg-red-950/40 border border-red-500/40 text-[#DC2626]">
+                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                                <span>🔴 {getDescontoAlerta(familiaDetails[familia])}</span>
+                              </div>
                             )}
                           </div>
                           <div className="space-y-2">
@@ -1095,10 +1098,10 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                             </div>
                             {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
                             {getDescontoAlerta(skuDetails[sku]) && (
-                              <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                {getDescontoAlerta(skuDetails[sku])}
-                              </p>
+                              <div className="text-[11px] text-red-500 font-bold flex items-center gap-1.5 mt-1.5 p-2 rounded-lg bg-red-950/40 border border-red-500/40 text-[#DC2626]">
+                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                                <span>🔴 {getDescontoAlerta(skuDetails[sku])}</span>
+                              </div>
                             )}
                           </div>
                           <div className="space-y-2">
@@ -1215,6 +1218,18 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
 
 
         </fieldset>
+
+        {/* Consultor Comercial Inteligente de Lançamento */}
+        <LaunchInvestmentAdvisor
+          rede={selectedRede}
+          tipoPagamento={tipoPagamento}
+          tipoAcaoDetalhe={tipoAcaoDetalhe}
+          abrangencia={abrangenciaUi}
+          selectedFamilias={selectedFamilias}
+          familiaDetails={familiaDetails}
+          selectedSkus={selectedSkus}
+          skuDetails={skuDetails}
+        />
 
         {/* Submit */}
         {!isLocked && (

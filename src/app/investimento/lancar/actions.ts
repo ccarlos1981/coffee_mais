@@ -80,16 +80,16 @@ async function avaliarAlertasAcaoInvestimento(
     });
   }
 
-  // 1. Desconto acima de 40%
+  // 1. Desconto acima de 10%
   items.forEach((item) => {
     const flat = Number(item.details.preco_flat) || 0;
     const acao = Number(item.details.preco_acao) || 0;
     if (flat > 0) {
       const desc = (flat - acao) / flat;
-      if (desc > 0.40) {
+      if (desc > 0.10) {
         alertas.push({
           tipo: "DESCONTO_ALTO",
-          mensagem: `Desconto de ${(desc * 100).toFixed(1)}% em ${item.label} acima do limite preventivo de 40%.`,
+          mensagem: `Atenção: Desconto de ${(desc * 100).toFixed(0)}% em ${item.label} ultrapassa o limite institucional de 10%.`,
           item: item.label,
           valor: desc,
           source: item.source
@@ -3613,5 +3613,197 @@ export async function obterPlanilhaModelo(isPlanejamento: boolean = false, filte
     return { success: false, error: err.message };
   }
 }
+
+export interface HistoricoItemConsultor {
+  id: string;
+  data: string;
+  investimento: number;
+  preco_flat: number;
+  preco_acao: number;
+  expectativa_volume: number;
+  custo_unidade: number;
+  eficiencia_comercial: number;
+  roi_estimado: number;
+}
+
+export interface HistoricoItemConsultor {
+  id: string;
+  data: string;
+  data_day?: string;
+  investimento: number;
+  preco_flat: number;
+  preco_acao: number;
+  expectativa_volume: number;
+  custo_unidade: number;
+  eficiencia_comercial: number;
+  roi_estimado: number;
+}
+
+export interface ResultadoConsultorComercial {
+  hasHistory: boolean;
+  message?: string;
+  count: number;
+  actions: HistoricoItemConsultor[];
+  lastAction: HistoricoItemConsultor | null;
+}
+
+export async function obterHistoricoConsultorComercial(params: {
+  codigo_matriz?: string;
+  rede?: string;
+  uf?: string;
+  gerente?: string;
+  abrangencia: "Família" | "SKU";
+  itemNome: string;
+  tipo_pagamento?: string;
+  tipo_acao_detalhe?: string;
+}): Promise<ResultadoConsultorComercial> {
+  try {
+    const supabase = await createClient();
+
+    let query = supabase
+      .from("cm_acoes_investimento")
+      .select("id, created_at, data_inicio, abrangencia, familia_produto, familias_detalhes, skus_detalhes, valor_investimento, expectativa_volume, preco_flat, preco_acao, tipo_pagamento, tipo_acao, tipo_acao_detalhe, fase_atual, is_planejamento")
+      .gte("fase_atual", 1)
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (params.codigo_matriz) {
+      query = query.eq("codigo_matriz", params.codigo_matriz);
+    } else if (params.rede) {
+      query = query.ilike("rede", `%${params.rede}%`);
+    }
+
+    const { data: rawActions, error } = await query;
+
+    if (error || !rawActions || rawActions.length === 0) {
+      return {
+        hasHistory: false,
+        message: "Primeiro lançamento equivalente para esta combinação.",
+        count: 0,
+        actions: [],
+        lastAction: null
+      };
+    }
+
+    const matched: HistoricoItemConsultor[] = [];
+
+    for (const pa of rawActions) {
+      if (pa.is_planejamento) continue;
+
+      if (params.tipo_pagamento && pa.tipo_pagamento && pa.tipo_pagamento.toLowerCase() !== params.tipo_pagamento.toLowerCase()) {
+        continue;
+      }
+      if (params.tipo_acao_detalhe && (pa.tipo_acao_detalhe || pa.tipo_acao)) {
+        const detail = pa.tipo_acao_detalhe || pa.tipo_acao || "";
+        if (detail.toLowerCase() !== params.tipo_acao_detalhe.toLowerCase()) {
+          continue;
+        }
+      }
+
+      let inv = 0;
+      let flat = 0;
+      let acao = 0;
+      let vol = 0;
+      let foundItem = false;
+
+      const targetDetails = params.abrangencia === "Família" ? pa.familias_detalhes : pa.skus_detalhes;
+      if (Array.isArray(targetDetails)) {
+        for (const d of targetDetails) {
+          const detailLabel = params.abrangencia === "Família" ? (d.familia_nome || d.familia) : d.sku;
+          if (detailLabel && detailLabel.toLowerCase().trim() === params.itemNome.toLowerCase().trim()) {
+            inv = Number(d.investimento) || 0;
+            flat = Number(d.preco_flat) || 0;
+            acao = Number(d.preco_acao) || 0;
+            vol = Number(d.expectativa_volume) || 0;
+            foundItem = true;
+            break;
+          }
+        }
+      }
+
+      if (!foundItem) {
+        if (params.abrangencia === "Família" && pa.familia_produto?.toLowerCase() === params.itemNome.toLowerCase()) {
+          inv = Number(pa.valor_investimento) || 0;
+          flat = Number(pa.preco_flat) || 0;
+          acao = Number(pa.preco_acao) || 0;
+          vol = Number(pa.expectativa_volume) || 0;
+          foundItem = true;
+        }
+      }
+
+      if (foundItem && inv > 0 && vol > 0) {
+        const dateObj = new Date(pa.data_inicio || pa.created_at || Date.now());
+        const months = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+        const monthsShort = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+        const day = dateObj.getDate().toString().padStart(2, "0");
+        const monthNum = (dateObj.getMonth() + 1).toString().padStart(2, "0");
+        const monthName = months[dateObj.getMonth()].toUpperCase();
+        const year = dateObj.getFullYear();
+
+        const baseLabel = `${monthName}/${year}`;
+        const dayLabel = `${monthsShort[dateObj.getMonth()]}/${year.toString().slice(2)} (${day}/${monthNum})`;
+
+        const custo_unidade = inv / vol;
+        const eficiencia_comercial = vol / inv;
+        const roi_estimado = acao > 0 ? (acao * vol) / inv : 0;
+
+        matched.push({
+          id: pa.id,
+          data: baseLabel,
+          data_day: dayLabel,
+          investimento: inv,
+          preco_flat: flat,
+          preco_acao: acao,
+          expectativa_volume: vol,
+          custo_unidade,
+          eficiencia_comercial,
+          roi_estimado
+        });
+      }
+    }
+
+    if (matched.length === 0) {
+      return {
+        hasHistory: false,
+        message: "Primeiro lançamento equivalente para esta combinação.",
+        count: 0,
+        actions: [],
+        lastAction: null
+      };
+    }
+
+    const rawTop3 = matched.slice(0, 3);
+    const monthCounts: Record<string, number> = {};
+    rawTop3.forEach(x => {
+      monthCounts[x.data] = (monthCounts[x.data] || 0) + 1;
+    });
+
+    const top3 = rawTop3.map(x => {
+      if (monthCounts[x.data] > 1 && x.data_day) {
+        return { ...x, data: x.data_day };
+      }
+      return x;
+    });
+
+    const lastAction = top3[0]; // Real most recent equivalent launch (Priority 1)
+
+    return {
+      hasHistory: true,
+      count: matched.length,
+      actions: top3,
+      lastAction
+    };
+  } catch (err: any) {
+    console.error("Erro ao obter histórico do consultor comercial:", err);
+    return {
+      hasHistory: false,
+      message: "Não foi possível carregar o histórico para comparação.",
+      count: 0,
+      actions: [],
+      lastAction: null
+    };
+  }
+}
+
 
 
