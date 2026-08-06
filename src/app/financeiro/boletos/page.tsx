@@ -4,24 +4,27 @@ import { useState, useEffect, useMemo } from "react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { 
   PlusIcon, UploadIcon, FileTextIcon, AlertCircleIcon, CheckCircleIcon,
-  TrashIcon, Edit2Icon, SaveIcon, XIcon, ChevronLeft, Filter
+  TrashIcon, Edit2Icon, SaveIcon, XIcon, ChevronLeft, Filter, Download
 } from "lucide-react";
 import Link from "next/link";
-import { importarBoletos, listarBoletos, Boleto, listarRedesDisponiveis, atualizarBoleto } from "./actions";
+import { importarBoletos, listarBoletos, Boleto, listarRedesDisponiveis, atualizarBoleto, validarPermissaoExportacaoBoletos } from "./actions";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { shortenRedeName } from "@/lib/formatters";
 import { supabase } from "@/lib/supabase";
+import * as XLSX from "xlsx";
 
 export default function BoletosPage() {
   const [boletos, setBoletos] = useState<Boleto[]>([]);
   const [redesDisponiveis, setRedesDisponiveis] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   
   const [editBoletoId, setEditBoletoId] = useState<string | null>(null);
   const [editBoletoData, setEditBoletoData] = useState<Partial<Boleto>>({});
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [loadingRole, setLoadingRole] = useState(true);
 
   // Form states for manual addition
   const [showManualForm, setShowManualForm] = useState(false);
@@ -41,6 +44,20 @@ export default function BoletosPage() {
   const [filterVencimentoDe, setFilterVencimentoDe] = useState("");
   const [filterVencimentoAte, setFilterVencimentoAte] = useState("");
   const [filterStatus, setFilterStatus] = useState("Todos");
+
+  const isAdminOrFinanceiro = useMemo(() => {
+    if (!userRole) return false;
+    const r = userRole.toLowerCase();
+    return ["admin", "admin master", "financeiro", "ceo", "trade"].includes(r);
+  }, [userRole]);
+
+  const isGerente = useMemo(() => {
+    if (!userRole) return false;
+    const r = userRole.toLowerCase();
+    return r.includes("gerente") || r.includes("manager");
+  }, [userRole]);
+
+  const canAccessFinanceiro = isAdminOrFinanceiro || isGerente;
 
   // Filtering Logic
   const filteredBoletos = useMemo(() => {
@@ -93,11 +110,13 @@ export default function BoletosPage() {
 
   useEffect(() => {
     const fetchUserRole = async () => {
+      setLoadingRole(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
         if (data) setUserRole(data.role);
       }
+      setLoadingRole(false);
     };
     fetchUserRole();
     fetchBoletos();
@@ -139,7 +158,6 @@ export default function BoletosPage() {
         const text = await file.text();
         const lines = text.split('\n');
 
-        // Helper to parse CSV line respecting quotes
         const parseCSVLine = (lineText: string): string[] => {
           const result = [];
           let current = '';
@@ -159,7 +177,6 @@ export default function BoletosPage() {
           return result;
         };
 
-        // Helper to parse currency values in Brazilian (1.500,00) or US (1,500.00) format
         const parseCurrency = (valStr: string): number => {
           let cleaned = valStr.trim().replace(/^["']|["']$/g, '');
           const lastComma = cleaned.lastIndexOf(',');
@@ -206,7 +223,7 @@ export default function BoletosPage() {
       setFeedback({ type: "error", msg: err.message || "Erro ao processar arquivo." });
     } finally {
       setImporting(false);
-      if (e.target) e.target.value = ''; // reset file input
+      if (e.target) e.target.value = '';
     }
   };
 
@@ -245,6 +262,7 @@ export default function BoletosPage() {
   };
 
   const handleEditBoleto = (boleto: Boleto) => {
+    if (!isAdminOrFinanceiro) return;
     setEditBoletoId(boleto.id);
     setEditBoletoData({
       numero_boleto: boleto.numero_boleto,
@@ -259,6 +277,7 @@ export default function BoletosPage() {
   };
 
   const handleSaveEdit = async (id: string) => {
+    if (!isAdminOrFinanceiro) return;
     if (!editBoletoData.numero_boleto || !editBoletoData.vencimento) {
       setFeedback({ type: "error", msg: "Preencha o número do boleto e o vencimento." });
       return;
@@ -294,6 +313,77 @@ export default function BoletosPage() {
     setEditBoletoData({});
   };
 
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const auth = await validarPermissaoExportacaoBoletos();
+      if (!auth.allowed) {
+        setFeedback({ type: "error", msg: auth.error || "Acesso negado para exportação." });
+        return;
+      }
+
+      const rows = filteredBoletos.map((b) => ({
+        "Número Nota": b.nro_nota || b.numero_boleto || "",
+        "Parceiro": b.parceiro_codigo || "-",
+        "Nome Parceiro": b.rede || "",
+        "Descrição": b.tipo_titulo || "BOLETO",
+        "Data Vencimento": b.vencimento ? new Date(b.vencimento).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "",
+        "Prazo": b.prazo ? `${b.prazo}d` : "—",
+        "Valor": b.valor_liquido !== null && b.valor_liquido !== undefined ? b.valor_liquido : (b.valor_total || 0),
+        "Status": b.status || "",
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows);
+      worksheet['!cols'] = [
+        { wch: 16 },
+        { wch: 14 },
+        { wch: 32 },
+        { wch: 18 },
+        { wch: 16 },
+        { wch: 12 },
+        { wch: 18 },
+        { wch: 14 },
+      ];
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Boletos");
+
+      const dateStr = new Date().toISOString().split("T")[0];
+      XLSX.writeFile(workbook, `Boletos_Financeiro_${dateStr}.xlsx`);
+    } catch (err: any) {
+      console.error("Erro ao exportar boletos:", err);
+      setFeedback({ type: "error", msg: err.message || "Erro ao gerar arquivo Excel." });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  if (!loadingRole && !canAccessFinanceiro) {
+    return (
+      <div className="min-h-screen bg-background text-foreground transition-colors duration-300">
+        <div className="flex w-full h-16 items-center px-4 md:px-6 border-b border-border bg-card sticky top-0 z-50 shadow-sm justify-between">
+          <div className="flex items-center gap-4">
+            <Link href="/investimento" className="p-2 hover:bg-elevated rounded-full transition-colors" title="Voltar para Investimentos">
+              <ChevronLeft className="w-5 h-5 text-muted hover:text-foreground" />
+            </Link>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-gold to-orange-500 bg-clip-text text-transparent">
+              Módulo Financeiro
+            </h1>
+          </div>
+          <ThemeToggle />
+        </div>
+        <div className="max-w-md mx-auto mt-16 p-8 bg-card border border-border rounded-2xl text-center space-y-4 shadow-sm">
+          <AlertCircleIcon className="w-12 h-12 text-red-500 mx-auto" />
+          <h2 className="text-xl font-bold text-foreground">Acesso Não Autorizado</h2>
+          <p className="text-muted text-sm">Seu perfil não possui permissão para acessar este módulo.</p>
+          <Link href="/investimento" className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-gold hover:bg-yellow-600 text-white font-bold text-sm rounded-xl transition-colors">
+            Voltar para Investimentos
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-300 pb-20 md:pb-0">
       <div className="flex w-full h-16 items-center px-4 md:px-6 border-b border-border bg-card sticky top-0 z-50 shadow-sm justify-between">
@@ -312,9 +402,11 @@ export default function BoletosPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">Gestão de Boletos</h2>
-            <p className="text-muted text-sm mt-1">Importe a planilha de boletos das redes para o processo de Apuração.</p>
+            <p className="text-muted text-sm mt-1">
+              {isAdminOrFinanceiro ? "Importe a planilha de boletos das redes para o processo de Apuração." : "Consulta e exportação de boletos das redes."}
+            </p>
           </div>
-          {(userRole === 'Admin' || userRole === 'Financeiro') && (
+          {isAdminOrFinanceiro && (
             <div className="flex items-center gap-3 w-full md:w-auto">
               <label className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-elevated border border-border rounded-xl text-sm font-medium hover:bg-border transition-colors cursor-pointer">
                 <UploadIcon className="w-4 h-4" />
@@ -331,14 +423,15 @@ export default function BoletosPage() {
             </div>
           )}
         </div>
-                {feedback && (
+
+        {feedback && (
           <div className={`p-4 rounded-xl flex items-center gap-3 ${feedback.type === 'success' ? 'bg-green-500/10 text-green-600 border border-green-500/20' : 'bg-red-500/10 text-red-600 border border-red-500/20'}`}>
             {feedback.type === 'success' ? <CheckCircleIcon className="w-5 h-5" /> : <AlertCircleIcon className="w-5 h-5" />}
             <p className="text-sm font-medium">{feedback.msg}</p>
           </div>
         )}
 
-        {showManualForm && (userRole === 'Admin' || userRole === 'Financeiro') && (
+        {showManualForm && isAdminOrFinanceiro && (
           <div className="bg-card border border-border p-5 rounded-2xl shadow-sm grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-4 items-end">
             <div>
               <label className="block text-xs font-medium text-muted mb-1.5">Nome do Parceiro</label>
@@ -384,20 +477,31 @@ export default function BoletosPage() {
               <Filter className="w-4 h-4 text-gold" />
               Filtros
             </h3>
-            {(filterRede || filterNumeroBoleto || filterVencimentoDe || filterVencimentoAte || filterStatus !== "Todos") && (
+            <div className="flex items-center gap-3">
+              {(filterRede || filterNumeroBoleto || filterVencimentoDe || filterVencimentoAte || filterStatus !== "Todos") && (
+                <button
+                  onClick={() => {
+                    setFilterRede("");
+                    setFilterNumeroBoleto("");
+                    setFilterVencimentoDe("");
+                    setFilterVencimentoAte("");
+                    setFilterStatus("Todos");
+                  }}
+                  className="text-xs font-semibold text-gold hover:text-yellow-600 transition-colors flex items-center gap-1"
+                >
+                  Limpar Filtros
+                </button>
+              )}
               <button
-                onClick={() => {
-                  setFilterRede("");
-                  setFilterNumeroBoleto("");
-                  setFilterVencimentoDe("");
-                  setFilterVencimentoAte("");
-                  setFilterStatus("Todos");
-                }}
-                className="text-xs font-semibold text-gold hover:text-yellow-600 transition-colors flex items-center gap-1"
+                onClick={handleExportExcel}
+                disabled={exporting || filteredBoletos.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gold hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                title="Exportar boletos em formato Excel (.xlsx)"
               >
-                Limpar Filtros
+                <Download className="w-3.5 h-3.5" />
+                {exporting ? "Exportando..." : "Exportar"}
               </button>
-            )}
+            </div>
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
@@ -477,21 +581,23 @@ export default function BoletosPage() {
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-center">Prazo (dias)</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Valor Líquido</th>
                   <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase">Status</th>
-                  <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Ações</th>
+                  {isAdminOrFinanceiro && (
+                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase text-right">Ações</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
+                    <td colSpan={isAdminOrFinanceiro ? 9 : 8} className="px-6 py-12 text-center text-muted">Carregando boletos...</td>
                   </tr>
                 ) : boletos.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
+                    <td colSpan={isAdminOrFinanceiro ? 9 : 8} className="px-6 py-12 text-center text-muted">Nenhum boleto importado ainda.</td>
                   </tr>
                 ) : filteredBoletos.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-muted">Nenhum boleto encontrado com os filtros selecionados.</td>
+                    <td colSpan={isAdminOrFinanceiro ? 9 : 8} className="px-6 py-12 text-center text-muted">Nenhum boleto encontrado com os filtros selecionados.</td>
                   </tr>
                 ) : (
                   filteredBoletos.map((boleto) => {
@@ -502,7 +608,7 @@ export default function BoletosPage() {
                     <tr key={boleto.id} className="hover:bg-elevated/50 transition-colors">
                       {/* Nr da nota */}
                       <td className="px-6 py-4 font-mono text-muted text-[13px]">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <input 
                             type="text" 
                             value={editBoletoData.numero_boleto || ''} 
@@ -516,7 +622,7 @@ export default function BoletosPage() {
 
                       {/* Parceiro */}
                       <td className="px-6 py-4 font-mono text-muted text-[13px]">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <input 
                             type="text" 
                             value={editBoletoData.parceiro_codigo || ''} 
@@ -530,7 +636,7 @@ export default function BoletosPage() {
 
                       {/* Nome do parceiro */}
                       <td className="px-6 py-4 font-medium">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <SearchableSelect 
                             value={editBoletoData.rede || ''} 
                             onChange={(val) => setEditBoletoData({...editBoletoData, rede: val})} 
@@ -553,7 +659,7 @@ export default function BoletosPage() {
 
                       {/* Data de vencimento */}
                       <td className="px-6 py-4 text-muted">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <input 
                             type="date" 
                             value={editBoletoData.vencimento ? String(editBoletoData.vencimento).split('T')[0] : ''} 
@@ -567,7 +673,7 @@ export default function BoletosPage() {
 
                       {/* Descrição (Tipo de Título) */}
                       <td className="px-6 py-4 text-muted text-xs uppercase tracking-wider font-semibold">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <input 
                             type="text" 
                             value={editBoletoData.tipo_titulo || ''} 
@@ -600,7 +706,7 @@ export default function BoletosPage() {
 
                       {/* Valor Líquido */}
                       <td className="px-6 py-4 font-black text-right text-foreground">
-                        {isEditing ? (
+                        {isEditing && isAdminOrFinanceiro ? (
                           <input 
                             type="number" 
                             step="0.01"
@@ -624,9 +730,9 @@ export default function BoletosPage() {
                       </td>
 
                       {/* Ações */}
-                      <td className="px-6 py-4 text-right">
-                        {(userRole === 'Admin' || userRole === 'Financeiro') && (
-                          isEditing ? (
+                      {isAdminOrFinanceiro && (
+                        <td className="px-6 py-4 text-right">
+                          {isEditing ? (
                             <div className="flex items-center justify-end gap-2">
                               <button onClick={() => handleSaveEdit(boleto.id)} className="p-1.5 bg-green-500/10 text-green-600 rounded-md hover:bg-green-500/20 transition-colors" title="Salvar">
                                 <SaveIcon className="w-4 h-4" />
@@ -639,9 +745,9 @@ export default function BoletosPage() {
                             <button onClick={() => handleEditBoleto(boleto)} className="p-1.5 text-muted hover:text-foreground hover:bg-elevated rounded-md transition-colors" title="Editar Boleto">
                               <Edit2Icon className="w-4 h-4" />
                             </button>
-                          )
-                        )}
-                      </td>
+                          )}
+                        </td>
+                      )}
                     </tr>
                     );
                   })

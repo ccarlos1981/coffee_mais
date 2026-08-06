@@ -61,6 +61,24 @@ export async function POST(request: Request) {
       }
     );
 
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Usuário não autenticado.' }, { status: 401 });
+    }
+
+    const { data: profile } = await supabase
+      .from('cm_user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    const userRole = (profile?.role || '').toLowerCase();
+    const isWriteAllowed = ['admin', 'admin master', 'financeiro', 'ceo', 'trade'].includes(userRole);
+
+    if (!isWriteAllowed) {
+      return NextResponse.json({ error: 'Acesso negado: Perfil GERENTE possui acesso apenas para leitura.' }, { status: 403 });
+    }
+
     const rowsToInsert = [];
 
     for (const row of data) {

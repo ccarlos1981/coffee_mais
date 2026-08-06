@@ -2550,7 +2550,7 @@ export default function InvestimentoPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
-            {(userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'Trade' || userRole === 'CEO') && (
+            {(userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'Trade' || userRole === 'CEO' || (userRole ? userRole.toLowerCase().includes('gerente') : false)) && (
               <Link 
                 href="/financeiro/boletos"
                 className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-elevated hover:bg-border text-foreground border border-border px-3 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"

@@ -1,6 +1,7 @@
 "use server";
 
 import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
 export interface Boleto {
@@ -18,8 +19,60 @@ export interface Boleto {
   prazo?: string | null;
 }
 
+export async function validarAcessoBoletos(exigirEscrita = false): Promise<{ allowed: boolean; role?: string; userEmail?: string; error?: string }> {
+  try {
+    const supabaseServer = await createClient();
+    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
+
+    if (authError || !user) {
+      return { allowed: false, error: "Usuário não autenticado." };
+    }
+
+    const { data: profile } = await supabaseServer
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    const role = profile?.role || "";
+    const roleLower = role.toLowerCase();
+
+    const isAdminOrFinanceiro = ["admin", "admin master", "financeiro", "ceo", "trade"].includes(roleLower);
+    const isGerente = roleLower.includes("gerente") || roleLower.includes("manager");
+
+    if (exigirEscrita) {
+      if (isAdminOrFinanceiro) {
+        return { allowed: true, role, userEmail: user.email };
+      }
+      return { allowed: false, role, error: "Acesso negado: Perfil GERENTE possui acesso apenas para leitura." };
+    }
+
+    if (isAdminOrFinanceiro || isGerente) {
+      return { allowed: true, role, userEmail: user.email };
+    }
+
+    return { allowed: false, role, error: "Acesso negado." };
+  } catch (err: any) {
+    console.error("Erro na verificação de acesso de boletos:", err);
+    return { allowed: false, error: err?.message || "Erro de autorização." };
+  }
+}
+
+export async function validarPermissaoExportacaoBoletos(): Promise<{ allowed: boolean; error?: string }> {
+  const authRes = await validarAcessoBoletos(false);
+  if (!authRes.allowed) {
+    return { allowed: false, error: authRes.error || "Acesso negado para exportação." };
+  }
+  return { allowed: true };
+}
 
 export async function listarBoletos(): Promise<Boleto[]> {
+  const authRes = await validarAcessoBoletos(false);
+  if (!authRes.allowed) {
+    console.error("Tentativa não autorizada em listarBoletos:", authRes.error);
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("cm_boletos")
     .select("*")
@@ -34,6 +87,11 @@ export async function listarBoletos(): Promise<Boleto[]> {
 
 export async function importarBoletos(boletos: Omit<Boleto, "id" | "created_at" | "status">[]) {
   try {
+    const authRes = await validarAcessoBoletos(true);
+    if (!authRes.allowed) {
+      return { success: false, error: authRes.error || "Acesso negado: Operação de escrita não permitida para o seu perfil." };
+    }
+
     const boletosToInsert = boletos.map((b) => ({
       rede: b.rede.toUpperCase(),
       numero_boleto: b.numero_boleto,
@@ -100,6 +158,11 @@ export async function listarRedesDisponiveis(): Promise<string[]> {
 
 export async function atualizarBoleto(id: string, updates: Partial<Boleto>) {
   try {
+    const authRes = await validarAcessoBoletos(true);
+    if (!authRes.allowed) {
+      return { success: false, error: authRes.error || "Acesso negado: Operação de edição não permitida para o seu perfil." };
+    }
+
     const { error } = await supabase
       .from("cm_boletos")
       .update(updates)
@@ -114,3 +177,4 @@ export async function atualizarBoleto(id: string, updates: Partial<Boleto>) {
     return { success: false, error: err.message };
   }
 }
+
