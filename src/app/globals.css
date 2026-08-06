@@ -3365,4 +3365,174 @@ body {
   }
 }
 
+/* ═══════════════════════════════════════════
+   RELEASE 3 — DEMANDA 004.1
+   AJUSTE FINO DE RESPONSIVIDADE E ÁREA ÚTIL (/vendas)
+   ═══════════════════════════════════════════ */
+
+.vendas-top-grid {
+  display: grid;
+  grid-template-columns: minmax(440px, 1.8fr) minmax(160px, 0.7fr) minmax(200px, 0.9fr);
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: stretch;
+}
+
+.vendas-kpi-pair {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vendas-gauge-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  min-width: 0;
+}
+
+.vendas-donut-card {
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.vendas-pace-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.vendas-table-card {
+  overflow: hidden;
+}
+
+.vendas-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.vendas-main-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.vendas-main-table th,
+.vendas-main-table td {
+  padding: 5px 6px;
+}
+
+/* Breakpoints Otimizados para Aproveitamento de Área Útil (1366, 1440, 1600, 1920, 2560 px) */
+@media (max-width: 1599px) {
+  .cm-main {
+    padding: 6px 12px 14px;
+  }
+
+  .vendas-top-grid {
+    grid-template-columns: minmax(400px, 1.6fr) minmax(150px, 0.7fr) minmax(180px, 0.9fr);
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .vendas-pace-grid {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .vendas-main-table {
+    min-width: 960px;
+  }
+
+  .kpi-card {
+    padding: 8px 10px;
+  }
+
+  .kpi-value {
+    font-size: 1.15rem;
+  }
+
+  .kpi-label {
+    font-size: 0.58rem;
+    margin-bottom: 2px;
+  }
+}
+
+@media (max-width: 1439px) {
+  .vendas-top-grid {
+    grid-template-columns: minmax(380px, 1.4fr) minmax(140px, 0.6fr) minmax(170px, 0.8fr);
+    gap: 8px;
+  }
+
+  .vendas-pace-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 6px;
+  }
+}
+
+@media (max-width: 1279px) {
+  .vendas-top-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .vendas-main-table {
+    min-width: 940px;
+  }
+}
+
+/* ═══════════════════════════════════════════
+   RELEASE 3 — EXPORTAÇÃO PDF E IMPRESSÃO A4
+   CARTA DE ANUÊNCIA (PAPER ISOLATION)
+   ═══════════════════════════════════════════ */
+
+@media print {
+  /* 1. Ocultar tudo no DOM por padrão durante a impressão */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* 2. Tornar visível EXCLUSIVAMENTE a folha A4 da Carta de Anuência */
+  #carta-anuencia-paper,
+  #carta-anuencia-paper * {
+    visibility: visible !important;
+  }
+
+  /* 3. Posicionamento absoluto no topo da página impressa sem bordas ou sombras */
+  #carta-anuencia-paper {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    min-height: 297mm !important;
+    margin: 0 !important;
+    padding: 12mm 15mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #111111 !important;
+    z-index: 999999 !important;
+    overflow: hidden !important;
+  }
+
+  /* 4. Configuração de página A4 sem margens externas do navegador */
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  /* 5. Preservar cores originais e fundos impressos (logos e marca d'água) */
+  html, body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
 

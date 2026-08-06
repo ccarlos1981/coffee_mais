@@ -1283,3 +1283,23 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    465415c..7cc6ec8  main -> main
 [05/08/2026 17:10] ✅ Alterações enviadas com sucesso para o GitHub.
+[main fd88ccf] auto-save: 05/08/2026 21:42
+ 35 files changed, 3861 insertions(+), 1017 deletions(-)
+ create mode 100644 docs/governance/ARCHITECTURE_AUDIT.md
+ create mode 100644 docs/governance/BASELINE_ARQUITETURAL_v1.md
+ create mode 100644 docs/governance/COMMERCIAL_STRUCTURE_BASELINE.md
+ create mode 100644 docs/governance/DEVELOPER_ONBOARDING.md
+ create mode 100644 docs/governance/DO_NOT_BREAK.md
+ create mode 100644 docs/governance/ENGINEERING_GOVERNANCE.md
+ create mode 100644 docs/governance/OPERATIONAL_RUNBOOK.md
+ create mode 100644 docs/governance/RELEASE_2_BASELINE.md
+ create mode 100644 docs/governance/RELEASE_v1.0.md
+ create mode 100644 src/app/assistente/components/AssistantDecisionCard.tsx
+ create mode 100644 src/app/assistente/components/AssistantTopQueries.tsx
+ create mode 100644 src/app/distribuidores/page.tsx
+ create mode 100644 src/app/simulador/config/scenarios.ts
+ create mode 100644 src/components/distribuidores/DistribuidoresView.tsx
+ create mode 100644 src/lib/domain/commercial-structure.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   7cc6ec8..fd88ccf  main -> main
+[05/08/2026 21:42] ✅ Alterações enviadas com sucesso para o GitHub.

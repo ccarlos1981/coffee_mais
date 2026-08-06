@@ -97,3 +97,4 @@ Error: ENOSPC: no space left on device, mkdir '/Users/cristiano/Projetos/Coffe M
 }
 
 Node.js v24.14.1
+Error fetching page for targets: TypeError: fetch failed

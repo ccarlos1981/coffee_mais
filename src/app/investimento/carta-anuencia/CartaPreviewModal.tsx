@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Download, Share2, Printer, CheckCircle2, ShieldCheck, Mail, Send, Copy, AlertTriangle, FileText } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { X, Download, Share2, Printer, CheckCircle2, ShieldCheck, Mail, Send, Copy, AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { toPng } from "html-to-image";
 import { CartaAnuenciaItem, registrarCompartilhamento } from "./actions";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
 import { formatarDataValidade } from "./validade-helper";
@@ -15,6 +16,8 @@ interface CartaPreviewModalProps {
 export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
   const [sharing, setSharing] = useState(false);
   const [showShareOptions, setShowShareOptions] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const cartaPaperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!carta?.rede_nome) return;
@@ -42,6 +45,45 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
     window.print();
   };
 
+  const handleDownloadPdf = async () => {
+    if (!cartaPaperRef.current) return;
+    try {
+      setIsDownloading(true);
+      toast.loading("Gerando PDF oficial A4...", { id: "export-carta" });
+
+      const { default: jsPDF } = await import("jspdf");
+
+      // 1. Captura EXCLUSIVA da folha A4 (sem backdrop, modal, botões ou margens)
+      const dataUrl = await toPng(cartaPaperRef.current, {
+        quality: 1.0,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+
+      // 2. Criação de documento PDF A4 em formato portrait perfeito
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // Dimensões A4 exatas (210mm x 297mm) sem margens externas
+      pdf.addImage(dataUrl, "PNG", 0, 0, 210, 297, undefined, "FAST");
+
+      const filename = `Carta_de_Anuencia_${carta.numero_carta}_${carta.rede_nome.replace(/\s+/g, "_")}.pdf`;
+      pdf.save(filename);
+
+      await registrarCompartilhamento(carta.id, "DOWNLOAD", { detalhe: "Download PDF A4 isolado efetuado" });
+      toast.success("PDF oficial gerado com sucesso!", { id: "export-carta" });
+    } catch (err) {
+      console.error("Erro ao gerar PDF:", err);
+      toast.error("Falha ao gerar PDF. Abrindo canal de impressão A4...", { id: "export-carta" });
+      window.print();
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
   const handleCopyLink = async () => {
     const link = `${window.location.origin}/investimento/carta-anuencia?busca=${carta.numero_carta}`;
     await navigator.clipboard.writeText(link);
@@ -65,8 +107,8 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto print:p-0 print:bg-white print:overflow-visible">
+      <div className="bg-background border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col relative animate-in fade-in zoom-in-95 duration-200 print:border-none print:shadow-none print:max-w-none print:max-h-none">
         {/* Modal Toolbar (Não sai na impressão) */}
         <div className="print:hidden relative z-50 flex items-center justify-between px-6 py-4 border-b border-border bg-card rounded-t-2xl shadow-sm">
           <div className="flex items-center gap-3">
@@ -93,8 +135,19 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-semibold"
+              title="Baixar Documento PDF Oficial A4"
+            >
+              {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+              Baixar PDF Oficial
+            </button>
+
+            <button
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-secondary hover:bg-secondary/80 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20 transition-colors font-semibold"
+              title="Imprimir ou Salvar em PDF (Exclusivo Folha A4)"
             >
               <Printer className="w-4 h-4" />
               Imprimir / PDF
@@ -155,8 +208,12 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
         </div>
 
         {/* Visualização A4 da Carta */}
-        <div className="relative z-0 flex-1 overflow-y-auto p-8 bg-neutral-100 dark:bg-neutral-900/60 flex justify-center rounded-b-2xl">
-          <div className="w-[210mm] min-h-[297mm] bg-white text-neutral-900 shadow-2xl p-12 flex flex-col justify-between border border-neutral-200 rounded-sm relative font-sans text-sm leading-relaxed">
+        <div className="relative z-0 flex-1 overflow-y-auto p-8 bg-neutral-100 dark:bg-neutral-900/60 flex justify-center rounded-b-2xl print:p-0 print:bg-white print:overflow-visible">
+          <div
+            ref={cartaPaperRef}
+            id="carta-anuencia-paper"
+            className="w-[210mm] min-h-[297mm] bg-white text-neutral-900 shadow-2xl p-12 flex flex-col justify-between border border-neutral-200 rounded-sm relative font-sans text-sm leading-relaxed"
+          >
             
             {/* Marca d'água institucional */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none">

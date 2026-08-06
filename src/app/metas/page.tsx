@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Target,
@@ -13,6 +13,11 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatNumber, formatCurrency } from "@/lib/formatters";
+import {
+  getFullYearBusinessDays,
+  calculateMonthBusinessDays,
+  MonthBusinessDays,
+} from "@/lib/utils/business-days-calculator";
 
 interface BusinessDay {
   id: number;
@@ -38,16 +43,24 @@ const CHANNELS = [
   { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" }
 ];
 
-import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
+import { OFFICIAL_COMMERCIAL_ROLES, DISTRIBUTORS_REGISTRY } from "@/lib/domain/commercial-structure";
 
-const KA_MANAGERS = [
-  { id: "Total", manager_id: "Total", manager: "KA Total (Somado)", name: "KA Total (Somado)" },
-  ...OFFICIAL_COMMERCIAL_ROLES.map(r => ({
-    id: r.key,
-    manager_id: r.key,
-    manager: r.label,
-    name: r.label,
-  }))
+export function cleanManagerName(name: string): string {
+  if (!name) return "";
+  return name.replace(/\s*\((KA|Dist|DIST|Key Accounts)\)/gi, "").trim();
+}
+
+const CLEAN_MANAGERS = [
+  { id: "Total", manager_id: "Total", manager: "Todos os Gerentes", name: "Todos os Gerentes" },
+  ...Array.from(new Set(OFFICIAL_COMMERCIAL_ROLES.map(r => r.managerName))).map(name => {
+    const roleObj = OFFICIAL_COMMERCIAL_ROLES.find(r => r.managerName === name);
+    return {
+      id: roleObj?.managerId || name,
+      manager_id: roleObj?.managerId || name,
+      manager: name,
+      name: name,
+    };
+  })
 ];
 
 const YEARS = [2024, 2025, 2026, 2027];
@@ -79,7 +92,17 @@ export default function MetasPage() {
   // Dropdown states
   const [selectedChannel, setSelectedChannel] = useState<string>("Toda Empresa");
   const [selectedManager, setSelectedManager] = useState<string>("Total");
+  const [selectedDistributor, setSelectedDistributor] = useState<string>("Total");
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+
+  const availableDistributors = useMemo(() => {
+    if (selectedManager === "Total") {
+      const all = Object.values(DISTRIBUTORS_REGISTRY).flatMap(d => d.redes);
+      return Array.from(new Set(all));
+    }
+    const def = DISTRIBUTORS_REGISTRY[selectedManager];
+    return def ? Array.from(new Set(def.redes)) : [];
+  }, [selectedManager]);
 
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -101,14 +124,12 @@ export default function MetasPage() {
 
   const [rawDbTargets, setRawDbTargets] = useState<any[]>([]);
 
-  // Business days form
-  const [bdYear, setBdYear] = useState(new Date().getFullYear());
-  const [bdMonth, setBdMonth] = useState(new Date().getMonth() + 1);
-  const [bdTotal, setBdTotal] = useState("");
-  const [bdElapsed, setBdElapsed] = useState("");
-
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const yearBusinessDays = useMemo(() => {
+    return getFullYearBusinessDays(selectedYear);
+  }, [selectedYear]);
 
   const prevYear = selectedYear - 1;
   const currYear = selectedYear;
@@ -134,7 +155,7 @@ export default function MetasPage() {
       const dbChannel = channel === 'Private Label' ? 'Marca Própria' : channel;
 
       const chOpt = CHANNELS.find(c => c.id === channel);
-      const mgrOpt = channel === 'KA' ? KA_MANAGERS.find(m => m.id === manager) : chOpt;
+      const mgrOpt = channel !== 'Toda Empresa' ? CLEAN_MANAGERS.find((m: any) => m.id === manager) : chOpt;
 
       const pManagerId = mgrOpt?.manager_id || '';
       const pManagerName = mgrOpt?.manager || '';
@@ -177,29 +198,27 @@ export default function MetasPage() {
         .select('*')
         .eq('year', year);
 
-      if (channel === 'KA') {
+      if (channel !== 'Toda Empresa') {
         if (manager === 'Total') {
-          query = query.in('manager_id', KA_MANAGERS.map(m => m.manager_id).filter(id => id && id !== 'Total'));
+          query = query.in('manager_id', CLEAN_MANAGERS.map((m: any) => m.manager_id).filter((id: string) => id && id !== 'Total'));
         } else {
-          const mgrOpt = KA_MANAGERS.find(m => m.id === manager);
+          const mgrOpt = CLEAN_MANAGERS.find((m: any) => m.id === manager);
           if (mgrOpt?.manager_id) {
             query = query.eq('manager_id', mgrOpt.manager_id);
           } else if (mgrOpt) {
             query = query.eq('manager', mgrOpt.manager);
           }
         }
-      } else if (channel !== 'Toda Empresa') {
-        const chOpt = CHANNELS.find(c => c.id === channel);
-        if (chOpt?.manager_id) {
-          query = query.eq('manager_id', chOpt.manager_id);
-        } else if (chOpt) {
-          query = query.eq('manager', chOpt.manager);
-        }
       }
 
       const { data, error: err } = await query;
 
       if (err) throw err;
+
+      console.log("selectedChannel:", channel);
+      console.log("selectedManager:", manager);
+      console.log("selectedYear:", year);
+      console.log("targets retornados:", data);
 
       const newGrid = {
         forecast: Array(12).fill(0),
@@ -208,7 +227,24 @@ export default function MetasPage() {
         desafio_qty: Array(12).fill(0),
       };
 
-      data?.forEach((row: any) => {
+      // Filtrar linhas correspondentes ao canal selecionado (KA x Distribuidor x Outros)
+      const allRows = data || [];
+      const hasExplicitKaRows = allRows.some((r: any) => (r.manager || '').toLowerCase().includes('(ka)'));
+
+      const filteredData = allRows.filter((row: any) => {
+        const rName = (row.manager || '').toLowerCase();
+        if (channel === 'Distribuidor') {
+          return rName.includes('(dist)') || rName === 'distribuidor' || row.manager_id === '1007';
+        } else if (channel === 'KA') {
+          if (hasExplicitKaRows) {
+            return rName.includes('(ka)');
+          }
+          return !rName.includes('(dist)') && rName !== 'distribuidor' && row.manager_id !== '1007';
+        }
+        return true;
+      });
+
+      filteredData.forEach((row: any) => {
         const mIdx = row.month - 1;
         if (mIdx >= 0 && mIdx < 12) {
           newGrid.forecast[mIdx] += Number(row.target_forecast || 0);
@@ -219,7 +255,7 @@ export default function MetasPage() {
       });
 
       setGridData(newGrid);
-      setRawDbTargets(data || []);
+      setRawDbTargets(filteredData);
     } catch (err) {
       console.error("Erro ao carregar metas:", err);
     } finally {
@@ -248,6 +284,12 @@ export default function MetasPage() {
   const handleChannelChange = (val: string) => {
     setSelectedChannel(val);
     setSelectedManager("Total");
+    setSelectedDistributor("Total");
+  };
+
+  const handleManagerChange = (val: string) => {
+    setSelectedManager(val);
+    setSelectedDistributor("Total");
   };
 
   const handleInputChange = (field: keyof GridData, monthIdx: number, value: number) => {
@@ -265,8 +307,8 @@ export default function MetasPage() {
       setSuccess(null);
 
       const chOpt = CHANNELS.find(c => c.id === selectedChannel);
-      const mgrOpt = selectedChannel === 'KA' 
-        ? KA_MANAGERS.find(m => m.id === selectedManager) 
+      const mgrOpt = selectedChannel !== 'Toda Empresa'
+        ? CLEAN_MANAGERS.find((m: any) => m.id === selectedManager) 
         : chOpt;
 
       if (!mgrOpt) {
@@ -277,12 +319,20 @@ export default function MetasPage() {
         throw new Error("Não é possível salvar metas para a soma total do KA. Por favor, edite cada gerente individualmente.");
       }
 
+      // Definir nome do manager concatenando o sufixo de canal para segregação no banco (manager_id permanece inalterado ex: 1002)
+      let managerNameToSave = mgrOpt.manager;
+      if (selectedChannel === "Distribuidor") {
+        managerNameToSave = `${mgrOpt.manager} (Dist)`;
+      } else if (selectedChannel === "KA") {
+        managerNameToSave = `${mgrOpt.manager} (KA)`;
+      }
+
       const rowsToUpsert = [];
       for (let m = 1; m <= 12; m++) {
         const mIdx = m - 1;
         
         rowsToUpsert.push({
-          manager: mgrOpt.manager,
+          manager: managerNameToSave,
           manager_id: mgrOpt.manager_id,
           year: selectedYear,
           month: m,
@@ -293,6 +343,12 @@ export default function MetasPage() {
           updated_at: new Date().toISOString(),
         });
       }
+
+      console.log("selectedChannel:", selectedChannel);
+      console.log("selectedManager:", selectedManager);
+      console.log("mgrOpt:", mgrOpt);
+      console.log("managerNameToSave:", managerNameToSave);
+      console.log("rowsToUpsert:", rowsToUpsert);
 
       const { error: upsertErr } = await supabase
         .from('targets')
@@ -311,37 +367,33 @@ export default function MetasPage() {
     }
   };
 
-  const handleSaveBusinessDay = async () => {
-    setError(null);
-    const payload = {
-      year: bdYear,
-      month: bdMonth,
-      total_days: bdTotal ? parseInt(bdTotal) : 0,
-      elapsed_days: bdElapsed ? parseInt(bdElapsed) : 0,
-    };
+  const handleSyncYearBusinessDays = async (yearToSync: number) => {
+    try {
+      setSaving(true);
+      setError(null);
+      const fullYearData = getFullYearBusinessDays(yearToSync);
+      const payload = fullYearData.map(m => ({
+        year: m.year,
+        month: m.month,
+        total_days: m.total_days,
+        elapsed_days: m.elapsed_days,
+      }));
 
-    const existing = businessDays.find(
-      (bd) => bd.year === bdYear && bd.month === bdMonth
-    );
+      const { error: upsertErr } = await supabase
+        .from("business_days")
+        .upsert(payload, { onConflict: "year,month" });
 
-    if (existing) {
-      const { error: err } = await supabase
-        .from("business_days")
-        .update(payload)
-        .eq("id", existing.id);
-      if (err) { setError(err.message); return; }
-    } else {
-      const { error: err } = await supabase
-        .from("business_days")
-        .insert(payload);
-      if (err) { setError(err.message); return; }
+      if (upsertErr) throw upsertErr;
+
+      setSuccess(`Calendário de ${yearToSync} sincronizado com sucesso!`);
+      loadBusinessDays();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err: any) {
+      console.error("Erro ao sincronizar dias úteis:", err);
+      setError(`Erro ao sincronizar: ${err.message}`);
+    } finally {
+      setSaving(false);
     }
-
-    setSuccess("Dias úteis salvos!");
-    loadBusinessDays();
-    setBdTotal("");
-    setBdElapsed("");
-    setTimeout(() => setSuccess(null), 3000);
   };
 
   const sumArray = (arr: number[]) => arr.reduce((a, b) => a + (b || 0), 0);
@@ -577,18 +629,38 @@ export default function MetasPage() {
                 </div>
               </div>
 
-              {/* Gerente Dropdown (Conditional on KA) */}
-              {selectedChannel === "KA" && (
+              {/* Gerente Dropdown */}
+              {selectedChannel !== "Toda Empresa" && (
                 <div className="flex flex-col">
                   <span className="text-xs text-muted font-semibold mb-1.5">Gerente</span>
                   <div className="relative">
                     <select
                       value={selectedManager}
-                      onChange={(e) => setSelectedManager(e.target.value)}
+                      onChange={(e) => handleManagerChange(e.target.value)}
                       className="appearance-none bg-background border border-border rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-foreground focus:outline-none focus:border-violet-500"
                     >
-                      {KA_MANAGERS.map(m => (
+                      {CLEAN_MANAGERS.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                    <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-3.5 pointer-events-none" />
+                  </div>
+                </div>
+              )}
+
+              {/* Distribuidor Dropdown (Conditional on Canal Distribuidor) */}
+              {(selectedChannel === "Distribuidor" || selectedChannel === "1007") && (
+                <div className="flex flex-col">
+                  <span className="text-xs text-muted font-semibold mb-1.5">Distribuidor</span>
+                  <div className="relative">
+                    <select
+                      value={selectedDistributor}
+                      onChange={(e) => setSelectedDistributor(e.target.value)}
+                      className="appearance-none bg-background border border-border rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-foreground focus:outline-none focus:border-violet-500"
+                    >
+                      <option value="Total">Todos os Distribuidores</option>
+                      {availableDistributors.map((dist, idx) => (
+                        <option key={idx} value={dist}>{dist}</option>
                       ))}
                     </select>
                     <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-3.5 pointer-events-none" />
@@ -760,152 +832,115 @@ export default function MetasPage() {
 
         {/* =================== DIAS ÚTEIS TAB =================== */}
         {activeTab === "dias-uteis" && (
-          <div className="animate-fade-in">
-            {loadingBusinessDays ? (
-              <div className="glass-card flex flex-col items-center justify-center py-24 space-y-3">
-                <Loader2 className="w-8 h-8 text-violet-500 animate-spin" />
-                <p className="text-muted text-xs uppercase font-bold tracking-widest animate-pulse">Carregando Dias Úteis...</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Form */}
-                <div className="glass-card p-6">
-                  <h3 className="text-base font-semibold text-foreground mb-4">
-                    Cadastrar / Editar Dias Úteis
+          <div className="animate-fade-in space-y-6">
+            {/* Header com Ações e Resumo Anual */}
+            <div className="glass-card p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">
+                    Calendário Oficial de Dias Úteis ({selectedYear})
                   </h3>
-
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="block text-xs text-muted mb-1">
-                        Ano
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={bdYear}
-                          onChange={(e) => setBdYear(Number(e.target.value))}
-                          className="w-full appearance-none bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-violet-500"
-                        >
-                          {YEARS.map((y) => (
-                            <option key={y} value={y}>{y}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-2.5 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted mb-1">
-                        Mês
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={bdMonth}
-                          onChange={(e) => setBdMonth(Number(e.target.value))}
-                          className="w-full appearance-none bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-violet-500"
-                        >
-                          {MONTHS.map((m, i) => (
-                            <option key={i} value={i + 1}>{m}</option>
-                          ))}
-                        </select>
-                        <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-2.5 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted mb-1">
-                        Total Dias Úteis
-                      </label>
-                      <input
-                        type="number"
-                        value={bdTotal}
-                        onChange={(e) => setBdTotal(e.target.value)}
-                        placeholder="Ex: 22"
-                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-dim focus:outline-none focus:border-violet-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted mb-1">
-                        Dias Transcorridos
-                      </label>
-                      <input
-                        type="number"
-                        value={bdElapsed}
-                        onChange={(e) => setBdElapsed(e.target.value)}
-                        placeholder="Ex: 15"
-                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-dim focus:outline-none focus:border-violet-500"
-                      />
-                    </div>
-                  </div>
-
-                  {bdTotal && bdElapsed && (
-                    <div className="mb-4 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
-                      <p className="text-xs text-muted">Dias Faltantes</p>
-                      <p className="text-lg font-bold text-violet-400">
-                        {Math.max(0, parseInt(bdTotal || "0") - parseInt(bdElapsed || "0"))}
-                      </p>
-                    </div>
+                  <p className="text-xs text-muted mt-0.5">
+                    Cálculo automático de Segunda a Sexta-feira, excluindo feriados nacionais e móveis do Brasil.
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleSyncYearBusinessDays(selectedYear)}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-violet-600 text-white text-xs font-semibold hover:from-violet-400 hover:to-violet-500 transition-all disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Calendar className="w-4 h-4" />
                   )}
+                  Sincronizar Calendário {selectedYear}
+                </button>
+              </div>
 
-                  <button
-                    onClick={handleSaveBusinessDay}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-violet-600 text-white text-sm font-medium hover:from-violet-400 hover:to-violet-500 transition-all"
-                  >
-                    <Save className="w-4 h-4" />
-                    Salvar
-                  </button>
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-xl bg-violet-500/10 border border-violet-500/20">
+                  <p className="text-xs font-semibold text-muted uppercase tracking-wider">Dias Úteis Totais ({selectedYear})</p>
+                  <p className="text-2xl font-bold text-foreground mt-1">
+                    {yearBusinessDays.reduce((acc, curr) => acc + curr.total_days, 0)} <span className="text-xs font-normal text-muted">dias</span>
+                  </p>
                 </div>
 
-                {/* Table */}
-                <div className="glass-card overflow-hidden">
-                  <div className="p-4 border-b border-border">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Dias Úteis Cadastrados
-                    </h3>
-                  </div>
-                  {businessDays.length === 0 ? (
-                    <div className="p-8 text-center text-muted text-sm">
-                      Nenhum registro
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm border-collapse">
-                        <thead>
-                          <tr className="border-b border-border bg-muted/15 text-xs text-muted">
-                            <th className="py-2.5 px-4 font-semibold">Ano</th>
-                            <th className="py-2.5 px-4 font-semibold">Mês</th>
-                            <th className="py-2.5 px-4 font-semibold">Total</th>
-                            <th className="py-2.5 px-4 font-semibold">Transcorridos</th>
-                            <th className="py-2.5 px-4 font-semibold">Faltam</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-border/20 text-sm">
-                          {businessDays.map((bd) => (
-                            <tr
-                              key={bd.id}
-                              className="cursor-pointer hover:bg-muted/10 transition-colors"
-                              onClick={() => {
-                                setBdYear(bd.year);
-                                setBdMonth(bd.month);
-                                setBdTotal(bd.total_days.toString());
-                                setBdElapsed(bd.elapsed_days.toString());
-                              }}
-                            >
-                              <td className="py-3 px-4 text-muted">{bd.year}</td>
-                              <td className="py-3 px-4 text-muted">{MONTHS[bd.month - 1]}</td>
-                              <td className="py-3 px-4 font-medium text-foreground">
-                                {bd.total_days}
-                              </td>
-                              <td className="py-3 px-4 text-foreground">{bd.elapsed_days}</td>
-                              <td className="py-3 px-4 text-blue-500 font-medium">
-                                {Math.max(0, bd.total_days - bd.elapsed_days)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
+                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                  <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Dias Transcorridos (Acumulado)</p>
+                  <p className="text-2xl font-bold text-emerald-400 mt-1">
+                    {yearBusinessDays.reduce((acc, curr) => acc + curr.elapsed_days, 0)} <span className="text-xs font-normal text-emerald-500/80">dias</span>
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                  <p className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Dias Restantes no Ano</p>
+                  <p className="text-2xl font-bold text-blue-400 mt-1">
+                    {yearBusinessDays.reduce((acc, curr) => acc + curr.remaining_days, 0)} <span className="text-xs font-normal text-blue-500/80">dias</span>
+                  </p>
                 </div>
               </div>
-            )}
+            </div>
+
+            {/* Tabela dos 12 Meses */}
+            <div className="glass-card overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Matriz Anual de Dias Úteis — {selectedYear}
+                </h3>
+                <span className="text-xs text-muted font-medium">12 Meses Calculados</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/15 text-xs text-muted">
+                      <th className="py-3 px-4 font-semibold">Mês</th>
+                      <th className="py-3 px-4 font-semibold text-right">Total Dias Úteis</th>
+                      <th className="py-3 px-4 font-semibold text-right">Dias Transcorridos</th>
+                      <th className="py-3 px-4 font-semibold text-right">Dias Restantes</th>
+                      <th className="py-3 px-4 font-semibold text-center">Status Mês</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/20 text-sm">
+                    {yearBusinessDays.map((m) => {
+                      const curDate = new Date();
+                      const curY = curDate.getFullYear();
+                      const curM = curDate.getMonth() + 1;
+
+                      let statusBadge = (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted/20 text-muted">
+                          Futuro
+                        </span>
+                      );
+                      if (m.year < curY || (m.year === curY && m.month < curM)) {
+                        statusBadge = (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            Concluído
+                          </span>
+                        );
+                      } else if (m.year === curY && m.month === curM) {
+                        statusBadge = (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-violet-500/20 text-violet-300 border border-violet-500/30 animate-pulse">
+                            Em Andamento
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <tr key={m.month} className="hover:bg-muted/10 transition-colors">
+                          <td className="py-3.5 px-4 font-medium text-foreground">{m.monthName} ({String(m.month).padStart(2, '0')})</td>
+                          <td className="py-3.5 px-4 text-right font-bold text-foreground">{m.total_days}</td>
+                          <td className="py-3.5 px-4 text-right text-emerald-400 font-semibold">{m.elapsed_days}</td>
+                          <td className="py-3.5 px-4 text-right text-blue-400 font-semibold">{m.remaining_days}</td>
+                          <td className="py-3.5 px-4 text-center">{statusBadge}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
       </main>
