@@ -1822,6 +1822,57 @@ A partir de 04/08/2026, a **Revenue Growth Management Platform (RGM)** (Fase 8) 
 
 Status Arquitetural: `REVENUE_GROWTH_MANAGEMENT_V1 = LOCKED` & `BASELINE = CONFIRMED` & `PRODUCTION_READY = TRUE`.
 
+---
+
+## 95. Baseline Oficial — Segregação Definitiva KA × Distribuidor (Módulo Metas por Rede)
+
+A partir de 06/08/2026, a **Segregação Definitiva KA × Distribuidor** no módulo de Metas por Rede (`/gestao/metas-rede`) torna-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Segregação Obrigatória por Canal**: Cada gerente comercial possui obrigatoriamente duas carteiras e canais independentes: **KA (Key Accounts)** e **Distribuidor**. É terminantemente proibida qualquer mistura, unificação ou taxa cruzada entre eles.
+2. **Single Source of Truth da Meta Oficial**: A Meta Oficial do Gerente por Canal é lida exclusivamente da tabela `public.targets` (`manager (KA)` e `manager (Dist)`). A Meta Consolidada do gerente é calculada via $\text{Meta Consolidada} = \text{Meta KA} + \text{Meta Dist}$.
+3. **Single Source of Truth das Metas por Rede**: As metas por rede permanecem persistidas exclusivamente na tabela `public.cm_weekly_projections` (`kpi = 'META'`).
+4. **Isolamento de Rateio Assistido**: O botão de rateio assistido KA atua exclusivamente nas redes KA. O botão de rateio assistido Distribuidor atua exclusivamente nos distribuidores. Fica proibido qualquer rateio cruzado entre os canais.
+5. **Manutenção do Fluxo de Sincronização**: A esteira de sincronização bidirecional com a RPS permanece intacta: `public.targets` → `CommercialPlanningService` → `Metas por Rede` → `public.cm_weekly_projections` → `RPS`.
+6. **Fronteiras de Responsabilidade**:
+   - `/metas`: Responsável exclusivamente pelo cadastro e edição da Meta Oficial.
+   - `/gestao/metas-rede`: Responsável exclusivamente pelo desdobramento da Meta Oficial entre as redes.
+   - `RPS`: Responsável pelo acompanhamento e edição operacional das metas por rede.
+7. **Proteção Contra Regressão**: Qualquer alteração futura deverá obrigatoriamente preservar a segregação KA × Distribuidor, `targets` como única fonte da Meta Oficial, `cm_weekly_projections` como única fonte das Metas por Rede e o isolamento completo entre os canais. Qualquer Pull Request que viole essas diretrizes deverá ser rejeitado.
+
+Status Arquitetural: `KA_DIST_SEGREGATION = LOCKED` & `FEATURE_COMPLETE = TRUE` & `PRODUCTION_READY = TRUE` & `REGRESSION_PROTECTED = TRUE` & `SINGLE_SOURCE_OF_TRUTH = ENFORCED`.
+
+---
+
+## 96. Diretriz Permanente — Engenharia Orientada a Valor de Negócio
+
+A partir de 06/08/2026, a prioridade da engenharia da plataforma Coffee++ passa a ser exclusivamente a entrega de valor ao negócio.
+
+### Diretrizes Mandatórias:
+1. **Origem por Necessidade Real**: Novas implementações deverão nascer de uma necessidade real de negócio ou solicitação explícita do Product Owner.
+2. **Justificativa Técnica Estrita**: Melhorias técnicas, refatorações ou otimizações somente deverão ser executadas quando resolverem um problema comprovado, reduzirem risco operacional ou suportarem uma funcionalidade de negócio.
+3. **Proibição de Refatoração Estética**: É proibida a realização de refatorações por iniciativa própria apenas por preferência técnica, estética ou organizacional.
+4. **Reutilização de Arquitetura**: Sempre que possível, alterações deverão reutilizar componentes, serviços, contratos e estruturas já existentes, preservando a arquitetura vigente.
+5. **Métrica Principal de Sucesso**: O sucesso de uma entrega será medido prioritariamente pelo impacto no negócio, estabilidade operacional e experiência do usuário, e não pela quantidade de código alterado.
+
+Status Arquitetural: `ENGINEERING_MODE = BUSINESS_VALUE` & `BUSINESS_FIRST = TRUE` & `ARCHITECTURE_REUSE = MANDATORY` & `UNNECESSARY_REFACTORING = FORBIDDEN`.
+
+---
+
+## 97. Baseline Oficial — Release 3 — Demanda 006 — Otimização do Layout do Dashboard de Vendas (/vendas)
+
+A partir de 06/08/2026, a otimização visual do Dashboard de Vendas (`/vendas`) torna-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Ocultação Exclusiva de UI**: As colunas *Pace (Faturamento)*, *Venda Fut.*, *Fat + Venda Fut.* e *Pace (MaCo)* permanecem ocultadas exclusivamente na camada de renderização JSX, preservando 100% das fórmulas, cálculos, estados React e objetos computados em memória.
+2. **Reaproveitamento de Área Útil**: A tabela principal desktop opera com 11 colunas e largura responsiva de 100%, eliminando scroll horizontal nas resoluções 1366×768, 1440×900, 1600×900 e 1920×1080 com zoom a 100%.
+3. **Preservação de Motores e Contratos**: Fica proibida qualquer alteração em `AnalyticsEngine V1`, `ForecastEngine`, `SimulationEngine`, `CommercialIntelligenceEngine`, `CommercialAssistantEngine`, `commercial-structure.ts`, APIs, banco de dados ou arquivos de exportação em decorrência desta simplificação visual.
+4. **Auditoria Obrigatória**: Nenhuma evolução do Dashboard de Vendas poderá ser submetida sem aprovação prévia em `npm run health:analytics`, `npx tsc --noEmit` e `npm run build` com 0 desvio financeiro.
+
+Status Arquitetural: `RELEASE_3_DEMANDA_006 = LOCKED` & `BASELINE = CONFIRMED`.
+
+
+
 
 
 

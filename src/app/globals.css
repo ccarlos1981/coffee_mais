@@ -3416,13 +3416,13 @@ body {
 
 .vendas-main-table {
   width: 100%;
-  min-width: 980px;
+  min-width: 780px;
   border-collapse: collapse;
 }
 
 .vendas-main-table th,
 .vendas-main-table td {
-  padding: 5px 6px;
+  padding: 6px 8px;
 }
 
 /* Breakpoints Otimizados para Aproveitamento de Área Útil (1366, 1440, 1600, 1920, 2560 px) */
@@ -3443,7 +3443,7 @@ body {
   }
 
   .vendas-main-table {
-    min-width: 960px;
+    min-width: 760px;
   }
 
   .kpi-card {
@@ -3470,6 +3470,11 @@ body {
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: 6px;
   }
+
+  .vendas-main-table th,
+  .vendas-main-table td {
+    padding: 5px 7px;
+  }
 }
 
 @media (max-width: 1279px) {
@@ -3479,7 +3484,7 @@ body {
   }
 
   .vendas-main-table {
-    min-width: 940px;
+    min-width: 720px;
   }
 }
 

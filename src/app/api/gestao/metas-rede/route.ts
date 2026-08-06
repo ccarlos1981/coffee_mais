@@ -19,18 +19,86 @@ export async function GET(req: NextRequest) {
   const month = monthParam ? parseInt(monthParam, 10) : 8;
 
   let userId = "anonymous";
+  let userRole = "Admin";
+  let userManagerName = "";
+  let isGerenteOnly = false;
+
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (user) userId = user.id;
+    if (user) {
+      userId = user.id;
+      const { data: profile } = await supabase
+        .from("cm_user_profiles")
+        .select("role, name, manager_name, employee_code")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profile) {
+        userRole = profile.role || "Gerente";
+        userManagerName = profile.manager_name || profile.name || "";
+        const normalizedRole = userRole.toLowerCase().trim();
+        const allAccessRoles = [
+          "admin",
+          "admin master",
+          "ceo",
+          "presidência",
+          "presidencia",
+          "presidente",
+          "diretoria",
+          "diretor",
+          "diretor comercial"
+        ];
+        isGerenteOnly = !allAccessRoles.includes(normalizedRole);
+      }
+    }
   } catch (err) {
     // Graceful fallback for public/internal calls
   }
 
   try {
     const viewModel = await CommercialPlanningService.getMetasRedeViewModel(year, month);
-    const executionTimeMs = Date.now() - startTime;
 
+    // SEGURANÇA POR PERFIL (ITEM 1): Filtragem estrita no Backend para Gerentes
+    if (isGerenteOnly && userManagerName) {
+      const normUserMgr = userManagerName.toLowerCase().trim();
+      const filteredBlocks = viewModel.managerBlocks.filter((mb) => {
+        const mbMgr = mb.manager.toLowerCase().trim();
+        const mbMgrId = (mb.manager_id || "").toLowerCase().trim();
+        return mbMgr.includes(normUserMgr) || normUserMgr.includes(mbMgr) || (mbMgrId && mbMgrId === normUserMgr);
+      });
+
+      // Recalcular totais restritos à carteira do gerente
+      let grandTotalFat = 0;
+      let grandTotalMed3M = 0;
+      let grandTotalMed3MKg = 0;
+      let grandTotalMeta = 0;
+      let grandTotalKg = 0;
+      let preenchidas = 0;
+      let totalRedes = 0;
+
+      filteredBlocks.forEach((mb) => {
+        grandTotalFat += mb.grandTotalFat || 0;
+        grandTotalMed3M += mb.grandTotalMed3M || 0;
+        grandTotalMed3MKg += mb.grandTotalMed3MKg || 0;
+        grandTotalMeta += mb.grandTotalMeta || 0;
+        grandTotalKg += mb.mgrVolPrevKg || 0;
+        preenchidas += mb.mgrPreenchidas || 0;
+        totalRedes += mb.redes.length;
+      });
+
+      viewModel.managerBlocks = filteredBlocks;
+      viewModel.grandTotalFat = grandTotalFat;
+      viewModel.grandTotalMed3M = grandTotalMed3M;
+      viewModel.grandTotalMed3MKg = grandTotalMed3MKg;
+      viewModel.grandTotalMeta = grandTotalMeta;
+      viewModel.grandTotalKg = grandTotalKg;
+      viewModel.preenchidas = preenchidas;
+      viewModel.totalRedes = totalRedes;
+      viewModel.totalManagers = filteredBlocks.length;
+    }
+
+    const executionTimeMs = Date.now() - startTime;
     const jsonStr = JSON.stringify(viewModel);
     const payloadSizeBytes = Buffer.byteLength(jsonStr, "utf8");
 
@@ -55,7 +123,16 @@ export async function GET(req: NextRequest) {
       status: "SUCCESS"
     });
 
-    const response = NextResponse.json(viewModel);
+    const responsePayload = {
+      ...viewModel,
+      userProfile: {
+        role: userRole,
+        isGerenteOnly,
+        userManagerName
+      }
+    };
+
+    const response = NextResponse.json(responsePayload);
     response.headers.set("X-Request-ID", requestId);
     response.headers.set("X-Execution-Time-MS", String(executionTimeMs));
     response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
