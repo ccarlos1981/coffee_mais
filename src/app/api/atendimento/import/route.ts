@@ -141,16 +141,19 @@ export async function POST(request: NextRequest) {
     const uniqueRecords = Array.from(deduped.values());
     console.log(`[IMPORT] ${records.length} rows parsed, ${uniqueRecords.length} unique after dedup`);
 
-    // Upsert in batches of 500
+    // Ingestão via RPC Centralizada de Importação (Governança Controlada)
     let upserted = 0;
+    const batchId = `import_http_${Date.now()}`;
     for (let i = 0; i < uniqueRecords.length; i += 500) {
       const batch = uniqueRecords.slice(i, i + 500);
-      const { error } = await supabase
-        .from("base_atendimento")
-        .upsert(batch, { onConflict: "cod_parceiro" });
+      const { data: rpcRes, error } = await supabase.rpc("rpc_importar_atendimento_sankhya", {
+        p_items: batch,
+        p_batch_id: batchId,
+        p_force_override: false,
+      });
 
       if (error) {
-        console.error(`Upsert error at batch ${i}:`, error);
+        console.error(`RPC import error at batch ${i}:`, error);
       } else {
         upserted += batch.length;
       }

@@ -80,6 +80,7 @@ export const allModules: NavigationGroup[] = [
   {
     category: "Análise",
     items: [
+      { key: "distribuidores", title: "Gestão de Distribuidores", description: "Visão 360º de distribuição", href: "/distribuidores", icon: Network, color: "from-blue-600 to-indigo-800", ready: true },
       { key: "matriz", title: "Rede", permission: "Matriz", description: "Ranking clientes", href: "/matriz", icon: Users, color: "from-emerald-600 to-emerald-800", ready: true },
       { key: "positivacao", title: "Positivação", description: "Clientes ativos", href: "/positivacao", icon: CheckCircle2, color: "from-indigo-600 to-indigo-800", ready: true },
       { key: "positivacao_matriz", title: "Posit. Rede", permission: "Posit. Matriz", description: "Rede e Cliente", href: "/positivacao-matriz", icon: CheckCircle2, color: "from-cyan-600 to-cyan-800", ready: true },

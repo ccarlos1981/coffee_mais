@@ -82,11 +82,16 @@ export async function POST() {
       if (err1) console.error('[SEED UF Error]', err1);
     }
     
-    // Upserting PDVs by batches of 500 to prevent payload too large errors
+    // Ingestão via RPC Centralizada de Importação (Governança Controlada)
     let pdvSuccess = 0;
+    const batchId = `seed_batch_${Date.now()}`;
     for (let i = 0; i < pdvPayload.length; i += 500) {
       const batch = pdvPayload.slice(i, i + 500);
-      const { error: err2 } = await supabase.from('base_atendimento').upsert(batch, { onConflict: 'cod_parceiro' });
+      const { error: err2 } = await supabase.rpc("rpc_importar_atendimento_sankhya", {
+        p_items: batch,
+        p_batch_id: batchId,
+        p_force_override: false,
+      });
       if (err2) {
         console.error('[SEED PDV Error at batch ' + i + ']', err2);
       } else {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -22,7 +22,13 @@ import {
   LayoutList,
   Maximize2,
   Minimize2,
-  Zap
+  Zap,
+  AlertTriangle,
+  CheckCircle2,
+  X,
+  FileSpreadsheet,
+  Building2,
+  Clock
 } from "lucide-react";
 import { formatCurrency, formatCompact } from "@/lib/formatters";
 import { ExecutiveMoneyInput } from "@/components/ui/executive-money-input";
@@ -35,11 +41,16 @@ const MONTH_NAMES_PT = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
-const MONTH_SHORT_PT = [
-  "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-  "Jul", "Ago", "Set", "Out", "Nov", "Dez"
-];
 const YEARS_AVAILABLE = [2025, 2026, 2027];
+
+type OperationalStatus = "EM_EDICAO" | "PENDENTE_APROVACAO" | "APROVADA" | "PUBLICADA";
+
+const STATUS_LABELS: Record<OperationalStatus, { label: string; color: string; bg: string }> = {
+  EM_EDICAO: { label: "Em Edição", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
+  PENDENTE_APROVACAO: { label: "Pendente de Aprovação", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
+  APROVADA: { label: "Aprovada", color: "#10b981", bg: "rgba(16, 185, 129, 0.1)" },
+  PUBLICADA: { label: "Publicada", color: "#8b5cf6", bg: "rgba(139, 92, 246, 0.1)" },
+};
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
 export function getPreceding3ClosedMonths(metaMonth: number, year: number): string[] {
@@ -82,6 +93,14 @@ interface ManagerBlock {
   grandTotalMed3M: number;
 }
 
+interface RateioPreviewProposal {
+  rede: string;
+  codigo_matriz: string;
+  currentVal: number;
+  newVal: number;
+  diff: number;
+}
+
 /* ─── Page Component ────────────────────────────────────────────────────────── */
 export default function MetasRedePage() {
   const [loading, setLoading] = useState(true);
@@ -90,12 +109,28 @@ export default function MetasRedePage() {
   const [managers, setManagers] = useState<ManagerBlock[]>([]);
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
-  const [compactView, setCompactView] = useState<boolean>(false); // Visão Completa (Anual) por padrão
+  const [compactView, setCompactView] = useState<boolean>(false);
 
-  // Editable meta values: key = "manager_id|codigo_matriz|rede" -> value in R$
+  // Editable meta values
   const [metaInputs, setMetaInputs] = useState<Record<string, number>>({});
-  // Top-down manager target inputs
   const [managerMetaTargets, setManagerMetaTargets] = useState<Record<string, number>>({});
+  const [managerStatuses, setManagerStatuses] = useState<Record<string, OperationalStatus>>({});
+  
+  // Rateio Preview Modal state
+  const [previewModal, setPreviewModal] = useState<{
+    open: boolean;
+    manager: ManagerBlock | null;
+    targetGoalR$: number;
+    proposals: RateioPreviewProposal[];
+    patchToApply: Record<string, number>;
+  }>({
+    open: false,
+    manager: null,
+    targetGoalR$: 0,
+    proposals: [],
+    patchToApply: {}
+  });
+
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [userRole, setUserRole] = useState<string>("Gerente");
@@ -172,8 +207,8 @@ export default function MetasRedePage() {
     [metaInputs]
   );
 
-  // Top-down Goal Allocator (Backend Logic in Service/Helper)
-  const handleTopDownManagerDistribution = (mgr: ManagerBlock, targetGoalR$: number) => {
+  // Modal de Rateio Proporcional - Preparar Preview
+  const handleOpenRateioPreview = (mgr: ManagerBlock, targetGoalR$: number) => {
     const mgrBlockViewModel = {
       manager: mgr.manager,
       manager_id: mgr.manager_id,
@@ -204,34 +239,40 @@ export default function MetasRedePage() {
 
     const { metaInputsPatch } = PlanningGoalAllocator.distributeManagerGoal(mgrBlockViewModel, targetGoalR$);
 
-    setManagerMetaTargets(prev => ({ ...prev, [mgr.manager_id || mgr.manager]: targetGoalR$ }));
-    setMetaInputs(prev => ({ ...prev, ...metaInputsPatch }));
-    setSaved(false);
+    const proposals: RateioPreviewProposal[] = mgr.redes.map(r => {
+      const key1 = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
+      const currentVal = getMetaValue(r);
+      const newVal = metaInputsPatch[key1] !== undefined ? metaInputsPatch[key1] : currentVal;
+      return {
+        rede: r.rede,
+        codigo_matriz: r.codigo_matriz,
+        currentVal,
+        newVal,
+        diff: newVal - currentVal
+      };
+    });
+
+    setPreviewModal({
+      open: true,
+      manager: mgr,
+      targetGoalR$,
+      proposals,
+      patchToApply: metaInputsPatch
+    });
   };
 
-  // Quick fill multiplier (+0%, +5%, +10%)
+  const handleConfirmRateioPreview = () => {
+    if (!previewModal.manager) return;
+    const mgrKey = previewModal.manager.manager_id || previewModal.manager.manager;
+    setManagerMetaTargets(prev => ({ ...prev, [mgrKey]: previewModal.targetGoalR$ }));
+    setMetaInputs(prev => ({ ...prev, ...previewModal.patchToApply }));
+    setSaved(false);
+    setPreviewModal(prev => ({ ...prev, open: false }));
+  };
+
   const handleApplyQuickGrowthMultiplier = (mgr: ManagerBlock, multiplier: number) => {
     const targetGoal = Math.round(mgr.grandTotalMed3M * multiplier);
-    handleTopDownManagerDistribution(mgr, targetGoal);
-  };
-
-  // Keyboard navigation inside table (Enter / ArrowDown / ArrowUp)
-  const handleKeyDownNavigation = (e: React.KeyboardEvent<HTMLInputElement>, currentKey: string, mgr: ManagerBlock, redeIdx: number) => {
-    if (e.key === "Enter" || e.key === "ArrowDown") {
-      e.preventDefault();
-      const nextRede = mgr.redes[redeIdx + 1];
-      if (nextRede) {
-        const nextKey = `${nextRede.manager_id}|${nextRede.codigo_matriz}|${nextRede.rede}`;
-        inputRefs.current[nextKey]?.focus();
-      }
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      const prevRede = mgr.redes[redeIdx - 1];
-      if (prevRede) {
-        const prevKey = `${prevRede.manager_id}|${prevRede.codigo_matriz}|${prevRede.rede}`;
-        inputRefs.current[prevKey]?.focus();
-      }
-    }
+    handleOpenRateioPreview(mgr, targetGoal);
   };
 
   const loadData = useCallback(async (targetMonth: number, targetYear: number) => {
@@ -249,10 +290,12 @@ export default function MetasRedePage() {
       const monthKeys = apiMonths || Array.from({ length: targetMonth - 1 }, (_, i) => `${targetYear}-${String(i + 1).padStart(2, "0")}`);
       const initialInputs: Record<string, number> = {};
       const initialMgrTargets: Record<string, number> = {};
+      const initialStatuses: Record<string, OperationalStatus> = {};
 
       const result: ManagerBlock[] = (managerBlocks || []).map((mb: any) => {
         const mgrKey = mb.manager_id || mb.manager;
         initialMgrTargets[mgrKey] = mb.grandTotalMeta || 0;
+        initialStatuses[mgrKey] = "EM_EDICAO";
 
         const redeList: RedeRow[] = (mb.redes || []).map((r: any) => {
           let totalFat = 0;
@@ -315,6 +358,7 @@ export default function MetasRedePage() {
       setManagers(result);
       setMetaInputs(initialInputs);
       setManagerMetaTargets(initialMgrTargets);
+      setManagerStatuses(initialStatuses);
       if (result.length > 0) {
         setExpandedManagers(new Set([result[0].manager]));
       }
@@ -338,14 +382,18 @@ export default function MetasRedePage() {
       .filter((m) => m.redes.length > 0 || m.manager.toLowerCase().includes(q));
   }, [managers, searchTerm]);
 
-  // Executive Cards derived directly from metaInputs (Single Source of Truth)
+  // Resumo Executivo & Cards de Conciliação em Tempo Real
   const executiveCards = useMemo(() => {
     let totalMed3M = 0;
     let totalMetaInputted = 0;
+    let totalConsolidatedGoal = 0;
     let totalRedesCount = 0;
     let totalRedesWithGoal = 0;
 
     managers.forEach((mgr) => {
+      const mgrKey = mgr.manager_id || mgr.manager;
+      const mgrGoalTarget = managerMetaTargets[mgrKey] || mgr.metaTotal || 0;
+      totalConsolidatedGoal += mgrGoalTarget;
       totalMed3M += mgr.grandTotalMed3M;
       totalRedesCount += mgr.redes.length;
 
@@ -358,13 +406,24 @@ export default function MetasRedePage() {
       });
     });
 
+    const diffVal = totalConsolidatedGoal - totalMetaInputted;
+    const diffPct = totalConsolidatedGoal > 0 ? (diffVal / totalConsolidatedGoal) * 100 : 0;
+    const isConciliated = Math.abs(diffVal) < 0.01;
+    const pctDistributed = totalConsolidatedGoal > 0 ? (totalMetaInputted / totalConsolidatedGoal) * 100 : 0;
+
     return {
       totalMed3M,
       totalMetaInputted,
+      totalConsolidatedGoal,
+      diffVal,
+      diffPct,
+      isConciliated,
+      pctDistributed,
       totalRedesCount,
       totalRedesWithGoal,
+      saldoRestante: Math.max(0, diffVal)
     };
-  }, [managers, metaInputs, getMetaValue]);
+  }, [managers, metaInputs, managerMetaTargets, getMetaValue]);
 
   // Save handler (Upsert into cm_weekly_projections)
   const handleSave = async () => {
@@ -431,7 +490,7 @@ export default function MetasRedePage() {
 
   return (
     <div className="min-h-screen bg-[#f8f9fb] text-[#1e293b]">
-      {/* ── Navbar ─────────────────────────────────────────────────────── */}
+      {/* Navbar */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-neutral-200 shadow-sm">
         <div className="max-w-[1440px] mx-auto px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -453,14 +512,12 @@ export default function MetasRedePage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* View Mode Toggle (Visão Completa vs Visão Enxuta) */}
             <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
               <button
                 onClick={() => setCompactView(false)}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
                   !compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
                 }`}
-                title="Visão Histórica Anual Completa (Jan-Jul)"
               >
                 <Maximize2 className="w-3 h-3 text-blue-500" />
                 <span>Completa (Anual)</span>
@@ -470,10 +527,9 @@ export default function MetasRedePage() {
                 className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
                   compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
                 }`}
-                title="Visão Enxuta Reunião Executiva (3M)"
               >
                 <Minimize2 className="w-3 h-3 text-amber-500" />
-                <span>Enxuta (Reunião 3M)</span>
+                <span>Enxuta (3M)</span>
               </button>
             </div>
 
@@ -482,7 +538,7 @@ export default function MetasRedePage() {
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-200 cursor-pointer"
+                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
               >
                 {MONTH_NAMES_PT.map((mName, idx) => (
                   <option key={idx + 1} value={idx + 1}>
@@ -493,7 +549,7 @@ export default function MetasRedePage() {
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-amber-200 cursor-pointer"
+                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
               >
                 {YEARS_AVAILABLE.map((y) => (
                   <option key={y} value={y}>
@@ -504,399 +560,344 @@ export default function MetasRedePage() {
             </div>
 
             <button
-              onClick={expandAll}
-              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
-            >
-              Expandir
-            </button>
-            <button
-              onClick={collapseAll}
-              className="text-[11px] font-semibold text-neutral-500 hover:text-neutral-800 px-2 py-1.5 rounded-lg hover:bg-neutral-100 transition-colors"
-            >
-              Recolher
-            </button>
-
-            <button
               onClick={handleSave}
               disabled={saving}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
                 saved
-                  ? "bg-emerald-500 text-white"
-                  : saving
-                  ? "bg-amber-400 text-amber-900 opacity-70"
-                  : "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-200"
+                  ? "bg-emerald-600 text-white"
+                  : "bg-amber-500 text-white hover:bg-amber-600"
               }`}
             >
-              {saved ? (
-                <>
-                  <Check className="w-3.5 h-3.5" />
-                  Salvo na RPS!
-                </>
-              ) : saving ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Salvando...
-                </>
+              {saving ? (
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : saved ? (
+                <Check className="w-4 h-4" />
               ) : (
-                <>
-                  <Save className="w-3.5 h-3.5" />
-                  Salvar Metas
-                </>
+                <Save className="w-4 h-4" />
               )}
+              <span>{saved ? "Gravado na RPS!" : "Gravar Metas na RPS"}</span>
             </button>
           </div>
         </div>
       </nav>
 
-      {/* ── Content ────────────────────────────────────────────────────── */}
-      <main className="max-w-[1440px] mx-auto px-6 py-6">
-        {/* Title & Description */}
-        <div className="mb-6">
-          <h1 className="text-xl font-black text-neutral-900 tracking-tight">
-            Abertura de Meta por Rede — {MONTH_NAMES_PT[selectedMonth - 1]} / {selectedYear}
-          </h1>
-          <p className="text-neutral-500 text-xs mt-1">
-            Modo: <span className="font-bold text-neutral-800">{compactView ? "Visão Enxuta Reunião (3M)" : `Histórico Anual Completo (${yearClosedMonths.length} meses)`}</span> · Média 3M Ref: {dynamicPrecedingMonths.join(", ")} · Single Source of Truth RPS
-          </p>
+      {/* Main Content */}
+      <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-6">
+        {/* REFINAMENTO 1 & 3: CARD EXECUTIVO DE CONCILIAÇÃO & RESUMO SINTÉTICO */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Card 1: Conciliação em Tempo Real */}
+          <div className={`p-4 rounded-xl border transition-all ${
+            executiveCards.isConciliated 
+              ? "bg-emerald-50/60 border-emerald-200" 
+              : "bg-amber-50/60 border-amber-200"
+          }`}>
+            <div className="flex items-center justify-between text-xs font-bold text-neutral-500 mb-1">
+              <span>Status de Conciliação</span>
+              {executiveCards.isConciliated ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+              )}
+            </div>
+            <div className={`text-base font-black ${executiveCards.isConciliated ? "text-emerald-700" : "text-amber-800"}`}>
+              {executiveCards.isConciliated ? "✓ Meta Conciliada" : `Desvio: ${formatCurrency(executiveCards.diffVal)}`}
+            </div>
+            <div className="text-[11px] text-neutral-500 mt-1">
+              {executiveCards.isConciliated 
+                ? "Meta Cia = Meta Redes (Paridade Zero)" 
+                : `Diferença de ${executiveCards.diffPct.toFixed(1)}% a distribuir`}
+            </div>
+          </div>
+
+          {/* Card 2: Meta Cia Consolidada */}
+          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+            <div className="text-xs font-bold text-neutral-500 mb-1">Meta Cia Consolidada</div>
+            <div className="text-xl font-black text-neutral-900">
+              {formatCurrency(executiveCards.totalConsolidatedGoal)}
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1">Meta total dos Gerentes</div>
+          </div>
+
+          {/* Card 3: Meta Distribuída */}
+          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+            <div className="text-xs font-bold text-neutral-500 mb-1">Meta Distribuída nas Redes</div>
+            <div className="text-xl font-black text-blue-600">
+              {formatCurrency(executiveCards.totalMetaInputted)}
+            </div>
+            <div className="text-[11px] text-blue-500 font-semibold mt-1">
+              {executiveCards.pctDistributed.toFixed(1)}% do total
+            </div>
+          </div>
+
+          {/* Card 4: Saldo Restante */}
+          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+            <div className="text-xs font-bold text-neutral-500 mb-1">Saldo Restante a Ratear</div>
+            <div className="text-xl font-black text-amber-600">
+              {formatCurrency(executiveCards.saldoRestante)}
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1">Valor pendente de rateio</div>
+          </div>
+
+          {/* Card 5: Cobertura de Redes */}
+          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+            <div className="text-xs font-bold text-neutral-500 mb-1">Redes com Meta</div>
+            <div className="text-xl font-black text-purple-600">
+              {executiveCards.totalRedesWithGoal} <span className="text-xs font-normal text-neutral-400">/ {executiveCards.totalRedesCount}</span>
+            </div>
+            <div className="text-[11px] text-neutral-400 mt-1">
+              {((executiveCards.totalRedesWithGoal / (executiveCards.totalRedesCount || 1)) * 100).toFixed(0)}% das redes preenchidas
+            </div>
+          </div>
         </div>
 
-        {/* Executive Summary KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <BarChart3 className="w-4 h-4 text-blue-500" />
-              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Média 3M Total</span>
-            </div>
-            <p className="text-lg font-black text-blue-700">{formatCurrency(executiveCards.totalMed3M)}</p>
-            <p className="text-[10px] text-neutral-400">{dynamicPrecedingMonths.join(", ")}</p>
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
+          <div className="relative flex-1 w-full sm:w-auto max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Buscar por rede ou gerente..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-bold text-neutral-800 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
+            />
           </div>
-          <div className="bg-white border border-amber-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <Target className="w-4 h-4 text-amber-500" />
-              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">
-                Meta {MONTH_SHORT_PT[selectedMonth - 1]} Digitada
-              </span>
-            </div>
-            <p className="text-lg font-black text-amber-600">{formatCurrency(executiveCards.totalMetaInputted)}</p>
-            <p className="text-[10px] text-neutral-400">{executiveCards.totalRedesWithGoal} redes preenchidas</p>
-          </div>
-          <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <Users className="w-4 h-4 text-emerald-500" />
-              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Gerentes</span>
-            </div>
-            <p className="text-lg font-black text-neutral-900">{managers.length}</p>
-            <p className="text-[10px] text-neutral-400">Com carteira ativa</p>
-          </div>
-          <div className="bg-white border border-neutral-200 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-2 mb-1.5">
-              <Sparkles className="w-4 h-4 text-violet-500" />
-              <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">Redes Planejáveis</span>
-            </div>
-            <p className="text-lg font-black text-neutral-900">{executiveCards.totalRedesCount}</p>
-            <p className="text-[10px] text-neutral-400">Ordenadas por Média 3M</p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={expandAll}
+              className="px-3 py-1.5 text-xs font-bold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
+            >
+              Expandir Todos
+            </button>
+            <button
+              onClick={collapseAll}
+              className="px-3 py-1.5 text-xs font-bold text-neutral-600 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition-colors"
+            >
+              Recolher Todos
+            </button>
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative mb-4">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400" />
-          <input
-            type="text"
-            placeholder="Pesquisar rede ou gerente..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white border border-neutral-200 rounded-xl pl-9 pr-4 py-2.5 text-xs text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition-all shadow-sm"
-          />
-        </div>
-
-        {/* Loading */}
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin" />
-              <span className="text-xs text-neutral-400">Carregando dados...</span>
-            </div>
+        {/* Managers Table List */}
+        {loading ? (
+          <div className="bg-white p-12 rounded-xl border border-neutral-200 text-center text-neutral-500 text-sm">
+            <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+            Carregando estrutura comercial e histórico de faturamento...
           </div>
-        )}
+        ) : filtered.length === 0 ? (
+          <div className="bg-white p-12 rounded-xl border border-neutral-200 text-center text-neutral-500 text-sm">
+            Nenhuma rede encontrada para os filtros aplicados.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filtered.map((mgr) => {
+              const mgrKey = mgr.manager_id || mgr.manager;
+              const isExpanded = expandedManagers.has(mgr.manager);
+              const mgrMetaTarget = managerMetaTargets[mgrKey] || mgr.metaTotal || 0;
 
-        {/* Manager Blocks */}
-        {!loading &&
-          filtered.map((mgr) => {
-            const isOpen = expandedManagers.has(mgr.manager);
-            const mgrKey = mgr.manager_id || mgr.manager;
-            const targetMgrMetaInput = managerMetaTargets[mgrKey] || mgr.metaTotal || 0;
+              let sumInputted = 0;
+              mgr.redes.forEach((r) => {
+                sumInputted += getMetaValue(r);
+              });
 
-            const mgrBlockViewModel = {
-              manager: mgr.manager,
-              manager_id: mgr.manager_id,
-              totalRedes: mgr.redes.length,
-              grandTotalFat: mgr.grandTotalFat,
-              grandTotalMed3M: mgr.grandTotalMed3M,
-              grandTotalMed3MKg: 0,
-              grandTotalMeta: mgr.metaTotal,
-              mgrPace: 100,
-              mgrPreenchidas: mgr.redes.length,
-              mgrVolPrevKg: 0,
-              redes: mgr.redes.map(r => ({
-                rede: r.rede,
-                manager: r.manager,
-                manager_id: r.manager_id,
-                codigo_matriz: r.codigo_matriz,
-                fatQ2: r.totalFat,
-                qtyQ2: r.totalQty,
-                avgPriceQ2: r.avgPriceQ2,
-                avg3M: r.avg3M,
-                avg3MKg: 0,
-                metaVal: getMetaValue(r),
-                metaKg: 0,
-                pctVsAvg3M: 0,
-                monthlyHistory: r.months
-              }))
-            };
+              const mgrDiff = mgrMetaTarget - sumInputted;
+              const mgrConciliated = Math.abs(mgrDiff) < 0.01;
+              const status = managerStatuses[mgrKey] || "EM_EDICAO";
+              const statusInfo = STATUS_LABELS[status];
 
-            // Business Rules Execution in Helper (PlanningGoalAllocator)
-            const summary = PlanningGoalAllocator.calculateManagerSummary(mgrBlockViewModel, metaInputs, targetMgrMetaInput);
-            const isGoalAboveAvg = summary.growthStatus === 'ABOVE';
-
-            return (
-              <div
-                key={mgr.manager}
-                className={`mb-4 bg-white border rounded-xl overflow-hidden shadow-sm transition-all ${
-                  isGoalAboveAvg ? "border-emerald-300 border-l-4 border-l-emerald-500" : "border-neutral-200"
-                }`}
-              >
-                {/* Manager Header Horizontal Executive Accordion Bar */}
-                <div className="w-full flex flex-col md:flex-row md:items-center justify-between px-5 py-3.5 bg-neutral-50/70 border-b border-neutral-200/60 gap-3">
-                  <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                    <button
-                      onClick={() => toggleManager(mgr.manager)}
-                      className="p-1 rounded-lg bg-white border border-neutral-200 text-neutral-600 hover:text-amber-600 hover:border-amber-300 transition-colors cursor-pointer"
-                    >
-                      {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </button>
-                    <span className="text-sm font-black text-neutral-900 truncate">{mgr.manager}</span>
-                    <span className="text-[10px] font-bold text-neutral-500 bg-white border border-neutral-200 px-2 py-0.5 rounded-full shrink-0">
-                      {mgr.redes.length} Redes
-                    </span>
-
-                    {/* Top-down Distribution Controls & 1-Click Quick Growth Multipliers */}
-                    {isTopDownAuthorized && (
-                      <div className="flex items-center gap-1.5 bg-amber-50/80 border border-amber-200/80 px-2 py-1 rounded-lg">
-                        <Sliders className="w-3 h-3 text-amber-600" />
-                        <span className="text-[10px] font-bold text-amber-700 uppercase hidden lg:inline">Meta Direção:</span>
-                        <ExecutiveMoneyInput
-                          value={managerMetaTargets[mgrKey] || 0}
-                          onChangeValue={(val) => {
-                            handleTopDownManagerDistribution(mgr, val);
-                          }}
-                          placeholder="Meta R$"
-                          className="w-24 text-right text-xs font-bold text-amber-800 bg-white border border-amber-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-amber-400 tabular-nums"
-                        />
-
-                        {/* Quick 1-Click Fill Buttons */}
-                        <div className="flex items-center gap-1 ml-1 border-l border-amber-200 pl-1.5">
-                          <button
-                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.0)}
-                            className="px-1.5 py-0.5 text-[9px] font-bold bg-white text-neutral-700 border border-neutral-200 rounded hover:bg-neutral-100 hover:text-neutral-900 transition-colors cursor-pointer"
-                            title="Preencher Meta com 100% da Média 3M"
+              return (
+                <div key={mgr.manager} className="bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
+                  {/* Manager Header */}
+                  <div
+                    onClick={() => toggleManager(mgr.manager)}
+                    className="p-4 bg-neutral-50/80 border-b border-neutral-200 flex items-center justify-between cursor-pointer hover:bg-neutral-100/80 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      {isExpanded ? (
+                        <ChevronDown className="w-5 h-5 text-neutral-400" />
+                      ) : (
+                        <ChevronRight className="w-5 h-5 text-neutral-400" />
+                      )}
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-neutral-900 text-base">{mgr.manager}</span>
+                          {/* REFINAMENTO 2: STATUS OPERACIONAL DA META */}
+                          <select
+                            value={status}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              setManagerStatuses(prev => ({ ...prev, [mgrKey]: e.target.value as OperationalStatus }));
+                            }}
+                            style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
+                            className="text-[11px] font-bold px-2 py-0.5 rounded-full border border-current cursor-pointer focus:outline-none"
                           >
-                            100% 3M
-                          </button>
-                          <button
-                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.05)}
-                            className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 transition-colors flex items-center gap-0.5 cursor-pointer"
-                            title="Preencher Meta com Média 3M + 5% de Crescimento"
-                          >
-                            <Zap className="w-2.5 h-2.5 text-emerald-600" />
-                            +5%
-                          </button>
-                          <button
-                            onClick={() => handleApplyQuickGrowthMultiplier(mgr, 1.10)}
-                            className="px-1.5 py-0.5 text-[9px] font-bold bg-violet-50 text-violet-700 border border-violet-200 rounded hover:bg-violet-100 transition-colors flex items-center gap-0.5 cursor-pointer"
-                            title="Preencher Meta com Média 3M + 10% de Crescimento"
-                          >
-                            <Zap className="w-2.5 h-2.5 text-violet-600" />
-                            +10%
-                          </button>
+                            <option value="EM_EDICAO">Em Edição</option>
+                            <option value="PENDENTE_APROVACAO">Pendente de Aprovação</option>
+                            <option value="APROVADA">Aprovada</option>
+                            <option value="PUBLICADA">Publicada</option>
+                          </select>
+                        </div>
+                        <div className="text-xs text-neutral-500 mt-0.5">
+                          {mgr.redes.length} Redes Planejáveis \| Média 3M: {formatCurrency(mgr.grandTotalMed3M)}
                         </div>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex items-center gap-6">
+                      {/* Conciliação do Gerente */}
+                      <div className="text-right">
+                        <div className="text-xs text-neutral-500">Distribuído / Meta Cia</div>
+                        <div className="text-sm font-black flex items-center gap-1.5 justify-end">
+                          <span className="text-blue-600">{formatCurrency(sumInputted)}</span>
+                          <span className="text-neutral-400">/</span>
+                          <span className="text-neutral-900">{formatCurrency(mgrMetaTarget)}</span>
+                        </div>
+                        <div className={`text-[11px] font-bold ${mgrConciliated ? "text-emerald-600" : "text-amber-600"}`}>
+                          {mgrConciliated ? "✓ Conciliado" : `Diferença: ${formatCurrency(mgrDiff)}`}
+                        </div>
+                      </div>
+
+                      {/* Botão Rateio Assistido com Modal de Preview */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenRateioPreview(mgr, mgrMetaTarget > 0 ? mgrMetaTarget : Math.round(mgr.grandTotalMed3M * 1.1));
+                        }}
+                        className="px-3 py-1.5 text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Distribuir Proporcionalmente</span>
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Executive Summary Metrics in Collapsed Row */}
-                  <div className="flex items-center gap-3 sm:gap-5 shrink-0 text-xs justify-between md:justify-end flex-wrap">
-                    <div className="text-right">
-                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Fat YTD ({yearClosedMonths.length}m)</span>
-                      <span className="font-bold text-neutral-800">{formatCompact(summary.totalFatYTD)}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[9px] text-blue-500 font-bold uppercase block">Méd 3M</span>
-                      <span className="font-bold text-blue-700">{formatCompact(summary.totalMed3M)}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[9px] text-amber-600 font-bold uppercase block">Meta {MONTH_SHORT_PT[selectedMonth - 1]}</span>
-                      <span className="font-black text-amber-700">{formatCompact(summary.currentMetaInputsSum)}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[9px] text-violet-500 font-bold uppercase block">% vs 3M</span>
-                      <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold ${
-                        summary.growthStatus === 'ABOVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                        summary.growthStatus === 'BELOW' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-neutral-100 text-neutral-600'
-                      }`}>
-                        {summary.growthStatus === 'ABOVE' && <TrendingUp className="w-3 h-3 text-emerald-600" />}
-                        {summary.growthStatus === 'BELOW' && <TrendingDown className="w-3 h-3 text-red-600" />}
-                        {summary.growthStatus === 'EQUAL' && <Minus className="w-3 h-3 text-neutral-400" />}
-                        {summary.growthPct > 0
-                          ? `+${summary.growthPct.toFixed(2).replace(".", ",")}%`
-                          : summary.growthPct < 0
-                          ? `${summary.growthPct.toFixed(2).replace(".", ",")}%`
-                          : "0,0%"}
-                      </span>
-                    </div>
-
-                    {/* Remaining Balance Indicator Badge */}
-                    <div className="text-right">
-                      <span className="text-[9px] text-neutral-400 font-bold uppercase block">Status Saldo</span>
-                      {summary.remainingBalance === 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                          <Check className="w-3 h-3 text-emerald-600" />
-                          Distribuído
-                        </span>
-                      ) : summary.remainingBalance > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" title={`Faltam R$ ${summary.remainingBalance.toLocaleString('pt-BR')} para distribuir`}>
-                          Faltam +{formatCompact(summary.remainingBalance)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full" title={`Meta ultrapassada em R$ ${Math.abs(summary.remainingBalance).toLocaleString('pt-BR')}`}>
-                          Excesso {formatCompact(summary.remainingBalance)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Table Component */}
-                {isOpen && (
-                  <div className="overflow-x-auto border-t border-neutral-100">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-neutral-50/80 border-b border-neutral-200/60">
-                          <th className="text-left px-4 py-2.5 text-[10px] font-bold text-neutral-500 uppercase tracking-wider sticky left-0 bg-neutral-50 z-10 min-w-[180px]">
-                            Rede
-                          </th>
-                          {tableDisplayedMonths.map((mKey) => {
-                            const monthIndex = parseInt(mKey.split("-")[1], 10) - 1;
-                            return (
-                              <th key={mKey} className="text-right px-3 py-2.5 text-[10px] font-bold text-neutral-400 uppercase tracking-wider min-w-[65px]">
-                                {MONTH_SHORT_PT[monthIndex]}
+                  {/* Redes Table */}
+                  {isExpanded && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-neutral-100/50 border-b border-neutral-200 text-neutral-500 font-bold">
+                            <th className="p-3 w-10 text-center">#</th>
+                            <th className="p-3">Rede Planejável</th>
+                            {tableDisplayedMonths.map((m) => (
+                              <th key={m} className="p-3 text-right">
+                                {m}
                               </th>
+                            ))}
+                            <th className="p-3 text-right bg-neutral-100/80">Média 3M</th>
+                            <th className="p-3 text-right bg-amber-50/50 w-44 font-black text-neutral-900">
+                              Meta R$ ({MONTH_NAMES_PT[selectedMonth - 1]})
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mgr.redes.map((r, rIdx) => {
+                            const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
+                            const val = getMetaValue(r);
+
+                            return (
+                              <tr key={r.rede} className="border-b border-neutral-100 hover:bg-neutral-50/50 transition-colors">
+                                <td className="p-3 text-center text-neutral-400">{rIdx + 1}</td>
+                                <td className="p-3 font-bold text-neutral-800">{r.rede}</td>
+                                {tableDisplayedMonths.map((m) => (
+                                  <td key={m} className="p-3 text-right font-mono text-neutral-600">
+                                    {formatCurrency(r.months[m]?.fat || 0)}
+                                  </td>
+                                ))}
+                                <td className="p-3 text-right font-mono font-bold bg-neutral-50 text-neutral-900">
+                                  {formatCurrency(r.avg3M)}
+                                </td>
+                                <td className="p-3 text-right bg-amber-50/30">
+                                  <ExecutiveMoneyInput
+                                    value={val}
+                                    onChangeValue={(newVal: number) =>
+                                      setMetaValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, newVal)
+                                    }
+                                  />
+                                </td>
+                              </tr>
                             );
                           })}
-                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-blue-700 uppercase tracking-wider min-w-[80px] bg-blue-50/80">
-                            Méd 3M
-                          </th>
-                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-neutral-500 uppercase tracking-wider min-w-[68px]">
-                            R$/Kg
-                          </th>
-                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-amber-700 uppercase tracking-wider min-w-[110px] bg-amber-50/80">
-                            Meta {MONTH_SHORT_PT[selectedMonth - 1]} R$
-                          </th>
-                          <th className="text-center px-2 py-2.5 text-[10px] font-bold text-violet-700 uppercase tracking-wider min-w-[85px] bg-violet-50/80">
-                            % vs 3M
-                          </th>
-                          <th className="text-right px-3 py-2.5 text-[10px] font-bold text-emerald-700 uppercase tracking-wider min-w-[70px] bg-emerald-50/80">
-                            Vol. Kg
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {mgr.redes.map((r, idx) => {
-                          const inputVal = getMetaValue(r);
-                          const volKg = r.avgPriceQ2 > 0 && inputVal > 0 ? inputVal / r.avgPriceQ2 : 0;
-                          
-                          // Growth KPIs via Helper Logic (PlanningGoalAllocator)
-                          const growthKPI = PlanningGoalAllocator.calculateNetworkGrowth(inputVal, r.avg3M);
-                          const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
-
-                          return (
-                            <tr
-                              key={inputKey}
-                              className={`border-t border-neutral-100 hover:bg-amber-50/30 transition-colors ${
-                                idx % 2 === 0 ? "bg-white" : "bg-neutral-50/40"
-                              }`}
-                            >
-                              <td className="px-4 py-2 font-semibold text-neutral-800 sticky left-0 bg-white z-10">
-                                <span className="truncate block max-w-[170px]">{r.rede}</span>
-                              </td>
-                              {tableDisplayedMonths.map((mKey) => {
-                                const fat = r.months[mKey]?.fat || 0;
-                                return (
-                                  <td key={mKey} className="text-right px-3 py-2 tabular-nums text-neutral-500 font-medium">
-                                    {fat > 0 ? formatCompact(fat) : <span className="text-neutral-300">—</span>}
-                                  </td>
-                                );
-                              })}
-                              <td className="text-right px-3 py-2 tabular-nums font-bold text-blue-700 bg-blue-50/30">
-                                {r.avg3M > 0 ? formatCompact(r.avg3M) : "—"}
-                              </td>
-                              <td className="text-right px-3 py-2 tabular-nums text-neutral-500 font-medium">
-                                {r.avgPriceQ2 > 0 ? `${r.avgPriceQ2.toFixed(2).replace(".", ",")}` : <span className="text-neutral-300">—</span>}
-                              </td>
-
-                              {/* Editable Input Meta R$ with Keyboard Navigation (Enter / ArrowDown / ArrowUp) */}
-                              <td className="px-2 py-1.5 bg-amber-50/30 text-center">
-                                <ExecutiveMoneyInput
-                                  inputRef={(el) => { inputRefs.current[inputKey] = el; }}
-                                  value={inputVal || 0}
-                                  onChangeValue={(rawReais) =>
-                                    setMetaValue(
-                                      r.manager_id,
-                                      r.codigo_matriz,
-                                      r.rede,
-                                      r.manager,
-                                      rawReais
-                                    )
-                                  }
-                                  placeholder="0"
-                                  onKeyDown={(e) => handleKeyDownNavigation(e, inputKey, mgr, idx)}
-                                  className="w-24 min-w-[85px] text-right text-xs font-bold text-amber-800 bg-white border border-amber-200 rounded-md px-2 py-1 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 placeholder:text-neutral-300 tabular-nums"
-                                />
-                              </td>
-
-                              {/* Network Growth Indicator % vs 3M Badge */}
-                              <td className="text-center px-2 py-1.5 bg-violet-50/30">
-                                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  growthKPI.growthStatus === 'ABOVE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                                  growthKPI.growthStatus === 'BELOW' ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-neutral-100 text-neutral-500'
-                                }`}>
-                                  {growthKPI.growthPct > 0
-                                    ? `+${growthKPI.growthPct.toFixed(2).replace(".", ",")}%`
-                                    : growthKPI.growthPct < 0
-                                    ? `${growthKPI.growthPct.toFixed(2).replace(".", ",")}%`
-                                    : "0,0%"}
-                                </span>
-                              </td>
-
-                              {/* Volume Kg */}
-                              <td className="text-right px-3 py-2 tabular-nums font-bold bg-emerald-50/30">
-                                {volKg > 0 ? (
-                                  <span className="text-emerald-700">{formatCompact(volKg)}</span>
-                                ) : (
-                                  <span className="text-neutral-300">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </main>
+
+      {/* REFINAMENTO 4: MODAL DE PREVIEW DO RATEIO PROPORCIONAL */}
+      {previewModal.open && previewModal.manager && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-neutral-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="p-4 bg-neutral-50 border-b border-neutral-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-amber-500" />
+                <h3 className="font-bold text-neutral-900 text-base">
+                  Preview do Rateio Proporcional — {previewModal.manager.manager}
+                </h3>
+              </div>
+              <button
+                onClick={() => setPreviewModal(prev => ({ ...prev, open: false }))}
+                className="p-1 rounded-lg text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-amber-50/50 border-b border-amber-100 text-xs text-amber-900 flex justify-between items-center">
+              <span>Meta Cia a Distribuir: <strong>{formatCurrency(previewModal.targetGoalR$)}</strong></span>
+              <span>Base: Rolling FAT 3M</span>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-neutral-500 font-bold">
+                    <th className="p-2">Rede</th>
+                    <th className="p-2 text-right">Valor Atual</th>
+                    <th className="p-2 text-right">Novo Valor Proposto</th>
+                    <th className="p-2 text-right">Diferença</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewModal.proposals.map((prop, idx) => (
+                    <tr key={idx} className="border-b border-neutral-100">
+                      <td className="p-2 font-bold text-neutral-800">{prop.rede}</td>
+                      <td className="p-2 text-right font-mono text-neutral-500">{formatCurrency(prop.currentVal)}</td>
+                      <td className="p-2 text-right font-mono font-bold text-blue-600">{formatCurrency(prop.newVal)}</td>
+                      <td className={`p-2 text-right font-mono font-bold ${prop.diff >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                        {prop.diff >= 0 ? "+" : ""}{formatCurrency(prop.diff)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-4 bg-neutral-50 border-t border-neutral-200 flex justify-end gap-3">
+              <button
+                onClick={() => setPreviewModal(prev => ({ ...prev, open: false }))}
+                className="px-4 py-2 text-xs font-bold text-neutral-600 bg-white border border-neutral-200 hover:bg-neutral-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmRateioPreview}
+                className="px-4 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg shadow-sm flex items-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>Confirmar e Gravar Rateio</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

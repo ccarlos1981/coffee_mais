@@ -55,8 +55,8 @@ export function buildWhereClause(
   const dateClauses = buildDateFilter(filters.startMonth, filters.endMonth, tableAlias);
   clauses.push(...dateClauses);
 
-  // Gerente (Manager ID / Manager Name)
-  const managerClause = buildManagerFilter(filters.manager_id, filters.manager, tableAlias);
+  // Gerente (Manager ID / Manager Name / CommercialRole)
+  const managerClause = buildManagerFilter(filters.manager_id, filters.manager, tableAlias, targetTable);
   if (managerClause) clauses.push(managerClause);
 
   // Produto e Família

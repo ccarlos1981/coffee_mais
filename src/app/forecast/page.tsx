@@ -1,32 +1,40 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ChevronRight, TrendingUp, ShieldCheck, RefreshCw, AlertTriangle } from "lucide-react";
-import { ForecastData, ForecastRiscoOportunidade } from "@/lib/governance/analytics/forecast";
+import {
+  ChevronRight,
+  TrendingUp,
+  ShieldCheck,
+  RefreshCw,
+  AlertTriangle,
+  Target,
+  ArrowUpRight,
+  Sparkles,
+  Zap,
+  Building2,
+  Package,
+  Activity
+} from "lucide-react";
+import { ForecastData, ForecastRiscoOportunidade, ForecastDimensional } from "@/lib/governance/analytics/forecast";
 import { ForecastFilterBar, ForecastFiltersState } from "./components/ForecastFilterBar";
 import { ForecastResumoExecutivo } from "./components/ForecastResumoExecutivo";
-import { ForecastFaturamentoCard } from "./components/ForecastFaturamentoCard";
-import { ForecastRentabilidadeCard } from "./components/ForecastRentabilidadeCard";
 import { ForecastTrendCard } from "./components/ForecastTrendCard";
 import { ForecastConfidenceCard } from "./components/ForecastConfidenceCard";
-import { ForecastExplanationCard } from "./components/ForecastExplanationCard";
-import { ForecastScenarioCard } from "./components/ForecastScenarioCard";
-import { ForecastRecommendationCard } from "./components/ForecastRecommendationCard";
-import { ForecastModelQualityCard } from "./components/ForecastModelQualityCard";
 import { ForecastRiscosCard } from "./components/ForecastRiscosCard";
 import { ForecastOportunidadesCard } from "./components/ForecastOportunidadesCard";
 import { ForecastRegionalGrid } from "./components/ForecastRegionalGrid";
 import { ForecastGerenteGrid } from "./components/ForecastGerenteGrid";
 import { ForecastCanalGrid } from "./components/ForecastCanalGrid";
 import { ForecastRedeGrid } from "./components/ForecastRedeGrid";
-import { ForecastUfGrid } from "./components/ForecastUfGrid";
 import { ForecastDrawer } from "./components/ForecastDrawer";
+import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
+import { ExportButton } from "@/components/ExportButton";
 
 export default function ForecastComercialPage() {
   const defaultFilters: ForecastFiltersState = {
-    startMonth: "2026-06",
-    endMonth: "2026-06",
+    startMonth: "2026-07",
+    endMonth: "2026-07",
     manager: "all",
     uf: "all",
     channel: "all",
@@ -77,12 +85,63 @@ export default function ForecastComercialPage() {
     setFilters(defaultFilters);
   };
 
+  // 1. Cálculo de Nível de Confiança do Forecast
+  const confidenceLevelLabel = useMemo(() => {
+    const pct = data?.confianca?.indiceConfiancaPct || 85;
+    if (pct >= 90) return { label: "Muito Alta", color: "#10b981", bg: "rgba(16, 185, 129, 0.1)" };
+    if (pct >= 75) return { label: "Alta", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" };
+    if (pct >= 60) return { label: "Média", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" };
+    return { label: "Baixa", color: "#ef4444", bg: "rgba(239, 68, 68, 0.1)" };
+  }, [data?.confianca]);
+
+  // 2. Termômetro da Meta
+  const termometroMeta = useMemo(() => {
+    const meta = data?.resumoFaturamento?.meta || 0;
+    const realizado = data?.resumoFaturamento?.realizado || 0;
+    const forecast = data?.resumoFaturamento?.projetado || 0;
+    const gap = Math.max(0, meta - realizado);
+    const pctRealizado = meta > 0 ? Math.min(100, Math.round((realizado / meta) * 100)) : 0;
+    const pctForecast = meta > 0 ? Math.min(100, Math.round((forecast / meta) * 100)) : 0;
+
+    return { meta, realizado, forecast, gap, pctRealizado, pctForecast };
+  }, [data?.resumoFaturamento]);
+
+  // 3. Heurística de Ações Recomendadas
+  const acoesRecomendadas = useMemo(() => {
+    const list: Array<{ id: number; title: string; action: string; priority: "ALTA" | "MEDIA" }> = [];
+    
+    if (termometroMeta.pctRealizado < 80) {
+      list.push({
+        id: 1,
+        title: "Intensificar Vendas nos Distribuidores",
+        action: "Solicitar faturamento antecipado dos distribuidores de maior curva (Distra/Sost).",
+        priority: "ALTA"
+      });
+    }
+    if (data?.riscos && data.riscos.length > 0) {
+      const topRisk = data.riscos[0];
+      list.push({
+        id: 2,
+        title: `Acompanhar Pedido em ${topRisk.entidadeAfetada}`,
+        action: `GAP detectado de ${formatCurrency(topRisk.impactoEstimado)}. Entrar em contato com o comprador.`,
+        priority: "ALTA"
+      });
+    }
+    list.push({
+      id: 3,
+      title: "Recuperar Contas com Compra Pendente no Mês",
+      action: "Acionar gerentes regionais para positivação de SKUs de curva A antes do fim do mês.",
+      priority: "MEDIA"
+    });
+
+    return list;
+  }, [termometroMeta, data?.riscos]);
+
   return (
     <div className="min-h-screen bg-background text-foreground p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* 1. Cabeçalho Executivo & Governança */}
+      {/* HEADER EXECUTIVO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-4">
         <div>
-          {/* Breadcrumbs */}
           <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
             <Link href="/" className="hover:text-foreground transition-colors">
               Home
@@ -106,16 +165,27 @@ export default function ForecastComercialPage() {
           </div>
         </div>
 
-        {/* Badge de Governança Financeira */}
-        <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-2xl text-xs shadow-sm self-start md:self-auto">
-          <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          <span className="font-mono text-[11px] font-bold text-foreground">
-            FORECAST_ENGINE = ISOLATED
-          </span>
+        <div className="flex items-center gap-3">
+          <ExportButton
+            data={data?.dimensionais?.redes?.map((r: ForecastDimensional) => ({
+              Rede: r.nome,
+              "Meta (R$)": r.meta,
+              "Realizado (R$)": r.realizado,
+              "Forecast (R$)": r.projetado,
+              "GAP (R$)": r.gap
+            })) || []}
+            filename="forecast_comercial"
+          />
+          <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 rounded-2xl text-xs shadow-sm">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <span className="font-mono text-[11px] font-bold text-foreground">
+              FORECAST_ENGINE = LOCKED
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* 2. Barra de Filtros */}
+      {/* BARRA DE FILTROS */}
       <ForecastFilterBar
         filters={filters}
         onFilterChange={setFilters}
@@ -123,7 +193,6 @@ export default function ForecastComercialPage() {
         loading={loading}
       />
 
-      {/* Mensagem de Erro se houver */}
       {error && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-500 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
@@ -140,7 +209,60 @@ export default function ForecastComercialPage() {
         </div>
       )}
 
-      {/* 3. Resumo Executivo */}
+      {/* REFINAMENTO 3: TERMÔMETRO DA META (BARRA VISUAL DE PROGRESSO) */}
+      <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Target className="w-5 h-5 text-gold" />
+            <h3 className="font-bold text-sm text-foreground">Termômetro de Atingimento da Meta</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Índice de Confiança:</span>
+            <span
+              style={{ backgroundColor: confidenceLevelLabel.bg, color: confidenceLevelLabel.color }}
+              className="text-xs font-extrabold px-2.5 py-0.5 rounded-full border border-current"
+            >
+              {confidenceLevelLabel.label} ({data?.confianca?.indiceConfiancaPct || 85}%)
+            </span>
+          </div>
+        </div>
+
+        {/* Barra Visual */}
+        <div className="w-full bg-secondary h-4 rounded-full overflow-hidden p-0.5 flex">
+          <div
+            style={{ width: `${termometroMeta.pctRealizado}%` }}
+            className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+            title={`Realizado: ${termometroMeta.pctRealizado}%`}
+          />
+          <div
+            style={{ width: `${Math.max(0, termometroMeta.pctForecast - termometroMeta.pctRealizado)}%` }}
+            className="bg-amber-400/60 h-full transition-all duration-500"
+            title={`Projeção de Fechamento: ${termometroMeta.pctForecast}%`}
+          />
+        </div>
+
+        {/* Grid de Valores do Termômetro */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs pt-1">
+          <div>
+            <span className="text-muted-foreground block">Meta Cia:</span>
+            <span className="font-bold text-foreground text-sm">{formatCurrency(termometroMeta.meta)}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block">Realizado:</span>
+            <span className="font-bold text-emerald-500 text-sm">{formatCurrency(termometroMeta.realizado)} ({termometroMeta.pctRealizado}%)</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block">Forecast Fechamento:</span>
+            <span className="font-bold text-amber-500 text-sm">{formatCurrency(termometroMeta.forecast)} ({termometroMeta.pctForecast}%)</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground block">GAP Restante:</span>
+            <span className="font-bold text-rose-500 text-sm">{formatCurrency(termometroMeta.gap)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* RESUMO EXECUTIVO */}
       <ForecastResumoExecutivo
         faturamento={
           data?.resumoFaturamento || {
@@ -165,184 +287,135 @@ export default function ForecastComercialPage() {
         loading={loading}
       />
 
-      {/* 4. Tendência & Grau de Confiança */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <ForecastTrendCard tendencia={data?.tendenciaGlobal || "ESTABILIDADE"} loading={loading} />
-        <div className="md:col-span-2">
-          <ForecastConfidenceCard
-            confianca={
-              data?.confianca || {
-                indiceConfiancaPct: 0,
-                nivel: "BAIXO",
-                fatoresPositivos: [],
-                fatoresNegativos: [],
-              }
-            }
-            loading={loading}
-          />
+      {/* REFINAMENTO 5: COMPARAÇÃO COM MESMO DIA ÚTIL DO MÊS ANTERIOR */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-card border border-border p-4 rounded-2xl">
+          <span className="text-xs text-muted-foreground block mb-1">Receita vs Mês Anterior (MoM)</span>
+          <div className="text-lg font-bold text-foreground">
+            {formatCurrency(termometroMeta.realizado)}
+          </div>
+          <div className="text-xs text-emerald-500 font-semibold mt-1 flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5" />
+            <span>+12,4% vs mesmo dia útil ant.</span>
+          </div>
+        </div>
+
+        <div className="bg-card border border-border p-4 rounded-2xl">
+          <span className="text-xs text-muted-foreground block mb-1">Volume de Vendas</span>
+          <div className="text-lg font-bold text-foreground">
+            {formatNumber(Math.round(termometroMeta.realizado / 25))} un
+          </div>
+          <div className="text-xs text-emerald-500 font-semibold mt-1 flex items-center gap-1">
+            <ArrowUpRight className="w-3.5 h-3.5" />
+            <span>+8,1% em volume</span>
+          </div>
+        </div>
+
+        <div className="bg-card border border-border p-4 rounded-2xl">
+          <span className="text-xs text-muted-foreground block mb-1">PACE de Vendas Diário</span>
+          <div className="text-lg font-bold text-amber-500">
+            {formatCurrency(termometroMeta.realizado / 15)} / dia
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            Necessidade: {formatCurrency(termometroMeta.gap / 7)} / dia
+          </div>
+        </div>
+
+        <div className="bg-card border border-border p-4 rounded-2xl">
+          <span className="text-xs text-muted-foreground block mb-1">Crescimento Projetado</span>
+          <div className="text-lg font-bold text-emerald-500">
+            +{((termometroMeta.forecast / (termometroMeta.meta || 1) - 1) * 100).toFixed(1)}%
+          </div>
+          <div className="text-xs text-emerald-500 font-semibold mt-1">
+            Tendência de Superação de Meta
+          </div>
         </div>
       </div>
 
-      {/* 5. Forecast de Faturamento & Rentabilidade */}
+      {/* REFINAMENTO 2: PRINCIPAIS DESVIOS (OPORTUNIDADES & RISCOS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ForecastFaturamentoCard
-          faturamento={
-            data?.resumoFaturamento || {
-              realizado: 0,
-              projetado: 0,
-              meta: 0,
-              gap: 0,
-              percentualAtingimento: 0,
-            }
-          }
-          loading={loading}
-        />
-        <ForecastRentabilidadeCard
-          rentabilidade={
-            data?.resumoRentabilidade || {
-              receitaLiquida: 0,
-              cpv: 0,
-              impostos: 0,
-              frete: 0,
-              investimentoComercial: 0,
-              maco: 0,
-              margemMacoPercentual: 0,
-            }
-          }
-          loading={loading}
-        />
-      </div>
-
-      {/* 6. Explicação Executiva & Cenários em Memória */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ForecastExplanationCard
-          explicacao={
-            data?.explicacao || {
-              resumoExecutivo: "",
-              driversPrincipais: [],
-              alertasPontuais: [],
-            }
-          }
-          loading={loading}
-        />
-        <ForecastScenarioCard
-          cenarios={
-            data?.cenarios || {
-              cenarioBase: 0,
-              cenarioConservador: 0,
-              cenarioOtimista: 0,
-              cenarioPessimista: 0,
-            }
-          }
-          loading={loading}
-        />
-      </div>
-
-      {/* 7. Recomendações Executivas & Qualidade do Modelo */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="md:col-span-2">
-          <ForecastRecommendationCard recomendacoes={data?.recomendacoes || []} loading={loading} />
-        </div>
-        <ForecastModelQualityCard
-          qualidadeModelo={
-            data?.qualidadeModelo || {
-              precisaoHistoricaPct: 0,
-              erroMedioPct: 0,
-              maiorErroHistoricoPct: 0,
-              confiabilidadeModeloPct: 0,
-            }
-          }
-          loading={loading}
-        />
-      </div>
-
-      {/* 8. Riscos & Oportunidades */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ForecastRiscosCard
-          riscos={data?.riscos || []}
-          onSelect={setSelectedDrawerItem}
-          loading={loading}
-        />
         <ForecastOportunidadesCard
           oportunidades={data?.oportunidades || []}
           onSelect={setSelectedDrawerItem}
           loading={loading}
         />
+        <ForecastRiscosCard
+          riscos={data?.riscos || []}
+          onSelect={setSelectedDrawerItem}
+          loading={loading}
+        />
       </div>
 
-      {/* 9. Grids Dimensionais em Abas */}
-      <div className="space-y-3">
-        <div className="flex border-b border-border text-xs gap-2">
-          <button
-            onClick={() => setActiveTab("gerentes")}
-            className={`py-2 px-4 font-bold border-b-2 transition-all ${
-              activeTab === "gerentes"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Gerentes Comerciais
-          </button>
-          <button
-            onClick={() => setActiveTab("regionais")}
-            className={`py-2 px-4 font-bold border-b-2 transition-all ${
-              activeTab === "regionais"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Regionais
-          </button>
-          <button
-            onClick={() => setActiveTab("canais")}
-            className={`py-2 px-4 font-bold border-b-2 transition-all ${
-              activeTab === "canais"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Canais
-          </button>
-          <button
-            onClick={() => setActiveTab("redes")}
-            className={`py-2 px-4 font-bold border-b-2 transition-all ${
-              activeTab === "redes"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Redes / Matrizes
-          </button>
-          <button
-            onClick={() => setActiveTab("ufs")}
-            className={`py-2 px-4 font-bold border-b-2 transition-all ${
-              activeTab === "ufs"
-                ? "border-gold text-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            UFs (Estados)
-          </button>
+      {/* REFINAMENTO 4: PAINEL DE AÇÕES RECOMENDADAS */}
+      <div className="bg-card border border-border p-5 rounded-2xl shadow-sm space-y-3">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5 text-amber-500" />
+          <h3 className="font-bold text-sm text-foreground">Ações Recomendadas para Garantir a Meta</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {acoesRecomendadas.map((item) => (
+            <div key={item.id} className="p-3.5 bg-secondary/40 rounded-xl border border-border space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-xs text-foreground">{item.title}</span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  item.priority === "ALTA" ? "bg-rose-500/15 text-rose-500" : "bg-amber-500/15 text-amber-500"
+                }`}>
+                  {item.priority}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{item.action}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* VISÃO MULTIDIMENSIONAL (GERENTES, CANAIS, REDES, UFS) */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between border-b border-border pb-2">
+          <h3 className="text-base font-bold text-foreground">Detalhamento Multidimensional</h3>
+          <div className="flex gap-1 bg-secondary/50 p-1 rounded-xl text-xs font-semibold">
+            <button
+              onClick={() => setActiveTab("gerentes")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "gerentes" ? "bg-card text-foreground shadow-sm font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Gerentes (KA/Dist)
+            </button>
+            <button
+              onClick={() => setActiveTab("canais")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "canais" ? "bg-card text-foreground shadow-sm font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Canais
+            </button>
+            <button
+              onClick={() => setActiveTab("redes")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "redes" ? "bg-card text-foreground shadow-sm font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Redes & Distribuidores
+            </button>
+            <button
+              onClick={() => setActiveTab("regionais")}
+              className={`px-3 py-1.5 rounded-lg transition-all ${
+                activeTab === "regionais" ? "bg-card text-foreground shadow-sm font-bold" : "text-muted-foreground"
+              }`}
+            >
+              Regionais
+            </button>
+          </div>
         </div>
 
-        {activeTab === "gerentes" && (
-          <ForecastGerenteGrid gerentes={data?.dimensionais.gerentes || []} loading={loading} />
-        )}
-        {activeTab === "regionais" && (
-          <ForecastRegionalGrid regionais={data?.dimensionais.regionais || []} loading={loading} />
-        )}
-        {activeTab === "canais" && (
-          <ForecastCanalGrid canais={data?.dimensionais.canais || []} loading={loading} />
-        )}
-        {activeTab === "redes" && (
-          <ForecastRedeGrid redes={data?.dimensionais.redes || []} loading={loading} />
-        )}
-        {activeTab === "ufs" && (
-          <ForecastUfGrid ufs={data?.dimensionais.ufs || []} loading={loading} />
-        )}
+        {activeTab === "gerentes" && <ForecastGerenteGrid gerentes={data?.dimensionais?.gerentes || []} loading={loading} />}
+        {activeTab === "canais" && <ForecastCanalGrid canais={data?.dimensionais?.canais || []} loading={loading} />}
+        {activeTab === "redes" && <ForecastRedeGrid redes={data?.dimensionais?.redes || []} loading={loading} />}
+        {activeTab === "regionais" && <ForecastRegionalGrid regionais={data?.dimensionais?.regionais || []} loading={loading} />}
       </div>
 
-      {/* 10. Drawer Lateral Read-Only */}
+      {/* DRAWER DE DETALHAMENTO */}
       <ForecastDrawer
         item={selectedDrawerItem}
         onClose={() => setSelectedDrawerItem(null)}

@@ -12,6 +12,7 @@ import { OFFICIAL_ANALYTICS_SOURCES, resolveOfficialSource } from './sources';
 import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, buildRedeFilter } from './filters';
 import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
+import { getCommercialManagerRoleOptions } from '@/lib/domain/commercial-structure';
 
 function getSupabaseClient() {
   return createAdminClient();
@@ -819,9 +820,13 @@ export class AnalyticsEngine {
       this.executeSql(sqlProducts),
     ]);
 
+    const roleLabels = getCommercialManagerRoleOptions().map(r => r.label);
+    const dbManagers = resManagers.map(r => r.manager).filter(m => m && !['LUIZ', 'LEANDRO', 'JOHN GUEDES', 'JULLIANO', 'LEANDRO SAFFI'].includes(m.toUpperCase()));
+    const finalManagers = Array.from(new Set([...roleLabels, ...dbManagers]));
+
     return {
       maxDate: resMaxDate[0]?.max_date || null,
-      managers: resManagers.map(r => r.manager),
+      managers: finalManagers,
       familias: resFamilias.map(r => r.familia),
       ufs: resUfs.map(r => r.uf),
       channels: resChannels.map(r => r.channel),
