@@ -843,6 +843,19 @@ export default function VendasDashboard() {
           <div className="glass-card vendas-table-card">
             <div className="vendas-table-wrapper">
               <table className="data-table vendas-main-table">
+                <colgroup>
+                  <col className="vendas-col-manager" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                  <col className="vendas-col-num" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
@@ -880,14 +893,14 @@ export default function VendasDashboard() {
 
                         return [
                           <tr key={row.manager}>
-                            <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }}>
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <td onClick={() => toggleDrillDown(row.manager)} style={{ cursor: "pointer" }} title={row.manager}>
+                              <span className="vendas-manager-cell">
                                 <ChevronRight style={{
-                                  width: 12, height: 12, color: "var(--foreground-muted)",
+                                  width: 12, height: 12, flexShrink: 0, color: "var(--foreground-muted)",
                                   transition: "transform 0.2s",
                                   transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
                                 }} />
-                                {row.manager}
+                                <span className="vendas-manager-name">{row.manager}</span>
                               </span>
                             </td>
                             <td className="col-divider">{formatCurrency(row.metaFat / 1000)}</td>

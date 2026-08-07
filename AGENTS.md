@@ -2359,6 +2359,33 @@ Esta diretriz complementa a Política Oficial de Arquitetura Evolutiva e passa a
 
 ---
 
+## 109. Política Permanente de Versionamento e Releases
+
+### Objetivo
+
+Estabelecer a separação permanente entre decisões arquiteturais e evolução funcional da Plataforma Coffee++.
+
+### Regras Permanentes
+
+#### Baselines
+- Registram exclusivamente decisões permanentes de arquitetura, governança, Single Source of Truth, fluxos oficiais e regras estruturais da plataforma.
+- Alterações em Baselines atualizam obrigatoriamente o `AGENTS.md`.
+
+#### Releases
+- Registram evoluções funcionais, melhorias de UX/UI, performance, inteligência consultiva, correções e otimizações realizadas sob a arquitetura vigente.
+- Devem preservar compatibilidade com a Baseline vigente.
+- Não alteram o `AGENTS.md`, salvo quando introduzirem uma nova Baseline ou modificarem uma política permanente.
+
+### Princípio Institucional
+
+> **Arquiteturas evoluem por Baselines. Produtos evoluem por Releases.**
+
+Toda alteração deve ser classificada inicialmente como Baseline ou Release antes do início da implementação, garantindo rastreabilidade, governança e consistência documental.
+
+Status: `POLÍTICA PERMANENTE` | `SITUAÇÃO = LOCKED & CONFIRMED`.
+
+---
+
 ## Disposição Final
 
 O `AGENTS.md` constitui a referência oficial de arquitetura, governança e padrões permanentes da Plataforma Coffee++.

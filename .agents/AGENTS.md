@@ -2370,3 +2370,655 @@ A partir de 05/08/2026, toda e qualquer evidência visual apresentada em relató
 4. **Cenário executado**: Parâmetros de entrada e resultado obtido em tela.
 
 Status Arquitetural: `EVIDENCE_METADATA_STANDARD = LOCKED` & `EVIDENCE_FORMATTING = MANDATORY`.
+
+---
+
+## 75. Baseline Oficial — Responsividade da Tabela "Resumo do Mês"
+
+### Status
+`BASELINE PERMANENTE = HOMOLOGADA` & `RESUMO_MES_RESPONSIVENESS = LOCKED`.
+
+A Refatoração da Responsividade da Tabela "Resumo do Mês" foi oficialmente homologada e incorporada à Baseline Funcional Permanente da Plataforma Coffee++.
+
+### Objetivo
+Garantir que a tabela de indicadores do Dashboard de Vendas utilize integralmente a largura disponível do container, mantendo todos os grupos de indicadores completamente visíveis em notebooks e desktops, sem necessidade de scroll horizontal.
+
+### Diretrizes Permanentes
+A partir desta baseline, qualquer alteração neste componente deverá preservar obrigatoriamente:
+- Responsividade integral da tabela.
+- Utilização de 100% da largura útil disponível.
+- Ausência de scroll horizontal em notebooks e desktops.
+- Exibição simultânea de todos os grupos de indicadores.
+- Preservação da identidade visual do Dashboard.
+- Distribuição proporcional das colunas.
+- Escalabilidade para inclusão de novos indicadores sem necessidade de refatoração estrutural.
+- Compatibilidade com as resoluções homologadas.
+
+### Resoluções Homologadas
+A implementação foi validada para:
+- 1366×768
+- 1440×900
+- 1536×864
+- 1920×1080
+
+Em todas elas a tabela deverá permanecer totalmente visível.
+
+### Requisitos Arquiteturais Permanentes
+Toda evolução futura deverá seguir os seguintes princípios:
+- Responsividade nativa.
+- Layout fluido.
+- Aproveitamento integral da largura disponível.
+- Componentização reutilizável.
+- Escalabilidade para novos grupos de indicadores.
+- Ausência de soluções paliativas baseadas em larguras fixas.
+- Conformidade com o Design System da Plataforma Coffee++.
+
+### Restrições
+É vedado:
+- introduzir scroll horizontal em notebooks ou desktops;
+- ocultar indicadores para acomodar largura;
+- remover grupos de métricas;
+- reduzir a legibilidade da tabela;
+- criar exceções específicas para resoluções isoladas.
+
+Qualquer alteração deverá resolver a causa raiz do problema, preservando a arquitetura responsiva homologada.
+
+### Governança
+Toda modificação futura neste componente deverá ser precedida por auditoria arquitetural e validada nas resoluções homologadas.
+Esta baseline passa a ser a referência oficial para qualquer evolução da tabela "Resumo do Mês" do Dashboard de Vendas da Plataforma Coffee++.
+
+### Proteção da Baseline
+Toda alteração futura na Tabela "Resumo do Mês" deverá obrigatoriamente:
+- preservar a responsividade homologada;
+- manter a ausência de scroll horizontal em notebooks e desktops;
+- preservar a distribuição automática das colunas;
+- validar compatibilidade nas resoluções homologadas;
+- apresentar auditoria arquitetural antes da homologação;
+- atualizar esta seção caso a arquitetura do componente seja modificada.
+
+É vedada qualquer alteração que reduza a usabilidade ou descaracterize a baseline homologada sem abertura formal de uma nova Demanda Arquitetural e respectiva homologação.
+
+---
+
+## 76. Política Permanente de Proteção de Baselines (`BASELINE_PROTECTION_POLICY`)
+
+### Status
+`POLICY = PERMANENT` & `GOVERNANCE = ACTIVE` & `BASELINE_PROTECTION = MANDATORY`.
+
+### Objetivo
+Estabelecer uma política permanente de governança para garantir que toda Baseline Oficial homologada da Plataforma Coffee++ permaneça protegida contra regressões arquiteturais, funcionais e de experiência do usuário.
+
+### Princípios Gerais
+Toda Baseline Oficial passa a ser considerada um ativo permanente da Plataforma Coffee++.
+Após homologada, nenhuma implementação poderá reduzir sua qualidade, alterar seu comportamento ou descaracterizar sua arquitetura sem abertura formal de uma nova Demanda Arquitetural.
+
+### Regras Obrigatórias
+Toda alteração em componentes protegidos deverá:
+- preservar integralmente a funcionalidade homologada;
+- preservar a experiência do usuário (UX);
+- preservar a arquitetura aprovada;
+- preservar o desempenho;
+- preservar a responsividade homologada;
+- preservar regras de negócio;
+- preservar contratos de APIs e integrações;
+- preservar compatibilidade com módulos existentes.
+
+### Processo Obrigatório
+Antes de qualquer alteração em uma Baseline Oficial deverá existir:
+1. Auditoria Arquitetural.
+2. Identificação de impactos.
+3. Plano de implementação.
+4. Plano de rollback.
+5. Critérios de aceitação.
+6. Homologação técnica.
+7. Atualização do AGENTS.md.
+
+Nenhuma etapa poderá ser ignorada.
+
+### Proibição de Regressões
+É expressamente proibido:
+- reduzir funcionalidades;
+- criar soluções paliativas;
+- introduzir regressões visuais;
+- degradar performance;
+- alterar comportamento homologado sem justificativa técnica;
+- remover recursos previamente homologados;
+- quebrar compatibilidade com funcionalidades existentes.
+
+Toda alteração deverá manter compatibilidade retroativa sempre que tecnicamente possível.
+
+### Evolução Controlada
+Toda evolução deverá ser cumulativa.
+Sempre que possível, novas funcionalidades deverão expandir a arquitetura existente, nunca substituí-la por soluções inferiores.
+Caso uma refatoração estrutural seja necessária, deverá existir justificativa técnica documentada e nova homologação.
+
+### Auditoria Obrigatória
+Toda implementação deverá responder, antes da homologação, às seguintes perguntas:
+- A solução preserva todas as funcionalidades existentes?
+- Existe alguma regressão visual?
+- Existe alguma regressão funcional?
+- Existe impacto em performance?
+- Existe impacto em escalabilidade?
+- Existe impacto em governança?
+- Existe impacto em segurança?
+- Existe impacto em acessibilidade?
+- Existe impacto em responsividade?
+
+Caso qualquer resposta seja positiva, a homologação somente poderá ocorrer após análise técnica.
+
+### Status de Baseline
+Toda Baseline Oficial deverá possuir um dos seguintes estados:
+- EM DESENVOLVIMENTO
+- EM VALIDAÇÃO
+- HOMOLOGADA
+- PROTEGIDA
+- SUPERSEDED (substituída por nova baseline)
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota como princípio permanente que toda evolução deve aumentar a qualidade da arquitetura.
+Nenhuma Release poderá reduzir o nível técnico previamente homologado.
+Toda implementação deverá deixar a plataforma igual ou melhor do que estava anteriormente.
+
+Esta política passa a ser obrigatória para todas as futuras Releases da Plataforma Coffee++.
+
+---
+
+## 77. Política Permanente de Isolamento de Demandas (`DEMAND_ISOLATION_POLICY`)
+
+### Status
+`POLICY = PERMANENT` & `DEMAND_ISOLATION = MANDATORY` & `CHANGE_SCOPE = CONTROLLED`.
+
+### Objetivo
+Garantir que toda demanda seja implementada exclusivamente dentro do seu escopo aprovado, evitando efeitos colaterais em módulos já homologados da Plataforma Coffee++.
+
+### Princípio
+Cada demanda deverá possuir um escopo claramente definido.
+Nenhuma implementação poderá alterar componentes, serviços, regras de negócio, layouts, APIs ou módulos que não pertençam diretamente ao escopo da demanda sem autorização formal.
+
+### Regra Geral
+Toda implementação deverá obedecer ao princípio do menor impacto.
+Sempre que possível:
+- modificar apenas o componente necessário;
+- evitar alterações compartilhadas;
+- evitar refatorações amplas durante demandas pontuais;
+- preservar contratos existentes.
+
+### Alterações Fora do Escopo
+Caso seja identificada a necessidade de modificar outro módulo durante uma implementação, o processo deverá ser interrompido para apresentação de:
+- justificativa técnica;
+- análise de impacto;
+- riscos;
+- benefícios;
+- componentes afetados.
+
+Somente após aprovação poderá haver expansão do escopo.
+
+### Componentes Protegidos
+São considerados protegidos:
+- componentes pertencentes a Baselines Oficiais;
+- módulos homologados;
+- APIs públicas;
+- Design System;
+- Analytics;
+- Dashboards;
+- Import Hub;
+- Engine de KPIs;
+- Promotor;
+- qualquer outro componente marcado como Baseline Permanente.
+
+### Auditoria Obrigatória
+Antes da homologação responder:
+- esta demanda alterou algum componente fora do escopo?
+- algum módulo protegido foi modificado?
+- alguma API pública sofreu alteração?
+- alguma Baseline Oficial foi impactada?
+- existe risco de regressão indireta?
+
+Caso qualquer resposta seja positiva, deverá existir documentação formal da expansão do escopo.
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota como princípio que cada demanda deve produzir o menor impacto possível sobre o restante da arquitetura.
+Quanto menor o raio de alteração, maior a previsibilidade, estabilidade e segurança das Releases.
+
+Toda exceção deverá ser documentada e homologada.
+
+---
+
+## 78. Política Permanente de Controle de Mudanças Arquiteturais (`ARCHITECTURE_CHANGE_CONTROL_POLICY`)
+
+### Status
+`POLICY = PERMANENT` & `ARCHITECTURE_CHANGE_CONTROL = MANDATORY` & `TECHNICAL_DEBT_PREVENTION = ACTIVE`.
+
+### Objetivo
+Garantir que toda alteração arquitetural da Plataforma Coffee++ seja realizada de forma planejada, documentada, auditável e compatível com as Baselines Oficiais existentes.
+
+### Definição
+Considera-se Mudança Arquitetural qualquer alteração que impacte:
+- estrutura de componentes;
+- organização dos módulos;
+- Design System;
+- contratos de APIs;
+- banco de dados;
+- modelos de dados;
+- autenticação;
+- autorização;
+- pipelines;
+- integrações;
+- motores de cálculo;
+- componentes compartilhados;
+- infraestrutura da aplicação.
+
+### Obrigatoriedade
+Nenhuma Mudança Arquitetural poderá ser implementada sem documentação prévia.
+Antes da implementação deverá existir obrigatoriamente:
+- objetivo da mudança;
+- justificativa técnica;
+- benefícios esperados;
+- análise de impacto;
+- riscos identificados;
+- estratégia de rollback;
+- plano de validação;
+- critérios de aceitação.
+
+### Compatibilidade
+Toda Mudança Arquitetural deverá preservar, sempre que tecnicamente possível:
+- compatibilidade com Baselines existentes;
+- compatibilidade com APIs públicas;
+- compatibilidade com módulos homologados;
+- estabilidade funcional da plataforma.
+
+Caso a compatibilidade não seja possível, deverá existir um plano formal de migração e depreciação.
+
+### Controle de Dívida Técnica
+Nenhuma mudança poderá aumentar deliberadamente a dívida técnica da plataforma.
+Sempre que possível, a implementação deverá:
+- simplificar a arquitetura;
+- reduzir acoplamento;
+- aumentar reutilização;
+- melhorar legibilidade;
+- reduzir complexidade;
+- melhorar testabilidade.
+
+### Auditoria Obrigatória
+Antes da homologação responder:
+- houve alteração arquitetural?
+- existe impacto em componentes compartilhados?
+- houve alteração em contratos públicos?
+- existe plano de rollback?
+- a documentação foi atualizada?
+- houve aumento de dívida técnica?
+- a mudança preserva as Baselines existentes?
+
+Caso qualquer resposta exija ação corretiva, a homologação deverá ocorrer somente após sua resolução.
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota como princípio permanente que toda mudança arquitetural deve aumentar ou preservar a qualidade estrutural da solução.
+Mudanças que aumentem complexidade sem benefício técnico comprovado não deverão ser homologadas.
+
+---
+
+## 79. Política Permanente de Compatibilidade Retroativa (`BACKWARD_COMPATIBILITY_POLICY`)
+
+### Status
+`POLICY = PERMANENT` & `BACKWARD_COMPATIBILITY = MANDATORY` & `BREAKING_CHANGES = CONTROLLED`.
+
+### Objetivo
+Garantir que toda evolução da Plataforma Coffee++ preserve a compatibilidade com funcionalidades, componentes, APIs, módulos e Baselines previamente homologados, evitando que novas implementações introduzam quebras de comportamento ou exijam adaptações inesperadas.
+
+### Princípio Soberano
+A evolução da plataforma deverá ser cumulativa.
+Sempre que tecnicamente possível, novas funcionalidades deverão coexistir com as funcionalidades existentes, preservando contratos, comportamentos e integrações previamente homologados.
+
+### Compatibilidade Obrigatória
+Toda implementação deverá preservar:
+- APIs públicas;
+- contratos entre componentes;
+- estruturas de dados;
+- regras de negócio homologadas;
+- componentes compartilhados;
+- Design System;
+- permissões e perfis de acesso;
+- integrações existentes;
+- indicadores e dashboards;
+- Baselines Oficiais.
+
+### Breaking Changes
+Qualquer alteração que possa modificar comportamento previamente homologado será considerada um Breaking Change.
+Nenhum Breaking Change poderá ser implementado sem:
+- justificativa técnica;
+- análise de impacto;
+- plano de migração;
+- plano de rollback;
+- aprovação formal;
+- atualização da documentação oficial.
+
+### Estratégia de Evolução
+Sempre que possível deverá ser adotada uma das seguintes estratégias:
+- evolução incremental;
+- versionamento de APIs;
+- depreciação controlada;
+- período de convivência entre versões;
+- migração gradual.
+
+### Auditoria Obrigatória
+Antes da homologação responder:
+- existe quebra de compatibilidade?
+- alguma API mudou?
+- alguma regra de negócio foi alterada?
+- algum módulo homologado foi impactado?
+- existe plano de migração?
+- existe plano de rollback?
+- a documentação foi atualizada?
+
+Caso qualquer resposta seja positiva, a homologação somente poderá ocorrer após validação técnica formal.
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota como princípio permanente que novas funcionalidades deverão ampliar a capacidade da plataforma sem comprometer a estabilidade das funcionalidades já homologadas.
+Sempre que possível, preservar compatibilidade retroativa será obrigatório.
+
+---
+
+## 80. Constituição da Engenharia da Plataforma Coffee++ (`ENGINEERING_CONSTITUTION`)
+
+### Status
+`POLICY = PERMANENT` & `ENGINEERING_CONSTITUTION = ACTIVE` & `GOVERNANCE = SOVEREIGN`.
+
+### Objetivo
+Estabelecer os princípios fundamentais que deverão orientar toda decisão técnica, arquitetural e funcional da Plataforma Coffee++, servindo como referência superior para todas as políticas permanentes, baselines e futuras releases.
+
+### Princípios Fundamentais
+Toda evolução da Plataforma Coffee++ deverá respeitar obrigatoriamente os seguintes princípios, apresentados em ordem de prioridade:
+
+1. **Correção**: A solução deverá estar correta antes de estar otimizada. Nenhuma otimização justifica comportamento incorreto.
+2. **Estabilidade**: A plataforma deverá priorizar previsibilidade e confiabilidade. Toda mudança deverá minimizar riscos de regressão.
+3. **Simplicidade**: Sempre que houver mais de uma solução tecnicamente válida, deverá ser escolhida a de menor complexidade estrutural.
+4. **Escalabilidade**: Toda implementação deverá considerar a evolução futura da plataforma. Evitar soluções que exijam reescritas frequentes.
+5. **Manutenibilidade**: O código deverá ser facilmente compreendido, revisado e evoluído por outros desenvolvedores.
+6. **Reutilização**: Sempre que possível deverão ser utilizados componentes, serviços e padrões já existentes antes da criação de novas implementações.
+7. **Compatibilidade**: Toda evolução deverá preservar contratos, APIs, Baselines e funcionalidades previamente homologadas.
+8. **Segurança**: Segurança deverá ser considerada requisito funcional obrigatório, e não uma etapa posterior.
+9. **Performance**: Otimizações deverão ser realizadas sem comprometer legibilidade, governança ou estabilidade.
+10. **Governança**: Toda alteração deverá ser documentada, auditável e rastreável. Nenhuma decisão arquitetural relevante poderá existir apenas no código.
+
+### Hierarquia Normativa
+Em caso de conflito entre documentos, prevalecerá a seguinte ordem:
+1. Constituição da Engenharia (Seção 80)
+2. Políticas Permanentes
+3. Baselines Oficiais
+4. Diretrizes de Release
+5. Demandas Arquiteturais
+6. Implementações
+
+### Regra de Decisão
+Sempre que houver dúvida técnica, a decisão deverá favorecer a alternativa que:
+- reduz riscos;
+- preserva compatibilidade;
+- reduz dívida técnica;
+- melhora a arquitetura;
+- facilita manutenção;
+- mantém aderência às Baselines Oficiais.
+
+### Princípio da Evolução Contínua
+Toda Release deverá deixar a Plataforma Coffee++ igual ou melhor do que estava antes da sua implementação.
+São vedadas implementações que aumentem deliberadamente a complexidade, reduzam a qualidade arquitetural ou comprometam a governança estabelecida.
+
+### Vigência
+Esta Constituição passa a orientar permanentemente todas as decisões técnicas da Plataforma Coffee++, servindo como referência normativa superior para qualquer implementação futura.
+
+---
+
+## 81. Índice Mestre de Governança da Plataforma Coffee++ (`MASTER_GOVERNANCE_INDEX`)
+
+### Status
+`INDEX = OFFICIAL` & `GOVERNANCE_CATALOG = ACTIVE`.
+
+### Objetivo
+Centralizar e organizar todas as Políticas Permanentes, Baselines Oficiais e Diretrizes Arquiteturais da Plataforma Coffee++, estabelecendo um ponto único de consulta para desenvolvimento, auditoria, homologação e evolução da plataforma.
+
+### Hierarquia Normativa
+A Plataforma Coffee++ adota a seguinte ordem de precedência normativa:
+1. Constituição da Engenharia (Seção 80)
+2. Políticas Permanentes
+3. Baselines Oficiais
+4. Diretrizes de Release
+5. Demandas Arquiteturais
+6. Implementações
+
+Em caso de conflito, prevalecerá sempre o documento de maior hierarquia.
+
+### Catálogo Oficial
+
+#### Constituição
+- Seção 80 — Constituição da Engenharia
+
+#### Políticas Permanentes
+- Seção 76 — Política Permanente de Proteção de Baselines
+- Seção 77 — Política Permanente de Isolamento de Demandas
+- Seção 78 — Política Permanente de Controle de Mudanças Arquiteturais
+- Seção 79 — Política Permanente de Compatibilidade Retroativa
+- Seção 82 — Registro Oficial de Decisões Arquiteturais (ADR)
+- Seção 83 — Política Permanente de Depreciação e Descontinuação
+
+
+
+#### Diretrizes e Processos de Release
+- Seção 84 — Template Oficial de Demandas e Releases
+- Seção 85 — Processo Permanente de Auditoria de Governança
+
+#### Baselines Oficiais
+- Seção 75 — Responsividade da Tabela "Resumo do Mês"
+
+
+
+Novas Baselines deverão ser registradas nesta relação após homologação.
+
+### Obrigatoriedade
+Toda nova Release deverá indicar explicitamente:
+- quais Baselines são impactadas;
+- quais Políticas Permanentes foram consideradas;
+- se existe Mudança Arquitetural;
+- se existe Breaking Change;
+- se existe atualização deste índice.
+
+### Governança
+Este índice deverá permanecer atualizado.
+Sempre que uma nova Política Permanente ou Baseline Oficial for criada, este catálogo deverá ser revisado na mesma Release.
+Nenhuma política ou baseline será considerada plenamente institucionalizada enquanto não constar neste Índice Mestre.
+
+---
+
+## 82. Registro Oficial de Decisões Arquiteturais (`ADR_GOVERNANCE`)
+
+### Status
+`POLICY = PERMANENT` & `ADR = MANDATORY` & `ARCHITECTURAL_DECISIONS = VERSIONED`.
+
+### Objetivo
+Estabelecer um padrão oficial para registrar todas as decisões arquiteturais relevantes da Plataforma Coffee++, garantindo rastreabilidade, contexto histórico e preservação do conhecimento técnico.
+
+### Quando um ADR é Obrigatório
+Um ADR deverá ser criado sempre que houver:
+- criação de uma nova arquitetura;
+- alteração estrutural em módulos existentes;
+- mudança em contratos de APIs;
+- alteração em modelos de dados;
+- definição de novos padrões técnicos;
+- adoção de novas tecnologias;
+- decisões que impactem mais de um módulo;
+- mudanças em componentes protegidos por Baseline.
+
+### Estrutura Obrigatória
+Todo ADR deverá conter obrigatoriamente:
+1. Identificador único.
+2. Título.
+3. Data.
+4. Status.
+5. Contexto.
+6. Problema.
+7. Alternativas avaliadas.
+8. Decisão adotada.
+9. Justificativa técnica.
+10. Consequências positivas.
+11. Riscos.
+12. Impacto em Baselines.
+13. Compatibilidade retroativa.
+14. Plano de rollback (quando aplicável).
+
+### Estados Permitidos
+- Proposed
+- Accepted
+- Superseded
+- Deprecated
+
+### Governança
+Nenhuma decisão arquitetural relevante deverá existir apenas em código.
+Toda decisão deverá possuir ADR correspondente.
+Sempre que uma decisão substituir outra, o ADR anterior deverá permanecer preservado para fins históricos.
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota ADRs como mecanismo oficial de preservação da memória arquitetural.
+O código demonstra "como" a solução funciona.
+O ADR registra "por que" a solução existe.
+Ambos são obrigatórios para garantir a evolução sustentável da plataforma.
+
+---
+
+## 83. Política Permanente de Depreciação e Descontinuação (`DEPRECATION_POLICY`)
+
+### Status
+`POLICY = PERMANENT` & `DEPRECATION_POLICY = ACTIVE` & `LIFECYCLE_MANAGEMENT = MANDATORY`.
+
+### Objetivo
+Estabelecer um processo oficial para descontinuar funcionalidades, APIs, componentes, módulos e padrões técnicos da Plataforma Coffee++, preservando a estabilidade da plataforma e permitindo migração segura.
+
+### Princípios
+Nenhum componente homologado poderá ser removido imediatamente.
+Toda descontinuação deverá seguir um ciclo formal de vida.
+
+### Ciclo de Vida
+```
+ACTIVE
+  ↓
+DEPRECATED
+  ↓
+SUNSET
+  ↓
+REMOVED
+```
+
+### Requisitos para Depreciação
+Antes de marcar qualquer recurso como DEPRECATED deverá existir:
+- justificativa técnica;
+- ADR correspondente;
+- análise de impacto;
+- plano de migração;
+- prazo para remoção;
+- comunicação na documentação.
+
+### Regras
+Enquanto um recurso estiver em estado DEPRECATED:
+- deverá continuar funcionando;
+- deverá possuir alternativa oficial;
+- novas implementações não deverão utilizá-lo;
+- correções críticas poderão ser realizadas.
+
+### Remoção
+Um recurso somente poderá ser removido quando:
+- todas as migrações estiverem concluídas;
+- não houver dependências ativas;
+- existir homologação da remoção;
+- o AGENTS.md for atualizado.
+
+### Diretriz Permanente
+A Plataforma Coffee++ adota evolução contínua sem remoções abruptas.
+Toda descontinuação deverá preservar estabilidade, rastreabilidade e compatibilidade durante o período de transição.
+
+---
+
+## 84. Template Oficial de Demandas e Releases (`RELEASE_TEMPLATE`)
+
+### Status
+`STANDARD = OFFICIAL` & `RELEASE_TEMPLATE = MANDATORY` & `ENGINEERING_WORKFLOW = ACTIVE`.
+
+### Objetivo
+Padronizar a abertura, desenvolvimento, homologação e incorporação de toda demanda da Plataforma Coffee++, garantindo conformidade automática com a Constituição da Engenharia, Políticas Permanentes, Baselines Oficiais e ADRs.
+
+### Estrutura Obrigatória
+Toda nova demanda deverá seguir obrigatoriamente a seguinte sequência em 10 etapas:
+
+1. **Contexto**: Descrição objetiva do problema.
+2. **Objetivo**: Resultado esperado da implementação.
+3. **Escopo**: Componentes que poderão ser alterados, componentes protegidos e itens fora do escopo.
+4. **Impacto**: Baselines afetadas, mudanças arquiteturais, APIs, banco de dados, integrações, performance, segurança e compatibilidade.
+5. **Plano Técnico**: Estratégia de implementação, alternativas consideradas e justificativa técnica.
+6. **Plano de Rollback**: Como retornar ao estado anterior caso necessário.
+7. **Critérios de Aceitação**: Critérios objetivos para homologação.
+8. **Validação**: Checklist obrigatório (Build, TypeScript, Testes, Auditoria, Responsividade, Performance e Segurança).
+9. **Homologação**: Registro formal da aprovação técnica.
+10. **Baseline / ADR**: Ao finalizar, indicar obrigatoriamente:
+    - Existe nova Baseline?
+    - Existe alteração em Baseline?
+    - Existe novo ADR?
+    - Existe ADR atualizado?
+    - AGENTS.md foi atualizado?
+
+### Diretriz Permanente
+Nenhuma demanda será considerada concluída enquanto este fluxo não estiver integralmente atendido.
+Toda Release deverá deixar evidências documentadas de cada etapa.
+
+---
+
+## 85. Processo Permanente de Auditoria de Governança (`GOVERNANCE_AUDIT`)
+
+### Status
+`PROCESS = PERMANENT` & `GOVERNANCE_AUDIT = MANDATORY` & `CONTINUOUS_COMPLIANCE = ACTIVE`.
+
+### Objetivo
+Estabelecer um processo contínuo de auditoria para verificar se a Plataforma Coffee++ permanece aderente à Constituição da Engenharia, às Políticas Permanentes, às Baselines Oficiais, aos ADRs e ao Workflow Oficial de Engenharia.
+
+### Escopo
+Toda Release concluída deverá passar por uma Auditoria de Governança antes de ser considerada encerrada.
+A auditoria tem como finalidade identificar desvios, regressões, inconsistências documentais ou não conformidades em relação às diretrizes institucionais.
+
+### Itens Obrigatórios de Verificação
+A auditoria deverá verificar, no mínimo:
+1. Conformidade com a Constituição da Engenharia.
+2. Conformidade com as Políticas Permanentes.
+3. Preservação das Baselines Oficiais impactadas.
+4. Existência e atualização dos ADRs obrigatórios.
+5. Cumprimento do Template Oficial de Demandas e Releases.
+6. Compatibilidade retroativa.
+7. Ausência de Breaking Changes não autorizados.
+8. Atualização do AGENTS.md e do Índice Mestre, quando aplicável.
+
+### Resultado da Auditoria
+Cada auditoria deverá ser classificada como:
+- **APROVADA**
+- **APROVADA COM RESSALVAS**
+- **REPROVADA**
+
+Quando houver ressalvas ou reprovação, deverão ser registradas as ações corretivas necessárias antes da homologação definitiva.
+
+### Evidências
+Toda auditoria deverá produzir evidências objetivas, tais como:
+- resultados de build;
+- validações de tipagem;
+- testes executados;
+- verificações arquiteturais;
+- atualização documental;
+- registros de homologação.
+
+### Diretriz Permanente
+A homologação de uma Release somente será considerada concluída quando a Auditoria de Governança estiver finalizada e classificada como APROVADA.
+Este processo passa a integrar permanentemente o ciclo de engenharia da Plataforma Coffee++.
+
+
+
+
+
+
+
+
+
+
+
+
