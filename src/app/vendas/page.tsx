@@ -844,17 +844,17 @@ export default function VendasDashboard() {
             <div className="vendas-table-wrapper">
               <table className="data-table vendas-main-table">
                 <colgroup>
-                  <col className="vendas-col-manager" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
-                  <col className="vendas-col-num" />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
+                  <col style={{ width: "9.1%" }} />
                 </colgroup>
                 <thead>
                   <tr>
