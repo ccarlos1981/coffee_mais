@@ -3367,12 +3367,19 @@ body {
 
 /* ═══════════════════════════════════════════
    RELEASE 3 — DEMANDA 004.1
-   AJUSTE FINO DE RESPONSIVIDADE E ÁREA ÚTIL (/vendas)
+   ARQUITETURA DE LAYOUT FLUIDO E RESPONSIVO (/vendas)
    ═══════════════════════════════════════════ */
 
+/* Container Principal com padding otimizado */
+.cm-main {
+  padding: 6px 8px 18px;
+  overflow: visible;
+}
+
+/* Grid Superior Inteligente (KPIs + Gauge + Donut) */
 .vendas-top-grid {
   display: grid;
-  grid-template-columns: minmax(440px, 1.8fr) minmax(160px, 0.7fr) minmax(200px, 0.9fr);
+  grid-template-columns: minmax(min(100%, 420px), 1fr) auto auto;
   gap: 10px;
   margin-bottom: 10px;
   align-items: stretch;
@@ -3389,21 +3396,25 @@ body {
   align-items: center;
   justify-content: center;
   padding: 10px;
-  min-width: 0;
+  width: fit-content;
+  min-width: 165px;
 }
 
 .vendas-donut-card {
   padding: 10px 12px;
-  min-width: 0;
+  width: fit-content;
+  min-width: 215px;
 }
 
+/* Pace Grid Fluido */
 .vendas-pace-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
+/* Table Containers & Safety Fallback */
 .vendas-table-card {
   overflow: hidden;
   width: 100%;
@@ -3415,20 +3426,7 @@ body {
   width: 100%;
 }
 
-@media (min-width: 1024px) {
-  .vendas-table-wrapper {
-    overflow-x: hidden;
-  }
-}
-
-.vendas-col-manager {
-  width: 19%;
-}
-
-.vendas-col-num {
-  width: 8.1%;
-}
-
+/* Tabela de Vendas — Encaixe Total em 880px de Área Útil (100% Visibilidade da Coluna 11 — Tend % MaCo) */
 .vendas-main-table {
   width: 100%;
   table-layout: fixed;
@@ -3438,20 +3436,39 @@ body {
 
 .vendas-main-table th,
 .vendas-main-table td {
-  padding: 5px clamp(2px, 0.35vw, 6px);
+  padding: 3px 1px;
   box-sizing: border-box;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .vendas-main-table th {
-  font-size: clamp(0.52rem, 0.58vw, 0.62rem);
-  line-height: 1.2;
+  font-size: 0.52rem;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
 }
 
 .vendas-main-table td {
-  font-size: clamp(0.62rem, 0.68vw, 0.74rem);
-  line-height: 1.25;
+  font-size: 0.65rem;
+  line-height: 1.2;
   letter-spacing: -0.01em;
+}
+
+/* Coluna Gerente (9.0%) */
+.vendas-main-table th:first-child,
+.vendas-main-table td:first-child {
+  text-align: left;
+  width: 9.0%;
+}
+
+/* 10 Colunas Numéricas (9.1% cada) */
+.vendas-main-table th:not(:first-child),
+.vendas-main-table td:not(:first-child) {
+  text-align: center;
+  width: 9.1%;
 }
 
 .vendas-manager-cell {
@@ -3468,100 +3485,26 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Breakpoints Otimizados para Aproveitamento de Área Útil (1366, 1440, 1600, 1920, 2560 px) */
-@media (max-width: 1599px) {
+/* Ajustes de Responsividade Fluida em Telas Menores */
+@media (max-width: 1180px) {
+  .vendas-top-grid {
+    grid-template-columns: 1fr auto;
+  }
+  .vendas-donut-card {
+    grid-column: span 2;
+    width: 100%;
+  }
+}
+
+@media (max-width: 860px) {
   .cm-main {
-    padding: 6px 12px 14px;
+    padding: 6px 6px 14px;
   }
-
-  .vendas-top-grid {
-    grid-template-columns: minmax(360px, 1.6fr) minmax(140px, 0.7fr) minmax(160px, 0.9fr);
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  .vendas-pace-grid {
-    gap: 6px;
-    margin-bottom: 8px;
-  }
-
-  .vendas-main-table {
-    min-width: 0;
-  }
-
-  .vendas-main-table th,
-  .vendas-main-table td {
-    padding: 4px 4px;
-  }
-
-  .vendas-main-table th {
-    font-size: 0.56rem;
-  }
-
-  .vendas-main-table td {
-    font-size: 0.68rem;
-  }
-
-  .kpi-card {
-    padding: 8px 10px;
-  }
-
-  .kpi-value {
-    font-size: 1.15rem;
-  }
-
-  .kpi-label {
-    font-size: 0.58rem;
-    margin-bottom: 2px;
-  }
-}
-
-@media (max-width: 1439px) {
-  .vendas-top-grid {
-    grid-template-columns: minmax(340px, 1.4fr) minmax(130px, 0.6fr) minmax(150px, 0.8fr);
-    gap: 8px;
-  }
-
-  .vendas-pace-grid {
-    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-    gap: 6px;
-  }
-
-  .vendas-main-table th,
-  .vendas-main-table td {
-    padding: 4px 3px;
-  }
-
-  .vendas-main-table th {
-    font-size: 0.54rem;
-  }
-
-  .vendas-main-table td {
-    font-size: 0.66rem;
-  }
-}
-
-@media (max-width: 1365px) {
   .vendas-top-grid {
     grid-template-columns: 1fr;
-    gap: 10px;
   }
-
-  .vendas-main-table {
-    min-width: 0;
-  }
-
-  .vendas-main-table th,
-  .vendas-main-table td {
-    padding: 4px 2px;
-  }
-
-  .vendas-main-table th {
-    font-size: 0.52rem;
-  }
-
-  .vendas-main-table td {
-    font-size: 0.64rem;
+  .vendas-donut-card {
+    grid-column: span 1;
   }
 }
 
