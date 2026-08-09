@@ -2209,6 +2209,7 @@ Centralizar os componentes estruturais oficialmente homologados do Coffee++, per
 | Notification Engine | ✅ LOCKED | Notificações e mensageria |
 | Telemetry | ✅ LOCKED | Logs, auditoria e observabilidade |
 | MCP Infrastructure | ✅ LOCKED | Infraestrutura de desenvolvimento e automação |
+| Metas Integrity | ✅ LOCKED | Identidade matemática, SSOT targets, segregação KA×Dist |
 
 ### Regras Gerais:
 
@@ -3297,6 +3298,28 @@ Enquanto isso, a evolução da Plataforma Coffee++ ocorrerá exclusivamente por 
 - Documentação técnica dos módulos.
 
 Este ato formaliza o congelamento da Governança Institucional v1.0 e estabelece sua utilização como referência permanente para todas as futuras evoluções da Plataforma Coffee++.
+
+---
+
+## 88. Baseline Oficial — Correção Definitiva de Integridade do Domínio Metas (Baseline Permanente)
+
+A partir de 09/08/2026, as correções de integridade do domínio Metas tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+
+1. **Marketplace — Identificador Oficial**: O canal Marketplace deverá utilizar obrigatoriamente `manager = 'Marketplace'` e `manager_id = '1006'`. Fica expressamente proibida qualquer gravação futura utilizando `manager_id = 'Total'` para o canal Marketplace.
+
+2. **Single Source of Truth — Meta Oficial**: A tabela `public.targets` permanece como única fonte oficial de metas. Somente o módulo `/metas` poderá criar, alterar ou manter registros de metas dos gerentes comerciais. Nenhum outro módulo poderá gravar metas oficiais dos gerentes em `public.targets`.
+
+3. **RPS — Proibição de Gravação de Metas de Gerentes Comerciais**: A RPS (`POST /api/processo-comercial/rps`) não poderá criar nem atualizar registros de Meta Oficial dos gerentes comerciais (IDs 1000-1003) em `public.targets`. Sua responsabilidade permanece exclusivamente sobre o planejamento operacional e o desdobramento das metas em `public.cm_weekly_projections`.
+
+4. **Gerentes Comerciais — Sufixo Obrigatório**: Todos os registros oficiais de gerentes comerciais em `public.targets` deverão utilizar obrigatoriamente o sufixo de canal: `Luiz (KA)`, `Luiz (Dist)`, `Leandro (KA)`, `Leandro (Dist)`, `Julliano (KA)`, `Julliano (Dist)`, `John Guedes (KA)`, `John Guedes (Dist)`. Fica proibida a criação de registros utilizando apenas o nome canônico sem sufixo.
+
+5. **Identidade Matemática Obrigatória**: A seguinte identidade é obrigatória para qualquer evolução futura do domínio Metas: `Σ Meta Oficial da Empresa = Σ Metas dos Canais = Σ public.targets`. Qualquer divergência deverá ser considerada regressão e tratada como bug bloqueante.
+
+6. **Governança Preservada**: Permanecem preservadas integralmente: `public.targets` como SSOT da Meta Oficial; `public.cm_weekly_projections` como SSOT das Metas por Rede; segregação KA × Distribuidor; contratos públicos; APIs; ViewModels.
+
+Status Arquitetural: `METAS_INTEGRITY_BASELINE = LOCKED` & `BASELINE = CONFIRMED` & `MARKETPLACE_MANAGER_ID = 1006` & `RPS_TARGET_WRITE_FOR_COMMERCIAL_MANAGERS = FORBIDDEN` & `MATHEMATICAL_IDENTITY = ENFORCED`.
 
 
 

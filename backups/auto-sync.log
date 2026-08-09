@@ -1345,3 +1345,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    7925791..13d89df  main -> main
 [09/08/2026 07:26] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 0f564f5] auto-save: 09/08/2026 10:26
+ 3 files changed, 103 insertions(+)
+ create mode 100644 supabase/migrations/20260809_fix_metas_marketplace_trigger.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   13d89df..0f564f5  main -> main
+[09/08/2026 10:26] ✅ Alterações enviadas com sucesso para o GitHub.
