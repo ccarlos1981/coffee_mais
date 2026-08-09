@@ -40,6 +40,7 @@ export default function DreComercialPage() {
       if (filters.uf && filters.uf !== "all") params.set("uf", filters.uf);
       if (filters.channel && filters.channel !== "all") params.set("channel", filters.channel);
       if (filters.matriz && filters.matriz !== "all") params.set("matriz", filters.matriz);
+      params.set("dimension", selectedDimension);
 
       const res = await fetch(`/api/inovacoes/dre?${params.toString()}`);
       if (!res.ok) {
@@ -56,7 +57,7 @@ export default function DreComercialPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, selectedDimension]);
 
   useEffect(() => {
     fetchDreData();

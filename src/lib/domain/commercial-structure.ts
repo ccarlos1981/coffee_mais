@@ -379,20 +379,24 @@ export function buildCommercialRoleSqlFilter(
     const roleDef = resolveCommercialRole(trimmed);
     if (roleDef) {
       const match = roleDef.match || { partnerCodes: [], matrizCodes: [], cnpjs: [], aliases: [] };
+      const channelCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}tipo_parceiro` : `${prefix}channel`;
+      const redeCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}matriz` : `${prefix}rede`;
+      const codParceiroCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `CAST(${prefix}codigo AS TEXT)` : `${prefix}cod_parceiro`;
+      const nomeParceiroCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}razao_social` : `${prefix}nome_parceiro`;
 
       if (roleDef.role === 'DIST') {
         // Apenas Distribuidores do Gerente
-        const distConditions: string[] = [`${prefix}channel = 'Distribuidor'`];
+        const distConditions: string[] = [`${channelCol} = 'Distribuidor'`];
 
         if (!isMensalSummaryTable && match.partnerCodes && match.partnerCodes.length > 0) {
           const codes = match.partnerCodes.map(c => `'${c}'`).join(',');
-          distConditions.push(`${prefix}cod_parceiro IN (${codes})`);
+          distConditions.push(`${codParceiroCol} IN (${codes})`);
         }
         if (match.aliases && match.aliases.length > 0) {
           const redesSql = match.aliases.map(r => `'${r.replace(/'/g, "''")}'`).join(',');
-          distConditions.push(`UPPER(${prefix}rede) IN (${redesSql})`);
+          distConditions.push(`UPPER(${redeCol}) IN (${redesSql})`);
           if (!isMensalSummaryTable) {
-            distConditions.push(`UPPER(${prefix}nome_parceiro) IN (${redesSql})`);
+            distConditions.push(`UPPER(${nomeParceiroCol}) IN (${redesSql})`);
           }
         }
 
@@ -402,15 +406,15 @@ export function buildCommercialRoleSqlFilter(
         const distRole = OFFICIAL_COMMERCIAL_ROLES.find(r => r.managerId === roleDef.managerId && r.role === 'DIST');
         const distMatch = distRole?.match || { partnerCodes: [], matrizCodes: [], cnpjs: [], aliases: [] };
 
-        const excludeConditions: string[] = [`${prefix}channel != 'Distribuidor'`];
+        const excludeConditions: string[] = [`${channelCol} != 'Distribuidor'`];
 
         if (!isMensalSummaryTable && distMatch.partnerCodes && distMatch.partnerCodes.length > 0) {
           const codes = distMatch.partnerCodes.map(c => `'${c}'`).join(',');
-          excludeConditions.push(`${prefix}cod_parceiro NOT IN (${codes})`);
+          excludeConditions.push(`${codParceiroCol} NOT IN (${codes})`);
         }
         if (distMatch.aliases && distMatch.aliases.length > 0) {
           const redesSql = distMatch.aliases.map(r => `'${r.replace(/'/g, "''")}'`).join(',');
-          excludeConditions.push(`UPPER(${prefix}rede) NOT IN (${redesSql})`);
+          excludeConditions.push(`UPPER(${redeCol}) NOT IN (${redesSql})`);
         }
 
         clauses.push(`(${prefix}manager_id = '${roleDef.managerId}' AND ${excludeConditions.join(' AND ')})`);
@@ -419,8 +423,9 @@ export function buildCommercialRoleSqlFilter(
         clauses.push(`${prefix}manager_id = '${roleDef.managerId}'`);
       }
     } else {
-      // Se for manager_id puro (ex: "1002" ou "1001") ou canal genérico ("1004")
-      clauses.push(`(${prefix}manager_id = '${trimmed}' OR ${prefix}manager = '${trimmed.replace(/'/g, "''")}')`);
+      // Se for manager_id puro (ex: "1002" ou "1001") ou nome (ex: "Luiz")
+      const mgrNameCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}responsavel` : `${prefix}manager`;
+      clauses.push(`(${prefix}manager_id = '${trimmed}' OR ${mgrNameCol} = '${trimmed.replace(/'/g, "''")}')`);
     }
   }
 

@@ -15,6 +15,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient as createBrowserClient } from "@/lib/supabase/client";
 import type {
   DomainChannel,
   DomainSegment,
@@ -30,12 +31,19 @@ import type {
 } from "./types";
 
 export class CommercialDomainRepository {
+  private static getClient() {
+    if (typeof window !== "undefined") {
+      return createBrowserClient();
+    }
+    return createAdminClient();
+  }
+
   // ============================================================
   // CANAIS COMERCIAIS (cm_domain_channels)
   // ============================================================
 
   static async fetchChannels(): Promise<DomainChannel[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_channels")
       .select("id, label, db_value, sort_order, is_active")
@@ -61,7 +69,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchSegments(): Promise<DomainSegment[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_segments")
       .select("id, label, sort_order, is_active")
@@ -86,7 +94,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchStatuses(category?: string): Promise<DomainStatus[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     let query = supabase
       .from("cm_domain_status")
       .select("id, label, category, sort_order, is_active")
@@ -118,7 +126,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchBusinessUnits(): Promise<DomainBusinessUnit[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_business_units")
       .select("id, label, sort_order, is_active")
@@ -143,7 +151,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchRegions(): Promise<DomainRegion[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_regions")
       .select("id, label, manager_id, sort_order, is_active")
@@ -169,7 +177,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchRoles(): Promise<DomainRole[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_roles")
       .select("id, label, sort_order, is_active")
@@ -194,7 +202,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchNetworks(filters?: NetworkFilter): Promise<DomainNetwork[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     let query = supabase
       .from("cm_redes_matrizes")
       .select("codigo, nome, canal, manager_id, manager")
@@ -228,7 +236,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchStates(): Promise<DomainState[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("manager_uf_mapping")
       .select("uf, manager")
@@ -250,7 +258,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchNormalizationRules(): Promise<DomainNormalizationRule[]> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_normalization_rules")
       .select("domain, legacy_value, official_id, inferred_segment_id")
@@ -274,7 +282,7 @@ export class CommercialDomainRepository {
   // ============================================================
 
   static async fetchDomainVersion(): Promise<DomainVersion | null> {
-    const supabase = createAdminClient();
+    const supabase = this.getClient();
     const { data, error } = await supabase
       .from("cm_domain_version")
       .select("id, version, description, user_id, user_email, checksum, created_at")

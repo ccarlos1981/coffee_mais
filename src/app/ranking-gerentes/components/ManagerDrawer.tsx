@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   Trophy,
@@ -17,6 +18,7 @@ import {
   BarChart3,
   RefreshCw,
   Lightbulb,
+  ClipboardList,
 } from "lucide-react";
 import { formatCompact, formatCurrency } from "@/lib/formatters";
 import type {
@@ -260,9 +262,11 @@ function EvolutionChart({ data }: { data: { mes: string; fat: number }[] }) {
 /* ───────────────── Main Drawer ───────────────── */
 
 export function ManagerDrawer({ entry, onClose }: ManagerDrawerProps) {
+  const router = useRouter();
   const [detail, setDetail] = useState<DetailApiResponse["data"]>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
 
   const fetchDetail = useCallback(async () => {
     try {
@@ -547,11 +551,29 @@ export function ManagerDrawer({ entry, onClose }: ManagerDrawerProps) {
           ) : null}
 
           {/* ═══ AÇÕES SUGERIDAS (derived from status/metrics - presentation only) ═══ */}
-          <section className="bg-muted/5 border border-border/50 rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Lightbulb className="w-4 h-4 text-amber-400" />
-              <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Ações Sugeridas</h3>
+          <section className="bg-muted/5 border border-border/50 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-amber-400" />
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">Ações Sugeridas</h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  const params = new URLSearchParams();
+                  params.set("managerId", entry.managerId || entry.managerName);
+                  params.set("origem", "RANKING_PERFORMANCE");
+                  router.push(`/processo-comercial/follow-up?${params.toString()}`);
+                }}
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-bold text-[11px] rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+                Gerar Follow-up
+              </button>
             </div>
+
             <div className="space-y-2">
               {actionSuggestions.map((action, i) => {
                 const Icon = action.icon;
@@ -575,6 +597,7 @@ export function ManagerDrawer({ entry, onClose }: ManagerDrawerProps) {
               })}
             </div>
           </section>
+
 
           {/* ═══ FOOTER ═══ */}
           <div className="text-center text-[10px] text-muted/50 py-2 border-t border-border/30">
