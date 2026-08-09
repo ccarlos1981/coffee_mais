@@ -633,7 +633,7 @@ export default function VendasDashboard() {
 
   /* ═════════════════ RENDER ═════════════════ */
   return (
-    <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--background)", overflowX: "hidden" }}>
       {/* ═══ NAVBAR — Coffee++ style ═══ */}
       <nav className="cm-navbar">
         {/* Row 1: Logo + Links (Desktop) / Logo + Toggle (Mobile) */}
@@ -843,31 +843,46 @@ export default function VendasDashboard() {
           <div className="glass-card vendas-table-card">
             <div className="vendas-table-wrapper">
               <table className="data-table vendas-main-table">
+                {/* Distribuição semântica por tipo de coluna:
+                    Gerente (1):        8.5%  — flexível, nomes reais
+                    Monetário Meta/Real (4): 10.5% — FAT Meta, FAT Real, MACO Meta, MACO Real
+                    Percentual (4):    7.875% — FAT Tend%, FAT %ATG, UND Tend%, MACO Tend%
+                    Quantidade (2):    9.0%  — UND Meta, UND Real
+                    Total: 8.5 + (2×10.5) + (2×10.5) + (4×7.875) + (2×9.0) = 100%
+                */}
                 <colgroup>
-                  <col style={{ width: "9%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
-                  <col style={{ width: "9.1%" }} />
+                  {/* Col 1: Gerente — flexível */}
+                  <col style={{ width: "8.5%" }} />
+                  {/* Col 2-3: FAT Meta (R$) + FAT Real (R$) — monetárias */}
+                  <col style={{ width: "10.5%" }} />
+                  <col style={{ width: "10.5%" }} />
+                  {/* Col 4: FAT Tend% — percentual */}
+                  <col style={{ width: "7.875%" }} />
+                  {/* Col 5: FAT %ATG — percentual */}
+                  <col style={{ width: "7.875%" }} />
+                  {/* Col 6-7: UND Meta + UND Real — quantidades */}
+                  <col style={{ width: "9.0%" }} />
+                  <col style={{ width: "9.0%" }} />
+                  {/* Col 8: UND Tend% — percentual */}
+                  <col style={{ width: "7.875%" }} />
+                  {/* Col 9-10: MACO Meta (R$) + MACO Real (R$) — monetárias */}
+                  <col style={{ width: "10.5%" }} />
+                  <col style={{ width: "10.5%" }} />
+                  {/* Col 11: MACO Tend% — percentual */}
+                  <col style={{ width: "7.875%" }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
-                    <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento (R$)</th>
+                    <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento</th>
                     <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
-                    <th colSpan={3} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MaCo (R$)</th>
+                    <th colSpan={3} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MACO</th>
                   </tr>
                   <tr>
                     <th className="col-group-fat col-divider">Meta</th>
                     <th className="col-group-fat">Real</th>
                     <th className="col-group-fat">Tend %</th>
-                    <th className="col-group-fat">%Ating.</th>
+                    <th className="col-group-fat">%ATG</th>
                     <th className="col-group-und col-divider">Meta</th>
                     <th className="col-group-und">Real</th>
                     <th className="col-group-und">Tend %</th>

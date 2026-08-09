@@ -43,7 +43,7 @@ const CHANNELS = [
   { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" }
 ];
 
-import { OFFICIAL_COMMERCIAL_ROLES, DISTRIBUTORS_REGISTRY } from "@/lib/domain/commercial-structure";
+import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
 
 export function cleanManagerName(name: string): string {
   if (!name) return "";
@@ -62,6 +62,11 @@ const CLEAN_MANAGERS = [
     };
   })
 ];
+
+// IDs de gerentes com carteira de Distribuidor (SSOT: OFFICIAL_COMMERCIAL_ROLES role='DIST')
+const DIST_MANAGER_IDS = new Set<string>(
+  OFFICIAL_COMMERCIAL_ROLES.filter(r => r.role === 'DIST').map(r => r.managerId)
+);
 
 const YEARS = [2024, 2025, 2026, 2027];
 
@@ -92,17 +97,13 @@ export default function MetasPage() {
   // Dropdown states
   const [selectedChannel, setSelectedChannel] = useState<string>("Toda Empresa");
   const [selectedManager, setSelectedManager] = useState<string>("Total");
-  const [selectedDistributor, setSelectedDistributor] = useState<string>("Total");
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
 
-  const availableDistributors = useMemo(() => {
-    if (selectedManager === "Total") {
-      const all = Object.values(DISTRIBUTORS_REGISTRY).flatMap(d => d.redes);
-      return Array.from(new Set(all));
-    }
-    const def = DISTRIBUTORS_REGISTRY[selectedManager];
-    return def ? Array.from(new Set(def.redes)) : [];
-  }, [selectedManager]);
+  // Combo Gerente: quando Canal = Distribuidor, exibe apenas gerentes com carteira DIST
+  const availableManagers = useMemo(() => {
+    if (selectedChannel !== 'Distribuidor') return CLEAN_MANAGERS;
+    return CLEAN_MANAGERS.filter(m => m.id === 'Total' || DIST_MANAGER_IDS.has(m.manager_id));
+  }, [selectedChannel]);
 
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -155,7 +156,10 @@ export default function MetasPage() {
       const dbChannel = channel === 'Private Label' ? 'Marca Própria' : channel;
 
       const chOpt = CHANNELS.find(c => c.id === channel);
-      const mgrOpt = channel !== 'Toda Empresa' ? CLEAN_MANAGERS.find((m: any) => m.id === manager) : chOpt;
+      const isChannelWithoutManager = !['KA', 'Distribuidor', 'Toda Empresa'].includes(channel);
+      const mgrOpt = isChannelWithoutManager
+        ? chOpt
+        : (channel !== 'Toda Empresa' ? CLEAN_MANAGERS.find((m: any) => m.id === manager) : chOpt);
 
       const pManagerId = mgrOpt?.manager_id || '';
       const pManagerName = mgrOpt?.manager || '';
@@ -199,7 +203,14 @@ export default function MetasPage() {
         .eq('year', year);
 
       if (channel !== 'Toda Empresa') {
-        if (manager === 'Total') {
+        // Canais sem carteira gerencial: filtrar pelo manager_id do canal
+        const isChannelWithoutManager = !['KA', 'Distribuidor', 'Toda Empresa'].includes(channel);
+        if (isChannelWithoutManager) {
+          const chDef = CHANNELS.find(c => c.id === channel);
+          if (chDef) {
+            query = query.eq('manager_id', chDef.manager_id);
+          }
+        } else if (manager === 'Total') {
           query = query.in('manager_id', CLEAN_MANAGERS.map((m: any) => m.manager_id).filter((id: string) => id && id !== 'Total'));
         } else {
           const mgrOpt = CLEAN_MANAGERS.find((m: any) => m.id === manager);
@@ -281,15 +292,14 @@ export default function MetasPage() {
     }
   }, [isAuthenticated, selectedChannel, selectedManager, selectedYear, loadActualSales, loadTargetsData]);
 
+
   const handleChannelChange = (val: string) => {
     setSelectedChannel(val);
     setSelectedManager("Total");
-    setSelectedDistributor("Total");
   };
 
   const handleManagerChange = (val: string) => {
     setSelectedManager(val);
-    setSelectedDistributor("Total");
   };
 
   const handleInputChange = (field: keyof GridData, monthIdx: number, value: number) => {
@@ -306,10 +316,14 @@ export default function MetasPage() {
       setError(null);
       setSuccess(null);
 
+      // Para canais sem carteira gerencial, usar CHANNELS para obter o manager_id correto
+      const isChannelWithoutManager = !['KA', 'Distribuidor', 'Toda Empresa'].includes(selectedChannel);
       const chOpt = CHANNELS.find(c => c.id === selectedChannel);
-      const mgrOpt = selectedChannel !== 'Toda Empresa'
-        ? CLEAN_MANAGERS.find((m: any) => m.id === selectedManager) 
-        : chOpt;
+      const mgrOpt = isChannelWithoutManager
+        ? chOpt  // Inside Sales → { manager_id: "1004", manager: "Inside Sales", ... }
+        : (selectedChannel !== 'Toda Empresa'
+            ? CLEAN_MANAGERS.find((m: any) => m.id === selectedManager)
+            : chOpt);
 
       if (!mgrOpt) {
         throw new Error("Opção de gerente inválida.");
@@ -319,19 +333,17 @@ export default function MetasPage() {
         throw new Error("Não é possível salvar metas na visão 'Toda Empresa'. Por favor, selecione o canal (KA ou Distribuidor) e edite cada gerente individualmente.");
       }
 
-      // Definir nome do manager concatenando o sufixo de canal para segregação no banco (manager_id permanece inalterado ex: 1002)
+      // Definir nome do manager para segregação no banco
+      // - KA e Distribuidor: sufixo por gerente selecionado
+      // - Outros canais (Inside Sales, Ecommerce, etc.): usa o nome do canal como identificador
       let managerNameToSave = mgrOpt.manager;
       if (selectedChannel === "Distribuidor") {
         managerNameToSave = `${mgrOpt.manager} (Dist)`;
       } else if (selectedChannel === "KA") {
         managerNameToSave = `${mgrOpt.manager} (KA)`;
-      }
-
-      const isCorporateChannel = ["1004", "1005", "1006", "1007", "1008", "1009"].includes(mgrOpt.manager_id) || 
-                                ["Inside Sales", "Ecommerce", "Marketplace", "Distribuidor", "Amazon 1P", "Private Label"].includes(mgrOpt.manager);
-
-      if (!managerNameToSave.includes("(KA)") && !managerNameToSave.includes("(Dist)") && !isCorporateChannel) {
-        throw new Error("Selecione obrigatoriamente o canal (KA ou Distribuidor) para salvar as metas do gerente.");
+      } else if (!['KA', 'Distribuidor'].includes(selectedChannel)) {
+        // Canais sem carteira gerencial: usa o nome do canal diretamente
+        managerNameToSave = selectedChannel;
       }
 
       const rowsToUpsert = [];
@@ -636,8 +648,8 @@ export default function MetasPage() {
                 </div>
               </div>
 
-              {/* Gerente Dropdown */}
-              {selectedChannel !== "Toda Empresa" && (
+              {/* Gerente Dropdown — apenas canais com carteira gerencial (KA e Distribuidor) */}
+              {(selectedChannel === 'KA' || selectedChannel === 'Distribuidor') && (
                 <div className="flex flex-col">
                   <span className="text-xs text-muted font-semibold mb-1.5">Gerente</span>
                   <div className="relative">
@@ -646,7 +658,7 @@ export default function MetasPage() {
                       onChange={(e) => handleManagerChange(e.target.value)}
                       className="appearance-none bg-background border border-border rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-foreground focus:outline-none focus:border-violet-500"
                     >
-                      {CLEAN_MANAGERS.map(m => (
+                      {availableManagers.map(m => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>
@@ -655,25 +667,6 @@ export default function MetasPage() {
                 </div>
               )}
 
-              {/* Distribuidor Dropdown (Conditional on Canal Distribuidor) */}
-              {(selectedChannel === "Distribuidor" || selectedChannel === "1007") && (
-                <div className="flex flex-col">
-                  <span className="text-xs text-muted font-semibold mb-1.5">Distribuidor</span>
-                  <div className="relative">
-                    <select
-                      value={selectedDistributor}
-                      onChange={(e) => setSelectedDistributor(e.target.value)}
-                      className="appearance-none bg-background border border-border rounded-xl px-4 py-2.5 pr-10 text-sm font-medium text-foreground focus:outline-none focus:border-violet-500"
-                    >
-                      <option value="Total">Todos os Distribuidores</option>
-                      {availableDistributors.map((dist, idx) => (
-                        <option key={idx} value={dist}>{dist}</option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-4 h-4 text-muted absolute right-3 top-3.5 pointer-events-none" />
-                  </div>
-                </div>
-              )}
 
               {/* Ano Dropdown */}
               <div className="flex flex-col">
