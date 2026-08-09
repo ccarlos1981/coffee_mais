@@ -85,6 +85,7 @@ export const allModules: NavigationGroup[] = [
       { key: "positivacao", title: "Positivação", description: "Clientes ativos", href: "/positivacao", icon: CheckCircle2, color: "from-indigo-600 to-indigo-800", ready: true },
       { key: "positivacao_matriz", title: "Posit. Rede", permission: "Posit. Matriz", description: "Rede e Cliente", href: "/positivacao-matriz", icon: CheckCircle2, color: "from-cyan-600 to-cyan-800", ready: true },
       { key: "historico_familia", title: "Hist. Família", permission: "Positivação", description: "Evolução e ranking de famílias", href: "/historico-familia", icon: Layers, color: "from-indigo-600 to-indigo-800", ready: true },
+      { key: "ranking_performance", title: "Ranking de Performance", description: "Performance dos Gerentes de Campo", href: "/ranking-gerentes", icon: Trophy, color: "from-amber-500 to-orange-700", ready: true, permission: "Vendas" },
       { key: "carteira", title: "Carteira", description: "Base ativa", href: "/carteira", icon: Briefcase, color: "from-teal-600 to-teal-800", ready: false },
       { key: "mix", title: "Mix", description: "Composição SKU", href: "/mix", icon: PieChart, color: "from-pink-600 to-pink-800", ready: false },
     ],

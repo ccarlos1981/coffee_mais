@@ -13,6 +13,7 @@ import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, bu
 import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
 import { getCommercialManagerRoleOptions } from '@/lib/domain/commercial-structure';
+import { CommercialDomainService } from '@/lib/domain';
 
 function getSupabaseClient() {
   return createAdminClient();
@@ -820,16 +821,22 @@ export class AnalyticsEngine {
       this.executeSql(sqlProducts),
     ]);
 
+    const domainFilterOptions = await CommercialDomainService.getFilterOptions();
+    const domainChannels = domainFilterOptions.channels.map(c => c.value);
+    const domainStates = domainFilterOptions.states.map(s => s.value);
+
     const roleLabels = getCommercialManagerRoleOptions().map(r => r.label);
     const dbManagers = resManagers.map(r => r.manager).filter(m => m && !['LUIZ', 'LEANDRO', 'JOHN GUEDES', 'JULLIANO', 'LEANDRO SAFFI'].includes(m.toUpperCase()));
     const finalManagers = Array.from(new Set([...roleLabels, ...dbManagers]));
+    const finalChannels = Array.from(new Set([...domainChannels, ...resChannels.map(r => r.channel)]));
+    const finalUfs = Array.from(new Set([...domainStates, ...resUfs.map(r => r.uf)]));
 
     return {
       maxDate: resMaxDate[0]?.max_date || null,
       managers: finalManagers,
       familias: resFamilias.map(r => r.familia),
-      ufs: resUfs.map(r => r.uf),
-      channels: resChannels.map(r => r.channel),
+      ufs: finalUfs,
+      channels: finalChannels,
       redes: resRedes.map(r => r.rede),
       products: resProducts.map(r => r.product),
     };
@@ -2418,7 +2425,362 @@ export class AnalyticsEngine {
       },
     };
   }
+
+  /**
+   * 22. Feature 7 — Ranking Dinâmico de Performance de Gerentes de Campo
+   *
+   * Fornece dados analíticos brutos para o ManagerPerformanceScoreService.
+   * Este método NÃO calcula Score — apenas coleta e agrega dados das fontes oficiais.
+   *
+   * Fontes: mv_vendas_mensal, mv_vendas_cliente_mensal, cm_clientes, cm_clientes_atividade
+   * Operação: 100% Read-Only
+   *
+   * @see Feature 7 Discovery Document
+   */
+  static async getManagerPerformanceRanking(
+    filters: AnalyticsFilters,
+    fieldManagerIds: string[]
+  ): Promise<ManagerPerformanceRawData> {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    // Último mês FECHADO (não usar mês corrente parcial)
+    let refYear = currentYear;
+    let refMonth = currentMonth - 1;
+    if (refMonth <= 0) {
+      refYear -= 1;
+      refMonth = 12;
+    }
+
+    // Rolling 3M atual: [refMonth-2, refMonth-1, refMonth]
+    const rollingMonths: string[] = [];
+    for (let i = 2; i >= 0; i--) {
+      let y = refYear;
+      let m = refMonth - i;
+      while (m <= 0) { y -= 1; m += 12; }
+      rollingMonths.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+    const rollingStart = rollingMonths[0];
+    const rollingEnd = rollingMonths[2];
+
+    // Rolling 3M anterior: [refMonth-5, refMonth-4, refMonth-3]
+    const rollingAntMonths: string[] = [];
+    for (let i = 5; i >= 3; i--) {
+      let y = refYear;
+      let m = refMonth - i;
+      while (m <= 0) { y -= 1; m += 12; }
+      rollingAntMonths.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+    const rollingAntStart = rollingAntMonths[0];
+    const rollingAntEnd = rollingAntMonths[2];
+
+    // Build manager_id IN clause for field managers only
+    const mgrIdInClause = fieldManagerIds.map(id => `'${id}'`).join(',');
+
+    // Apply optional filters (UF, channel, rede)
+    const extraConditions: string[] = [];
+    if (filters.uf && filters.uf !== 'all') {
+      const ufs = filters.uf.split(',').map(u => escapeSqlValue(u.trim())).join(',');
+      extraConditions.push(`uf IN (${ufs})`);
+    }
+    if (filters.channel && filters.channel !== 'all') {
+      const channels = filters.channel.split(',').map(c => escapeSqlValue(c.trim())).join(',');
+      extraConditions.push(`channel IN (${channels})`);
+    }
+    if (filters.matriz && filters.matriz !== 'all') {
+      const redes = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+      extraConditions.push(`rede IN (${redes})`);
+    }
+    const extraWhere = extraConditions.length > 0 ? ' AND ' + extraConditions.join(' AND ') : '';
+
+    // ── Query 1: Rolling 3M por gerente (faturamento mensal individual) ──
+    const sqlRollingMensal = `
+      SELECT manager_id, manager, mes, SUM(fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+      WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+        AND manager_id IN (${mgrIdInClause})${extraWhere}
+      GROUP BY manager_id, manager, mes
+      ORDER BY manager_id, mes
+    `;
+
+    // ── Query 2: Rolling 3M anterior por gerente ──
+    const sqlRollingAntMensal = `
+      SELECT manager_id, SUM(fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+      WHERE mes >= ${escapeSqlValue(rollingAntStart)} AND mes <= ${escapeSqlValue(rollingAntEnd)}
+        AND manager_id IN (${mgrIdInClause})${extraWhere}
+      GROUP BY manager_id
+    `;
+
+    // ── Query 3: Clientes ativos por gerente no Rolling 3M ──
+    const sqlClientesAtivos = `
+      SELECT manager_id, COUNT(DISTINCT nome_parceiro) as clientes_ativos, SUM(fat) as fat_total
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL}
+      WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+        AND manager_id IN (${mgrIdInClause})${extraWhere}
+      GROUP BY manager_id
+    `;
+
+    // ── Query 4: Frequência média (meses com compra por cliente por gerente) ──
+    const sqlFrequencia = `
+      SELECT manager_id, AVG(meses_com_compra) as freq_media
+      FROM (
+        SELECT manager_id, nome_parceiro, COUNT(DISTINCT mes) as meses_com_compra
+        FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL}
+        WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+          AND manager_id IN (${mgrIdInClause})${extraWhere}
+        GROUP BY manager_id, nome_parceiro
+      ) sub
+      GROUP BY manager_id
+    `;
+
+    // ── Query 5: Concentração Top 3 clientes por gerente ──
+    const sqlConcentracao = `
+      WITH client_fat AS (
+        SELECT manager_id, nome_parceiro, SUM(fat) as fat
+        FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL}
+        WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+          AND manager_id IN (${mgrIdInClause})${extraWhere}
+        GROUP BY manager_id, nome_parceiro
+      ),
+      ranked AS (
+        SELECT manager_id, fat,
+               ROW_NUMBER() OVER (PARTITION BY manager_id ORDER BY fat DESC) as rn
+        FROM client_fat
+      ),
+      totals AS (
+        SELECT manager_id, SUM(fat) as total_fat FROM client_fat GROUP BY manager_id
+      )
+      SELECT r.manager_id,
+             CASE WHEN t.total_fat > 0
+               THEN (SUM(r.fat) / t.total_fat) * 100
+               ELSE 0
+             END as concentracao_top3
+      FROM ranked r
+      JOIN totals t ON r.manager_id = t.manager_id
+      WHERE r.rn <= 3
+      GROUP BY r.manager_id, t.total_fat
+    `;
+
+    // ── Query 6: Clientes cadastrados por gerente (para calcular sem compra) ──
+    const sqlClientesCadastrados = `
+      SELECT
+        c.manager_id,
+        COUNT(DISTINCT c.id) as total_cadastrados
+      FROM public.cm_clientes c
+      WHERE c.manager_id IN (${mgrIdInClause})
+      GROUP BY c.manager_id
+    `;
+
+    // Execute all queries in parallel
+    const [
+      resRollingMensal,
+      resRollingAnt,
+      resClientesAtivos,
+      resFrequencia,
+      resConcentracao,
+      resClientesCadastrados,
+    ] = await Promise.all([
+      this.executeSql<{ manager_id: string; manager: string; mes: string; fat: number }>(sqlRollingMensal),
+      this.executeSql<{ manager_id: string; fat: number }>(sqlRollingAntMensal),
+      this.executeSql<{ manager_id: string; clientes_ativos: number; fat_total: number }>(sqlClientesAtivos),
+      this.executeSql<{ manager_id: string; freq_media: number }>(sqlFrequencia),
+      this.executeSql<{ manager_id: string; concentracao_top3: number }>(sqlConcentracao),
+      this.executeSql<{ manager_id: string; total_cadastrados: number }>(sqlClientesCadastrados),
+    ]);
+
+    // ── Build lookup maps ──
+    const rollingAntMap = new Map<string, number>();
+    resRollingAnt.forEach(r => rollingAntMap.set(r.manager_id, Number(r.fat || 0)));
+
+    const clientesAtivosMap = new Map<string, { ativos: number; fat: number }>();
+    resClientesAtivos.forEach(r => clientesAtivosMap.set(r.manager_id, {
+      ativos: Number(r.clientes_ativos || 0),
+      fat: Number(r.fat_total || 0),
+    }));
+
+    const frequenciaMap = new Map<string, number>();
+    resFrequencia.forEach(r => frequenciaMap.set(r.manager_id, Number(r.freq_media || 0)));
+
+    const concentracaoMap = new Map<string, number>();
+    resConcentracao.forEach(r => concentracaoMap.set(r.manager_id, Number(r.concentracao_top3 || 0)));
+
+    const cadastradosMap = new Map<string, number>();
+    resClientesCadastrados.forEach(r => cadastradosMap.set(r.manager_id, Number(r.total_cadastrados || 0)));
+
+    // ── Aggregate monthly data per manager ──
+    const managerMonthlyMap = new Map<string, { name: string; months: Map<string, number> }>();
+    resRollingMensal.forEach(r => {
+      if (!managerMonthlyMap.has(r.manager_id)) {
+        managerMonthlyMap.set(r.manager_id, { name: r.manager, months: new Map() });
+      }
+      managerMonthlyMap.get(r.manager_id)!.months.set(r.mes, Number(r.fat || 0));
+    });
+
+    // ── Build raw data array for each field manager ──
+    const rawDataArray: import('@/lib/services/manager-performance-score-service').ManagerRawAnalyticsData[] = [];
+
+    for (const mgrId of fieldManagerIds) {
+      const monthlyData = managerMonthlyMap.get(mgrId);
+      const managerName = monthlyData?.name || '';
+
+      // Fat mensal individual for the 3 Rolling months
+      const fatMensalRolling = rollingMonths.map(mes =>
+        monthlyData?.months.get(mes) || 0
+      );
+
+      const rollingFat3m = fatMensalRolling.reduce((acc, v) => acc + v, 0);
+      const rollingFat3mAnterior = rollingAntMap.get(mgrId) || 0;
+
+      const clienteData = clientesAtivosMap.get(mgrId) || { ativos: 0, fat: 0 };
+      const totalCadastrados = cadastradosMap.get(mgrId) || 0;
+      const clientesSemCompra = Math.max(0, totalCadastrados - clienteData.ativos);
+
+      const frequenciaMedia = frequenciaMap.get(mgrId) || 0;
+      const concentracaoTop3 = concentracaoMap.get(mgrId) || 0;
+
+      rawDataArray.push({
+        managerId: mgrId,
+        managerName,
+        rollingFat3m,
+        rollingFat3mAnterior,
+        fatMensalRolling,
+        clientesAtivos: clienteData.ativos,
+        clientesSemCompra,
+        frequenciaMedia,
+        concentracaoTop3,
+      });
+    }
+
+    return {
+      rawDataArray,
+      periodo: {
+        rollingStart,
+        rollingEnd,
+        rollingAntStart,
+        rollingAntEnd,
+        mesReferencia: `${refYear}-${String(refMonth).padStart(2, '0')}`,
+      },
+    };
+  }
+
+  /**
+   * 23. Feature 7 Sprint 3 — Detalhe do Gerente para Drawer
+   *
+   * Fornece dados de drill-down para um gerente específico: evolução mensal,
+   * Top 10 clientes, clientes sem compra e Top 3 concentração com nomes.
+   * Executa todas as queries em paralelo (batch único).
+   *
+   * @see Feature 7 Discovery Document
+   */
+  static async getManagerPerformanceDetail(
+    managerId: string,
+    rollingStart: string,
+    rollingEnd: string,
+  ): Promise<ManagerPerformanceDetailData> {
+    const mgrIdSafe = escapeSqlValue(managerId);
+
+    // ── Query 1: Evolução mensal do gerente ──
+    const sqlEvolucaoMensal = `
+      SELECT mes, SUM(fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+      WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+        AND manager_id = ${mgrIdSafe}
+      GROUP BY mes
+      ORDER BY mes
+    `;
+
+    // ── Query 2: Top 10 clientes por faturamento ──
+    const sqlTopClientes = `
+      SELECT
+        v.nome_parceiro,
+        v.rede,
+        SUM(v.fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} v
+      WHERE v.mes >= ${escapeSqlValue(rollingStart)} AND v.mes <= ${escapeSqlValue(rollingEnd)}
+        AND v.manager_id = ${mgrIdSafe}
+      GROUP BY v.nome_parceiro, v.rede
+      ORDER BY fat DESC
+      LIMIT 10
+    `;
+
+    // ── Query 3: Clientes sem compra no período ──
+    const sqlSemCompra = `
+      SELECT
+        c.nome as nome_parceiro,
+        c.matriz as rede,
+        a.dias_sem_comprar,
+        a.ultima_compra::text as ultima_compra,
+        COALESCE(a.valor_faturado_12m, 0) as valor_faturado_12m
+      FROM public.cm_clientes c
+      LEFT JOIN public.cm_clientes_atividade a ON c.id = a.cliente_id
+      WHERE c.manager_id = ${mgrIdSafe}
+        AND c.id NOT IN (
+          SELECT DISTINCT c2.id
+          FROM public.cm_clientes c2
+          INNER JOIN ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} v
+            ON v.nome_parceiro = c2.nome AND v.manager_id = c2.manager_id
+          WHERE v.mes >= ${escapeSqlValue(rollingStart)} AND v.mes <= ${escapeSqlValue(rollingEnd)}
+            AND v.manager_id = ${mgrIdSafe}
+        )
+      ORDER BY COALESCE(a.valor_faturado_12m, 0) DESC
+      LIMIT 20
+    `;
+
+    // ── Query 4: Top 3 clientes por concentração (nomes) ──
+    const sqlTop3Nomes = `
+      SELECT nome_parceiro, rede, SUM(fat) as fat
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL}
+      WHERE mes >= ${escapeSqlValue(rollingStart)} AND mes <= ${escapeSqlValue(rollingEnd)}
+        AND manager_id = ${mgrIdSafe}
+      GROUP BY nome_parceiro, rede
+      ORDER BY fat DESC
+      LIMIT 3
+    `;
+
+    // Execute all in parallel
+    const [resEvolucao, resTopClientes, resSemCompra, resTop3] = await Promise.all([
+      this.executeSql<{ mes: string; fat: number }>(sqlEvolucaoMensal),
+      this.executeSql<{ nome_parceiro: string; rede: string; fat: number }>(sqlTopClientes),
+      this.executeSql<{ nome_parceiro: string; rede: string; dias_sem_comprar: number | null; ultima_compra: string | null; valor_faturado_12m: number }>(sqlSemCompra),
+      this.executeSql<{ nome_parceiro: string; rede: string; fat: number }>(sqlTop3Nomes),
+    ]);
+
+    // Total fat for concentration calculation
+    const totalFatTop = resTopClientes.reduce((acc, r) => acc + Number(r.fat || 0), 0);
+
+    return {
+      evolucaoMensal: resEvolucao.map(r => ({
+        mes: r.mes,
+        fat: Number(r.fat || 0),
+      })),
+      topClientes: resTopClientes.map((r, idx) => ({
+        posicao: idx + 1,
+        nome: r.nome_parceiro || 'N/I',
+        rede: r.rede || 'N/I',
+        fat: Number(r.fat || 0),
+        participacaoPct: totalFatTop > 0 ? Number(((Number(r.fat || 0) / totalFatTop) * 100).toFixed(1)) : 0,
+      })),
+      clientesSemCompra: resSemCompra.map(r => ({
+        nome: r.nome_parceiro || 'N/I',
+        rede: r.rede || 'N/I',
+        diasSemCompra: Number(r.dias_sem_comprar || 0),
+        ultimaCompra: r.ultima_compra || null,
+        faturado12m: Number(r.valor_faturado_12m || 0),
+      })),
+      concentracaoTop3: resTop3.map((r, idx) => ({
+        posicao: idx + 1,
+        nome: r.nome_parceiro || 'N/I',
+        rede: r.rede || 'N/I',
+        fat: Number(r.fat || 0),
+        participacaoPct: totalFatTop > 0 ? Number(((Number(r.fat || 0) / totalFatTop) * 100).toFixed(1)) : 0,
+      })),
+    };
+  }
 }
+
+
 
 export interface InvestimentoFamiliaRow {
   familia: string;
@@ -2590,5 +2952,20 @@ export interface CrmComercialData {
   }>;
 }
 
+export interface ManagerPerformanceRawData {
+  rawDataArray: import('@/lib/services/manager-performance-score-service').ManagerRawAnalyticsData[];
+  periodo: {
+    rollingStart: string;
+    rollingEnd: string;
+    rollingAntStart: string;
+    rollingAntEnd: string;
+    mesReferencia: string;
+  };
+}
 
-
+export interface ManagerPerformanceDetailData {
+  evolucaoMensal: { mes: string; fat: number }[];
+  topClientes: { posicao: number; nome: string; rede: string; fat: number; participacaoPct: number }[];
+  clientesSemCompra: { nome: string; rede: string; diasSemCompra: number; ultimaCompra: string | null; faturado12m: number }[];
+  concentracaoTop3: { posicao: number; nome: string; rede: string; fat: number; participacaoPct: number }[];
+}

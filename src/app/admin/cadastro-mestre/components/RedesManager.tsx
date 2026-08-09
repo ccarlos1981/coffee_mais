@@ -2,7 +2,8 @@
 
 import { useCadastroMestre, RedeData } from "../hooks";
 import { Plus, Edit2, ShieldAlert, Award, Hash, ArrowUpRight, HelpCircle } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { CommercialDomainService, SelectOption } from "@/lib/domain";
 
 export function RedesManager() {
   const { redes, managers, loading, error, createRede, updateRede } = useCadastroMestre();
@@ -12,13 +13,23 @@ export function RedesManager() {
   // Form state
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [channel, setChannel] = useState("Key Account");
+  const [channel, setChannel] = useState("KA");
   const [managerId, setManagerId] = useState("");
+  const [channelOptions, setChannelOptions] = useState<SelectOption[]>([]);
+
+  useEffect(() => {
+    CommercialDomainService.getChannelOptions().then((opts) => {
+      setChannelOptions(opts);
+      if (opts.length > 0) {
+        setChannel(opts[0].value);
+      }
+    });
+  }, []);
 
   const resetForm = () => {
     setCode("");
     setName("");
-    setChannel("Key Account");
+    setChannel(channelOptions[0]?.value || "KA");
     setManagerId("");
     setEditingRede(null);
     setIsEditing(false);
@@ -118,9 +129,11 @@ export function RedesManager() {
                 onChange={(e) => setChannel(e.target.value)}
                 className="w-full px-3 py-1.5 bg-card border border-border rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/50"
               >
-                <option value="Key Account">Key Account</option>
-                <option value="Inside Sales">Inside Sales</option>
-                <option value="Regional">Regional</option>
+                {channelOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-1.5">

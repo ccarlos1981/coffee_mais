@@ -35,6 +35,7 @@ import {
   DISTRIBUTORS_REGISTRY,
   OFFICIAL_COMMERCIAL_ROLES,
 } from "@/lib/domain/commercial-structure";
+import { CommercialDomainService } from "@/lib/domain";
 
 /* ───────────────── constants ───────────────── */
 const MONTHS = [
@@ -75,30 +76,7 @@ const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; v
   { label: "Drip", type: "familia", value: "Drip", color: "#6b8fad" },
 ];
 
-const MANAGER_NAME_TO_ID: Record<string, string> = {
-  "Leandro": "1001",
-  "Leandro (KA)": "1001-KA",
-  "Leandro (Dist)": "1001-DIST",
-  "Leandro Saffi": "1001",
-  "Luiz": "1002",
-  "Luiz (KA)": "1002-KA",
-  "Luiz (Dist)": "1002-DIST",
-  "John Guedes": "1003",
-  "John Guedes (KA)": "1003-KA",
-  "John Guedes (Dist)": "1003-DIST",
-  "John": "1003",
-  "Julliano": "1000",
-  "Julliano (KA)": "1000-KA",
-  "Inside Sales": "1004",
-  "Ecommerce": "1005",
-  "Marketplace": "1006",
-  "Distribuidor": "1007",
-  "Amazon 1P": "1008",
-  "Private Label": "1009",
-};
 
-// Canais que mapeiam diretamente para um manager de mesmo nome
-const STANDALONE_CHANNEL_MANAGERS = new Set(['Ecommerce', 'Marketplace', 'Inside Sales', 'Amazon 1P', 'Private Label', 'Distribuidor']);
 
 /* ───────────────── types ───────────────── */
 interface FiltersData {
@@ -233,7 +211,7 @@ export default function VendasDashboard() {
           investment: "0",
         };
         if (filterManager.length > 0) {
-          const mappedIds = filterManager.map(m => MANAGER_NAME_TO_ID[m] || m);
+          const mappedIds = filterManager.map(m => CommercialDomainService.resolveManagerId(m) || m);
           params.manager_id = mappedIds.join(',');
         }
         if (filterFamilia.length > 0) params.familia = filterFamilia.join(',');
@@ -282,7 +260,7 @@ export default function VendasDashboard() {
 
           const getManagerId = (t: { manager: string; manager_id?: string | null }) => {
             if (t.manager_id) return t.manager_id;
-            return MANAGER_NAME_TO_ID[t.manager] || '9999';
+            return CommercialDomainService.resolveManagerId(t.manager) || '9999';
           };
 
           const allManagerIds = new Set<string>();
@@ -402,7 +380,7 @@ export default function VendasDashboard() {
               if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
 
               if (filterChannel.length > 0) {
-                if (STANDALONE_CHANNEL_MANAGERS.has(mName) && !filterChannel.includes(mName)) return;
+                if (CommercialDomainService.isStandaloneChannelManager(mName) && !filterChannel.includes(mName)) return;
               }
 
               rows.push({

@@ -40,18 +40,7 @@ interface PdvMapping {
   uf: string;
 }
 
-const MANAGERS_LIST = ["Julliano", "Leandro", "Luiz", "John Guedes", "Inside Sales"];
-const CHANNELS_LIST = [
-  "ATACADO",
-  "CASH & CARRY",
-  "DISTRIBUIDOR",
-  "B2B",
-  "VAREJO C ON",
-  "VAREJO F OUT",
-  "FARMACIA",
-  "E-COMMERCE",
-  "KEY ACCOUNT"
-];
+import { CommercialDomainService } from "@/lib/domain";
 
 const PAGE_PASSWORD = "123456";
 
@@ -168,8 +157,8 @@ export default function AtendimentoPage() {
 
   const handleAddRow = () => {
     const virtualId = "NOVO-" + Date.now();
-    setPdvData(prev => [{ cod_parceiro: virtualId, nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Inside Sales", uf: "SP", rede: "" }, ...prev]);
-    setModifiedPdvs(prev => ({ ...prev, [virtualId]: { nome_parceiro: "Novo Parceiro", canal: "VAREJO F OUT", manager: "Inside Sales", uf: "SP" } }));
+    setPdvData(prev => [{ cod_parceiro: virtualId, nome_parceiro: "Novo Parceiro", canal: "KA", manager: "Inside Sales", uf: "SP", rede: "" }, ...prev]);
+    setModifiedPdvs(prev => ({ ...prev, [virtualId]: { nome_parceiro: "Novo Parceiro", canal: "KA", manager: "Inside Sales", uf: "SP" } }));
     setNewPdvsCount(c => c + 1);
     setPdvPage(0); // View the new row
   };
@@ -537,7 +526,7 @@ export default function AtendimentoPage() {
                      style={{ background: "var(--background)", width: "170px", height: "38px" }}
                    >
                      <option value="Todos">Gerentes (Todos)</option>
-                     {MANAGERS_LIST.map(m => (
+                     {CommercialDomainService.getManagerList().map(m => (
                        <option key={m} value={m}>{m}</option>
                      ))}
                    </select>

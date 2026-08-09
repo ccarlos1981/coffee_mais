@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
+import { CommercialDomainService } from "@/lib/domain";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,8 +26,8 @@ function getAdminClient() {
   );
 }
 
-// Lista oficial de gerentes KA
-const KA_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes"];
+// Lista oficial de gerentes KA do Domínio Comercial
+const KA_MANAGERS = CommercialDomainService.getFieldManagerList();
 
 // Opção "CRISTIANO" = total de todos os gerentes KA
 const CRISTIANO = "CRISTIANO";

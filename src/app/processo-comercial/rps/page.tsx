@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { CommercialDomainService } from "@/lib/domain";
 import { 
   ArrowLeft, 
   Receipt, 
@@ -208,13 +209,9 @@ export default function RpsPage() {
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState<boolean>(false);
   const [removeModalTarget, setRemoveModalTarget] = useState<{ mIdx: number; cIdx: number; clientName: string; managerName: string } | null>(null);
 
-  // Mapeamento estético do nome dos gerentes
+  // Mapeamento estético do nome dos gerentes via Domínio Comercial SSOT
   const getManagerDisplayName = (name: string) => {
-    if (name === "Julliano") return "Julliano (SPC)";
-    if (name === "Leandro") return "Leandro (Sul)";
-    if (name === "Luiz") return "Luiz (Nordeste/Sudeste)";
-    if (name === "John Guedes") return "John Guedes (CO+NO)";
-    return name;
+    return CommercialDomainService.resolveManager(name).managerName || name;
   };
 
   // Formata o rótulo das segundas-feiras (ex: '2026-06-01' -> '01/jun')

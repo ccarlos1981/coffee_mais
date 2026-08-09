@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { CommercialDomainService } from "@/lib/domain";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ const SUPABASE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const CC_ALWAYS = ["trade@coffeemais.com", "cristiano.santos@coffeemais.com"];
-const OFFICIAL_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes"];
+const OFFICIAL_MANAGERS = CommercialDomainService.getFieldManagerList();
 
 function getBrazilTimeParts() {
   const formatter = new Intl.DateTimeFormat("en-US", {

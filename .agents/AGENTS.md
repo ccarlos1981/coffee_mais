@@ -3321,6 +3321,153 @@ A partir de 09/08/2026, as correções de integridade do domínio Metas tornam-s
 
 Status Arquitetural: `METAS_INTEGRITY_BASELINE = LOCKED` & `BASELINE = CONFIRMED` & `MARKETPLACE_MANAGER_ID = 1006` & `RPS_TARGET_WRITE_FOR_COMMERCIAL_MANAGERS = FORBIDDEN` & `MATHEMATICAL_IDENTITY = ENFORCED`.
 
+---
+
+## 110. Baseline Permanente — Domínio Comercial Unificado (SSOT)
+
+A partir de 09/08/2026, a arquitetura e a fachada única do **Domínio Comercial Unificado** tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Fachada Única Exclusiva**: O `CommercialDomainService` (`src/lib/domain`) é a ÚNICA fachada pública autorizada para consumo de:
+   - Canais Comerciais (`getChannels`, `getChannelOptions`, `resolveChannel`)
+   - Segmentos Comerciais (`getSegments`, `getSegmentOptions`)
+   - Gerentes Comerciais (`getManagerOptions`, `getFieldManagerList`, `resolveManager`)
+   - Regionais Comerciais (`getRegions`, `getRegionOptions`)
+   - UFs / Estados Comerciais (`getStates`, `getStateOptions`)
+   - Papéis Comerciais / Roles (`getRoles`)
+   - Filtros Globais (`getFilterOptions`)
+2. **Proibição Absoluta de Hardcodes**: É expressamente proibido criar arrays locais, enums, constantes, switch/case, if ou fallbacks textuais contendo informações comerciais (canais, gerentes, segmentos, UFs, regionais).
+3. **Obrigatoriedade para Novos Módulos**: Todo e qualquer novo módulo ou funcionalidade deverá consumir exclusivamente o `CommercialDomainService`.
+4. **Proibição de Consultas Locais para Filtros**: Nenhuma tela ou componente UI poderá consultar diretamente tabelas de domínio (`cm_clientes`, `cm_domain_*`) para montar dropdowns ou filtros comerciais.
+5. **Proibição de Listas Próprias em APIs**: Nenhuma rota de API poderá manter listas próprias de gerentes, canais ou segmentos.
+6. **Sincronização em Rede**: Analytics, RDM, RPS, Cadastro Mestre, Atendimento, Metas, Investimentos, Governança, Dashboard e futuros módulos deverão permanecer sincronizados através do `CommercialDomainService`.
+7. **Sincronização Cadastral em Cascata**: Toda alteração estrutural do domínio comercial deverá ocorrer primeiro no Cadastro Mestre (`cm_clientes`) e somente depois refletir automaticamente em toda a plataforma via triggers e invalidação de cache.
+
+Status Arquitetural: `COMMERCIAL_DOMAIN_UNIFIED = LOCKED` & `BASELINE = CONFIRMED`.
+
+---
+
+## 111. Arquitetura Protegida (Protected Architecture)
+
+A partir de 09/08/2026, a arquitetura do **Domínio Comercial Unificado** e do `CommercialDomainService` é alçada à categoria de **Contrato Arquitetural Permanente (Protected Architecture)** da Plataforma Coffee++.
+
+### Diretrizes Mandatórias de Proteção:
+1. **Fachada Exclusiva de Acesso**: O `CommercialDomainService` é a única fachada pública autorizada para acesso a dados do domínio comercial.
+2. **Acesso a Dados Restrito ao Repository**: É proibido qualquer acesso direto às tabelas de domínio comercial por telas, APIs, cron jobs ou serviços de negócio, exceto por meio do `CommercialDomainRepository`.
+3. **Proibição de Hardcodes e Fallbacks**: É estritamente proibido criar arrays hardcoded, enums comerciais, listas de gerentes, canais, segmentos, regionais, estados, switch/case, if/else ou fallbacks contendo informações comerciais.
+4. **Consumo Obrigatório por Novos Módulos**: Todo e qualquer novo módulo deverá consumir exclusivamente o `CommercialDomainService`.
+5. **Padronização de Componentes UI**: Todo dropdown, filtro, autocomplete ou selector comercial deverá utilizar exclusivamente o catálogo oficial fornecido pelo domínio.
+6. **Centralização de Cache**: Nenhum módulo poderá manter cache próprio do domínio comercial. Todo cache deverá utilizar a infraestrutura oficial do `CommercialDomainCache`.
+7. **Propagação Automática**: Alterações realizadas no Cadastro Mestre deverão propagar automaticamente para todos os módulos consumidores sem necessidade de manutenção manual.
+8. **Governança de Evolução**: Qualquer alteração estrutural no domínio comercial exigirá obrigatoriamente:
+   - Atualização da Baseline Oficial;
+   - Atualização do ADR correspondente;
+   - Atualização do CHANGELOG;
+   - Homologação formal com aprovação no `npm run test:domain`.
+
+Status Arquitetural: `COMMERCIAL_DOMAIN_UNIFIED = PROTECTED` & `PROTECTED_ARCHITECTURE = ENFORCED`.
+
+---
+
+## 112. Processo Oficial de RFC (Request For Change)
+
+A partir de 09/08/2026, é instituído o **Processo Oficial de RFC (Request For Change)** como requisito obrigatório e prévio para qualquer alteração arquitetural na Plataforma Coffee++.
+
+### Escopo Obrigatório da RFC:
+Toda e qualquer proposta de alteração que impacte:
+- Baselines Oficiais Homologadas (`AGENTS.md`);
+- Arquitetura Protegida (`Protected Architecture`);
+- Domínio Comercial Unificado (`CommercialDomainService`, `CommercialDomainRepository`, `CommercialDomainCache`);
+- Contratos Públicos e Interfaces TypeScript do Domínio;
+- APIs Públicas da Plataforma;
+- Estruturas de Fonte Única de Verdade (Single Source of Truth - SSOT);
+- Diretrizes de Governança Financeira e Comercial;
+- Motores Analíticos (`AnalyticsEngine`, `ForecastEngine`, `SimulationEngine`, etc.);
+- Cadastro Mestre Comercial (`cm_clientes`, `cm_domain_*`);
+
+somente poderá ser implementada após a elaboração, submissão e aprovação formal de uma **RFC**.
+
+### Estrutura Obrigatória da RFC:
+Toda RFC submetida deverá ser criada a partir do template oficial (`docs/rfc/RFC_TEMPLATE.md`) e conter obrigatoriamente as 12 seções:
+1. **Motivação**: Razão de negócio e contexto que justificam a mudança.
+2. **Problema Atual**: Diagnóstico detalhado do cenário vigente a ser modificado.
+3. **Objetivo**: O que a proposta visa realizar e os resultados esperados.
+4. **Alternativas Avaliadas**: Opções técnicas analisadas e razões do descarte.
+5. **Impacto Arquitetural**: Análise de efeitos em componentes, fluxos de dados e infraestrutura.
+6. **Impacto Funcional**: Módulos afetados e mudanças de experiência (UX/UI).
+7. **Compatibilidade Retroativa**: Garantia de não-regressão e conformidade com os módulos consumidores ativos.
+8. **Plano de Migração**: Passos sequenciais de execução do ambiente atual para a nova solução.
+9. **Estratégia de Rollback**: Procedimentos de reversão imediata em caso de anomalia.
+10. **Plano de Testes**: Suíte de testes estáticos, unitários e de integração necessários.
+11. **Critérios de Homologação**: Indicadores objetivos para aprovação da alteração.
+12. **Atualizações Documentais Obrigatórias**:
+   - Baseline Oficial (`AGENTS.md` e `docs/governance/baseline_oficial_plataforma.md`)
+   - Registro de Decisão de Arquitetura (`docs/adr/ADR-XXX.md`)
+   - Histórico de Mudanças (`CHANGELOG.md`)
+   - Índice Geral (`docs/INDEX.md`)
+   - Guia de Implementação (`Walkthrough`)
+   - Termo de Encerramento (`Closure Report`)
+
+Nenhuma alteração arquitetural poderá ser iniciada ou homologada sem a aprovação prévia de sua respectiva RFC.
+
+Status Arquitetural: `RFC_PROCESS = MANDATORY` & `GOVERNANCE = ACTIVE`.
+
+---
+
+## 113. Termo de Encerramento e Consolidação da Estrutura de Governança
+
+A partir de 09/08/2026, a estrutura de governança da Plataforma Coffee++ é considerada **oficialmente completa, estável e madura**.
+
+### Diretrizes Mandatórias de Consolidação:
+1. **Conclusão do Framework de Governança**: Fica vedada a criação de novos documentos permanentes ou frameworks paralelos de governança, salvo por necessidade técnica formalmente justificada e aprovada via RFC.
+2. **Fluxo Institucional Obrigatório**: Toda nova funcionalidade ou expansão da plataforma deverá obrigatoriamente seguir o fluxo institucional padronizado:  
+   `RFC → Discovery → Documento Funcional → Arquitetura → Plano de Implementação → Desenvolvimento → Walkthrough → Homologação → Atualização da Baseline → Atualização do CHANGELOG`.
+3. **Proibição de Processos Paralelos**: É proibida a criação de processos paralelos, informais ou ad-hoc de documentação ou governança.
+4. **Foco na Evolução Funcional**: O objetivo prioritário da engenharia passa a ser o desenvolvimento e a entrega de valor através de funcionalidades de negócio (**Business Features**), reutilizando integralmente a infraestrutura de governança e arquitetura protegida existentes.
+5. **Justificativa prévia via RFC**: Qualquer proposta que introduza novos padrões arquiteturais deverá justificar rigorosamente a necessidade técnica em uma RFC aprovada antes do início de qualquer código.
+
+Status da Plataforma: `GOVERNANCE_FRAMEWORK = COMPLETE` \| `ARCHITECTURE_GOVERNANCE = STABLE` \| `NEXT_PRIORITY = BUSINESS_FEATURES`.
+
+---
+
+## 114. Princípio da Proporcionalidade da Governança
+
+A partir de 09/08/2026, a Plataforma Coffee++ adota oficialmente o **Princípio da Proporcionalidade da Governança**, visando eliminar burocracia desnecessária em alterações de baixo risco e acelerar a entrega contínua de valor ao negócio (**Business Features**).
+
+### Classificação e Fluxos Obrigatórios:
+
+1. **Fluxo Completo de Governança (Alto Impacto / Risco Arquitetural)**:  
+   `RFC → Discovery → Documento Funcional → Arquitetura → Plano de Implementação → Desenvolvimento → Walkthrough → Homologação → Atualização da Baseline → Atualização do CHANGELOG`  
+   **Obrigatório EXCLUSIVAMENTE para alterações que envolvam**:
+   - Arquitetura global da plataforma;
+   - Baselines Oficiais Homologadas;
+   - Arquitetura Protegida (`Protected Architecture`);
+   - `CommercialDomainService`, `CommercialDomainRepository` ou `CommercialDomainCache`;
+   - Estruturas de Fonte Única de Verdade (SSOT);
+   - APIs públicas e contratos de comunicação;
+   - Schema do banco de dados (tabelas, colunas, RLS, triggers, migrations);
+   - Motores analíticos (`AnalyticsEngine`, `ForecastEngine`, `SimulationEngine`, etc.);
+   - Infraestrutura de segurança, autenticação e RLS;
+   - Componentes compartilhados do core da aplicação.
+
+2. **Fluxo Simplificado (Baixo Impacto / Manutenção e UX)**:  
+   `Desenvolvimento → Testes → Homologação → Atualização do CHANGELOG (quando aplicável)`  
+   **Permitido para**:
+   - Correções de bugs pontuais;
+   - Ajustes visuais, CSS e refinamentos estéticos;
+   - Melhorias de interface e usabilidade (UX/UI);
+   - Refatorações internas de código sem alteração de comportamento;
+   - Otimizações locais de performance sem alteração arquitetural;
+   - Ajustes de textos, rótulos, posicionamento de filtros e layouts responsivos.
+
+### Regras de Aplicação:
+- **Vedação de RFCs Desnecessárias**: É expressamente proibido abrir RFCs ou criar documentação arquitetural pesada para mudanças que não alterem a arquitetura oficial da plataforma.
+- **Regra de Desempate por Menor Risco**: Em caso de dúvida sobre a classificação de uma demanda, prevalecerá o menor nível de governança compatível com o risco real da alteração.
+- **Imutabilidade das Baselines Protegidas**: O uso do fluxo simplificado NÃO isenta nenhuma alteração do cumprimento estrito de todas as baselines protegidas, RLS, integridade financeira e testes automatizados (`npm run test:domain`, `npx tsc --noEmit`).
+
+Status da Governança: `PROPORTIONAL_GOVERNANCE = ACTIVE` \| `RISK_BASED_WORKFLOW = ENFORCED`.
+
+
 
 
 

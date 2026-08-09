@@ -22,9 +22,6 @@ export async function GET(request: Request) {
 
     const filters = parseAnalyticsFiltersFromParams(searchParams);
 
-    const hasProductFilter = Boolean(filters.product && filters.product !== 'all');
-    const hasFamilyFilter = Boolean(filters.familia && filters.familia !== 'all');
-
     const supabase = getSupabaseClient();
 
     const clauses: string[] = [];
@@ -99,35 +96,10 @@ export async function GET(request: Request) {
       )`);
     }
 
-    // Produto (SKU / Descrição)
-    if (hasProductFilter) {
-      const products = filters.product!.split(',').map(p => escapeSqlValue(p.trim())).join(',');
-      clauses.push(`(f.desc_produto IN (${products}) OR f.desc_produto ILIKE ANY(ARRAY[${filters.product!.split(',').map(p => `'%${p.trim()}%'`).join(',')}]))`);
-    }
+    const filterSql = clauses.length > 0 ? ` AND ${clauses.join(' AND ')}` : '';
 
-    // Família de Produto
-    if (hasFamilyFilter) {
-      const familias = filters.familia!.split(',').map(f => escapeSqlValue(f.trim())).join(',');
-      clauses.push(`(
-        CASE
-          WHEN (POSITION(('1KG'::text) IN (upper(f.desc_produto))) > 0) THEN '1 KG'::text
-          WHEN ((POSITION(('5KG'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('5 KG'::text) IN (upper(f.desc_produto))) > 0)) THEN '5 KG'::text
-          WHEN ((POSITION(('CAPSULA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('CÁPSULA'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Cápsula'::text
-          WHEN (POSITION(('DRIP'::text) IN (upper(f.desc_produto))) > 0) THEN 'Drip'::text
-          WHEN (POSITION(('GEISHA'::text) IN (upper(f.desc_produto))) > 0) THEN 'Geisha'::text
-          WHEN (POSITION(('VERDE'::text) IN (upper(f.desc_produto))) > 0) THEN 'Café Verde'::text
-          WHEN ((POSITION(('GRAO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('GRÃO'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Grão'::text
-          WHEN ((POSITION(('MOIDO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('MOÍDO'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Moído'::text
-          WHEN ((POSITION(('ACESSORIO'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('GARRAFA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('CANECA'::text) IN (upper(f.desc_produto))) > 0) OR (POSITION(('KIT'::text) IN (upper(f.desc_produto))) > 0)) THEN 'Acessório'::text
-          ELSE 'Outros'::text
-        END IN (${familias})
-      )`);
-    }
-
-    const filterSql = clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '';
-
-    const lastDay = new Date(Number(year), Number(month), 0).getDate();
     const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(Number(year), Number(month), 0).getDate();
     const endDateStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const sql = `
@@ -156,7 +128,6 @@ export async function GET(request: Request) {
       ORDER BY f.dt_faturamento::text ASC
     `;
 
-    console.log(`[Daily Dashboard API] Running query for ${year}-${month}...`);
     const { data: rows, error } = await supabase.rpc('execute_readonly_query', { query_text: sql });
 
     if (error) {
@@ -180,17 +151,48 @@ export async function GET(request: Request) {
       const val = dailyMap.get(dayNum) || { fat: 0, qty: 0 };
       return {
         day: dayNum,
+        label: `${String(dayNum).padStart(2, '0')}/${String(month).padStart(2, '0')}`,
         dateStr: `${year}-${String(month).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`,
         fat: val.fat,
         qty: val.qty,
       };
     });
 
+    const totalFat = days.reduce((acc, d) => acc + d.fat, 0);
+    const totalQty = days.reduce((acc, d) => acc + d.qty, 0);
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    const currentDay = now.getDate();
+
+    let diasDecorridos = lastDay;
+    if (Number(year) === currentYear && Number(month) === currentMonth) {
+      diasDecorridos = Math.min(lastDay, currentDay);
+    } else {
+      // Para meses passados, considerar todos os dias com faturamento ou até o último dia com faturamento
+      const maxDayWithSales = days.reduce((max, d) => (d.fat > 0 ? Math.max(max, d.day) : max), 0);
+      diasDecorridos = maxDayWithSales > 0 ? maxDayWithSales : lastDay;
+    }
+
+    const faturamentoDiarioMedio = diasDecorridos > 0 ? totalFat / diasDecorridos : 0;
+    const projecaoFechamentoMes = Math.round(faturamentoDiarioMedio * lastDay);
+    const diasRestantes = Math.max(0, lastDay - diasDecorridos);
+
     return NextResponse.json({
       success: true,
       data: days,
       year: Number(year),
       month: Number(month),
+      summary: {
+        totalFat,
+        totalQty,
+        diasDecorridos,
+        diasTotaisMes: lastDay,
+        diasRestantes,
+        faturamentoDiarioMedio: Math.round(faturamentoDiarioMedio),
+        projecaoFechamentoMes,
+      },
     });
   } catch (error: any) {
     return handleAuthError(error);

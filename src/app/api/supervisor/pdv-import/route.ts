@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CommercialDomainService } from "@/lib/domain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,14 +90,14 @@ export async function POST(request: Request) {
           nome_fantasia: row.nome_pdv.trim(),
           razao_social: row.nome_pdv.trim(),
           rede: row.rede ? row.rede.trim() : "Independente",
-          canal: row.canal ? row.canal.trim() : "VAREJO F OUT",
+          canal: row.canal ? (await CommercialDomainService.resolveChannel(row.canal)).dbValue : "KA",
           uf: row.uf.trim().toUpperCase(),
           cidade: row.cidade.trim(),
           endereco: row.endereco ? row.endereco.trim() : "",
           faturamento_mensal: row.faturamento_mensal ? Number(row.faturamento_mensal) : 0.00,
           cluster_canal: row.cluster ? row.cluster.trim() : "D",
           cnpj: row.cnpj ? row.cnpj.trim() : null,
-          manager: row.supervisor ? row.supervisor.trim() : "Inside Sales",
+          manager: row.supervisor ? CommercialDomainService.resolveManager(row.supervisor).managerName : "Inside Sales",
         };
 
         const { error: baseError } = await supabaseAdmin.rpc("rpc_importar_atendimento_sankhya", {
