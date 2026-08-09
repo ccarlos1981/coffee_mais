@@ -846,7 +846,7 @@ export default function VendasDashboard() {
                 {/* Distribuição semântica por tipo de coluna:
                     Gerente (1):        8.5%  — flexível, nomes reais
                     Monetário Meta/Real (4): 10.5% — FAT Meta, FAT Real, MACO Meta, MACO Real
-                    Percentual (4):    7.875% — FAT Tend%, FAT %ATG, UND Tend%, MACO Tend%
+                    Percentual (4):    7.875% — FAT %ATG, FAT Tend%, UND Tend%, MACO Tend%
                     Quantidade (2):    9.0%  — UND Meta, UND Real
                     Total: 8.5 + (2×10.5) + (2×10.5) + (4×7.875) + (2×9.0) = 100%
                 */}
@@ -856,9 +856,9 @@ export default function VendasDashboard() {
                   {/* Col 2-3: FAT Meta (R$) + FAT Real (R$) — monetárias */}
                   <col style={{ width: "10.5%" }} />
                   <col style={{ width: "10.5%" }} />
-                  {/* Col 4: FAT Tend% — percentual */}
+                  {/* Col 4: FAT %ATG — percentual */}
                   <col style={{ width: "7.875%" }} />
-                  {/* Col 5: FAT %ATG — percentual */}
+                  {/* Col 5: FAT Tend% — percentual */}
                   <col style={{ width: "7.875%" }} />
                   {/* Col 6-7: UND Meta + UND Real — quantidades */}
                   <col style={{ width: "9.0%" }} />
@@ -881,8 +881,8 @@ export default function VendasDashboard() {
                   <tr>
                     <th className="col-group-fat col-divider">Meta</th>
                     <th className="col-group-fat">Real</th>
-                    <th className="col-group-fat">Tend %</th>
                     <th className="col-group-fat">%ATG</th>
+                    <th className="col-group-fat">Tend %</th>
                     <th className="col-group-und col-divider">Meta</th>
                     <th className="col-group-und">Real</th>
                     <th className="col-group-und">Tend %</th>
@@ -920,11 +920,11 @@ export default function VendasDashboard() {
                             </td>
                             <td className="col-divider">{formatCurrency(row.metaFat / 1000)}</td>
                             <td>{formatCurrency(row.fat / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
-                              {row.metaFat > 0 ? formatPercent(pFat) : "-"}
-                            </td>
                             <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
                               {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                            </td>
+                            <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
+                              {row.metaFat > 0 ? formatPercent(pFat) : "-"}
                             </td>
                             <td className="col-divider">{formatNumber(row.metaUnd, 0)}</td>
                             <td>{formatNumber(row.qty, 0)}</td>
@@ -1000,11 +1000,11 @@ export default function VendasDashboard() {
                           <td>TOTAL</td>
                           <td className="col-divider">{formatCurrency(totals.metaFat / 1000)}</td>
                           <td>{formatCurrency(totals.fat / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
-                            {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
-                          </td>
                           <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
                             {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                          </td>
+                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
                           </td>
                           <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                           <td>{formatNumber(totals.qty, 0)}</td>
@@ -1045,8 +1045,8 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>Tend %</th>
                       <th>%Ating.</th>
+                      <th>Tend %</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1075,11 +1075,11 @@ export default function VendasDashboard() {
                               </td>
                               <td>{formatCurrency(row.metaFat / 1000)}</td>
                               <td>{formatCurrency(row.fat / 1000)}</td>
-                              <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
-                                {row.metaFat > 0 ? formatPercent(pFat) : "-"}
-                              </td>
                               <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
                                 {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                              </td>
+                              <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
+                                {row.metaFat > 0 ? formatPercent(pFat) : "-"}
                               </td>
                             </tr>,
                             isExpanded && (
@@ -1140,11 +1140,11 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatCurrency(totals.metaFat / 1000)}</td>
                             <td>{formatCurrency(totals.fat / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
-                              {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
-                            </td>
                             <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
                               {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                            </td>
+                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
                             </td>
                           </tr>
                         )}
