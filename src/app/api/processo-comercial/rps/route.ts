@@ -706,11 +706,25 @@ export async function POST(request: Request) {
     const supabase = getSupabaseAdminClient();
 
     // 1. Processar edições de Desafios (DESAFIO_FAT e DESAFIO_VOL) salvando diretamente na fonte oficial public.targets
+    // REGRA DE GOVERNANÇA: Gerentes comerciais (1000-1003) possuem registros segregados
+    // em targets com sufixo (KA)/(Dist). A RPS NÃO deve criar registros sem sufixo.
+    // A gravação em targets via RPS é permitida apenas para canais corporativos
+    // (Inside Sales, Ecommerce, Marketplace, etc.) que não possuem segregação.
+    // O módulo /metas é o SSOT para metas de gerentes comerciais.
+    const COMMERCIAL_MANAGER_IDS_SET = new Set(['1000', '1001', '1002', '1003']);
+
     const managersInPayload = Array.from(new Set(filteredProjections.map((p: any) => p.manager)));
     const targetsToUpsert: any[] = [];
 
     for (const mName of managersInPayload) {
       const canonical = resolveCanonicalManager(mName as string);
+
+      // Pular gerentes comerciais — seus registros em targets são geridos exclusivamente pelo /metas
+      // com sufixo (KA)/(Dist). Gravar sem sufixo criaria registros duplicados/conflitantes.
+      if (COMMERCIAL_MANAGER_IDS_SET.has(canonical.managerId)) {
+        continue;
+      }
+
       const fatItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_FAT');
       const volItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_VOL');
 
@@ -733,6 +747,7 @@ export async function POST(request: Request) {
         .upsert(targetsToUpsert, { onConflict: 'manager,year,month' });
       if (targetsErr) throw targetsErr;
     }
+
 
     // 2. PROIBIÇÃO DE DUPLICIDADE: Filtrar rowsToUpsert para NUNCA persistir DESAFIO_FAT ou DESAFIO_VOL em cm_weekly_projections
     const weeklyProjectionsOnly = filteredProjections.filter((p: any) => {
