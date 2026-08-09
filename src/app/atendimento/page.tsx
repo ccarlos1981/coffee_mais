@@ -98,10 +98,35 @@ export default function AtendimentoPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const resPdv = await supabase.from("base_atendimento").select("*").order("nome_parceiro");
-      if (resPdv.error) throw resPdv.error;
+      const pageSize = 1000;
+      let allPdvs: PdvMapping[] = [];
+      let page = 0;
+      let hasMore = true;
 
-      setPdvData(resPdv.data || []);
+      while (hasMore) {
+        const from = page * pageSize;
+        const to = from + pageSize - 1;
+        const resPdv = await supabase
+          .from("base_atendimento")
+          .select("*")
+          .order("nome_parceiro")
+          .range(from, to);
+
+        if (resPdv.error) throw resPdv.error;
+
+        if (resPdv.data && resPdv.data.length > 0) {
+          allPdvs = allPdvs.concat(resPdv.data);
+          if (resPdv.data.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      setPdvData(allPdvs);
       setModifiedPdvs({});
       setDeletedPdvs(new Set());
       setNewPdvsCount(0);
@@ -116,6 +141,7 @@ export default function AtendimentoPage() {
     }
     setLoading(false);
   }, []);
+
 
   useEffect(() => {
     loadData();

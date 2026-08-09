@@ -9,7 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { OFFICIAL_ANALYTICS_SOURCES, resolveOfficialSource } from './sources';
-import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, buildRedeFilter } from './filters';
+import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, buildChannelFilter, buildRedeFilter } from './filters';
 import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
 import { getCommercialManagerRoleOptions } from '@/lib/domain/commercial-structure';
@@ -1656,21 +1656,49 @@ export class AnalyticsEngine {
     const [y, m] = mesEnd.split('-').map(Number);
     const dtNext = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 
-    // 1. Apuração Sintética de Faturamento, Impostos e Custo da View Oficial
+    // 1. Construção dos Filtros Comerciais Padronizados
+    const vWhereClauses: string[] = [
+      `v.dt_faturamento >= ${escapeSqlValue(dtStart)}`,
+      `v.dt_faturamento < ${escapeSqlValue(dtNext)}`
+    ];
+
+    const cmFilterConditions: string[] = [];
+
+    if (filters.manager || filters.manager_id) {
+      const mgrClause = buildManagerFilter(filters.manager_id, filters.manager, 'c', 'cm_clientes');
+      if (mgrClause) cmFilterConditions.push(mgrClause);
+    }
+
+    if (filters.uf && filters.uf !== 'all') {
+      const ufClause = buildUfFilter(filters.uf, 'c');
+      if (ufClause) cmFilterConditions.push(ufClause);
+    }
+
+    if (filters.channel && filters.channel !== 'all') {
+      const chClause = buildChannelFilter(filters.channel, 'c');
+      if (chClause) cmFilterConditions.push(chClause);
+    }
+
+    if (filters.matriz && filters.matriz !== 'all') {
+      const matrizClause = buildRedeFilter(filters.matriz, 'c');
+      if (matrizClause) cmFilterConditions.push(matrizClause);
+    }
+
+    if (cmFilterConditions.length > 0) {
+      const cmSubquery = `SELECT CAST(codigo AS TEXT) FROM public.cm_clientes c WHERE ${cmFilterConditions.join(' AND ')}`;
+      vWhereClauses.push(`v.cod_parceiro IN (${cmSubquery})`);
+    }
+
     let sqlSintetica = `
       SELECT 
-        COALESCE(SUM(COALESCE(vlr_total_liq, 0) + COALESCE(vlr_desconto, 0)), 0) as fat_bruto,
-        COALESCE(SUM(COALESCE(vlr_desconto, 0)), 0) as descontos,
-        COALESCE(SUM(COALESCE(vlr_total_liq, 0)), 0) as fat_liquido,
-        COALESCE(SUM(COALESCE(custo_icms, 0) + CASE WHEN COALESCE(vlr_total_st, 0) >= ABS(COALESCE(vlr_total_liq, 0)) THEN 0 ELSE COALESCE(vlr_total_st, 0) END), 0) as impostos,
-        COALESCE(SUM(COALESCE(custo_total, 0)), 0) as cpv
-      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)}
-      WHERE dt_faturamento >= ${escapeSqlValue(dtStart)} AND dt_faturamento < ${escapeSqlValue(dtNext)}
+        COALESCE(SUM(COALESCE(v.vlr_total_liq, 0) + COALESCE(v.vlr_desconto, 0)), 0) as fat_bruto,
+        COALESCE(SUM(COALESCE(v.vlr_desconto, 0)), 0) as descontos,
+        COALESCE(SUM(COALESCE(v.vlr_total_liq, 0)), 0) as fat_liquido,
+        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN COALESCE(v.vlr_total_st, 0) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(v.custo_total, 0)), 0) as cpv
+      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)} v
+      WHERE ${vWhereClauses.join(' AND ')}
     `;
-    if (filters.matriz && filters.matriz !== 'all') {
-      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
-      sqlSintetica += ` AND cod_parceiro IN (SELECT CAST(id AS TEXT) FROM public.cm_clientes WHERE matriz IN (${redesEscaped}))`;
-    }
 
     // 2. Apuração dos Investimentos Comerciais Aprovados (cm_acoes_investimento)
     let sqlInvestimentos = `
@@ -1684,6 +1712,9 @@ export class AnalyticsEngine {
       const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
       sqlInvestimentos += ` AND codigo_matriz IN (${redesEscaped})`;
     }
+    if (filters.manager_id && filters.manager_id !== 'all') {
+      sqlInvestimentos += ` AND manager_id = ${escapeSqlValue(filters.manager_id)}`;
+    }
 
     const [rowsSintetica, rowsInvest] = await Promise.all([
       this.executeSql<{ fat_bruto: number; descontos: number; fat_liquido: number; impostos: number; cpv: number }>(sqlSintetica),
@@ -1696,15 +1727,16 @@ export class AnalyticsEngine {
     const faturamentoBruto = Number(rSint.fat_bruto) || 0;
     const descontos = Number(rSint.descontos) || 0;
     const faturamentoLiquido = Number(rSint.fat_liquido) || 0;
-    const impostos = Number(rSint.impostos) || 0;
+    const impostos = Math.abs(Number(rSint.impostos) || 0); // Normalização estrita para valor positivo
     const cpv = Number(rSint.cpv) || 0;
-    const margemBruta = faturamentoLiquido - cpv;
+    const receitaAposImpostos = faturamentoLiquido - impostos;
+    const margemBruta = receitaAposImpostos - cpv; // Margem Bruta Contábil Real
     const frete = faturamentoLiquido * DRE_FRETE_PERCENTUAL;
     const investimentoComercial = Number(rInv.total_investimento) || 0;
-    const macoTotal = faturamentoLiquido - cpv - impostos - frete - investimentoComercial;
+    const macoTotal = receitaAposImpostos - cpv - frete - investimentoComercial; // MACO Real
     const margemMacoMedia = faturamentoLiquido > 0 ? (macoTotal / faturamentoLiquido) * 100 : 0;
 
-    // 3. Montagem da DRE Sintética em Cascata
+    // 3. Montagem da DRE Sintética em Cascata Oficial
     const sintetica: DreComercialLinha[] = [
       {
         label: "(+) Faturamento Bruto Comercial",
@@ -1731,13 +1763,19 @@ export class AnalyticsEngine {
         tipo: "DEDUCAO",
       },
       {
+        label: "(=) RECEITA APÓS IMPOSTOS",
+        valor: Number(receitaAposImpostos.toFixed(2)),
+        percentual: faturamentoLiquido > 0 ? Number(((receitaAposImpostos / faturamentoLiquido) * 100).toFixed(2)) : 0,
+        tipo: "SUBTOTAL",
+      },
+      {
         label: "(-) Custo dos Produtos Vendidos (CPV)",
         valor: Number(cpv.toFixed(2)),
         percentual: faturamentoLiquido > 0 ? Number(((cpv / faturamentoLiquido) * 100).toFixed(2)) : 0,
         tipo: "DEDUCAO",
       },
       {
-        label: "(=) MARGEM BRUTA",
+        label: "(=) MARGEM BRUTA CONTÁBIL",
         valor: Number(margemBruta.toFixed(2)),
         percentual: faturamentoLiquido > 0 ? Number(((margemBruta / faturamentoLiquido) * 100).toFixed(2)) : 0,
         tipo: "SUBTOTAL",
@@ -1762,22 +1800,83 @@ export class AnalyticsEngine {
       },
     ];
 
-    // 4. Apuração Dimensional por Cliente (Top 50)
+    // 4. Apuração Dimensional Dinâmica (7 Dimensões Oficiais)
+    const dim = filters.dimension || 'cliente';
+    let selectExpr = "COALESCE(v.nome_parceiro, 'Outros') as nome";
+    let joinClause = "";
+    let groupByExpr = "COALESCE(v.nome_parceiro, 'Outros')";
+
+    switch (dim) {
+      case "rede":
+        selectExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros') as nome";
+        joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
+        groupByExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros')";
+        break;
+
+      case "gerente":
+        selectExpr = "COALESCE(c.responsavel, c.manager_name, v.nome_vendedor, 'Sem Gerente') as nome";
+        joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
+        groupByExpr = "COALESCE(c.responsavel, c.manager_name, v.nome_vendedor, 'Sem Gerente')";
+        break;
+
+      case "regiao":
+        selectExpr = `CASE 
+          WHEN UPPER(c.uf) IN ('SP', 'RJ', 'MG', 'ES') THEN 'Sudeste'
+          WHEN UPPER(c.uf) IN ('PR', 'SC', 'RS') THEN 'Sul'
+          WHEN UPPER(c.uf) IN ('GO', 'MT', 'MS', 'DF') THEN 'Centro-Oeste'
+          WHEN UPPER(c.uf) IN ('BA', 'PE', 'CE', 'RN', 'PB', 'AL', 'SE', 'MA', 'PI') THEN 'Nordeste'
+          WHEN UPPER(c.uf) IN ('AM', 'PA', 'AP', 'TO', 'AC', 'RO', 'RR') THEN 'Norte'
+          ELSE 'Outras Regiões'
+        END as nome`;
+        joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
+        groupByExpr = `CASE 
+          WHEN UPPER(c.uf) IN ('SP', 'RJ', 'MG', 'ES') THEN 'Sudeste'
+          WHEN UPPER(c.uf) IN ('PR', 'SC', 'RS') THEN 'Sul'
+          WHEN UPPER(c.uf) IN ('GO', 'MT', 'MS', 'DF') THEN 'Centro-Oeste'
+          WHEN UPPER(c.uf) IN ('BA', 'PE', 'CE', 'RN', 'PB', 'AL', 'SE', 'MA', 'PI') THEN 'Nordeste'
+          WHEN UPPER(c.uf) IN ('AM', 'PA', 'AP', 'TO', 'AC', 'RO', 'RR') THEN 'Norte'
+          ELSE 'Outras Regiões'
+        END`;
+        break;
+
+      case "uf":
+        selectExpr = "COALESCE(c.uf, 'Outros') as nome";
+        joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
+        groupByExpr = "COALESCE(c.uf, 'Outros')";
+        break;
+
+      case "canal":
+        selectExpr = "COALESCE(c.tipo_parceiro, 'Outros') as nome";
+        joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
+        groupByExpr = "COALESCE(c.tipo_parceiro, 'Outros')";
+        break;
+
+      case "sku":
+        selectExpr = "COALESCE(v.desc_produto, 'Outros') as nome";
+        joinClause = "";
+        groupByExpr = "COALESCE(v.desc_produto, 'Outros')";
+        break;
+
+      case "cliente":
+      default:
+        selectExpr = "COALESCE(v.nome_parceiro, 'Outros') as nome";
+        joinClause = "";
+        groupByExpr = "COALESCE(v.nome_parceiro, 'Outros')";
+        break;
+    }
+
     let sqlDimensional = `
       SELECT 
-        COALESCE(nome_parceiro, 'Outros') as nome,
-        COALESCE(SUM(COALESCE(vlr_total_liq, 0) + COALESCE(vlr_desconto, 0)), 0) as fat_bruto,
-        COALESCE(SUM(COALESCE(vlr_total_liq, 0)), 0) as fat_liquido,
-        COALESCE(SUM(COALESCE(custo_icms, 0) + CASE WHEN COALESCE(vlr_total_st, 0) >= ABS(COALESCE(vlr_total_liq, 0)) THEN 0 ELSE COALESCE(vlr_total_st, 0) END), 0) as impostos,
-        COALESCE(SUM(COALESCE(custo_total, 0)), 0) as cpv
-      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)}
-      WHERE dt_faturamento >= ${escapeSqlValue(dtStart)} AND dt_faturamento < ${escapeSqlValue(dtNext)}
+        ${selectExpr},
+        COALESCE(SUM(COALESCE(v.vlr_total_liq, 0) + COALESCE(v.vlr_desconto, 0)), 0) as fat_bruto,
+        COALESCE(SUM(COALESCE(v.vlr_total_liq, 0)), 0) as fat_liquido,
+        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN COALESCE(v.vlr_total_st, 0) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(v.custo_total, 0)), 0) as cpv
+      FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)} v
+      ${joinClause}
+      WHERE ${vWhereClauses.join(' AND ')}
+      GROUP BY ${groupByExpr} ORDER BY fat_liquido DESC LIMIT 50
     `;
-    if (filters.matriz && filters.matriz !== 'all') {
-      const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
-      sqlDimensional += ` AND cod_parceiro IN (SELECT CAST(id AS TEXT) FROM public.cm_clientes WHERE matriz IN (${redesEscaped}))`;
-    }
-    sqlDimensional += ` GROUP BY nome_parceiro ORDER BY fat_liquido DESC LIMIT 50`;
 
     const rowsDim = await this.executeSql<{ nome: string; fat_bruto: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
 
@@ -1786,12 +1885,13 @@ export class AnalyticsEngine {
     const dimensionais: DreComercialDimensional[] = rowsDim.map((r, idx) => {
       const fLiq = Number(r.fat_liquido) || 0;
       const fBrut = Number(r.fat_bruto) || 0;
-      const imp = Number(r.impostos) || 0;
+      const imp = Math.abs(Number(r.impostos) || 0);
       const c = Number(r.cpv) || 0;
-      const mBruta = fLiq - c;
+      const recAposImp = fLiq - imp;
+      const mBruta = recAposImp - c;
       const fr = fLiq * DRE_FRETE_PERCENTUAL;
       const invCom = fLiq * taxaInvestimentoGlobal;
-      const maco = fLiq - c - imp - fr - invCom;
+      const maco = recAposImp - c - fr - invCom;
       const pctMaco = fLiq > 0 ? (maco / fLiq) * 100 : 0;
 
       return {
@@ -2778,7 +2878,244 @@ export class AnalyticsEngine {
       })),
     };
   }
+
+  /**
+   * 24. Feature A Sprint 3 — Análise Read-Only de Efetividade do Follow-up
+   *
+   * Apura a efetividade comercial e faturamento recuperado consumindo exclusivamente
+   * as fontes oficiais de vendas (cm_faturamento com TOPs permitidas).
+   * Aplica máquina anti-duplicidade por NFe e atribuição ao concluded_at mais recente.
+   *
+   * @see Feature A Specification & Executive Approval
+   */
+  static async getFollowUpEfetividadeAnalytics(managerIdFilter?: string): Promise<FollowUpEfetividadeAnalyticsData> {
+    const mgrClause = managerIdFilter && managerIdFilter !== 'all' && managerIdFilter !== 'ALL'
+      ? `AND a.manager_id = ${escapeSqlValue(managerIdFilter)}`
+      : '';
+
+    const sqlEfetividade = `
+      WITH follow_ups AS (
+        SELECT
+          a.id as action_id,
+          a.cliente_id,
+          a.cliente_nome,
+          a.rede,
+          a.manager_id,
+          a.manager_name,
+          a.origem,
+          a.status,
+          a.created_at::date as created_date,
+          a.concluded_at::date as concluded_date,
+          c.codigo as cod_parceiro
+        FROM public.cm_follow_up_actions a
+        JOIN public.cm_clientes c ON c.id = a.cliente_id
+        WHERE a.status = 'CONCLUIDA'
+          AND a.concluded_at IS NOT NULL
+          ${mgrClause}
+      ),
+      max_compra_criacao AS (
+        SELECT
+          fu.action_id,
+          MAX(f.dt_faturamento) as ultima_compra_antes_criacao
+        FROM follow_ups fu
+        LEFT JOIN public.cm_faturamento f ON (f.cod_parceiro = fu.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(fu.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+          AND f.dt_faturamento < fu.created_date
+          AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
+          AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
+          AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+        GROUP BY fu.action_id
+      ),
+      elegibilidade AS (
+        SELECT
+          fu.*,
+          mc.ultima_compra_antes_criacao,
+          CASE
+            WHEN mc.ultima_compra_antes_criacao IS NULL THEN 9999
+            ELSE (fu.created_date - mc.ultima_compra_antes_criacao)
+          END as dias_sem_comprar_na_criacao
+        FROM follow_ups fu
+        JOIN max_compra_criacao mc ON mc.action_id = fu.action_id
+      ),
+      compras_pos_conclusao AS (
+        SELECT
+          el.action_id,
+          el.cliente_id,
+          el.cliente_nome,
+          el.manager_id,
+          el.manager_name,
+          el.origem,
+          el.concluded_date,
+          el.dias_sem_comprar_na_criacao,
+          f.id as nfe_id,
+          f.dt_faturamento,
+          COALESCE(f.vlr_total_liq, 0) as vlr_total_liq,
+          ROW_NUMBER() OVER (
+            PARTITION BY f.id
+            ORDER BY el.concluded_date DESC, el.action_id DESC
+          ) as rnk_anti_duplicidade
+        FROM elegibilidade el
+        JOIN public.cm_faturamento f ON (f.cod_parceiro = el.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(el.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+          AND f.dt_faturamento >= el.concluded_date
+          AND f.dt_faturamento <= (el.concluded_date + INTERVAL '30 days')
+          AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
+          AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
+          AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+        WHERE el.dias_sem_comprar_na_criacao > 90
+      )
+      SELECT
+        action_id,
+        cliente_id,
+        cliente_nome,
+        manager_id,
+        manager_name,
+        origem,
+        dias_sem_comprar_na_criacao,
+        SUM(CASE WHEN rnk_anti_duplicidade = 1 THEN vlr_total_liq ELSE 0 END) as faturamento_recuperado
+      FROM compras_pos_conclusao
+      GROUP BY action_id, cliente_id, cliente_nome, manager_id, manager_name, origem, dias_sem_comprar_na_criacao
+    `;
+
+    const sqlElegiveisTotal = `
+      SELECT
+        a.id as action_id,
+        a.cliente_id,
+        a.manager_id,
+        a.manager_name,
+        a.origem,
+        a.created_at::date as created_date,
+        c.codigo as cod_parceiro
+      FROM public.cm_follow_up_actions a
+      JOIN public.cm_clientes c ON c.id = a.cliente_id
+      WHERE a.status = 'CONCLUIDA'
+        AND a.concluded_at IS NOT NULL
+        ${mgrClause}
+    `;
+
+    let recuperadosRows: any[] = [];
+    let elegiveisRows: any[] = [];
+
+    try {
+      const results = await Promise.all([
+        this.executeSql<{
+          action_id: string;
+          cliente_id: string;
+          cliente_nome: string;
+          manager_id: string;
+          manager_name: string;
+          origem: string;
+          dias_sem_comprar_na_criacao: number;
+          faturamento_recuperado: number;
+        }>(sqlEfetividade),
+        this.executeSql<{
+          action_id: string;
+          cliente_id: string;
+          manager_id: string;
+          manager_name: string;
+          origem: string;
+          created_date: string;
+          cod_parceiro: string;
+        }>(sqlElegiveisTotal),
+      ]);
+      recuperadosRows = results[0] || [];
+      elegiveisRows = results[1] || [];
+    } catch (err: any) {
+      // If cm_follow_up_actions table does not exist yet on DB, return clean empty result
+      return {
+        clientesRecuperadosCount: 0,
+        totalElegiveisCount: 0,
+        taxaEfetividade: 0,
+        faturamentoRecuperadoTotal: 0,
+        recuperadosMap: [],
+        rankingGerentesEfetividade: [],
+        efetividadePorOrigem: [],
+      };
+    }
+
+
+    // Aggregate results
+    const recuperadosMap = new Map<string, { faturamento: number; actionId: string; managerName: string; origem: string }>();
+    let totalFatRecuperado = 0;
+
+    for (const r of recuperadosRows) {
+      const fat = Number(r.faturamento_recuperado || 0);
+      recuperadosMap.set(r.cliente_id, {
+        faturamento: fat,
+        actionId: r.action_id,
+        managerName: r.manager_name,
+        origem: r.origem,
+      });
+      totalFatRecuperado += fat;
+    }
+
+    // Manager breakdown
+    const mgrBreakdownMap = new Map<string, { managerName: string; elegiveisCount: number; recuperadosCount: number; faturamentoRecuperado: number }>();
+    // Origem breakdown
+    const origemBreakdownMap = new Map<string, { origem: string; elegiveisCount: number; recuperadosCount: number; faturamentoRecuperado: number }>();
+
+    for (const row of recuperadosRows) {
+      // Manager
+      const mgrKey = row.manager_id || row.manager_name;
+      const mItem = mgrBreakdownMap.get(mgrKey) || { managerName: row.manager_name, elegiveisCount: 0, recuperadosCount: 0, faturamentoRecuperado: 0 };
+      mItem.recuperadosCount += 1;
+      mItem.faturamentoRecuperado += Number(row.faturamento_recuperado || 0);
+      mgrBreakdownMap.set(mgrKey, mItem);
+
+      // Origem
+      const oKey = row.origem;
+      const oItem = origemBreakdownMap.get(oKey) || { origem: row.origem, elegiveisCount: 0, recuperadosCount: 0, faturamentoRecuperado: 0 };
+      oItem.recuperadosCount += 1;
+      oItem.faturamentoRecuperado += Number(row.faturamento_recuperado || 0);
+      origemBreakdownMap.set(oKey, oItem);
+    }
+
+    for (const row of elegiveisRows) {
+      const mgrKey = row.manager_id || row.manager_name;
+      const mItem = mgrBreakdownMap.get(mgrKey) || { managerName: row.manager_name, elegiveisCount: 0, recuperadosCount: 0, faturamentoRecuperado: 0 };
+      mItem.elegiveisCount += 1;
+      mgrBreakdownMap.set(mgrKey, mItem);
+
+      const oKey = row.origem;
+      const oItem = origemBreakdownMap.get(oKey) || { origem: row.origem, elegiveisCount: 0, recuperadosCount: 0, faturamentoRecuperado: 0 };
+      oItem.elegiveisCount += 1;
+      origemBreakdownMap.set(oKey, oItem);
+    }
+
+    const totalElegiveisCount = elegiveisRows.length;
+    const totalRecuperadosCount = recuperadosMap.size;
+    const taxaEfetividade = totalElegiveisCount > 0
+      ? Number(((totalRecuperadosCount / totalElegiveisCount) * 100).toFixed(1))
+      : 0;
+
+    return {
+      clientesRecuperadosCount: totalRecuperadosCount,
+      totalElegiveisCount,
+      taxaEfetividade,
+      faturamentoRecuperadoTotal: Number(totalFatRecuperado.toFixed(2)),
+      recuperadosMap: Array.from(recuperadosMap.entries()).map(([cliId, v]) => ({
+        clienteId: cliId,
+        actionId: v.actionId,
+        managerName: v.managerName,
+        origem: v.origem,
+        faturamento: Number(v.faturamento.toFixed(2)),
+      })),
+      rankingGerentesEfetividade: Array.from(mgrBreakdownMap.values()).map(m => ({
+        managerName: m.managerName,
+        elegiveisCount: m.elegiveisCount,
+        recuperadosCount: m.recuperadosCount,
+        taxaEfetividade: m.elegiveisCount > 0 ? Number(((m.recuperadosCount / m.elegiveisCount) * 100).toFixed(1)) : 0,
+        faturamentoRecuperado: Number(m.faturamentoRecuperado.toFixed(2)),
+      })).sort((a, b) => b.faturamentoRecuperado - a.faturamentoRecuperado),
+      efetividadePorOrigem: Array.from(origemBreakdownMap.values()).map(o => ({
+        origem: o.origem,
+        elegiveisCount: o.elegiveisCount,
+        recuperadosCount: o.recuperadosCount,
+        taxaEfetividade: o.elegiveisCount > 0 ? Number(((o.recuperadosCount / o.elegiveisCount) * 100).toFixed(1)) : 0,
+        faturamentoRecuperado: Number(o.faturamentoRecuperado.toFixed(2)),
+      })).sort((a, b) => b.faturamentoRecuperado - a.faturamentoRecuperado),
+    };
+  }
 }
+
 
 
 
@@ -2969,3 +3306,14 @@ export interface ManagerPerformanceDetailData {
   clientesSemCompra: { nome: string; rede: string; diasSemCompra: number; ultimaCompra: string | null; faturado12m: number }[];
   concentracaoTop3: { posicao: number; nome: string; rede: string; fat: number; participacaoPct: number }[];
 }
+
+export interface FollowUpEfetividadeAnalyticsData {
+  clientesRecuperadosCount: number;
+  totalElegiveisCount: number;
+  taxaEfetividade: number;
+  faturamentoRecuperadoTotal: number;
+  recuperadosMap: { clienteId: string; actionId: string; managerName: string; origem: string; faturamento: number }[];
+  rankingGerentesEfetividade: { managerName: string; elegiveisCount: number; recuperadosCount: number; taxaEfetividade: number; faturamentoRecuperado: number }[];
+  efetividadePorOrigem: { origem: string; elegiveisCount: number; recuperadosCount: number; taxaEfetividade: number; faturamentoRecuperado: number }[];
+}
+

@@ -100,19 +100,130 @@ Status Arquitetural: `SISTEMA_INOVACOES_DRE_COMERCIAL = CONFIRMED`.
 
 ---
 
-## 57. Baseline Oficial — Sistema Inovações Fase 2 — DRE Comercial
+## 57. Baseline Oficial — Sistema Inovações Fase 2 — DRE Comercial / MACO
 
-A partir de 26/07/2026, a arquitetura e a suíte de componentes do **Sistema Inovações Fase 2 — DRE Comercial** tornam-se o baseline permanente e oficial do Coffee++.
+A partir de 09/08/2026, a arquitetura, fórmulas financeiras, dimensões e a suíte de componentes do **Sistema Inovações Fase 2 — DRE Comercial / MACO** tornam-se o baseline permanente e oficial do Coffee++.
 
-### Diretrizes Mandatórias:
-1. **Fonte Única de Verdade**: A DRE Comercial consome exclusivamente `AnalyticsEngine.getDreComercial(filters)`. É proibida qualquer regra financeira no frontend, na API ou em componentes React. Toda lógica financeira permanece centralizada na `AnalyticsEngine`.
-2. **Fluxo Arquitetural Único**: Dados Oficiais → `AnalyticsEngine.getDreComercial(filters)` → API `GET /api/inovacoes/dre` → Interface `/inovacoes/dre`.
-3. **Fontes Oficiais**: `vw_faturamento_comercial_oficial`, `cm_acoes_investimento`, `cm_clientes` e demais fontes homologadas pela `AnalyticsEngine`.
-4. **Fórmula Oficial de MACO**: MACO = Receita Líquida − CPV − Impostos − Frete (3% fixo via `DRE_FRETE_PERCENTUAL`) − Investimento Comercial.
-5. **Componentes Oficiais Congelados**: `DreFilterBar`, `DreResumoExecutivo`, `DreSinteticaCard`, `DreDimensionSelector` e `DreDimensionalGrid`.
-6. **Auditoria Obrigatória**: Toda evolução da DRE Comercial deverá comprovar aprovação prévia em `npm run health:analytics`, `npx tsc --noEmit` e `npm run build` com 0 erros, 0 regressões e 0,0000% de desvio financeiro.
+### Status
+`DRE_COMERCIAL = HOMOLOGADO_E_CONGELADO`
 
-Status Arquitetural: `DRE_COMERCIAL = LOCKED` & `BASELINE = CONFIRMED`.
+### Fonte única de verdade
+`AnalyticsEngine.getDreComercial(filters)`
+
+A DRE Comercial e todos os seus consumidores analíticos devem utilizar a mesma definição financeira centralizada.
+
+### Fórmula oficial
+
+**Faturamento Bruto**
+= `SUM(vlr_total_liq + vlr_desconto)`
+
+**Descontos**
+= `SUM(vlr_desconto)`
+
+**Receita Comercial Líquida**
+= `Faturamento Bruto − Descontos`
+
+**Impostos / Deduções Fiscais**
+= `ABS(ICMS + ST)`
+
+**Receita Após Impostos**
+= `Receita Comercial Líquida − Impostos`
+
+**CPV**
+= `SUM(custo_total)`
+
+**Margem Bruta Contábil**
+= `Receita Após Impostos − CPV`
+
+**Frete**
+= `Receita Comercial Líquida × 3%`
+
+**Investimento Comercial**
+= `SUM(valor_investimento)` onde `verba_aprovada = true`
+
+**MACO**
+= `Receita Após Impostos − CPV − Frete − Investimento`
+
+**% MACO**
+= `MACO / Receita Comercial Líquida × 100`
+
+### Dimensões oficiais
+
+O DRE suporta:
+1. Cliente / PDV
+2. Rede / Matriz
+3. Gerente Comercial
+4. Região
+5. UF
+6. Canal de Vendas
+7. SKU / Produto
+
+O backend deve respeitar efetivamente a dimensão selecionada.
+
+### Consumidores oficiais
+
+Os seguintes módulos devem permanecer alinhados ao `AnalyticsEngine.getDreComercial()`:
+* DRE Comercial
+* CRM Comercial
+* Centro de Inteligência
+* Forecast Comercial
+* Simulador Comercial
+* Assistente Comercial IA
+* Painel Presidência
+* ExecutiveCommercial
+
+É proibida a criação de fórmula paralela de MACO nesses consumidores sem alteração formal desta baseline.
+
+### Evidência de homologação
+
+Junho/2026:
+* Receita Comercial Líquida: R$ 8.987.355,39
+* Impostos: R$ 3.481.463,15
+* Receita Após Impostos: R$ 5.505.892,24
+* CPV: R$ 4.106.753,97
+* Margem Bruta: R$ 1.399.138,27
+* Frete: R$ 269.620,66
+* Investimento: R$ 38,00
+* MACO: R$ 1.129.479,61
+* % MACO: 12,57%
+
+### Auditoria
+
+* Erro anterior de inversão de sinal: CORRIGIDO
+* MACO anterior de R$ 8.092.405,91: ELIMINADO
+* % MACO anterior de 90,04%: ELIMINADO
+* Ocorrências residuais do cálculo antigo: 0
+* Consumidores divergentes: 0
+* Desvio downstream: 0,0000%
+* TypeScript: aprovado
+* Testes de domínio: 20/20
+* Build de produção: aprovado
+
+### Regra de governança
+
+A fórmula acima passa a ser a **única definição oficial de MACO Comercial da plataforma**.
+
+Qualquer alteração futura em:
+* Receita Líquida;
+* Impostos;
+* CPV;
+* Frete;
+* Investimento;
+* MACO;
+* % MACO;
+* dimensões do DRE;
+
+deverá ser tratada como alteração de baseline financeira e não poderá ser realizada como ajuste isolado de interface ou módulo.
+
+A homologação desta baseline foi precedida por:
+1. Auditoria READ_ONLY;
+2. Correção controlada;
+3. Teste de regressão;
+4. Auditoria dimensional;
+5. Auditoria de impacto downstream;
+6. Reconciliação matemática.
+
+Status Arquitetural: `DRE_COMERCIAL = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
 
 ---
 
@@ -156,7 +267,7 @@ A partir de 26/07/2026, o primeiro ciclo do **Sistema Inovações** do Coffee++ 
 
 ### Consolidação Arquitetural do Ciclo 1:
 - **Seção 55**: Baseline Oficial — Cockpit Comercial (Fase 1) `[LOCKED & CONFIRMED]`
-- **Seção 57**: Baseline Oficial — DRE Comercial (Fase 2) `[LOCKED & CONFIRMED]`
+- **Seção 57**: Baseline Oficial — DRE Comercial / MACO (Fase 2) `[HOMOLOGADO & CONGELADO]`
 - **Seção 59**: Baseline Oficial — CRM Comercial (Fase 3) `[LOCKED & CONFIRMED]`
 
 ### Diretrizes Permanentes de Governança:

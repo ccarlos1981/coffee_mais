@@ -21,6 +21,7 @@ export interface AnalyticsFilters {
   matriz?: string | null;
   product?: string | null;
   investmentPct?: number;
+  dimension?: string | null;
 }
 
 /**
@@ -51,6 +52,7 @@ export function parseAnalyticsFiltersFromParams(searchParams: URLSearchParams): 
   const channel = searchParams.get('channel') !== 'all' ? searchParams.get('channel') : null;
   const matriz = searchParams.get('matriz') !== 'all' ? searchParams.get('matriz') : (searchParams.get('rede') !== 'all' ? searchParams.get('rede') : null);
   const product = searchParams.get('product') !== 'all' ? searchParams.get('product') : null;
+  const dimension = searchParams.get('dimension') || searchParams.get('selectedDimension');
 
   const investment = parseFloat(searchParams.get('investment') || '0');
   const investmentPct = isNaN(investment) ? 0 : investment / 100;
@@ -68,6 +70,7 @@ export function parseAnalyticsFiltersFromParams(searchParams: URLSearchParams): 
     matriz,
     product,
     investmentPct,
+    dimension,
   };
 }
 
@@ -125,6 +128,9 @@ export function buildChannelFilter(channel?: string | null, tableAlias?: string)
   const prefix = tableAlias ? `${tableAlias}.` : '';
   if (channel && channel !== 'all') {
     const channels = channel.split(',').map(c => escapeSqlValue(c.trim())).join(',');
+    if (tableAlias === 'c') {
+      return `${prefix}tipo_parceiro IN (${channels})`;
+    }
     return `${prefix}channel IN (${channels})`;
   }
   return null;
@@ -149,6 +155,9 @@ export function buildRedeFilter(matriz?: string | null, tableAlias?: string): st
   const prefix = tableAlias ? `${tableAlias}.` : '';
   if (matriz && matriz !== 'all') {
     const redes = matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
+    if (tableAlias === 'c') {
+      return `${prefix}matriz IN (${redes})`;
+    }
     return `${prefix}rede IN (${redes})`;
   }
   return null;

@@ -162,13 +162,81 @@ export default function ClienteCadastroPage() {
     setSearchingCodigo(true);
     try {
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("cm_clientes")
-        .select("*")
-        .eq("codigo", parseInt(code))
-        .single();
+      const cleanCode = code.trim();
+      let data: any = null;
 
-      if (error || !data) {
+      // 1. Tentar cm_clientes se for código numérico
+      const isNum = !isNaN(Number(cleanCode));
+      if (isNum) {
+        const { data: cData } = await supabase
+          .from("cm_clientes")
+          .select("*")
+          .eq("codigo", Number(cleanCode))
+          .maybeSingle();
+
+        if (cData) data = cData;
+      }
+
+      // 2. Se não encontrado em cm_clientes, tentar base_atendimento por cod_parceiro (string ex: PDV06)
+      if (!data) {
+        const { data: bData } = await supabase
+          .from("base_atendimento")
+          .select("*")
+          .eq("cod_parceiro", cleanCode)
+          .maybeSingle();
+
+        if (bData) {
+          data = {
+            id: bData.cod_parceiro,
+            codigo: bData.cod_parceiro,
+            cnpj: bData.cnpj || "",
+            matriz: bData.rede || "",
+            codigo_matriz: "",
+            responsavel: bData.manager || "",
+            manager_id: bData.manager_id || "",
+            manager_name: bData.manager || "",
+            tipo_parceiro: bData.canal || "",
+            nome_parceiro: bData.nome_parceiro || "",
+            razao_social: bData.razao_social || bData.nome_parceiro || "",
+            inscricao_estadual: "",
+            cep: bData.cep || "",
+            endereco: bData.endereco || "",
+            numero: "",
+            complemento: "",
+            cidade: bData.cidade || "",
+            uf: bData.uf || "",
+            condicao_pagamento: "",
+            classificacao_icms: "",
+            retirar_st: "",
+            empresa_preferencial: "",
+            tipo_geracao_boleto: "",
+            enviar_danfe: "Nao",
+            email_nfe: "",
+            banco: "",
+            agencia: "",
+            conta: "",
+            desconto_contratual: "",
+            desconto_logistico: "",
+            desconto_cd: "",
+            desconto_marketing: "",
+            desconto_aniversario: "",
+            desconto_inauguracao: "",
+            data_vigor: "",
+            data_vigor_logistico: "",
+            data_vigor_cd: "",
+            data_vigor_marketing: "",
+            data_vigor_aniversario: "",
+            data_vigor_inauguracao: "",
+            status: bData.status || "ativo",
+            fase: "comercial",
+            emails_comercial: "",
+            emails_trade: "",
+            emails_abatimento: "",
+          };
+        }
+      }
+
+      if (!data) {
         throw new Error("Cliente não encontrado com este código.");
       }
 
@@ -183,6 +251,11 @@ export default function ClienteCadastroPage() {
         base = dbVal;
       }
 
+      // Resolver canal oficial via SSOT CommercialDomainService
+      const rawChannel = data.tipo_parceiro || "";
+      const resolvedChannel = rawChannel ? await CommercialDomainService.resolveChannel(rawChannel) : null;
+      const finalChannel = resolvedChannel ? resolvedChannel.dbValue : rawChannel;
+
       setFormData({
         cnpj: data.cnpj || "",
         matriz: data.matriz || "",
@@ -190,7 +263,7 @@ export default function ClienteCadastroPage() {
         responsavel: data.responsavel || "",
         manager_id: data.manager_id || "",
         manager_name: data.manager_name || "",
-        tipo_parceiro: data.tipo_parceiro || "",
+        tipo_parceiro: finalChannel || "",
         nome_parceiro: data.nome_parceiro || "",
         razao_social: data.razao_social || "",
         inscricao_estadual: data.inscricao_estadual || "",
@@ -241,6 +314,7 @@ export default function ClienteCadastroPage() {
       setSearchingCodigo(false);
     }
   };
+
 
   // Load user profile and code from query parameters on mount
   useEffect(() => {
@@ -858,6 +932,11 @@ export default function ClienteCadastroPage() {
                         {opt.label}
                       </option>
                     ))}
+                    {formData.tipo_parceiro && !channelOptions.some((opt) => opt.value === formData.tipo_parceiro) && (
+                      <option value={formData.tipo_parceiro}>
+                        {formData.tipo_parceiro}
+                      </option>
+                    )}
                   </select>
                 </div>
                 <div className="space-y-2">

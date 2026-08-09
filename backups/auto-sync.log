@@ -1356,3 +1356,25 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    0f564f5..3da2018  main -> main
 [09/08/2026 13:26] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 630ee7f] auto-save: 09/08/2026 16:26
+ 46 files changed, 4973 insertions(+), 193 deletions(-)
+ create mode 100644 docs/INDEX.md
+ create mode 100644 docs/adr/ADR-008-Dominio-Comercial-Unificado.md
+ create mode 100644 docs/governance/baseline_oficial_plataforma.md
+ create mode 100644 docs/governance/protected_architecture.md
+ create mode 100644 docs/rfc/RFC_TEMPLATE.md
+ create mode 100644 src/app/api/ranking-gerentes/[managerId]/route.ts
+ create mode 100644 src/app/api/ranking-gerentes/route.ts
+ create mode 100644 src/app/ranking-gerentes/components/ManagerDrawer.tsx
+ create mode 100644 src/app/ranking-gerentes/page.tsx
+ create mode 100644 src/lib/domain/commercial-domain-cache.ts
+ create mode 100644 src/lib/domain/commercial-domain-repository.ts
+ create mode 100644 src/lib/domain/commercial-domain-service.ts
+ create mode 100644 src/lib/domain/index.ts
+ create mode 100644 src/lib/domain/types.ts
+ create mode 100644 src/lib/services/manager-performance-score-service.ts
+ create mode 100644 src/lib/services/opportunity-recommendation-service.ts
+ create mode 100644 supabase/migrations/20260810_commercial_domain_tables.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   3da2018..630ee7f  main -> main
+[09/08/2026 16:26] ✅ Alterações enviadas com sucesso para o GitHub.

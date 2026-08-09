@@ -231,11 +231,16 @@ BEGIN
   ]
   LOOP
     EXECUTE format(
-      'CREATE POLICY IF NOT EXISTS "domain_%s_read" ON public.%I FOR SELECT TO authenticated USING (true)',
+      'DROP POLICY IF EXISTS "domain_%s_read" ON public.%I',
+      tbl, tbl
+    );
+    EXECUTE format(
+      'CREATE POLICY "domain_%s_read" ON public.%I FOR SELECT TO authenticated USING (true)',
       tbl, tbl
     );
   END LOOP;
 END $$;
+
 
 -- =================================================================
 -- 11. GRANT para service_role (Admin)

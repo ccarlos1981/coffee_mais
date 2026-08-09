@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   ShieldCheck,
@@ -21,6 +22,7 @@ import {
   Briefcase,
   Layers,
   ArrowRight,
+  ClipboardList,
 } from "lucide-react";
 import { OpportunityRecommendation, SuggestedSku } from "@/lib/services/opportunity-recommendation-service";
 
@@ -35,6 +37,16 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
 
   if (!rawOp) return null;
 
+  const router = useRouter();
+
+  const handleGerarFollowUp = () => {
+    onClose();
+    const params = new URLSearchParams();
+    if (oportunidade.nomeParceiro) params.set("searchCliente", oportunidade.nomeParceiro);
+    params.set("origem", "COCKPIT_PRESCRITIVO");
+    router.push(`/processo-comercial/follow-up?${params.toString()}`);
+  };
+  
   // Normalização do objeto caso venha no formato legado CrmOportunidade
   const oportunidade: OpportunityRecommendation = rawOp.nomeParceiro
     ? rawOp
@@ -367,6 +379,15 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
               >
                 {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 {copied ? "Copiado para WhatsApp!" : "Copiar Pedido (WhatsApp)"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleGerarFollowUp}
+                className="py-3 px-4 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-black flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                <ClipboardList className="w-4 h-4" />
+                Gerar Follow-up
               </button>
 
               <button
