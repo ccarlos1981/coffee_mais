@@ -1,6 +1,7 @@
 "use client";
 
 import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
+import { CommercialDomainService } from "@/lib/domain";
 
 import { useState, useEffect, useCallback, useMemo, useRef, useTransition, Fragment } from "react";
 import Link from "next/link";
@@ -1788,7 +1789,7 @@ export default function InvestimentoPage() {
 
   const acoesPorGerente = useMemo(() => {
     const counts: Record<string, number> = {};
-    const mainManagers = ["Leandro", "Julliano", "Luiz", "John Guedes"];
+    const mainManagers = CommercialDomainService.getFieldManagerList();
     mainManagers.forEach(mgr => {
       counts[mgr] = 0;
     });
@@ -1813,7 +1814,7 @@ export default function InvestimentoPage() {
   }, [filteredData]);
 
   const consolidadoGerenteMes = useMemo(() => {
-    const mainManagers = ["Leandro", "Julliano", "Luiz", "John Guedes"];
+    const mainManagers = CommercialDomainService.getFieldManagerList();
     const counts: Record<string, Record<string, { networks: Set<string>; actionsCount: number }>> = {};
 
     // Initialize counts for main managers

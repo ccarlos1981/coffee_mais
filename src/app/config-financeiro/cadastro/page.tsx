@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { notificarFinanceiroNovoCliente, notificarTransicaoFase } from "../clientes/actions";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { CommercialDomainService, SelectOption } from "@/lib/domain";
 
 export default function ClienteCadastroPage() {
   const router = useRouter();
@@ -69,8 +70,10 @@ export default function ClienteCadastroPage() {
   });
   const [tipoCadastro, setTipoCadastro] = useState("novo");
   const [managers, setManagers] = useState<any[]>([]);
+  const [channelOptions, setChannelOptions] = useState<SelectOption[]>([]);
 
   useEffect(() => {
+    CommercialDomainService.getChannelOptions().then(setChannelOptions);
     const fetchManagers = async () => {
       try {
         const supabaseClient = createClient();
@@ -850,13 +853,11 @@ export default function ClienteCadastroPage() {
                     className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <option value="">Selecione o Canal</option>
-                    <option value="KA">KA</option>
-                    <option value="Distribuidor">Distribuidor</option>
-                    <option value="Inside Sales">Inside Sales</option>
-                    <option value="Inside inter">Inside inter</option>
-                    <option value="Exportação">Exportação</option>
-                    <option value="Marca Própria">Marca Própria</option>
-                    <option value="Outros">Outros</option>
+                    {channelOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-2">

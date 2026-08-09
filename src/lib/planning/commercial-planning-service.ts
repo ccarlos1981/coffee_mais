@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
+import { CommercialDomainService } from "@/lib/domain";
 export { PlanningGoalAllocator } from "./planning-goal-allocator";
 
 export interface PlanejavelRedeDTO {
@@ -367,8 +368,8 @@ export class CommercialPlanningService {
       const mgrId = String(t.manager_id || "").trim();
 
       const isManagerWithChannel = mgrName.includes("(KA)") || mgrName.includes("(Dist)");
-      const isCorporateChannel = ["1004", "1005", "1006", "1007", "1008", "1009"].includes(mgrId) || 
-                                ["Inside Sales", "Ecommerce", "Marketplace", "Distribuidor", "Amazon 1P", "Private Label"].includes(mgrName);
+      const isCorporateChannel = CommercialDomainService.isStandaloneChannelManager(mgrName) || 
+                                ["1004", "1005", "1006", "1007", "1008", "1009"].includes(mgrId);
 
       // ETAPA 1: Ignorar estritamente registros legados sem canal para gerentes comerciais
       if ((isManagerWithChannel || isCorporateChannel) && val > 0) {

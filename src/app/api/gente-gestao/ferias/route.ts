@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { CommercialDomainService } from "@/lib/domain";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -54,7 +55,7 @@ export async function GET(request: Request) {
     });
     
     // Add default managers as fallback
-    ["Julliano", "Leandro", "Luiz", "Cristiano"].forEach(m => employeeSet.add(m));
+    [...CommercialDomainService.getFieldManagerList(), "Cristiano"].forEach(m => employeeSet.add(m));
 
     const sortedEmployees = Array.from(employeeSet).sort();
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { CommercialDomainService } from "@/lib/domain";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ function getSupabaseAdminClient() {
 
 // Roles com acesso total
 const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional"];
-const ALL_MANAGERS = ["Julliano", "Leandro", "Luiz", "John Guedes", "Cristiano"];
+const ALL_MANAGERS = [...CommercialDomainService.getFieldManagerList(), "Cristiano"];
 
 // Helper para obter dias úteis (seg-sex) de um mês
 function getWeekdaysOfMonth(year: number, month: number): string[] {

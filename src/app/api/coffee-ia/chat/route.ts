@@ -36,8 +36,8 @@ Colunas disponíveis:
 - nome_parceiro (text): ⚠️ SEMPRE use este campo para nome do cliente/parceiro (NÃO use 'partner')
 - cod_parceiro (text): código do cliente
 - cod_produto (text): código do produto
-- manager (text): gerente responsável (Leandro, Luiz, Julliano, Inside Sales)
-- channel (text): canal de venda (KA, Inside Sales, ATACADO, etc.)
+- manager (text): gerente responsável
+- channel (text): canal de venda oficial
 - uf (text): UF / Estado do cliente (MG, SP, RS, DF, RJ, SC, PR, GO, MT, etc.). Use-o para buscar dados "por estado"
 - regional (text): região
 - rede (text): rede/matriz do cliente — nome curto/comercial da rede (ex: "DONA", "PÃO DE AÇÚCAR")

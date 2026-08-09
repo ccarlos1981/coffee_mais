@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError, logAuditAction } from "@/lib/supabase/auth-helpers";
 import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
+import { CommercialDomainService } from "@/lib/domain";
 import { resolveSupabaseTableName } from '@/lib/governance/analytics/sources';
 import { getInvestimentoRealizadoOficial } from '@/lib/investimento/getValorTotal';
 
@@ -85,7 +86,7 @@ export async function GET(request: Request) {
     const isGerenteNacionalAdmin = checkIsGerenteNacionalAdmin(userRole, userEmail);
 
     // Definir quais gerentes este usuário pode ver
-    const allManagers = ["Julliano", "Leandro", "Luiz", "John Guedes"];
+    const allManagers = CommercialDomainService.getFieldManagerList();
     let activeManagers: string[];
 
     if (isGerenteNacionalAdmin || !userManagerName) {

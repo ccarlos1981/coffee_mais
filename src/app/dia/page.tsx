@@ -78,6 +78,13 @@ export default function DailyDashboardPage() {
   const [prevChartData, setPrevChartData] = useState<DailyRow[]>([]);
   const [prevMonthName, setPrevMonthName] = useState<string>("");
   const [prevYearNum, setPrevYearNum] = useState<number>(2026);
+  const [summaryInfo, setSummaryInfo] = useState<{
+    diasDecorridos: number;
+    diasTotaisMes: number;
+    diasRestantes: number;
+    faturamentoDiarioMedio: number;
+    projecaoFechamentoMes: number;
+  } | null>(null);
 
   // Fetch filter options
   const fetchFilters = useCallback(async () => {
@@ -154,6 +161,9 @@ export default function DailyDashboardPage() {
       if (requestId !== fetchRequestIdRef.current) return;
       if (json.success) {
         setChartData(json.data || []);
+        if (json.summary) {
+          setSummaryInfo(json.summary);
+        }
       }
       if (prevJson.success) {
         setPrevChartData(prevJson.data || []);
@@ -377,15 +387,34 @@ export default function DailyDashboardPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 14, width: "100%" }}>
               
-              {/* Daily KPI Summary */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {/* Daily KPI Summary & Pace (Run Rate) */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
                 <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
-                  <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Faturamento Acumulado no Mês</p>
-                  <p style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--accent-gold)" }}>{formatCurrency(summary.totalFat, 0)}</p>
+                  <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Realizado no Mês</p>
+                  <p style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--accent-gold)" }}>{formatCurrency(summary.totalFat, 0)}</p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>{summaryInfo ? `${summaryInfo.diasDecorridos} de ${summaryInfo.diasTotaisMes} dias decorridos` : ""}</p>
                 </div>
+
+                <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
+                  <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Projeção Fechamento (Run Rate)</p>
+                  <p style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--accent-gold)" }}>
+                    {formatCurrency(summaryInfo?.projecaoFechamentoMes || summary.totalFat, 0)}
+                  </p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>Pace projetado ao fim do mês</p>
+                </div>
+
+                <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
+                  <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Média Diária Realizada</p>
+                  <p style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--foreground)" }}>
+                    {formatCurrency(summaryInfo?.faturamentoDiarioMedio || 0, 0)}/dia
+                  </p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>Média por dia decorrido</p>
+                </div>
+
                 <div className="glass-card" style={{ padding: "14px 16px", textAlign: "center" }}>
                   <p style={{ fontSize: "0.65rem", color: "var(--foreground-muted)", textTransform: "uppercase", fontWeight: 600, marginBottom: 4 }}>Volume Acumulado no Mês</p>
-                  <p style={{ fontSize: "1.6rem", fontWeight: 800, color: "var(--foreground)" }}>{formatNumber(summary.totalQty, 0)} unidades</p>
+                  <p style={{ fontSize: "1.5rem", fontWeight: 800, color: "var(--foreground)" }}>{formatNumber(summary.totalQty, 0)} un</p>
+                  <p style={{ fontSize: "0.6rem", color: "var(--foreground-muted)", marginTop: 2 }}>Total de unidades faturadas</p>
                 </div>
               </div>
 

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { CommercialDomainService } from "@/lib/domain";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
@@ -121,8 +122,8 @@ export async function POST(request: NextRequest) {
         nome_parceiro: String(nome),
         rede: rede ? String(rede) : "",
         uf: uf ? String(uf).toUpperCase().trim() : "",
-        canal: canal ? String(canal) : "VAREJO F OUT",
-        manager: gerente ? String(gerente) : null,
+        canal: canal ? (await CommercialDomainService.resolveChannel(String(canal))).dbValue : "KA",
+        manager: gerente ? CommercialDomainService.resolveManager(String(gerente)).managerName : null,
       });
     }
 

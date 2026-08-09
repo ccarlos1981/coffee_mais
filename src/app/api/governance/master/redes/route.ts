@@ -5,6 +5,7 @@ import { successResponse, errorResponse } from "@/lib/governance/response";
 import { logGovernanceError } from "@/lib/governance/logging";
 import { ERROR_CODES } from "@/lib/governance/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CommercialDomainService } from "@/lib/domain";
 
 export async function GET(req: NextRequest) {
   try {
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
       .insert({
         codigo,
         nome,
-        canal: canal || "Key Account",
+        canal: (await CommercialDomainService.resolveChannel(canal)).dbValue,
         manager_id: manager_id || null,
         manager
       })
@@ -62,8 +63,8 @@ export async function POST(req: NextRequest) {
         network: nome,
         network_uf: nome,
         manager,
-        manager_id: manager_id || "9999",
-        region: canal === "Inside Sales" ? "Inside Sales" : "Sudeste"
+        manager_id: manager_id || CommercialDomainService.resolveManager(manager).managerId || "9999",
+        region: CommercialDomainService.isStandaloneChannelManager(manager) ? manager : "Sudeste"
       });
 
     if (syncErr) {

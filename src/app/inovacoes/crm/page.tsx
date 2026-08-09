@@ -3,7 +3,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { ChevronRight, Target, ShieldCheck, RefreshCw, AlertTriangle } from "lucide-react";
-import { CrmComercialData, CrmOportunidade } from "@/lib/governance/analytics/engine";
+import { CrmComercialData } from "@/lib/governance/analytics/engine";
+import { OpportunityRecommendation, OpportunityRecommendationService } from "@/lib/services/opportunity-recommendation-service";
 import { CrmFilterBar, CrmFiltersState } from "./components/CrmFilterBar";
 import { CrmResumoExecutivo } from "./components/CrmResumoExecutivo";
 import { CrmRecomendacoes } from "./components/CrmRecomendacoes";
@@ -23,7 +24,7 @@ export default function CrmComercialPage() {
 
   const [filters, setFilters] = useState<CrmFiltersState>(defaultFilters);
   const [crmData, setCrmData] = useState<CrmComercialData | null>(null);
-  const [selectedOportunidade, setSelectedOportunidade] = useState<CrmOportunidade | null>(null);
+  const [selectedOportunidade, setSelectedOportunidade] = useState<OpportunityRecommendation | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,7 +48,41 @@ export default function CrmComercialPage() {
       if (!json.success) {
         throw new Error(json.error || "Falha ao carregar dados do CRM Comercial.");
       }
-      setCrmData(json.data);
+
+      // Se a API retornar oportunidades processadas pelo OpportunityRecommendationService
+      if (json.oportunidades) {
+        setCrmData({
+          resumo: json.resumoExecutivo || {
+            totalClientesCarteira: json.oportunidades.length,
+            totalClientesAtivos: json.oportunidades.length,
+            totalClientesEmRisco: 0,
+            totalClientesInativos: 0,
+            potencialRecuperacaoMaco: json.resumoExecutivo?.totalReceitaRepresada || 0,
+            scoreSaudeGlobal: 85,
+          },
+          oportunidades: json.oportunidades.map((op: any) => ({
+            id: op.clienteId,
+            clienteId: op.clienteId,
+            clienteNome: op.nomeParceiro,
+            matrizNome: op.rede || "Cliente Direto",
+            gerenteNome: op.gerenteNome,
+            canal: op.canal,
+            uf: op.uf,
+            tipoRecomendacao: op.classificacaoRisco,
+            titulo: `Oportunidade Comercial: ${op.nomeParceiro}`,
+            descricao: op.justificativaRecomendacao,
+            prioridade: op.classificacaoRisco === "CRITICO" ? "ALTA" : op.classificacaoRisco === "ALTO" ? "MEDIA" : "BAIXA",
+            scoreImpacto: op.scoreOportunidade,
+            valorImpactoPotencial: op.faturamentoPerdidoEstimado,
+            margemMacoAtual: 24.5,
+            diasSemComprar: op.diasSemCompra,
+            _rawRecommendation: op,
+          })),
+          rankingGerentesScore: [],
+        });
+      } else {
+        setCrmData(json.data);
+      }
     } catch (err: any) {
       console.error("Erro ao carregar CRM Comercial:", err);
       setError(err.message || "Erro de conexão com a API do CRM Comercial.");
@@ -62,6 +97,28 @@ export default function CrmComercialPage() {
 
   const handleResetFilters = () => {
     setFilters(defaultFilters);
+  };
+
+  const handleSelectOportunidade = (op: any) => {
+    if (op._rawRecommendation) {
+      setSelectedOportunidade(op._rawRecommendation);
+    } else {
+      const recommendations = OpportunityRecommendationService.processRecommendations([
+        {
+          clienteId: op.clienteId || op.id,
+          nomeParceiro: op.clienteNome,
+          rede: op.matrizNome,
+          gerenteNome: op.gerenteNome,
+          canal: op.canal,
+          uf: op.uf,
+          diasSemComprar: op.diasSemComprar,
+          valorFaturadoPeriodo: op.valorImpactoPotencial,
+          valorFaturado12m: op.valorImpactoPotencial * 4,
+          frequenciaHistoricaDias: 20,
+        },
+      ]);
+      setSelectedOportunidade(recommendations[0]);
+    }
   };
 
   return (
@@ -88,7 +145,7 @@ export default function CrmComercialPage() {
             </div>
             <div>
               <h1 className="text-2xl font-black text-foreground tracking-tight flex items-center gap-2">
-                CRM Comercial — Inteligência Prescritiva
+                CRM Comercial — Central de Decisão & Inteligência Prescritiva
               </h1>
               <p className="text-xs text-muted-foreground">
                 Recomendações de Ação Comercial Priorizadas pelo Score Oficial (0 a 100)
@@ -150,7 +207,7 @@ export default function CrmComercialPage() {
       {/* 4. Top Recomendações Prescritivas */}
       <CrmRecomendacoes
         oportunidades={crmData?.oportunidades || []}
-        onSelectOportunidade={setSelectedOportunidade}
+        onSelectOportunidade={handleSelectOportunidade}
         loading={loading}
       />
 
@@ -163,11 +220,11 @@ export default function CrmComercialPage() {
       {/* 6. Central de Oportunidades Grid */}
       <CrmOportunidadesGrid
         oportunidades={crmData?.oportunidades || []}
-        onSelectOportunidade={setSelectedOportunidade}
+        onSelectOportunidade={handleSelectOportunidade}
         loading={loading}
       />
 
-      {/* 7. Drawer Lateral do Cliente (Read-Only) */}
+      {/* 7. Central de Decisão Comercial Drawer (Read-Only) */}
       <CrmClienteDrawer
         oportunidade={selectedOportunidade}
         onClose={() => setSelectedOportunidade(null)}

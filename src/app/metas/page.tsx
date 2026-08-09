@@ -32,18 +32,21 @@ const MONTHS = [
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
 ];
 
+import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
+import { CommercialDomainService } from "@/lib/domain";
+
 const CHANNELS = [
   { id: "Toda Empresa", manager_id: "Toda Empresa", manager: "Toda Empresa", name: "Toda Empresa" },
   { id: "KA", manager_id: "KA", manager: "KA (Key Accounts)", name: "KA (Key Accounts)" },
-  { id: "Inside Sales", manager_id: "1004", manager: "Inside Sales", name: "Inside Sales" },
-  { id: "Ecommerce", manager_id: "1005", manager: "Ecommerce", name: "Ecommerce" },
-  { id: "Marketplace", manager_id: "1006", manager: "Marketplace", name: "Marketplace" },
-  { id: "Distribuidor", manager_id: "1007", manager: "Distribuidor", name: "Distribuidor" },
-  { id: "Amazon 1P", manager_id: "1008", manager: "Amazon 1P", name: "1P" },
-  { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" }
+  ...OFFICIAL_COMMERCIAL_ROLES
+    .filter(r => CommercialDomainService.isStandaloneChannelManager(r.managerName))
+    .map(r => ({
+      id: r.managerName,
+      manager_id: r.managerId,
+      manager: r.managerName,
+      name: r.managerName === "Amazon 1P" ? "1P" : r.managerName,
+    }))
 ];
-
-import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
 
 export function cleanManagerName(name: string): string {
   if (!name) return "";
