@@ -121,8 +121,8 @@ export async function GET(request: Request) {
 
       const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
       const isTodayMonday = dateSP.getDay() === 1;
-      const isCutoffReached = isTodayMonday && hour >= 15;
-      const canManagerEdit = isTodayMonday && hour < 15;
+      const isCutoffReached = isTodayMonday && hour >= 18;
+      const canManagerEdit = isTodayMonday && hour < 18;
 
       return {
         todayStr,
@@ -677,9 +677,9 @@ export async function POST(request: Request) {
       const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
       const isTodayMonday = dateSP.getDay() === 1;
 
-      if (!isTodayMonday || serverHour >= 15) {
+      if (!isTodayMonday || serverHour >= 18) {
         return NextResponse.json(
-          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 15:00 da segunda-feira." },
+          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 18:00 da segunda-feira." },
           { status: 403 }
         );
       }
