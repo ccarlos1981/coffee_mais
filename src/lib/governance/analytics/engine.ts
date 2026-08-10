@@ -1813,11 +1813,21 @@ export class AnalyticsEngine {
         groupByExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros')";
         break;
 
-      case "gerente":
-        selectExpr = "COALESCE(c.responsavel, c.manager_name, v.nome_vendedor, 'Sem Gerente') as nome";
+      case "gerente": {
+        const gerenteClassExpr = `CASE
+          WHEN c.responsavel IS NOT NULL THEN c.responsavel
+          WHEN c.manager_name IS NOT NULL THEN c.manager_name
+          WHEN v.nome_vendedor IN ('SHOPIFY','AMAZONFBA','MELI FULL','ANYMARKET','SHOPEE','AMAZONBR','MAGALU','LIVELO','MELI') THEN 'Canal Digital'
+          WHEN v.nome_vendedor = 'FERNANDA' THEN 'Vendedora Inside Sales'
+          WHEN v.nome_vendedor IN ('KEYACCOUNT','DISTRIBUIDOR','EXPORTAÇÃO') THEN 'Tipo/Vendedor Sankhya'
+          WHEN v.nome_vendedor = 'BRUNA' THEN 'A Classificar'
+          ELSE 'Sem Gerente Comercial'
+        END`;
+        selectExpr = `${gerenteClassExpr} as nome`;
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
-        groupByExpr = "COALESCE(c.responsavel, c.manager_name, v.nome_vendedor, 'Sem Gerente')";
+        groupByExpr = gerenteClassExpr;
         break;
+      }
 
       case "regiao":
         selectExpr = `CASE 
@@ -1914,17 +1924,17 @@ export class AnalyticsEngine {
         distinct_matriz_mgr AS (
           SELECT DISTINCT ON (UPPER(TRIM(matriz)))
             UPPER(TRIM(matriz)) as matriz_key,
-            COALESCE(responsavel, manager_name, 'Sem Gerente') as gerente
+            COALESCE(responsavel, manager_name, 'Sem Gerente Comercial') as gerente
           FROM public.cm_clientes
           WHERE matriz IS NOT NULL AND matriz != ''
           ORDER BY UPPER(TRIM(matriz)), created_at DESC
         )
         SELECT 
-          COALESCE(m.gerente, 'Leandro Saffi') as key_name,
+          COALESCE(m.gerente, 'Sem Gerente Comercial') as key_name,
           SUM(i.invest) as invest
         FROM matrix_invest i
         LEFT JOIN distinct_matriz_mgr m ON m.matriz_key = i.rede_nome
-        GROUP BY COALESCE(m.gerente, 'Leandro Saffi')
+        GROUP BY COALESCE(m.gerente, 'Sem Gerente Comercial')
       `;
       const invRows = await this.executeSql<{ key_name: string; invest: number }>(sqlGerenteInvest);
       invRows.forEach(r => investMap.set(r.key_name.toUpperCase(), Number(r.invest) || 0));
@@ -1965,6 +1975,33 @@ export class AnalyticsEngine {
         margemMacoGerencialPercentual: Number(pctMacoGerencial.toFixed(2)),
       };
     });
+
+    // Linha de transparência: Investimentos aprovados em redes sem faturamento no período
+    if (dim === 'rede') {
+      const totalInvAprovado = Array.from(investMap.values()).reduce((s, v) => s + v, 0);
+      const totalInvAtribuido = dimensionais.reduce((s, d) => s + d.investimentoComercial, 0);
+      const invSemFaturamento = Number((totalInvAprovado - totalInvAtribuido).toFixed(2));
+
+      if (invSemFaturamento > 0.01) {
+        dimensionais.push({
+          id: 'dim-inv-sem-faturamento',
+          nome: 'INVESTIMENTOS SEM FATURAMENTO',
+          volume: 0,
+          precoMedio: 0,
+          faturamentoBruto: 0,
+          descontos: 0,
+          faturamentoLiquido: 0,
+          impostos: 0,
+          cpv: 0,
+          margemBruta: 0,
+          frete: 0,
+          investimentoComercial: invSemFaturamento,
+          maco: 0,
+          margemMacoPercentual: 0,
+          margemMacoGerencialPercentual: 0,
+        });
+      }
+    }
 
     return {
       sintetica,
