@@ -2688,6 +2688,103 @@ A partir de 10/08/2026, a arquitetura, estrutura visual e regras de integridade 
 
 Status Arquitetural: `DRE_CORE = LOCKED` & `BASELINE = PERMANENT` & `P&L_VERTICAL = HOMOLOGATED`.
 
+---
+
+## 71. Baseline Oficial — Governança e Descontinuação Segura do DRE Legado
+
+A partir de 10/08/2026, a política de governança e descontinuação do módulo **DRE Legado (`/dre`)** torna-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Classificação do Módulo**: O módulo `/dre` (`/dre`, `/dre/historico`, `/dre/rede`) é classificado oficialmente como **DRE LEGADO/HISTÓRICO**.
+2. **Limite da Fonte Legada**: A tabela `public.cm_dre_financeiro` é uma estrutura estática cujo histórico possui registros exclusivamente até **Maio/2026**.
+3. **Proibição de Zeros Fictícios**: É expressamente proibido apresentar zeros como resultados financeiros válidos nas rotas legadas para períodos posteriores a Maio/2026 quando a fonte legada não contiver dados.
+4. **Comportamento Oficial por Rota**:
+   - `/dre`: Para períodos posteriores a Maio/2026, renderizar banner institucional de encerramento da fonte legada + botão direcionador `[ACESSAR DRE COMERCIAL]` para `/inovacoes/dre`.
+   - `/dre/historico`: Exibir aviso de encerramento da fonte e apresentar células sem dados pós-Maio/2026 marcadas claramente como **`N/D`**.
+   - `/dre/rede`: Para períodos sem dados na fonte legada, renderizar banner institucional de aviso + botão direcionador `[ACESSAR DRE COMERCIAL]` para `/inovacoes/dre`.
+5. **Módulo Oficial de Referência**: O módulo `/inovacoes/dre` (DRE Comercial) é a única interface oficial e homologada para consulta de resultados atuais e em tempo real.
+6. **Single Source of Truth**: O `/inovacoes/dre` consome o DRE Core / `AnalyticsEngine`, permanecendo como a Fonte Única de Verdade da DRE Comercial.
+7. **Proibição de Carga Automática / Workarounds**: É proibido reativar `cm_dre_financeiro` como fonte atual ou preencher períodos ausentes com zeros, estimativas, rateios ou interpolações.
+8. **Preservação de Baselines**: A descontinuação do `/dre` legado não altera `DRE_CORE = LOCKED`, `DRE_BASELINE = PERMANENT`, `FINANCIAL_FORMULAS = UNCHANGED` ou qualquer dado no banco (`DATABASE_MODIFIED = NONE`).
+9. **Independência Arquitetural**: Qualquer futura migração do `/dre` para a `AnalyticsEngine` deverá ser tratada como alteração arquitetural independente e submetida a nova homologação formal.
+
+Status Arquitetural: `LEGACY_DRE_DEPRECATION = LOCKED` & `SINGLE_SOURCE_OF_TRUTH = /inovacoes/dre` & `BASELINE = CONFIRMED`.
+
+---
+
+## 72. Baseline Oficial — DRE Comercial / P&L Vertical — Encerramento e Fonte Oficial
+
+A partir de 10/08/2026, a consolidação final da arquitetura, fontes de dados e baselines da **DRE Comercial** torna-se baseline permanente e oficial do Coffee++.
+
+### 1. Fonte Oficial
+- `/inovacoes/dre` = DRE Comercial Oficial.
+- `AnalyticsEngine.getDreComercial()` = fonte oficial dos indicadores do DRE Comercial.
+- `public.cm_dre_financeiro` = fonte legada/histórica, encerrada para períodos posteriores a Maio/2026.
+
+### 2. DRE Legado
+- As rotas `/dre`, `/dre/historico` e `/dre/rede` são classificadas como **DRE LEGADO / HISTÓRICO**.
+- A fonte `public.cm_dre_financeiro` possui dados históricos somente até Maio/2026.
+- É proibido interpretar ou apresentar ausência de registros pós-Maio/2026 como resultado financeiro igual a zero.
+- Para períodos posteriores a Maio/2026:
+  - `/dre` direciona o usuário para `/inovacoes/dre`;
+  - `/dre/historico` apresenta `N/D` quando não houver fonte legada;
+  - `/dre/rede` informa a indisponibilidade da fonte legada e direciona para `/inovacoes/dre`.
+
+### 3. P&L Vertical Executivo
+- O P&L Vertical da DRE Comercial permanece homologado e congelado como baseline.
+- As despesas operacionais externas auditadas possuem fonte explicitamente identificada:
+  - **Despesa Pessoal**: Jul/2026: R$ 733.385,18 | Jun/2026: R$ 763.342,58 (Fonte: Planilha Cia)
+  - **Marketing**: Jul/2026: R$ 298.216,94 | Jun/2026: R$ 285.497,92 (Fonte: Planilha Cia)
+- Essas despesas pertencem à camada posterior ao MACO e **NÃO devem ser subtraídas do MACO Core**.
+
+### 4. Indicadores Financeiros Protegidos
+Os seguintes indicadores permanecem imutáveis:
+- Receita Comercial Líquida Jul/2026: R$ 9.779.467,88
+- CPV Jul/2026: R$ 4.471.167,68
+- Frete Jul/2026: R$ 293.384,04
+- Investimento Comercial Jul/2026: R$ 1.058,72
+- MACO Core Jul/2026: R$ 3.511.444,83
+- MACO Baseline Jun/2026: R$ 1.129.479,61
+
+### 5. Governança
+Qualquer alteração futura em fonte do DRE, fórmula financeira, classificação gerencial, P&L Vertical, integração de despesas operacionais ou substituição da fonte legada deve ser tratada como **nova implementação controlada**, com auditoria de paridade antes da homologação. É proibida qualquer alteração direta no DRE Core para solucionar limitações da fonte legada.
+
+Status Arquitetural: `DRE_CORE = LOCKED` & `DRE_BASELINE = PERMANENT` & `P&L_VERTICAL = HOMOLOGATED` & `DRE_LEGADO = HISTÓRICO / DESCONTINUADO` & `FINANCIAL_FORMULAS = UNCHANGED` & `DATABASE = UNCHANGED`.
+
+---
+
+## 115. Baseline Oficial — Autorização e Gravação de Gerentes Restritos na RPS
+
+A partir de 10/08/2026, a arquitetura e a governança de autorização no módulo RPS (`/processo-comercial/rps` e `POST /api/processo-comercial/rps`) tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Escopo de Carteira**: Gerentes com perfil restrito (`isRestricted = true`) visualizam e alteram exclusivamente sua própria carteira.
+2. **Edição Restrita à Semana Corrente**: Gerentes restritos possuem autorização para alterar e salvar exclusivamente a **semana corrente** (`serverTodayStr`).
+3. **Janela Temporal Oficial**: A janela de edição para gerentes restritos encerra-se impreterivelmente às **15:00 da segunda-feira**, utilizando exclusivamente o horário do servidor em `America/Sao_Paulo`.
+4. **Resiliência do Payload Frontend**: O frontend envia o payload completo com todas as semanas do mês. Semanas não correntes com valores mantidos (idênticos ao banco de dados) são aceitas e ignoradas na gravação.
+5. **Bloqueio de Alteração de Semana Não Corrente (HTTP 403)**: Qualquer tentativa de alteração efetiva em semana que não seja a semana corrente resulta em `HTTP 403 Forbidden`.
+6. **Bloqueio de Carteira de Outro Gerente (HTTP 403)**: Qualquer tentativa por usuário restrito de alterar carteira de outro gerente resulta em `HTTP 403 Forbidden`.
+7. **Escrita Controlada (`rowsToUpsert`)**: O `rowsToUpsert` para gerentes restritos persiste exclusivamente registros da semana corrente.
+8. **Perfis Administrativos Sem Restrição**: Administradores (`Admin`, `Admin Master`, `Gerente Nacional`, `CEO`, `Diretor`) mantêm permissão total sobre todas as carteiras e semanas.
+9. **Identificação Oficial SSOT**: É expressamente proibida a criação de exceções ou hardcodes de nomes. A autorização baseia-se unicamente em:
+   `requireAuth() → requireApprovedProfile() → profile.manager_name → resolveCanonicalManager() → isSameManager()`.
+
+### Homologação dos 6 Cenários Mandatórios:
+- **Cenário A** (alteração apenas na semana corrente): `HTTP 200`
+- **Cenário B** (payload completo com semanas não correntes intocadas): `HTTP 200` (upsert exclusivo da semana corrente)
+- **Cenário C** (alteração em semana não corrente): `HTTP 403`
+- **Cenário D** (alteração na carteira de outro gerente): `HTTP 403`
+- **Cenário E** (salvamento após cutoff de 15:00 de segunda-feira): `HTTP 403`
+- **Cenário F** (Admin / Admin Master / Gerente Nacional): `HTTP 200` (sem restrição de carteira/semana)
+
+### Validação de Qualidade:
+- `npx tsc --noEmit`: 0 erros
+- `npm run build`: aprovado
+- `scripts/test-rps-scenarios.ts`: 6/6 cenários aprovados
+
+Status Arquitetural: `RPS_RESTRICTED_MANAGER_AUTHORIZATION = LOCKED` & `BASELINE = CONFIRMED`.
+
+
 
 
 
