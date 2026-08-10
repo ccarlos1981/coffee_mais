@@ -637,9 +637,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos ou incompletos." }, { status: 400 });
     }
 
-    // TRAVA OBRIGATÓRIA DE SEGURANÇA TEMPORAL NO BACKEND (HTTP 403):
-    // Gerentes podem editar APENAS a semana corrente E APENAS até as 15:00 da segunda-feira (Server Time America/Sao_Paulo).
+    const supabase = getSupabaseAdminClient();
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA TEMPORAL E DE GERENTE NO BACKEND (HTTP 403):
+    // Gerentes podem editar APENAS a sua própria carteira, APENAS a semana corrente E APENAS até as 15:00 da segunda-feira (Server Time America/Sao_Paulo).
     if (isRestricted) {
+      // 1. Validar autorização de gerente/carteira: gerente restrito não pode alterar carteira de outros gerentes
+      const invalidManagerProjections = projections.filter((p: any) => {
+        return !isSameManager(p.manager, userManagerName);
+      });
+
+      if (invalidManagerProjections.length > 0) {
+        return NextResponse.json(
+          { success: false, error: "Acesso negado (403 Forbidden): Gerentes possuem autorização para alterar exclusivamente a sua própria carteira." },
+          { status: 403 }
+        );
+      }
+
+      // 2. Validar janela temporal (apenas segundas-feiras até 15:00 no fuso de SP)
       const now = new Date();
       const formatterDate = new Intl.DateTimeFormat('en-US', {
         timeZone: 'America/Sao_Paulo',
@@ -669,12 +684,35 @@ export async function POST(request: Request) {
         );
       }
 
-      // Validar se o gerente tentou enviar projeções de semanas diferentes da semana atual
-      const invalidWeekProjections = projections.filter((p: any) => {
-        return p.client_matrix !== '_TOTAL_' && p.kpi !== 'META' && p.week_start_date && p.week_start_date !== serverTodayStr;
+      // 3. Validar se o gerente tentou ALTERAR projeções de semanas diferentes da semana atual
+      // Buscar projeções existentes no banco para este ano, mês e gerente
+      const { data: existingProjs } = await supabase
+        .from('cm_weekly_projections')
+        .select('client_matrix, week_start_date, kpi, projection_value, manager')
+        .eq('year', parseInt(year))
+        .eq('month', parseInt(month));
+
+      const dbMgrProjs = (existingProjs || []).filter((dbP: any) => isSameManager(dbP.manager, userManagerName));
+
+      const dbMap = new Map<string, number>();
+      dbMgrProjs.forEach((dbP: any) => {
+        const key = `${(dbP.client_matrix || '').trim().toUpperCase()}|${dbP.week_start_date}|${dbP.kpi}`;
+        dbMap.set(key, Number(dbP.projection_value || 0));
       });
 
-      if (invalidWeekProjections.length > 0) {
+      const alteredNonCurrentWeekProjections = projections.filter((p: any) => {
+        if (p.kpi === 'META' || !p.week_start_date || p.week_start_date === serverTodayStr) {
+          return false;
+        }
+
+        const key = `${(p.client_matrix || '').trim().toUpperCase()}|${p.week_start_date}|${p.kpi}`;
+        const existingVal = dbMap.has(key) ? dbMap.get(key)! : 0;
+        const newVal = Number(p.projection_value || 0);
+
+        return Math.abs(newVal - existingVal) > 0.001;
+      });
+
+      if (alteredNonCurrentWeekProjections.length > 0) {
         return NextResponse.json(
           { success: false, error: "Acesso negado (403 Forbidden): Gerentes possuem autorização para alterar exclusivamente a semana corrente." },
           { status: 403 }
@@ -701,10 +739,23 @@ export async function POST(request: Request) {
 
     let filteredProjections = projections;
     if (isRestricted) {
-      filteredProjections = projections.filter((p: any) => isSameManager(p.manager, userManagerName));
-    }
+      const now = new Date();
+      const formatterDate = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      const parts = formatterDate.formatToParts(now);
+      const y = parts.find(p => p.type === 'year')?.value;
+      const m = parts.find(p => p.type === 'month')?.value;
+      const dVal = parts.find(p => p.type === 'day')?.value;
+      const serverTodayStr = `${y}-${m}-${dVal}`;
 
-    const supabase = getSupabaseAdminClient();
+      filteredProjections = projections.filter((p: any) => 
+        isSameManager(p.manager, userManagerName) && p.week_start_date === serverTodayStr
+      );
+    }
 
     // 1. Processar edições de Desafios (DESAFIO_FAT e DESAFIO_VOL) salvando diretamente na fonte oficial public.targets
     // REGRA DE GOVERNANÇA: Gerentes comerciais (1000-1003) possuem registros segregados
