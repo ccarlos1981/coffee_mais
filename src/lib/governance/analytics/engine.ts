@@ -1868,7 +1868,9 @@ export class AnalyticsEngine {
     let sqlDimensional = `
       SELECT 
         ${selectExpr},
+        COALESCE(SUM(COALESCE(v.quantidade, 0)), 0) as volume,
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0) + COALESCE(v.vlr_desconto, 0)), 0) as fat_bruto,
+        COALESCE(SUM(COALESCE(v.vlr_desconto, 0)), 0) as descontos,
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0)), 0) as fat_liquido,
         COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN COALESCE(v.vlr_total_st, 0) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
         COALESCE(SUM(COALESCE(v.custo_total, 0)), 0) as cpv
@@ -1878,26 +1880,80 @@ export class AnalyticsEngine {
       GROUP BY ${groupByExpr} ORDER BY fat_liquido DESC LIMIT 50
     `;
 
-    const rowsDim = await this.executeSql<{ nome: string; fat_bruto: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
+    const rowsDim = await this.executeSql<{ nome: string; volume: number; fat_bruto: number; descontos: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
 
-    const taxaInvestimentoGlobal = faturamentoLiquido > 0 ? investimentoComercial / faturamentoLiquido : 0;
+    // Apuração de Investimentos por Dimensão (Sem rateio proporcional e sem duplicação)
+    const investMap = new Map<string, number>();
+
+    if (dim === 'rede') {
+      const sqlRedeInvest = `
+        SELECT 
+          UPPER(TRIM(rede)) as key_name,
+          COALESCE(SUM(COALESCE(valor_investimento, 0)), 0) as invest
+        FROM public.cm_acoes_investimento
+        WHERE COALESCE(verba_aprovada, true) = true
+          AND mes_referencia >= ${escapeSqlValue(mesStart)}
+          AND mes_referencia <= ${escapeSqlValue(mesEnd)}
+        GROUP BY UPPER(TRIM(rede))
+      `;
+      const invRows = await this.executeSql<{ key_name: string; invest: number }>(sqlRedeInvest);
+      invRows.forEach(r => investMap.set(r.key_name, Number(r.invest) || 0));
+    } else if (dim === 'gerente') {
+      const sqlGerenteInvest = `
+        WITH matrix_invest AS (
+          SELECT 
+            codigo_matriz,
+            UPPER(TRIM(rede)) as rede_nome,
+            COALESCE(SUM(COALESCE(valor_investimento, 0)), 0) as invest
+          FROM public.cm_acoes_investimento
+          WHERE COALESCE(verba_aprovada, true) = true
+            AND mes_referencia >= ${escapeSqlValue(mesStart)}
+            AND mes_referencia <= ${escapeSqlValue(mesEnd)}
+          GROUP BY codigo_matriz, rede
+        ),
+        distinct_matriz_mgr AS (
+          SELECT DISTINCT ON (UPPER(TRIM(matriz)))
+            UPPER(TRIM(matriz)) as matriz_key,
+            COALESCE(responsavel, manager_name, 'Sem Gerente') as gerente
+          FROM public.cm_clientes
+          WHERE matriz IS NOT NULL AND matriz != ''
+          ORDER BY UPPER(TRIM(matriz)), created_at DESC
+        )
+        SELECT 
+          COALESCE(m.gerente, 'Leandro Saffi') as key_name,
+          SUM(i.invest) as invest
+        FROM matrix_invest i
+        LEFT JOIN distinct_matriz_mgr m ON m.matriz_key = i.rede_nome
+        GROUP BY COALESCE(m.gerente, 'Leandro Saffi')
+      `;
+      const invRows = await this.executeSql<{ key_name: string; invest: number }>(sqlGerenteInvest);
+      invRows.forEach(r => investMap.set(r.key_name.toUpperCase(), Number(r.invest) || 0));
+    }
 
     const dimensionais: DreComercialDimensional[] = rowsDim.map((r, idx) => {
-      const fLiq = Number(r.fat_liquido) || 0;
+      const vol = Number(r.volume) || 0;
       const fBrut = Number(r.fat_bruto) || 0;
+      const desc = Number(r.descontos) || 0;
+      const fLiq = Number(r.fat_liquido) || 0;
       const imp = Math.abs(Number(r.impostos) || 0);
       const c = Number(r.cpv) || 0;
       const recAposImp = fLiq - imp;
       const mBruta = recAposImp - c;
       const fr = fLiq * DRE_FRETE_PERCENTUAL;
-      const invCom = fLiq * taxaInvestimentoGlobal;
+
+      const invCom = investMap.get(r.nome.toUpperCase()) ?? 0;
       const maco = recAposImp - c - fr - invCom;
-      const pctMaco = fLiq > 0 ? (maco / fLiq) * 100 : 0;
+      const pctMacoOficial = fLiq > 0 ? (maco / fLiq) * 100 : 0;
+      const pctMacoGerencial = fBrut > 0 ? (maco / fBrut) * 100 : 0;
+      const pmPonderado = vol > 0 ? fBrut / vol : 0;
 
       return {
         id: `dim-${idx}-${r.nome}`,
         nome: r.nome,
+        volume: vol,
+        precoMedio: Number(pmPonderado.toFixed(2)),
         faturamentoBruto: Number(fBrut.toFixed(2)),
+        descontos: Number(desc.toFixed(2)),
         faturamentoLiquido: Number(fLiq.toFixed(2)),
         impostos: Number(imp.toFixed(2)),
         cpv: Number(c.toFixed(2)),
@@ -1905,7 +1961,8 @@ export class AnalyticsEngine {
         frete: Number(fr.toFixed(2)),
         investimentoComercial: Number(invCom.toFixed(2)),
         maco: Number(maco.toFixed(2)),
-        margemMacoPercentual: Number(pctMaco.toFixed(2)),
+        margemMacoPercentual: Number(pctMacoOficial.toFixed(2)),
+        margemMacoGerencialPercentual: Number(pctMacoGerencial.toFixed(2)),
       };
     });
 
@@ -3184,7 +3241,10 @@ export interface DreComercialLinha {
 export interface DreComercialDimensional {
   id: string;
   nome: string;
+  volume: number;
+  precoMedio: number;
   faturamentoBruto: number;
+  descontos: number;
   faturamentoLiquido: number;
   impostos: number;
   cpv: number;
@@ -3193,6 +3253,7 @@ export interface DreComercialDimensional {
   investimentoComercial: number;
   maco: number;
   margemMacoPercentual: number;
+  margemMacoGerencialPercentual: number;
 }
 
 export interface DreComercialData {
