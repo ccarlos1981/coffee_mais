@@ -61,6 +61,7 @@ export const allModules: NavigationGroup[] = [
       { key: "assistente_decisao", title: "Assistente de Decisão", description: "Inteligência e recomendações", href: "/assistente-decisao", icon: Brain, color: "from-amber-500 to-yellow-600", ready: true, permission: "Assistente de Decisão" },
       { key: "simulacao_estrategica", title: "Simulação Estratégica", description: "Cenários prospectivos", href: "/simulacao-estrategica", icon: Sliders, color: "from-purple-600 to-purple-800", ready: true, permission: "Simulação Estratégica" },
       { key: "planejamento_comercial", title: "S&OP Comercial", description: "Planejamento comercial integrado", href: "/planejamento-comercial", icon: Compass, color: "from-blue-600 to-blue-800", ready: true, permission: "S&OP Comercial" },
+      { key: "dre_comercial", title: "DRE Comercial", description: "Demonstrativo de Resultados Comercial", href: "/inovacoes/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
     ],
   },
   {

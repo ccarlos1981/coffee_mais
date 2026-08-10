@@ -2833,8 +2833,40 @@ Nenhuma política ou baseline será considerada plenamente institucionalizada en
 
 ## 82. Registro Oficial de Decisões Arquiteturais (`ADR_GOVERNANCE`)
 
-### Status
-`POLICY = PERMANENT` & `ADR = MANDATORY` & `ARCHITECTURAL_DECISIONS = VERSIONED`.
+### Status: `POLÍTICA PERMANENTE` | `SITUAÇÃO = LOCKED & CONFIRMED`.
+
+---
+
+## 70. Baseline Oficial — Governança da DRE Comercial / P&L Vertical Executivo
+
+A partir de 10/08/2026, a arquitetura, estrutura visual e regras de integridade do **P&L Vertical Executivo da DRE Comercial** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **P&L Vertical Executivo**: A apresentação da DRE Comercial (`/inovacoes/dre`) é padronizada como uma demonstração sequencial em tabela vertical composta por 21 linhas de resultado e indicadores de margem.
+2. **Separação Rígida entre MACO Core e Despesas Operacionais**:
+   - `MACO CORE` = Camada final do DRE Comercial Core (`Receita Comercial Líquida - Impostos - CPV - Frete (3%) - Investimento Comercial`).
+   - `Despesa Pessoal` (Linha 14) e `Marketing` (Linha 15) = Despesas pertencentes à camada posterior do P&L.
+   - **É expressamente proibido** subtrair Despesa Pessoal ou Marketing do MACO Core ou alterar a fórmula do MACO.
+3. **Identificação Transparente da Fonte de Dados**:
+   - Módulo DRE Core (Supabase / Views): Badge **`Oficial`** (Verde).
+   - Despesas Operacionais Auditadas (`dre gerencial 06-08-26 julho_oficial.xlsx`): Badge **`Planilha Cia`** (Âmbar).
+   - Períodos sem fonte auditada: Exibição **`—`** com badge **`N/D`** (sem rateios, estimativas ou interpolações).
+4. **Valores de Controle Homologados**:
+   - **Julho/2026**:
+     - Receita Comercial Líquida: `R$ 9.779.467,88`
+     - CPV (Custo de Produtos): `R$ 4.471.167,68`
+     - Frete & Logística (3%): `R$ 293.384,04`
+     - Investimento Comercial: `R$ 1.058,72`
+     - **MACO Core**: `R$ 3.511.444,83` (35,91% NS)
+     - Despesa Pessoal: `R$ 733.385,18` (7,50% NS)
+     - Marketing: `R$ 298.216,94` (3,05% NS)
+   - **Junho/2026 (Baseline)**:
+     - **MACO Baseline**: `R$ 1.129.479,61`
+     - Despesa Pessoal: `R$ 763.342,58` (9,27% NS)
+     - Marketing: `R$ 285.497,92` (3,47% NS)
+5. **Preservação de Dimensões e Autonomia**: As 6 dimensões oficiais (`Por Cliente`, `Por Rede`, `Por Gerente`, `Por Região/UF`, `Por Canal`, `Por SKU`) permanecem intocadas e 100% funcionais.
+
+Status Arquitetural: `DRE_CORE = LOCKED` & `BASELINE = PERMANENT` & `P&L_VERTICAL = HOMOLOGATED`. & `ARCHITECTURAL_DECISIONS = VERSIONED`.
 
 ### Objetivo
 Estabelecer um padrão oficial para registrar todas as decisões arquiteturais relevantes da Plataforma Coffee++, garantindo rastreabilidade, contexto histórico e preservação do conhecimento técnico.

@@ -52,6 +52,9 @@ export function DashboardClient({
           
           // Se houver permissão ativa no banco, permite o acesso
           if (allowedModuleNames.includes(modulePermission)) return true;
+
+          // Exceção explícita de visibilidade para o módulo homologado DRE Comercial
+          if (item.key === "dre_comercial") return true;
           
           // Se a role não possuir NENHUMA permissão configurada no banco (tabela vazia para a role),
           // usamos os atalhos de visibilidade legados como fallback de segurança

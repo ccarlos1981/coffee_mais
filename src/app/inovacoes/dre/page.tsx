@@ -152,8 +152,14 @@ export default function DreComercialPage() {
         loading={loading}
       />
 
-      {/* 4. DRE Sintética (Cascata DRE) */}
-      <DreSinteticaCard sintetica={dreData?.sintetica || []} loading={loading} />
+      {/* 4. DRE Sintética (P&L Vertical Executivo) */}
+      <DreSinteticaCard
+        sintetica={dreData?.sintetica || []}
+        totais={dreData?.totais}
+        dimensionais={dreData?.dimensionais || []}
+        period={filters.startMonth}
+        loading={loading}
+      />
 
       {/* 5. Seletor de Dimensões & Tabela Dimensional */}
       <div className="space-y-4">
