@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, ChevronDown, ChevronRight, RefreshCw, Layers, Home } from "lucide-react";
+import { ArrowLeft, Loader2, ChevronDown, ChevronRight, RefreshCw, Layers, Home, Lock, DollarSign } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { createClient } from "@/lib/supabase/client";
 
@@ -309,6 +309,27 @@ export default function DRERedePage() {
             <div className="flex flex-col items-center justify-center p-20 gap-3">
               <Loader2 className="w-8 h-8 text-gold animate-spin" />
               <span className="text-sm text-muted">Carregando DRE por rede...</span>
+            </div>
+          ) : filterYear > 2026 || (filterYear === 2026 && filterMonth > 5) ? (
+            /* Banner para Período Pós-Legado (Jun/2026 em diante) */
+            <div className="glass-card" style={{ padding: "40px 24px", textAlign: "center", border: "1px solid rgba(245, 158, 11, 0.3)", background: "rgba(245, 158, 11, 0.04)", borderRadius: 16 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 12px", borderRadius: 999, background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", fontSize: "0.75rem", fontWeight: 700, border: "1px solid rgba(245, 158, 11, 0.25)", marginBottom: 16 }}>
+                <Lock style={{ width: 14, height: 14 }} />
+                <span>DRE LEGADO — DADOS DISPONÍVEIS ATÉ MAIO/2026</span>
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", marginBottom: 8 }}>
+                Não há dados disponíveis nesta fonte para o período selecionado.
+              </h3>
+              <p style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", maxWidth: 600, margin: "0 auto 20px auto" }}>
+                Esta visão legada por rede consulta a tabela estática <code style={{ color: "#f59e0b", fontFamily: "monospace" }}>cm_dre_financeiro</code> cujo histórico encerra em Maio/2026. As redes e visões dimensionais atuais estão consolidadas no DRE Comercial oficial.
+              </p>
+              <Link
+                href="/inovacoes/dre"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gold text-black font-bold text-xs hover:opacity-90 transition-all shadow-md"
+              >
+                <DollarSign className="w-4 h-4" />
+                <span>ACESSAR DRE COMERCIAL</span>
+              </Link>
             </div>
           ) : (
             <div className="glass-card overflow-hidden p-0">
