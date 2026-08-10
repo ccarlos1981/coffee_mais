@@ -1378,3 +1378,16 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    3da2018..630ee7f  main -> main
 [09/08/2026 16:26] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 0b7ab2d] auto-save: 09/08/2026 19:26
+ 23 files changed, 3411 insertions(+), 104 deletions(-)
+ create mode 100644 src/app/api/clientes/search/route.ts
+ create mode 100644 src/app/api/follow-up/[id]/route.ts
+ create mode 100644 src/app/api/follow-up/kpis/route.ts
+ create mode 100644 src/app/api/follow-up/route.ts
+ create mode 100644 src/app/processo-comercial/follow-up/components/FollowUpDrawer.tsx
+ create mode 100644 src/app/processo-comercial/follow-up/components/NewFollowUpModal.tsx
+ create mode 100644 src/lib/services/follow-up-service.ts
+ create mode 100644 supabase/migrations/20260810_follow_up_comercial.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   630ee7f..0b7ab2d  main -> main
+[09/08/2026 19:26] ✅ Alterações enviadas com sucesso para o GitHub.
