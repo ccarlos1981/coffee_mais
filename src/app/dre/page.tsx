@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Filter, BarChart3, Upload, Home, DollarSign, History, Users, TrendingUp, Target, CalendarDays, Calendar } from "lucide-react";
+import { Filter, BarChart3, Upload, Home, DollarSign, History, Users, TrendingUp, Target, CalendarDays, Calendar, Lock } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { SearchableSelect } from "@/components/SearchableSelect";
 
@@ -298,6 +298,27 @@ export default function DREPage() {
             <div className="glass-card" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "60px 20px" }}>
               <div className="w-8 h-8 border-2 border-gold border-t-transparent rounded-full animate-spin" />
               <span style={{ fontSize: "0.85rem", color: "var(--foreground-muted)" }}>Carregando dados do DRE...</span>
+            </div>
+          ) : filterYear > 2026 || (filterYear === 2026 && filterMonth > 5) ? (
+            /* Banner para Período Pós-Legado (Jun/2026 em diante) */
+            <div className="glass-card" style={{ padding: "40px 24px", textAlign: "center", border: "1px solid rgba(245, 158, 11, 0.3)", background: "rgba(245, 158, 11, 0.04)", borderRadius: 16 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 12px", borderRadius: 999, background: "rgba(245, 158, 11, 0.12)", color: "#f59e0b", fontSize: "0.75rem", fontWeight: 700, border: "1px solid rgba(245, 158, 11, 0.25)", marginBottom: 16 }}>
+                <Lock style={{ width: 14, height: 14 }} />
+                <span>DRE LEGADO — DADOS DISPONÍVEIS ATÉ MAIO/2026</span>
+              </div>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", marginBottom: 8 }}>
+                Para resultados atuais e homologados de Junho/2026 em diante, utilize o DRE Comercial.
+              </h3>
+              <p style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", maxWidth: 600, margin: "0 auto 20px auto" }}>
+                Esta rota legada consulta a fonte estática <code style={{ color: "#f59e0b", fontFamily: "monospace" }}>cm_dre_financeiro</code> cujo histórico se encerra em Maio/2026. Os resultados em tempo real do ecossistema Coffee++ estão consolidados na AnalyticsEngine oficial.
+              </p>
+              <Link
+                href="/inovacoes/dre"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gold text-black font-bold text-xs hover:opacity-90 transition-all shadow-md"
+              >
+                <DollarSign className="w-4 h-4" />
+                <span>ACESSAR DRE COMERCIAL</span>
+              </Link>
             </div>
           ) : (
             <>

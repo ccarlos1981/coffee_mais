@@ -258,6 +258,17 @@ export default function DREHistoricoAnualPage() {
             </div>
           ) : (
             <>
+              {filterYear >= 2026 && (
+                <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, background: "rgba(245, 158, 11, 0.06)", border: "1px solid rgba(245, 158, 11, 0.2)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: "0.75rem" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#f59e0b" }}>
+                    <Lock style={{ width: 14, height: 14, flexShrink: 0 }} />
+                    <span><strong>DRE LEGADO HISTÓRICO:</strong> Os dados desta fonte estática se encerram em <strong>Maio/2026</strong>. Meses posteriores aparecem como N/D.</span>
+                  </div>
+                  <Link href="/inovacoes/dre" style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--accent-gold)", fontWeight: 700, textDecoration: "none", fontSize: "0.75rem", whiteSpace: "nowrap" }}>
+                    <span>DRE Comercial</span> &rarr;
+                  </Link>
+                </div>
+              )}
               {/* Tabela P&L Mês a Mês */}
               <div className="glass-card" style={{ overflow: "hidden", padding: 0 }}>
                 <div style={{ overflowX: "auto" }}>
@@ -309,18 +320,22 @@ export default function DREHistoricoAnualPage() {
                             <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
                               {row.label}
                             </td>
-                            {(row.months || []).map((val: number, mi: number) => (
-                              <td key={mi} style={{
-                                textAlign: "center",
-                                padding: "3px 5px",
-                                borderLeft: "1px solid var(--border)",
-                                fontWeight: row.isBold ? 700 : 400,
-                                background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
-                                color: val < 0 ? "#dc143c" : undefined,
-                              }}>
-                                {fmtVal(val)}
-                              </td>
-                            ))}
+                            {(row.months || []).map((val: number, mi: number) => {
+                              const isPostLegacyMonth = filterYear > 2026 || (filterYear === 2026 && mi > 4);
+                              return (
+                                <td key={mi} style={{
+                                  textAlign: "center",
+                                  padding: "3px 5px",
+                                  borderLeft: "1px solid var(--border)",
+                                  fontWeight: row.isBold ? 700 : 400,
+                                  background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
+                                  color: isPostLegacyMonth ? "var(--foreground-muted)" : val < 0 ? "#dc143c" : undefined,
+                                  opacity: isPostLegacyMonth ? 0.6 : 1,
+                                }}>
+                                  {isPostLegacyMonth && val === 0 ? "N/D" : fmtVal(val)}
+                                </td>
+                              );
+                            })}
                             <td style={{
                               textAlign: "center",
                               padding: "3px 5px",
@@ -390,18 +405,22 @@ export default function DREHistoricoAnualPage() {
                             <td style={{ textAlign: "left", fontWeight: row.isBold ? 700 : 400, padding: "3px 6px", whiteSpace: "nowrap" }}>
                               {row.label}
                             </td>
-                            {(row.months || []).map((val: number, mi: number) => (
-                              <td key={mi} style={{
-                                textAlign: "center",
-                                padding: "3px 5px",
-                                borderLeft: "1px solid var(--border)",
-                                fontWeight: row.isBold ? 700 : 400,
-                                background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
-                                color: val < 0 ? "#dc143c" : undefined,
-                              }}>
-                                {display(val)}
-                              </td>
-                            ))}
+                            {(row.months || []).map((val: number, mi: number) => {
+                              const isPostLegacyMonth = filterYear > 2026 || (filterYear === 2026 && mi > 4);
+                              return (
+                                <td key={mi} style={{
+                                  textAlign: "center",
+                                  padding: "3px 5px",
+                                  borderLeft: "1px solid var(--border)",
+                                  fontWeight: row.isBold ? 700 : 400,
+                                  background: mi === filterMonth - 1 ? "rgba(184,134,11,0.06)" : undefined,
+                                  color: isPostLegacyMonth ? "var(--foreground-muted)" : val < 0 ? "#dc143c" : undefined,
+                                  opacity: isPostLegacyMonth ? 0.6 : 1,
+                                }}>
+                                  {isPostLegacyMonth && (val === 0 || isNaN(val)) ? "N/D" : display(val)}
+                                </td>
+                              );
+                            })}
                             <td style={{
                               textAlign: "center",
                               padding: "3px 5px",
