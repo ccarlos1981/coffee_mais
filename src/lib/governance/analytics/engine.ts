@@ -1694,7 +1694,7 @@ export class AnalyticsEngine {
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0) + COALESCE(v.vlr_desconto, 0)), 0) as fat_bruto,
         COALESCE(SUM(COALESCE(v.vlr_desconto, 0)), 0) as descontos,
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0)), 0) as fat_liquido,
-        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN COALESCE(v.vlr_total_st, 0) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN ABS(COALESCE(v.vlr_total_st, 0)) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
         COALESCE(SUM(COALESCE(v.custo_total, 0)), 0) as cpv
       FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)} v
       WHERE ${vWhereClauses.join(' AND ')}
@@ -1727,7 +1727,7 @@ export class AnalyticsEngine {
     const faturamentoBruto = Number(rSint.fat_bruto) || 0;
     const descontos = Number(rSint.descontos) || 0;
     const faturamentoLiquido = Number(rSint.fat_liquido) || 0;
-    const impostos = Math.abs(Number(rSint.impostos) || 0); // Normalização estrita para valor positivo
+    const impostos = Number(rSint.impostos) || 0;
     const cpv = Number(rSint.cpv) || 0;
     const receitaAposImpostos = faturamentoLiquido - impostos;
     const margemBruta = receitaAposImpostos - cpv; // Margem Bruta Contábil Real
@@ -1815,6 +1815,7 @@ export class AnalyticsEngine {
 
       case "gerente": {
         const gerenteClassExpr = `CASE
+          WHEN c.responsavel = 'Leandro' OR c.manager_name = 'Leandro' THEN 'Leandro Saffi'
           WHEN c.responsavel IS NOT NULL THEN c.responsavel
           WHEN c.manager_name IS NOT NULL THEN c.manager_name
           WHEN v.nome_vendedor IN ('SHOPIFY','AMAZONFBA','MELI FULL','ANYMARKET','SHOPEE','AMAZONBR','MAGALU','LIVELO','MELI') THEN 'Canal Digital'
@@ -1882,7 +1883,7 @@ export class AnalyticsEngine {
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0) + COALESCE(v.vlr_desconto, 0)), 0) as fat_bruto,
         COALESCE(SUM(COALESCE(v.vlr_desconto, 0)), 0) as descontos,
         COALESCE(SUM(COALESCE(v.vlr_total_liq, 0)), 0) as fat_liquido,
-        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN COALESCE(v.vlr_total_st, 0) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
+        COALESCE(SUM(COALESCE(v.custo_icms, 0) + CASE WHEN ABS(COALESCE(v.vlr_total_st, 0)) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(v.vlr_total_st, 0) END), 0) as impostos,
         COALESCE(SUM(COALESCE(v.custo_total, 0)), 0) as cpv
       FROM ${resolveOfficialSource(OFFICIAL_ANALYTICS_SOURCES.VW_FATURAMENTO_COMERCIAL_OFICIAL)} v
       ${joinClause}
@@ -1924,7 +1925,10 @@ export class AnalyticsEngine {
         distinct_matriz_mgr AS (
           SELECT DISTINCT ON (UPPER(TRIM(matriz)))
             UPPER(TRIM(matriz)) as matriz_key,
-            COALESCE(responsavel, manager_name, 'Sem Gerente Comercial') as gerente
+            CASE
+              WHEN responsavel = 'Leandro' OR manager_name = 'Leandro' THEN 'Leandro Saffi'
+              ELSE COALESCE(responsavel, manager_name, 'Sem Gerente Comercial')
+            END as gerente
           FROM public.cm_clientes
           WHERE matriz IS NOT NULL AND matriz != ''
           ORDER BY UPPER(TRIM(matriz)), created_at DESC
@@ -1945,7 +1949,7 @@ export class AnalyticsEngine {
       const fBrut = Number(r.fat_bruto) || 0;
       const desc = Number(r.descontos) || 0;
       const fLiq = Number(r.fat_liquido) || 0;
-      const imp = Math.abs(Number(r.impostos) || 0);
+      const imp = Number(r.impostos) || 0;
       const c = Number(r.cpv) || 0;
       const recAposImp = fLiq - imp;
       const mBruta = recAposImp - c;
@@ -2977,7 +2981,7 @@ export class AnalyticsEngine {
    * 24. Feature A Sprint 3 — Análise Read-Only de Efetividade do Follow-up
    *
    * Apura a efetividade comercial e faturamento recuperado consumindo exclusivamente
-   * as fontes oficiais de vendas (cm_faturamento com TOPs permitidas).
+   * as fontes oficiais de vendas (vw_faturamento_comercial_oficial com TOPs permitidas).
    * Aplica máquina anti-duplicidade por NFe e atribuição ao concluded_at mais recente.
    *
    * @see Feature A Specification & Executive Approval
@@ -3012,7 +3016,7 @@ export class AnalyticsEngine {
           fu.action_id,
           MAX(f.dt_faturamento) as ultima_compra_antes_criacao
         FROM follow_ups fu
-        LEFT JOIN public.cm_faturamento f ON (f.cod_parceiro = fu.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(fu.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+        LEFT JOIN vw_faturamento_comercial_oficial f ON (f.cod_parceiro = fu.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(fu.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
           AND f.dt_faturamento < fu.created_date
           AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
           AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
@@ -3048,7 +3052,7 @@ export class AnalyticsEngine {
             ORDER BY el.concluded_date DESC, el.action_id DESC
           ) as rnk_anti_duplicidade
         FROM elegibilidade el
-        JOIN public.cm_faturamento f ON (f.cod_parceiro = el.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(el.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+        JOIN vw_faturamento_comercial_oficial f ON (f.cod_parceiro = el.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(el.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
           AND f.dt_faturamento >= el.concluded_date
           AND f.dt_faturamento <= (el.concluded_date + INTERVAL '30 days')
           AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
