@@ -15,11 +15,117 @@ export class RdmDataAdapter implements IDataProvider {
     this.rdmPayload = rdmPayload || {};
   }
 
+  public getDreData() {
+    return this.rdmPayload.dre || null;
+  }
+
   public getWidgetData(widget: WidgetConfig): NormalizedWidgetData {
     const farol = this.rdmPayload.farol || {};
     const monthlyFat = this.rdmPayload.monthlyFat || [];
     const volPreco = this.rdmPayload.volPreco || [];
     const familias = this.rdmPayload.familias || [];
+    const dre = this.rdmPayload.dre || null;
+
+    // Direct DRE targets handling
+    if (widget.id === 'w_dre_kpis' || widget.customProps?.target === 'dre_kpis') {
+      const totais = dre?.totais || {};
+      const metrics = [
+        {
+          label: 'Receita Líquida',
+          value: formatCurrency(totais.faturamentoLiquido || 0),
+          target: formatCurrency(totais.faturamentoBruto || 0),
+          delta: 'NS',
+          status: 'green' as const,
+        },
+        {
+          label: 'MACO',
+          value: formatCurrency(totais.macoTotal || 0),
+          delta: `${(totais.margemMacoMedia || 0).toFixed(2)}%`,
+          status: ((totais.macoTotal || 0) >= 0 ? 'green' : 'red') as 'green' | 'red',
+        },
+        {
+          label: 'MACO %',
+          value: `${(totais.margemMacoMedia || 0).toFixed(2)}%`,
+          status: ((totais.margemMacoMedia || 0) >= 10 ? 'green' : (totais.margemMacoMedia || 0) >= 0 ? 'yellow' : 'red') as 'green' | 'yellow' | 'red',
+        },
+        {
+          label: 'CPV',
+          value: formatCurrency(totais.cpv || 0),
+          status: 'neutral' as const,
+        },
+        {
+          label: 'Frete (3%)',
+          value: formatCurrency(totais.frete || 0),
+          status: 'neutral' as const,
+        },
+        {
+          label: 'Investimentos',
+          value: formatCurrency(totais.investimentoComercial || 0),
+          status: 'neutral' as const,
+        },
+      ];
+
+      return {
+        title: widget.title,
+        subtitle: widget.subtitle,
+        metrics,
+        raw: { totais },
+      };
+    }
+
+    if (widget.id === 'w_dre_sintetica' || widget.customProps?.target === 'dre_sintetica') {
+      const sintetica = dre?.sintetica || [];
+      const steps = sintetica.map((s: any) => ({
+        label: s.label,
+        value: s.valor,
+        percentual: s.percentual,
+        tipo: s.tipo,
+      }));
+
+      return {
+        title: widget.title,
+        subtitle: widget.subtitle,
+        raw: { steps, sintetica, totais: dre?.totais },
+      };
+    }
+
+    if (widget.id === 'w_dre_rede_table' || widget.customProps?.target === 'dre_rede_table') {
+      const rawDimensionais = dre?.dimensionais || [];
+      // ORDENAÇÃO ABSOLUTA DA DRE: Receita Líquida DESC
+      const sorted = [...rawDimensionais].sort((a: any, b: any) => (b.faturamentoLiquido || 0) - (a.faturamentoLiquido || 0));
+
+      const columns = [
+        { key: 'ranking', label: '#', align: 'center' as const },
+        { key: 'rede', label: 'REDE / MATRIZ', align: 'left' as const },
+        { key: 'faturamentoBruto', label: 'REC. BRUTA', align: 'right' as const },
+        { key: 'faturamentoLiquido', label: 'REC. LÍQUIDA', align: 'right' as const },
+        { key: 'cpv', label: 'CPV', align: 'right' as const },
+        { key: 'frete', label: 'FRETE', align: 'right' as const },
+        { key: 'investimentoComercial', label: 'INVESTIMENTO', align: 'right' as const },
+        { key: 'maco', label: 'MACO', align: 'right' as const },
+        { key: 'margemMacoPercentual', label: 'MACO %', align: 'right' as const },
+      ];
+
+      const rows = sorted.map((dim: any, idx: number) => ({
+        ranking: idx + 1,
+        rede: dim.nome || 'Outros',
+        faturamentoBruto: formatCurrency(dim.faturamentoBruto || 0),
+        faturamentoLiquido: formatCurrency(dim.faturamentoLiquido || 0),
+        cpv: formatCurrency(dim.cpv || 0),
+        frete: formatCurrency(dim.frete || 0),
+        investimentoComercial: formatCurrency(dim.investimentoComercial || 0),
+        maco: formatCurrency(dim.maco || 0),
+        margemMacoPercentual: `${(dim.margemMacoPercentual || 0).toFixed(2)}%`,
+        raw: dim,
+      }));
+
+      return {
+        title: widget.title,
+        subtitle: widget.subtitle,
+        tableData: { columns, rows },
+        raw: { dimensionais: sorted },
+      };
+    }
 
     switch (widget.type) {
       case 'kpi_card': {
@@ -135,11 +241,14 @@ export class RdmDataAdapter implements IDataProvider {
       }
 
       case 'waterfall': {
-        return {
-          title: widget.title,
-          subtitle: widget.subtitle,
-          raw: {
-            steps: [
+        const steps = dre?.sintetica && Array.isArray(dre.sintetica) && dre.sintetica.length > 0
+          ? dre.sintetica.map((s: any) => ({
+              label: s.label,
+              value: s.valor,
+              percentual: s.percentual,
+              tipo: s.tipo,
+            }))
+          : [
               { label: 'Receita Bruta', value: farol.faturamento?.realMonth || 1250000, type: 'positive' },
               { label: 'Deduções / Impostos', value: -150000, type: 'negative' },
               { label: 'Receita Líquida', value: 1100000, type: 'subtotal' },
@@ -147,8 +256,12 @@ export class RdmDataAdapter implements IDataProvider {
               { label: 'Frete (3%)', value: -33000, type: 'negative' },
               { label: 'Investimento Comercial', value: -110000, type: 'negative' },
               { label: 'MACO Final', value: 337000, type: 'total' },
-            ],
-          },
+            ];
+
+        return {
+          title: widget.title,
+          subtitle: widget.subtitle,
+          raw: { steps, totais: dre?.totais },
         };
       }
 

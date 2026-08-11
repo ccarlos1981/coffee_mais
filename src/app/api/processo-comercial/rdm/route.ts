@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
+import { OFFICIAL_ANALYTICS_SOURCES, AnalyticsEngine, AnalyticsFilters } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
@@ -109,7 +109,17 @@ export async function GET(request: Request) {
 
     const chartMesKeys = [...new Set([...uniqueMesKeys, ...allMonthKeysForChart, ...familyQueryKeys])];
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments] = await Promise.all([
+    // ── Resolução genérica do filtro de gerente para a DRE Comercial ──
+    const resolvedMgr = CommercialDomainService.resolveManager(manager);
+    const dreManagerFilter = resolvedMgr.managerId !== "9999" ? resolvedMgr.managerName : null;
+    const dreFilters: AnalyticsFilters = {
+      startMonth: monthKey,
+      endMonth: monthKey,
+      manager: dreManagerFilter,
+      dimension: 'rede',
+    };
+
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -165,6 +175,12 @@ export async function GET(request: Request) {
         .in('mes_referencia', uniqueMesKeys)
         .eq('is_planejamento', false)
         .is('cancel_reason', null),
+
+      // 7. DRE Comercial Oficial (AnalyticsEngine)
+      AnalyticsEngine.getDreComercial(dreFilters).catch((err) => {
+        console.error('[RDM API] Erro ao carregar DRE Comercial:', err);
+        return null;
+      }),
     ]);
 
     if (resSales.error) throw new Error("Erro vendas: " + resSales.error.message);
@@ -473,6 +489,7 @@ export async function GET(request: Request) {
       managers:  KA_MANAGERS,
       farol:     farolData,
       comments:  commentsMap,
+      dre:       dreData,
       monthlyFat,
       acum: { fatCur: acumCur, fatUltTrim: acumUltTrim },
       recordFat,

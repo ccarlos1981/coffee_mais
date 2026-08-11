@@ -840,13 +840,427 @@ function SlideFollowUp({
   );
 }
 
-// ─── Slide 4: Resultado DRE (placeholder) ───────────────────────────────────
-function SlideDre({ monthName }: { monthName: string }) {
+// ─── Slide DRE 1: Resultado DRE — Resumo Executivo ───────────────────────────
+function SlideDreResumo({
+  monthName,
+  adapter,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+}: {
+  monthName: string;
+  adapter: RdmDataAdapter;
+  comment?: string;
+  onCommentChange?: (v: string) => void;
+  onCommentSave?: () => void;
+  saving?: boolean;
+}) {
+  const dreData = adapter.getDreData();
+  const totais = dreData?.totais || {
+    faturamentoBruto: 0,
+    faturamentoLiquido: 0,
+    impostos: 0,
+    cpv: 0,
+    margemBruta: 0,
+    frete: 0,
+    investimentoComercial: 0,
+    macoTotal: 0,
+    margemMacoMedia: 0,
+  };
+  const sintetica = dreData?.sintetica || [];
+
+  const macoPositive = (totais.macoTotal || 0) >= 0;
+  const macoPct = totais.margemMacoMedia || 0;
+
   return (
     <SlideShell title="Resultado DRE" monthName={monthName}>
-      <div className="rdm-dre-placeholder">
-        <span className="rdm-dre-label">DRE</span>
-        <p className="rdm-dre-sub">Dados em breve</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', padding: '4px 0' }}>
+        {/* Subtitle Eyebrow */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
+              RESUMO EXECUTIVO
+            </span>
+            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+              · Formação do Resultado Comercial (MACO Oficial)
+            </span>
+          </div>
+          <span style={{ fontSize: '0.62rem', padding: '2px 8px', borderRadius: '4px', background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 700 }}>
+            AnalyticsEngine V1 · Baseline
+          </span>
+        </div>
+
+        {/* 4 Executive KPI Cards Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+          {/* Card 1: Receita Comercial Líquida */}
+          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #e53935', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+              1. RECEITA COMERCIAL LÍQUIDA
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
+              {formatCurrency(totais.faturamentoLiquido || 0)}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
+              Bruto: {formatCurrency(totais.faturamentoBruto || 0)}
+            </div>
+          </div>
+
+          {/* Card 2: Margem Bruta Contábil */}
+          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #4b5563', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+              2. MARGEM BRUTA CONTÁBIL
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
+              {formatCurrency(totais.margemBruta || 0)}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
+              CPV: {formatCurrency(totais.cpv || 0)}
+            </div>
+          </div>
+
+          {/* Card 3: Frete (3%) & Trade */}
+          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #d97706', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+              3. FRETE (3%) & TRADE
+            </div>
+            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
+              {formatCurrency((totais.frete || 0) + (totais.investimentoComercial || 0))}
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
+              Frete: {formatCurrency(totais.frete || 0)} | Trade: {formatCurrency(totais.investimentoComercial || 0)}
+            </div>
+          </div>
+
+          {/* Card 4: MACO Final */}
+          <div style={{
+            background: macoPositive ? '#f0fdf4' : '#fef2f2',
+            border: `1px solid ${macoPositive ? '#bbf7d0' : '#fecaca'}`,
+            borderTop: `3px solid ${macoPositive ? '#16a34a' : '#dc2626'}`,
+            borderRadius: '6px',
+            padding: '8px 12px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}>
+            <div style={{ fontSize: '0.62rem', color: macoPositive ? '#15803d' : '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
+              4. MARGEM DE CONTRIBUIÇÃO (MACO)
+            </div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '2px' }}>
+              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: macoPositive ? '#15803d' : '#b91c1c', fontFamily: 'Georgia, serif' }}>
+                {formatCurrency(totais.macoTotal || 0)}
+              </span>
+              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: macoPositive ? '#15803d' : '#b91c1c' }}>
+                ({macoPct.toFixed(2)}%)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.62rem', color: '#6b7280', marginTop: '2px' }}>
+              Resultado final homologado
+            </div>
+          </div>
+        </div>
+
+        {/* P&L Cascata / Sintética Table */}
+        <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '6px 12px', fontSize: '0.65rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Formação Sequencial do Resultado (P&L Vertical Executivo)
+          </div>
+          
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
+              <thead>
+                <tr style={{ background: '#111827', color: '#ffffff' }}>
+                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>MÉTRICA / LINHA P&L</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>VALOR (R$)</th>
+                  <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>% RECEITA LÍQUIDA (% NS)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sintetica.map((row: any, idx: number) => {
+                  const isResult = row.tipo === 'RESULTADO' || row.tipo === 'SUBTOTAL';
+                  const isMaco = row.label.includes('MACO');
+                  const isNetRev = row.label.includes('RECEITA COMERCIAL LÍQUIDA');
+                  
+                  const bg = isMaco
+                    ? '#dcfce7'
+                    : isNetRev
+                    ? '#f3f4f6'
+                    : isResult
+                    ? '#f9fafb'
+                    : idx % 2 === 0
+                    ? '#ffffff'
+                    : '#fbfcfd';
+
+                  const textColor = isMaco
+                    ? '#15803d'
+                    : isNetRev
+                    ? '#111827'
+                    : isResult
+                    ? '#1f2937'
+                    : '#374151';
+
+                  return (
+                    <tr key={idx} style={{ borderBottom: isMaco ? '2px solid #16a34a' : '1px solid #f3f4f6', background: bg }}>
+                      <td style={{ padding: '6px 12px', color: textColor, fontWeight: isResult ? 700 : 500 }}>
+                        {row.label}
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', color: textColor, fontWeight: isResult ? 700 : 400, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        {formatCurrency(row.valor || 0)}
+                      </td>
+                      <td style={{ padding: '6px 12px', textAlign: 'right', color: textColor, fontWeight: isResult ? 700 : 400, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        {row.percentual !== undefined ? `${row.percentual.toFixed(2)}%` : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Comment area */}
+        <div className="rdm-comment-wrap" style={{ margin: 0 }}>
+          <label className="rdm-comment-label">Comentários DRE Executiva</label>
+          <textarea
+            className="rdm-comment-input"
+            placeholder="Inserir considerações executivas sobre a DRE..."
+            value={comment || ''}
+            onChange={e => onCommentChange && onCommentChange(e.target.value)}
+            rows={2}
+          />
+          {onCommentSave && (
+            <button
+              className="rdm-comment-save"
+              onClick={onCommentSave}
+              disabled={saving}
+              title="Salvar nota"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide DRE 2: Resultado DRE por Rede ────────────────────────────────────
+function SlideDreRede({
+  monthName,
+  adapter,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+}: {
+  monthName: string;
+  adapter: RdmDataAdapter;
+  comment?: string;
+  onCommentChange?: (v: string) => void;
+  onCommentSave?: () => void;
+  saving?: boolean;
+}) {
+  const dreData = adapter.getDreData();
+  const rawDimensionais = dreData?.dimensionais || [];
+  
+  // REGRA ABSOLUTA DE RANKING: Ordenar por Receita Líquida (faturamentoLiquido) DESC
+  const dimensionais = useMemo(() => {
+    return [...rawDimensionais].sort((a: any, b: any) => (b.faturamentoLiquido || 0) - (a.faturamentoLiquido || 0));
+  }, [rawDimensionais]);
+
+  // Paginação inteligente para redes no Slide 2 (10 redes por página)
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const totalPages = Math.max(1, Math.ceil(dimensionais.length / pageSize));
+  
+  useEffect(() => {
+    setPage(1);
+  }, [monthName, dimensionais.length]);
+
+  const currentPageItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return dimensionais.slice(start, start + pageSize);
+  }, [dimensionais, page]);
+
+  return (
+    <SlideShell title="Resultado DRE por Rede" monthName={monthName}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', padding: '4px 0' }}>
+        {/* Subtitle & Discrete Pagination Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
+              DRE POR REDE / MATRIZ
+            </span>
+            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+              · Ranking por Receita Líquida ({dimensionais.length} {dimensionais.length === 1 ? 'rede' : 'redes'})
+            </span>
+          </div>
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                style={{
+                  background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '4px',
+                  color: '#374151', fontSize: '0.65rem', padding: '2px 8px', fontWeight: 600,
+                  cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.4 : 1,
+                }}
+              >
+                ‹ anterior
+              </button>
+              <span style={{ fontSize: '0.65rem', color: '#111827', fontWeight: 700 }}>
+                Página {page} de {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                style={{
+                  background: '#ffffff', border: '1px solid #d1d5db', borderRadius: '4px',
+                  color: '#374151', fontSize: '0.65rem', padding: '2px 8px', fontWeight: 600,
+                  cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.4 : 1,
+                }}
+              >
+                próximo ›
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Tabela Executiva DRE por Rede */}
+        <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
+          {dimensionais.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
+              Nenhuma rede encontrada para o filtro selecionado.
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                <thead>
+                  <tr style={{ background: '#111827', color: '#ffffff' }}>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem', width: '36px' }}>#</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, fontSize: '0.62rem' }}>REDE / MATRIZ</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>REC. BRUTA</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>REC. LÍQUIDA</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>CPV</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>FRETE</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>INVESTIMENTO</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>MACO</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>MACO %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentPageItems.map((dim: any, idx: number) => {
+                    const globalRank = (page - 1) * pageSize + idx + 1;
+                    const isTop1 = globalRank === 1;
+                    const isTop2 = globalRank === 2;
+                    const isTop3 = globalRank === 3;
+
+                    const macoValue = dim.maco || 0;
+                    const macoPct = dim.margemMacoPercentual || 0;
+
+                    // Semáforo Oficial MACO %
+                    const semaforoBg = macoPct >= 10 ? '#dcfce7' : macoPct >= 0 ? '#fef9c3' : '#fee2e2';
+                    const semaforoColor = macoPct >= 10 ? '#15803d' : macoPct >= 0 ? '#a16207' : '#b91c1c';
+
+                    return (
+                      <tr
+                        key={dim.id || idx}
+                        style={{
+                          borderBottom: '1px solid #f3f4f6',
+                          background: isTop1
+                            ? '#fffbeb'
+                            : isTop2
+                            ? '#f8fafc'
+                            : isTop3
+                            ? '#fff7ed'
+                            : idx % 2 === 0
+                            ? '#ffffff'
+                            : '#fbfcfd',
+                        }}
+                      >
+                        {/* Ranking # */}
+                        <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 800 }}>
+                          {isTop1 ? (
+                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#f59e0b', color: '#ffffff', fontSize: '0.6rem' }}>🥇 1º</span>
+                          ) : isTop2 ? (
+                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#64748b', color: '#ffffff', fontSize: '0.6rem' }}>🥈 2º</span>
+                          ) : isTop3 ? (
+                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#c2410c', color: '#ffffff', fontSize: '0.6rem' }}>🥉 3º</span>
+                          ) : (
+                            <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>{globalRank}º</span>
+                          )}
+                        </td>
+
+                        {/* Rede */}
+                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600 }}>
+                          {dim.nome}
+                        </td>
+
+                        {/* Receita Bruta */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.faturamentoBruto || 0)}
+                        </td>
+
+                        {/* Receita Líquida (Destaque Top 1) */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: isTop1 ? '#b91c1c' : '#111827', fontWeight: isTop1 ? 800 : 700, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.faturamentoLiquido || 0)}
+                        </td>
+
+                        {/* CPV */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.cpv || 0)}
+                        </td>
+
+                        {/* Frete */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.frete || 0)}
+                        </td>
+
+                        {/* Investimento */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.investimentoComercial || 0)}
+                        </td>
+
+                        {/* MACO */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: macoValue >= 0 ? '#15803d' : '#b91c1c', fontWeight: 700, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(macoValue)}
+                        </td>
+
+                        {/* MACO % com Semáforo Oficial */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right' }}>
+                          <span style={{ padding: '2px 6px', borderRadius: '4px', background: semaforoBg, color: semaforoColor, fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.68rem' }}>
+                            {macoPct.toFixed(2)}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Comment area */}
+        <div className="rdm-comment-wrap" style={{ margin: 0 }}>
+          <label className="rdm-comment-label">Comentários DRE por Rede</label>
+          <textarea
+            className="rdm-comment-input"
+            placeholder="Inserir considerações sobre as redes..."
+            value={comment || ''}
+            onChange={e => onCommentChange && onCommentChange(e.target.value)}
+            rows={2}
+          />
+          {onCommentSave && (
+            <button
+              className="rdm-comment-save"
+              onClick={onCommentSave}
+              disabled={saving}
+              title="Salvar nota"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
       </div>
     </SlideShell>
   );
@@ -4681,7 +5095,7 @@ export default function RdmPage() {
   const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
   const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
   const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
-    'capa', 'agenda', 'follow_up', 'farol_metas', 'dre',
+    'capa', 'agenda', 'follow_up', 'farol_metas', 'dre', 'dre_rede',
     'invest_fases', 'invest_cliente', 'invest_rede',
     'fat_mensal', 'vol_mensal', 'vol_preco_medio', 'preco_yoy',
     'preco_tabela', 'vol_matriz', 'preco_familia', 'plano_acao',
@@ -4763,6 +5177,7 @@ export default function RdmPage() {
       { key: 'farol_metas',      label: 'Farol de Metas' },
       { key: 'cover_dre',        label: '§ Resultado DRE' },
       { key: 'dre',              label: 'Resultado DRE' },
+      { key: 'dre_rede',         label: 'Resultado DRE por Rede' },
       { key: 'cover_invest',     label: '§ Investimentos' },
       { key: 'invest_fases',     label: 'Resumo das Fases' },
       { key: 'invest_cliente',   label: 'Investimento por Cliente' },
@@ -5017,7 +5432,29 @@ export default function RdmPage() {
     }
 
     if (slideKey === 'dre') {
-      return <SlideDre monthName={monthName} />;
+      return (
+        <SlideDreResumo
+          monthName={monthName}
+          adapter={rdmDataAdapter}
+          comment={comments['dre'] ?? ''}
+          onCommentChange={v => setComments(prev => ({ ...prev, dre: v }))}
+          onCommentSave={() => saveComment('dre')}
+          saving={savingKey === 'dre'}
+        />
+      );
+    }
+
+    if (slideKey === 'dre_rede') {
+      return (
+        <SlideDreRede
+          monthName={monthName}
+          adapter={rdmDataAdapter}
+          comment={comments['dre_rede'] ?? ''}
+          onCommentChange={v => setComments(prev => ({ ...prev, dre_rede: v }))}
+          onCommentSave={() => saveComment('dre_rede')}
+          saving={savingKey === 'dre_rede'}
+        />
+      );
     }
 
     if (slideKey === 'invest_fases') {
