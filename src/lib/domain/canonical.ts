@@ -33,12 +33,15 @@ export function canonicalizeKey(value: string | null | undefined): string {
  * Tabela de mapeamento canônico de gerentes comerciais e canais corporativos.
  */
 const MANAGERS_MAP: Record<string, ManagerInfo> = {
-  // Julliano (1000)
+  // Julliano / Juliano (1000)
   "1000": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "1000-KA": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "JULLIANO": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "JULLIANO (KA)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
   "JULLIANO (SPC)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
+  "JULIANO": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
+  "JULIANO (KA)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
+  "JULIANO (SPC)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
 
   // Leandro Saffi / Leandro (1001)
   "1001": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },

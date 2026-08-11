@@ -2860,6 +2860,60 @@ A partir de 11/08/2026, a arquitetura e a regra de agregação de impostos e cla
 
 Status Arquitetural: `DRE_CORE = LOCKED` | `DRE_BASELINE = PERMANENT` | `P&L_VERTICAL = HOMOLOGATED` | `FINANCIAL_FORMULAS = UNCHANGED` | `DATABASE_MODIFIED = NONE`.
 
+---
+
+## 117. Baseline Oficial — RDM | DRE Comercial em 2 Slides (Baseline Permanente)
+
+A partir de 11/08/2026, a arquitetura, suíte de componentes React, DataProvider e exportação PPTX do módulo **RDM — DRE Comercial em EXATAMENTE 2 SLIDES** (`/processo-comercial/rdm`) tornam-se baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`RDM_DRE_COMERCIAL = HOMOLOGADO_E_CONGELADO` | `SLIDES_OFICIAIS = EXACTLY_2` | `BASELINE = CONFIRMED`
+
+### Escopo Homologado:
+
+1. **Slide 1 — Resultado DRE | <Mês>**:
+   - **4 KPI Cards Executivos**: Receita Comercial Líquida (bruto no subtexto), Margem Bruta Contábil (CPV no subtexto), Frete & Trade (Frete 3% + Investimento Comercial) e Margem de Contribuição (MACO com badge `% NS`).
+   - **Formação Sequencial da DRE (P&L Vertical Executivo)** em 10 linhas oficiais:
+     1. (+) Faturamento Bruto Comercial
+     2. (-) Descontos Comerciais
+     3. (=) RECEITA COMERCIAL LÍQUIDA
+     4. (-) Deduções Fiscais & Impostos
+     5. (=) RECEITA APÓS IMPOSTOS
+     6. (-) Custo dos Produtos Vendidos (CPV)
+     7. (=) MARGEM BRUTA CONTÁBIL
+     8. (-) Frete & Logística (3,00% Fixo)
+     9. (-) Investimentos Comerciais / Trade
+     10. (=) MARGEM DE CONTRIBUIÇÃO (MACO)
+   - Layout em modo executivo corporativo claro, sem blocos cinzas, sem "Dados em breve", sem esqueletos de loading residuais.
+
+2. **Slide 2 — Resultado DRE por Rede | <Mês>**:
+   - **Ranking Oficial Decrescente**: Ordenação estrita por `faturamentoLiquido DESC` (`1º = maior Receita Líquida`).
+   - **Destaque de Top 3**: Badges 🥇 1º (Destaque Ouro/Yellow), 🥈 2º (Silver/Slate), 🥉 3º (Bronze/Orange).
+   - **Semáforo Oficial de MACO %**: Verde (`≥ 10%`), Amarelo (`0% - 9,99%`), Vermelho (`< 0%`).
+   - **Paginação Interna Discreta**: `‹ anterior | Página X de N | próximo ›` (10 redes por página) para suportar carteiras com grande volume de redes (ex: 51 redes para CRISTIANO = 6 páginas no Slide 2) sem gerar um 3º slide.
+   - **Garantia de EXATAMENTE 2 Slides**: Fica vedada a criação automatizada ou manual de um 3º slide de DRE.
+
+3. **Fonte Oficial de Dados**:
+   - Consumo exclusivo de `AnalyticsEngine.getDreComercial` via `RdmDataAdapter`.
+   - Proibição absoluta de cálculos financeiros paralelos no React, fallbacks fictícios ou dados mockados.
+
+4. **Fluxo Arquitetural Único**:
+   `AnalyticsEngine.getDreComercial()` → API `/api/processo-comercial/rdm` → `RdmDataAdapter` → `SlideDreResumo` / `SlideDreRede` → `Presentation Framework LTS v1.0` → Exportação PPTX.
+
+5. **Regras de Governança e Não-Regressão**:
+   - **Zero Cálculos Financeiros no React**: Toda aritmética e ordenação de DRE pertence ao backend / AnalyticsEngine.
+   - **Zero Alteração no Presentation Framework**: Preservada a versão LTS v1.0 e seus contratos.
+   - **Reatividade Total aos Filtros**: Filtros de Gerente (`CRISTIANO`, `Luiz`, `Leandro`, `Julliano`, `John Guedes`), Mês (`Julho`, `Junho`, etc.) e Ano (`2026`) atualizam dinamicamente ambos os slides.
+   - **Integridade da Exportação PPTX**: O pipeline `exportRdmToPptx` converte com fidelidade visual os 2 slides em apresentações PowerPoint 16:9 widescreen.
+
+6. **Evidência de Validação e Homologação**:
+   - `npx tsc --noEmit`: 0 erros.
+   - `npm run health:analytics`: 15/15 testes passados com 100% de sucesso (0,0000% de desvio financeiro).
+   - `npm run build`: Sucesso em 26,2s.
+   - **CRISTIANO / Julho / 2026**: 51 redes retornadas, Top 1 = `ZAFFARI (CESTO)` (R$ 767.226,00 | MACO R$ 367.657,00 | 47,92%), ordenação 100% decrescente por Receita Líquida.
+
+Status Arquitetural: `RDM_DRE_COMERCIAL = HOMOLOGADO_E_CONGELADO` & `SLIDES_OFICIAIS = EXACTLY_2` & `BASELINE = PERMANENTE`.
+
 
 
 
