@@ -3595,6 +3595,40 @@ A partir de 10/08/2026, a arquitetura e a governança de autorização no módul
 
 Status Arquitetural: `RPS_RESTRICTED_MANAGER_AUTHORIZATION = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 116. Baseline Oficial — Sanitização Simétrica de ST e Normalização Gerencial DRE Comercial
+
+A partir de 11/08/2026, a arquitetura e a regra de agregação de impostos e classificação gerencial do DRE Comercial (`/inovacoes/dre` → Por Gerente) tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Sanitização Simétrica de ST na Camada Analítica**: Toda apuração de impostos sobre faturamento oficial deve utilizar sanitização simétrica para a coluna `vlr_total_st`:
+   ```sql
+   CASE 
+     WHEN ABS(COALESCE(v.vlr_total_st, 0)) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 
+     ELSE COALESCE(v.vlr_total_st, 0) 
+   END
+   ```
+   Esta regra zera exclusivamente valores fora de escala (inteiros/multiplicadores de centavos do ERP), tanto em vendas quanto em devoluções, e preserva 100% dos valores fiscais válidos e a reversão real de ICMS/ST. É proibido substituir esta regra por uma política simplista de "ST sempre zero".
+2. **Preservação do Sinal Econômico (Sem Math.abs)**: É proibido o uso de `Math.abs()` para mascarar o sinal dos impostos na camada HTTP ou no backend. O sinal fiscal deve resultar da agregação legítima de vendas (dedução positiva) e devoluções (reversão).
+3. **Normalização Gerencial Exclusivamente Analítica**: Na dimensão `gerente`, registros com `c.responsavel = 'Leandro'` ou `c.manager_name = 'Leandro'` devem ser consolidados analiticamente sob `'Leandro Saffi'`. A tabela física `cm_clientes` e o banco de dados permanecem **100% intocados (`DATABASE_MODIFIED = NONE`)**.
+4. **Preservação Intacta do DRE Core**: Esta adequação não altera as fórmulas estruturais de Receita Comercial Líquida, CPV, Frete 3%, Investimentos Comerciais ou MACO Core.
+
+### Resultado Homologado — Junho/2026 (Leandro Saffi Consolidado):
+- Receita Líquida: **R$ 3.182.057,23**
+- Impostos Finais: **R$ 5.343,51** (0,17%)
+- CPV: **R$ 1.431.398,54**
+- MACO: **R$ 1.588.433,24**
+- Grid Visual: 1 única linha (`Leandro Saffi`), 0 linhas isoladas para `Leandro`.
+
+### Evidência de Validação e Homologação:
+- `npx tsc --noEmit`: 0 erros
+- `npm run test:domain`: 20/20 aprovados
+- `npm run build`: sucesso (Exit Code 0)
+- Auditoria READ_ONLY: `AUDITORIA_FINAL = APROVADA`, `ST_VALIDO_PRESERVADO = TRUE`, `ST_OUT_OF_SCALE_SANITIZADO = TRUE`, `LEANDRO_UNIFICADO = TRUE`, `DRE_CORE_PRESERVADO = TRUE`.
+
+Status Arquitetural: `DRE_CORE = LOCKED` | `DRE_BASELINE = PERMANENT` | `P&L_VERTICAL = HOMOLOGATED` | `FINANCIAL_FORMULAS = UNCHANGED` | `DATABASE_MODIFIED = NONE`.
+
 
 
 

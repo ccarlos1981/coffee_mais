@@ -607,10 +607,11 @@ export default function RpsPage() {
         });
       });
 
-      // Garantia defensiva: se o usuário não for Admin ou Admin Master, expurgar qualquer item META antes do envio
+      // Garantia defensiva: se o usuário não for Admin ou Admin Master, expurgar qualquer item de DESAFIO / META antes do envio
+      const DESAFIO_KPIS_SET = new Set(['META', 'DESAFIO_FAT', 'DESAFIO_VOL', 'DESAFIO_INVEST']);
       const finalProjections = isAdmin
         ? payloadProjs
-        : payloadProjs.filter((p: any) => p.kpi !== 'META');
+        : payloadProjs.filter((p: any) => !DESAFIO_KPIS_SET.has(p.kpi));
 
       // Montar payload da Carteira Dinâmica de Planejamento (Exclusivo Admin)
       const customCarteiraPayload: any[] = [];

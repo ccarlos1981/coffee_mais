@@ -121,8 +121,8 @@ export async function GET(request: Request) {
 
       const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
       const isTodayMonday = dateSP.getDay() === 1;
-      const isCutoffReached = isTodayMonday && hour >= 18;
-      const canManagerEdit = isTodayMonday && hour < 18;
+      const isCutoffReached = isTodayMonday && hour >= 15;
+      const canManagerEdit = isTodayMonday && hour < 15;
 
       return {
         todayStr,
@@ -639,6 +639,51 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseAdminClient();
 
+    // Data e Hora oficiais do servidor no fuso horário do Brasil (America/Sao_Paulo)
+    const now = new Date();
+    const formatterDate = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    const parts = formatterDate.formatToParts(now);
+    const y = parts.find(p => p.type === 'year')?.value;
+    const m = parts.find(p => p.type === 'month')?.value;
+    const dVal = parts.find(p => p.type === 'day')?.value;
+    const serverTodayStr = `${y}-${m}-${dVal}`;
+
+    const formatterHour = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Sao_Paulo',
+      hour: 'numeric',
+      hour12: false
+    });
+    const serverHour = parseInt(formatterHour.format(now), 10);
+    const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const isTodayMonday = dateSP.getDay() === 1;
+
+    // Exceção Operacional Temporária (11/08/2026): Regularização do DESAFIO por perfis administrativos autorizados (isAdmin)
+    const isExceptionalDesafioWindow = serverTodayStr === '2026-08-11';
+
+    const DESAFIO_KPIS_SET = new Set(['META', 'DESAFIO_FAT', 'DESAFIO_VOL', 'DESAFIO_INVEST']);
+    const desafioRowsInPayload = projections.filter((p: any) => DESAFIO_KPIS_SET.has(p.kpi));
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas perfis administrativos oficiais (isAdmin) podem salvar/alterar DESAFIO / METAS
+    if (desafioRowsInPayload.length > 0 && !isAdmin) {
+      return NextResponse.json(
+        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem definir ou alterar o Desafio por Rede ou Metas." },
+        { status: 403 }
+      );
+    }
+
+    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode gerenciar a Carteira Dinâmica (Custom Carteira)
+    if (customCarteira && Array.isArray(customCarteira) && customCarteira.length > 0 && !isAdmin) {
+      return NextResponse.json(
+        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem alterar a Carteira de Planejamento da RPS." },
+        { status: 403 }
+      );
+    }
+
     // TRAVA OBRIGATÓRIA DE SEGURANÇA TEMPORAL E DE GERENTE NO BACKEND (HTTP 403):
     // Gerentes podem editar APENAS a sua própria carteira, APENAS a semana corrente E APENAS até as 15:00 da segunda-feira (Server Time America/Sao_Paulo).
     if (isRestricted) {
@@ -655,31 +700,9 @@ export async function POST(request: Request) {
       }
 
       // 2. Validar janela temporal (apenas segundas-feiras até 15:00 no fuso de SP)
-      const now = new Date();
-      const formatterDate = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
-      const parts = formatterDate.formatToParts(now);
-      const y = parts.find(p => p.type === 'year')?.value;
-      const m = parts.find(p => p.type === 'month')?.value;
-      const dVal = parts.find(p => p.type === 'day')?.value;
-      const serverTodayStr = `${y}-${m}-${dVal}`;
-
-      const formatterHour = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        hour: 'numeric',
-        hour12: false
-      });
-      const serverHour = parseInt(formatterHour.format(now), 10);
-      const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-      const isTodayMonday = dateSP.getDay() === 1;
-
-      if (!isTodayMonday || serverHour >= 18) {
+      if (!isTodayMonday || serverHour >= 15) {
         return NextResponse.json(
-          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 18:00 da segunda-feira." },
+          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 15:00 da segunda-feira." },
           { status: 403 }
         );
       }
@@ -692,24 +715,65 @@ export async function POST(request: Request) {
         .eq('year', parseInt(year))
         .eq('month', parseInt(month));
 
+      const canonicalMgr = resolveCanonicalManager(userManagerName);
+      const { data: existingTargets } = await supabase
+        .from('targets')
+        .select('target_tons')
+        .eq('year', parseInt(year))
+        .eq('month', parseInt(month))
+        .or(`manager.eq.${canonicalMgr.managerName},manager_id.eq.${canonicalMgr.managerId}`);
+
+      const targetVol = existingTargets && existingTargets.length > 0 ? Number(existingTargets[0].target_tons || 0) : 0;
+
       const dbMgrProjs = (existingProjs || []).filter((dbP: any) => isSameManager(dbP.manager, userManagerName));
 
       const dbMap = new Map<string, number>();
+      const clientMetaMap = new Map<string, number>();
+
       dbMgrProjs.forEach((dbP: any) => {
-        const key = `${(dbP.client_matrix || '').trim().toUpperCase()}|${dbP.week_start_date}|${dbP.kpi}`;
-        dbMap.set(key, Number(dbP.projection_value || 0));
+        const clientKey = (dbP.client_matrix || '').trim().toUpperCase();
+        if (dbP.kpi === 'META') {
+          clientMetaMap.set(clientKey, Number(dbP.projection_value || 0));
+        } else {
+          const key = `${clientKey}|${dbP.week_start_date}|${dbP.kpi}`;
+          dbMap.set(key, Number(dbP.projection_value || 0));
+        }
       });
 
       const alteredNonCurrentWeekProjections = projections.filter((p: any) => {
-        if (p.kpi === 'META' || !p.week_start_date || p.week_start_date === serverTodayStr) {
+        // Ignorar registros de DESAFIO/META, sem semana ou semana corrente
+        if (DESAFIO_KPIS_SET.has(p.kpi) || !p.week_start_date || p.week_start_date === serverTodayStr) {
           return false;
         }
 
-        const key = `${(p.client_matrix || '').trim().toUpperCase()}|${p.week_start_date}|${p.kpi}`;
-        const existingVal = dbMap.has(key) ? dbMap.get(key)! : 0;
-        const newVal = Number(p.projection_value || 0);
+        const clientKey = (p.client_matrix || '').trim().toUpperCase();
+        const key = `${clientKey}|${p.week_start_date}|${p.kpi}`;
 
-        return Math.abs(newVal - existingVal) > 0.001;
+        let expectedVal = 0;
+        if (dbMap.has(key)) {
+          expectedVal = dbMap.get(key)!;
+        } else {
+          // Replicar os fallbacks da rota GET para registros sem histórico no banco
+          if (clientKey === '_TOTAL_') {
+            if (p.kpi === 'VOL') {
+              expectedVal = p.week_start_date > serverTodayStr ? 0 : targetVol;
+            } else if (p.kpi === 'INVEST') {
+              expectedVal = p.week_start_date > serverTodayStr ? 0 : 10.0;
+            } else {
+              expectedVal = 0;
+            }
+          } else {
+            if (p.kpi === 'FAT') {
+              const clientMeta = clientMetaMap.get(clientKey) || 0;
+              expectedVal = p.week_start_date > serverTodayStr ? 0 : clientMeta;
+            } else {
+              expectedVal = 0;
+            }
+          }
+        }
+
+        const newVal = Number(p.projection_value || 0);
+        return Math.abs(newVal - expectedVal) > 0.001;
       });
 
       if (alteredNonCurrentWeekProjections.length > 0) {
@@ -720,40 +784,10 @@ export async function POST(request: Request) {
       }
     }
 
-    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode salvar/alterar kpi === 'META' (Desafio por Rede)
-    const metaRowsInPayload = projections.filter((p: any) => p.kpi === 'META');
-    if (metaRowsInPayload.length > 0 && !isAdmin) {
-      return NextResponse.json(
-        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem definir ou alterar o Desafio por Rede." },
-        { status: 403 }
-      );
-    }
-
-    // TRAVA OBRIGATÓRIA DE SEGURANÇA NO BACKEND (HTTP 403): Apenas Admin / Admin Master pode gerenciar a Carteira Dinâmica (Custom Carteira)
-    if (customCarteira && Array.isArray(customCarteira) && customCarteira.length > 0 && !isAdmin) {
-      return NextResponse.json(
-        { success: false, error: "Acesso negado (403 Forbidden): Apenas Administradores podem alterar a Carteira de Planejamento da RPS." },
-        { status: 403 }
-      );
-    }
-
     let filteredProjections = projections;
     if (isRestricted) {
-      const now = new Date();
-      const formatterDate = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      });
-      const parts = formatterDate.formatToParts(now);
-      const y = parts.find(p => p.type === 'year')?.value;
-      const m = parts.find(p => p.type === 'month')?.value;
-      const dVal = parts.find(p => p.type === 'day')?.value;
-      const serverTodayStr = `${y}-${m}-${dVal}`;
-
       filteredProjections = projections.filter((p: any) => 
-        isSameManager(p.manager, userManagerName) && p.week_start_date === serverTodayStr
+        isSameManager(p.manager, userManagerName) && p.week_start_date === serverTodayStr && !DESAFIO_KPIS_SET.has(p.kpi)
       );
     }
 
@@ -870,8 +904,8 @@ export async function POST(request: Request) {
     }
 
     // Registrador oficial de auditoria para edições do Desafio por Rede efetuadas por Administrador
-    if (isAdmin && metaRowsInPayload.length > 0) {
-      for (const mRow of metaRowsInPayload) {
+    if (isAdmin && desafioRowsInPayload.length > 0) {
+      for (const mRow of desafioRowsInPayload) {
         const canonicalMgr = resolveCanonicalManager(mRow.manager).managerName;
         await logAuditAction(
           user.id,

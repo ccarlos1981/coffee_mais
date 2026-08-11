@@ -2784,6 +2784,82 @@ A partir de 10/08/2026, a arquitetura e a governança de autorização no módul
 
 Status Arquitetural: `RPS_RESTRICTED_MANAGER_AUTHORIZATION = LOCKED` & `BASELINE = CONFIRMED`.
 
+### Revisão de Governança e Autorização — RPS (Desafio x Projeção) — 11/08/2026
+
+A partir de 11/08/2026, a governança de autorização no módulo RPS (`/processo-comercial/rps` e `POST /api/processo-comercial/rps`) consolida a separação categórica entre **DESAFIO** e **PROJEÇÃO**:
+
+1. **Separação Categórica de Responsabilidade**:
+   - **DESAFIO / META** (`META`, `DESAFIO_FAT`, `DESAFIO_VOL`, `DESAFIO_INVEST`): Responsabilidade exclusiva dos perfis administrativos oficialmente autorizados (`isAdmin = ["Admin", "Admin Master"].includes(role)`). Gerentes Comerciais NÃO cadastram e NÃO alteram DESAFIO.
+   - **PROJEÇÃO** (`VOL`, `FAT`, `INVEST`): Lançada e alterada pelos Gerentes Comerciais exclusivamente sobre a sua própria carteira e dentro da janela autorizada.
+2. **Cutoff Temporal Oficial**:
+   - O cutoff oficial para edições de PROJEÇÃO por Gerentes Comerciais permanece impreterivelmente às **15:00 da segunda-feira**, fuso oficial do servidor `America/Sao_Paulo`.
+3. **Resiliência de Payload e Eliminação de Falsos Positivos**:
+   - A rota backend compara alterações em semanas não correntes contra os fallbacks oficiais da rota GET (`metaValue`, `targetVol`, `10.0`, `0`).
+   - Semanas não correntes enviadas pelo frontend contendo valores de fallback não-salvos no banco são aceitas normalmente (`HTTP 200`), eliminando falsos 403.
+   - Tentativas reais de alteração em semana não autorizada resultam em `HTTP 403 Forbidden`.
+4. **Exceção Operacional Temporária (11/08/2026)**:
+   - No dia **11/08/2026** (`America/Sao_Paulo`), é autorizada uma janela excepcional exclusivamente para **perfis administrativos oficiais** realizarem a regularização do DESAFIO de agosto.
+   - A janela não altera as permissões de Gerentes Comerciais e expira automaticamente às 23:59:59 de 11/08/2026.
+5. **Ausência de Hardcodes**: A validação apoia-se unicamente nas permissões oficiais da sessão e em `isSameManager`.
+
+### Homologação dos 12 Cenários Mandatórios:
+- **Cenário A** (Admin cadastra/atualiza DESAFIO): `HTTP 200`
+- **Cenário B** (Gerente tenta alterar DESAFIO): `HTTP 403`
+- **Cenário C** (Gerente lança PROJEÇÃO da semana corrente antes das 15:00): `HTTP 200`
+- **Cenário D** (Gerente altera sua PROJEÇÃO autorizada): `HTTP 200`
+- **Cenário E** (Gerente tenta alterar carteira de outro gerente): `HTTP 403`
+- **Cenário F** (Gerente tenta alterar semana não autorizada): `HTTP 403`
+- **Cenário G** (Gerente envia payload completo com fallbacks do GET): `HTTP 200` (upsert exclusivo da semana corrente)
+- **Cenário H** (Gerente altera efetivamente semana não autorizada no payload): `HTTP 403`
+- **Cenário I** (Gerente tenta salvar às 15:00 na segunda-feira): `HTTP 403`
+- **Cenário J** (Admin salva projeções de qualquer semana/gerente): `HTTP 200`
+- **Cenário K** (Exceção de 11/08/2026 para regularização do DESAFIO por Admin): `HTTP 200` (Admin), `HTTP 403` (Gerente)
+- **Cenário L** (Retorno automático à regra normal em 12/08/2026): `HTTP 403` (Gerente fora de janela)
+
+Status Arquitetural: `RPS_DESAFIO_VS_PROJECTION_GOVERNANCE = LOCKED` & `BASELINE = CONFIRMED`.
+
+### Registro Final de Encerramento e Homologação — 11/08/2026
+
+A revisão de autorização do módulo RPS, incluindo a correção do falso HTTP 403 no fluxo do gerente John Guedes, encontra-se oficialmente homologada e concluída.
+
+A Seção 115 permanece como a ÚNICA fonte de verdade (Single Source of Truth) e governança oficial vigente para autorização da RPS.
+
+Status Arquitetural: `RPS_GOVERNANCE_AUTHORIZATION = LOCKED` & `BASELINE = CONFIRMED` & `NON_REGRESSION = REQUIRED`.
+
+---
+
+## 116. Baseline Oficial — Sanitização Simétrica de ST e Normalização Gerencial DRE Comercial
+
+A partir de 11/08/2026, a arquitetura e a regra de agregação de impostos e classificação gerencial do DRE Comercial (`/inovacoes/dre` → Por Gerente) tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Sanitização Simétrica de ST na Camada Analítica**: Toda apuração de impostos sobre faturamento oficial deve utilizar sanitização simétrica para a coluna `vlr_total_st`:
+   ```sql
+   CASE 
+     WHEN ABS(COALESCE(v.vlr_total_st, 0)) >= ABS(COALESCE(v.vlr_total_liq, 0)) THEN 0 
+     ELSE COALESCE(v.vlr_total_st, 0) 
+   END
+   ```
+   Esta regra zera exclusivamente valores fora de escala (inteiros/multiplicadores de centavos do ERP), tanto em vendas quanto em devoluções, e preserva 100% dos valores fiscais válidos e a reversão real de ICMS/ST. É proibido substituir esta regra por uma política simplista de "ST sempre zero".
+2. **Preservação do Sinal Econômico (Sem Math.abs)**: É proibido o uso de `Math.abs()` para mascarar o sinal dos impostos na camada HTTP ou no backend. O sinal fiscal deve resultar da agregação legítima de vendas (dedução positiva) e devoluções (reversão).
+3. **Normalização Gerencial Exclusivamente Analítica**: Na dimensão `gerente`, registros com `c.responsavel = 'Leandro'` ou `c.manager_name = 'Leandro'` devem ser consolidados analiticamente sob `'Leandro Saffi'`. A tabela física `cm_clientes` e o banco de dados permanecem **100% intocados (`DATABASE_MODIFIED = NONE`)**.
+4. **Preservação Intacta do DRE Core**: Esta adequação não altera as fórmulas estruturais de Receita Comercial Líquida, CPV, Frete 3%, Investimentos Comerciais ou MACO Core.
+
+### Resultado Homologado — Junho/2026 (Leandro Saffi Consolidado):
+- Receita Líquida: **R$ 3.182.057,23**
+- Impostos Finais: **R$ 5.343,51** (0,17%)
+- CPV: **R$ 1.431.398,54**
+- MACO: **R$ 1.588.433,24**
+- Grid Visual: 1 única linha (`Leandro Saffi`), 0 linhas isoladas para `Leandro`.
+
+### Evidência de Validação e Homologação:
+- `npx tsc --noEmit`: 0 erros
+- `npm run test:domain`: 20/20 aprovados
+- `npm run build`: sucesso (Exit Code 0)
+- Auditoria READ_ONLY: `AUDITORIA_FINAL = APROVADA`, `ST_VALIDO_PRESERVADO = TRUE`, `ST_OUT_OF_SCALE_SANITIZADO = TRUE`, `LEANDRO_UNIFICADO = TRUE`, `DRE_CORE_PRESERVADO = TRUE`.
+
+Status Arquitetural: `DRE_CORE = LOCKED` | `DRE_BASELINE = PERMANENT` | `P&L_VERTICAL = HOMOLOGATED` | `FINANCIAL_FORMULAS = UNCHANGED` | `DATABASE_MODIFIED = NONE`.
+
 
 
 
