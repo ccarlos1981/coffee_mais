@@ -1450,3 +1450,7 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    322adb7..46928e8  main -> main
 [12/08/2026 07:13] ✅ Alterações enviadas com sucesso para o GitHub.
+[main b7b6ed6] auto-save: 12/08/2026 11:00
+ 4 files changed, 19807 insertions(+), 4 deletions(-)
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': SSL connection timeout
+[12/08/2026 11:00] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
