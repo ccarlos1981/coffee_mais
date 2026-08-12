@@ -52,7 +52,7 @@ export function buildWhereClause(
   const clauses: string[] = ['1=1'];
 
   // Intervalo de datas/meses
-  const dateClauses = buildDateFilter(filters.startMonth, filters.endMonth, tableAlias);
+  const dateClauses = buildDateFilter(filters.startMonth, filters.endMonth, tableAlias, targetTable);
   clauses.push(...dateClauses);
 
   // Gerente (Manager ID / Manager Name / CommercialRole)
