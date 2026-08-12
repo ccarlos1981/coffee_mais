@@ -74,18 +74,21 @@ export function parseAnalyticsFiltersFromParams(searchParams: URLSearchParams): 
   };
 }
 
+import { OFFICIAL_ANALYTICS_SOURCES } from './sources';
+
 /**
  * Construtor de cláusula SQL de intervalo de datas/meses.
  */
-export function buildDateFilter(startMonth?: string | null, endMonth?: string | null, tableAlias?: string): string[] {
+export function buildDateFilter(startMonth?: string | null, endMonth?: string | null, tableAlias?: string, targetTable?: string): string[] {
   const prefix = tableAlias ? `${tableAlias}.` : '';
   const clauses: string[] = [];
+  const monthCol = targetTable === OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME ? `${prefix}ano_mes` : `${prefix}mes`;
 
   if (startMonth) {
-    clauses.push(`${prefix}mes >= ${escapeSqlValue(startMonth)}`);
+    clauses.push(`${monthCol} >= ${escapeSqlValue(startMonth)}`);
   }
   if (endMonth) {
-    clauses.push(`${prefix}mes <= ${escapeSqlValue(endMonth)}`);
+    clauses.push(`${monthCol} <= ${escapeSqlValue(endMonth)}`);
   }
   return clauses;
 }
