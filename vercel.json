@@ -26,7 +26,7 @@
     },
     {
       "path": "/api/cron/rps-alert",
-      "schedule": "15 15 * * 1"
+      "schedule": "0 17 * * 1"
     }
   ]
 }
