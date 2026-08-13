@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { toPng } from "html-to-image";
 import { CartaAnuenciaItem, registrarCompartilhamento } from "./actions";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
-import { formatarDataValidade } from "./validade-helper";
+import { formatarDataValidade, EMISSORA_CARTA_ANUENCIA } from "./validade-helper";
 
 interface CartaPreviewModalProps {
   carta: CartaAnuenciaItem | null;
@@ -239,7 +239,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                       Indústria e Comércio de Café Ltda
                     </h1>
                     <p className="text-[10px] text-neutral-500 font-semibold tracking-wider">
-                      CNPJ: 34.656.969/0001-30
+                      CNPJ: {EMISSORA_CARTA_ANUENCIA.cnpj}
                     </p>
                   </div>
                 </div>
