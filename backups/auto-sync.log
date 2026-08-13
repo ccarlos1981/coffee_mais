@@ -1454,3 +1454,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
  4 files changed, 19807 insertions(+), 4 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': SSL connection timeout
 [12/08/2026 11:00] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 9dfac47] auto-save: 12/08/2026 14:12
+ 1 file changed, 4 insertions(+)
+remote: warning: See https://gh.io/lfs for more information.        
+remote: warning: File backups/backup.log is 59.29 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/ccarlos1981/coffee_mais.git
+   46928e8..9dfac47  main -> main
+[12/08/2026 14:12] ✅ Alterações enviadas com sucesso para o GitHub.
