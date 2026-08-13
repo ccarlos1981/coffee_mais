@@ -305,14 +305,11 @@ export default function RpsPage() {
       clients[cIdx] = client;
       mgr.clients = clients;
 
-      // Recalcular o FAT consolidado do gerente para esta semana
-      const kpis = { ...mgr.kpis };
-      const fatKpi = { ...kpis.FAT };
-      const fatProjections = [...fatKpi.projections];
-      fatProjections[wIdx] = clients.reduce((acc, c) => acc + c.projections[wIdx], 0);
-      fatKpi.projections = fatProjections;
-      kpis.FAT = fatKpi;
-      mgr.kpis = kpis;
+      // Desacoplamento Absoluto: A projeção FAT do gerente (_TOTAL_)
+      // é soberana e definida manualmente pelo Admin via handleManagerKpiChange.
+      // NÃO recalcular mgr.kpis.FAT.projections a partir das redes/clientes.
+      // Ref: Seção 12 AGENTS.md — "As alterações feitas nas células semanais
+      // de faturamento das redes NÃO devem somar ou sobrescrever os cabeçalhos dos gerentes."
 
       next[mIdx] = mgr;
       return next;
@@ -365,8 +362,8 @@ export default function RpsPage() {
       const kpis = { ...mgr.kpis };
       const kpiData = { ...kpis[kpi] };
       
-      // FAT desafio é digitado em milhares (x1000)
-      kpiData.desafio = kpi === 'FAT' ? val * 1000 : val;
+      // FAT e VOL desafios são digitados em milhares (x1000)
+      kpiData.desafio = (kpi === 'FAT' || kpi === 'VOL') ? val * 1000 : val;
       
       kpis[kpi] = kpiData;
       mgr.kpis = kpis;
@@ -1124,7 +1121,7 @@ export default function RpsPage() {
                                 <input
                                   type="number"
                                   step="0.1"
-                                  value={row.kpis.VOL.desafio ? (row.kpis.VOL.desafio / 1000).toFixed(1) : ""}
+                                  value={row.kpis.VOL.desafio ? (row.kpis.VOL.desafio / 1000) : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'VOL', parseFloat(e.target.value) || 0)}
                                   className="w-16 px-1.5 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-extrabold text-xs shadow-inner"
                                 />
@@ -1139,7 +1136,7 @@ export default function RpsPage() {
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
-                              const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000).toFixed(1) : "";
+                              const rawVal = row.kpis.VOL.projections[wIdx] ? (row.kpis.VOL.projections[wIdx] / 1000) : "";
                               return (
                                 <td key={m} className={`p-1 py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <input
@@ -1230,7 +1227,7 @@ export default function RpsPage() {
                                 <input
                                   type="number"
                                   step="0.1"
-                                  value={row.kpis.INVEST.desafio ? Number(row.kpis.INVEST.desafio).toFixed(1) : ""}
+                                  value={row.kpis.INVEST.desafio ? row.kpis.INVEST.desafio : ""}
                                   onChange={(e) => handleManagerDesafioChange(mIdx, 'INVEST', parseFloat(e.target.value) || 0)}
                                   className="w-14 px-1 py-0.5 text-center bg-amber-500/20 border border-amber-500/50 rounded text-amber-300 font-extrabold text-xs shadow-inner"
                                 />
@@ -1245,7 +1242,7 @@ export default function RpsPage() {
                             {mondays.map((m, wIdx) => {
                               const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
-                              const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? Number(row.kpis.INVEST.projections[wIdx]).toFixed(1) : "";
+                              const rawVal = row.kpis.INVEST.projections[wIdx] != null && row.kpis.INVEST.projections[wIdx] !== 0 ? row.kpis.INVEST.projections[wIdx] : "";
                               return (
                                 <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
                                   <div className="flex items-center justify-center gap-0.5">

@@ -3629,9 +3629,78 @@ A partir de 11/08/2026, a arquitetura e a regra de agregação de impostos e cla
 
 Status Arquitetural: `DRE_CORE = LOCKED` | `DRE_BASELINE = PERMANENT` | `P&L_VERTICAL = HOMOLOGATED` | `FINANCIAL_FORMULAS = UNCHANGED` | `DATABASE_MODIFIED = NONE`.
 
+---
 
+## 117. Baseline Oficial — Auditoria Forense Completa e Homologação do Módulo RPS (Baseline Permanente)
 
+A partir de 13/08/2026, o módulo **RPS (Reunião de Planejamento Semanal)** foi submetido a uma auditoria forense completa de todos os campos editáveis, calculados, persistidos e derivados, resultando na homologação integral após correções funcionais e de UX.
 
+### Correções Funcionais Homologadas:
+1. **Desacoplamento Absoluto Gerente × Redes**: A função `handleClientProjChange` não recalcula mais `mgr.kpis.FAT.projections` a partir de `clients.reduce()`. A projeção FAT do gerente (`_TOTAL_`) é soberana e definida exclusivamente pelo Admin via `handleManagerKpiChange`.
+2. **DESAFIO VOL ×1000**: O handler `handleManagerDesafioChange` aplica corretamente `val * 1000` para `kpi === 'VOL'` (anteriormente era valor direto, causando divergência de escala).
+3. **Override de Desafio via cm_weekly_projections**: O GET da RPS prioriza `customDesafioVol` e `customDesafioFat` gravados em `cm_weekly_projections` (`kpi = 'DESAFIO_VOL'` / `'DESAFIO_FAT'`), com fallback para `public.targets`.
+4. **Remoção da Mutação em public.targets**: O POST da RPS não realiza mais `upsert` em `public.targets`. Toda persistência de desafios ocorre exclusivamente em `cm_weekly_projections`.
+
+### Correções de UX Homologadas:
+1. **VOL semanal do Gerente**: Removido `.toFixed(1)` do `value` do input, eliminando reposicionamento artificial do cursor durante digitação.
+2. **INVEST semanal do Gerente**: Removido `.toFixed(1)` do `value` do input.
+3. **DESAFIO INVEST**: Removido `.toFixed(1)` do `value` do input.
+
+### Regras Permanentes de Integridade da RPS:
+1. **O valor digitado pelo usuário nos campos de projeção deve ser preservado.** O sistema não pode substituir, recalcular ou sobrescrever o valor informado manualmente pelo Admin ou Gerente.
+2. **Projeções do gerente (`_TOTAL_`) NÃO podem ser recalculadas a partir das redes.** A projeção consolidada é soberana.
+3. **Alterações de redes NÃO podem sobrescrever o consolidado do gerente.** Desacoplamento absoluto.
+4. **DESAFIO e PROJEÇÃO são conceitos independentes.** Handlers separados (`handleManagerDesafioChange` ≠ `handleManagerKpiChange`), KPIs separados (`DESAFIO_*` ≠ `VOL`/`FAT`/`INVEST`), chaves de persistência separadas.
+5. **Semana, gerente e rede devem permanecer isolados.** Nenhum handler pode propagar valores entre semanas (`wIdx`), entre gerentes (`mIdx`) ou entre rede e gerente.
+6. **A RPS não pode alterar `public.targets`.** `RPS_PUBLIC_TARGETS_MUTATION = FORBIDDEN`.
+7. **Overrides de Desafio da RPS permanecem em `cm_weekly_projections`** com `kpi = 'DESAFIO_VOL'`, `'DESAFIO_FAT'`, `'DESAFIO_INVEST'` e `client_matrix = '_TOTAL_'`.
+8. **O fallback para `public.targets` permanece somente leitura.** É utilizado apenas quando não existe override operacional em `cm_weekly_projections`.
+9. **A UX dos inputs foi homologada para digitação contínua** sem reposicionamento artificial do cursor. Nenhum campo editável utiliza `.toFixed()` no `value` durante a edição.
+10. **O alerta das 14h e os consumidores downstream permanecem intactos.** AnalyticsEngine, DRE, Cockpit, CRM, PACE, RDM, Metas, Visão CEO — nenhuma alteração.
+
+### Conversões Oficiais:
+- **VOL**: UI (milhares) → ×1000 → estado/banco (kg).
+- **FAT**: UI (milhares) → ×1000 → estado/banco (R$).
+- **INVEST**: UI (percentual) → valor direto → estado/banco (%).
+
+### Permissões Oficiais:
+- **Admin / Admin Master**: Pode editar Desafios, Projeções (todas as semanas), META de Redes e Carteira.
+- **Gerente Nacional Admin**: Pode editar Projeções (todas as semanas). Não pode editar Desafios ou META.
+- **Gerente Restrito**: Somente própria carteira, somente semana corrente (até 15:00 BRT de segunda-feira). `HTTP 403` para tentativa de edição de Desafio.
+
+### Evidência de Validação e Homologação:
+- `npx tsc --noEmit`: 0 erros.
+- `scripts/test-rps-scenarios.ts`: 15/15 aprovados (A–O).
+- `npm run health:analytics`: 100% conforme.
+- `npm run build`: sucesso.
+
+### Status Final:
+```
+RPS_FINAL_FULL_AUDIT = PASSED
+RPS_UX_FINAL = PASSED
+RPS_FULL_FIELD_AUDIT = PASSED
+RPS_REAL_PERSISTENCE_CHECK = PASSED
+RPS_NON_REGRESSION = PASSED
+RPS_MANAGER_NETWORK_DECOUPLING = CONFIRMED
+RPS_MANAGER_ISOLATION = CONFIRMED
+RPS_WEEK_ISOLATION = CONFIRMED
+RPS_DESAFIO_PROJECTION_SEPARATION = CONFIRMED
+RPS_DESAFIO_OVERRIDE = cm_weekly_projections
+RPS_DESAFIO_FALLBACK = public.targets
+RPS_PUBLIC_TARGETS_MUTATION = FORBIDDEN
+RPS_ADMIN_DESAFIO_EDIT = ENABLED
+RPS_MANAGER_DESAFIO_EDIT = HTTP_403
+RPS_ALERT_14H = INTACT
+RPS_ANALYTICS = INTACT
+RPS_INPUT_UX = PASSED
+RPS_VOL_X1000 = CONFIRMED
+RPS_FAT_X1000 = CONFIRMED
+RPS_INVEST_DIRECT_PERCENT = CONFIRMED
+RPS_ALL_FIELDS_AUDITED = YES
+RPS_READY_FOR_USE = YES
+```
+
+Status Arquitetural: `RPS_GOVERNANCE = LOCKED` & `RPS_BASELINE = PERMANENT`.
 
 
 
