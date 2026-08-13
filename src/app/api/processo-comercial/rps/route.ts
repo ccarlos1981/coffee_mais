@@ -399,8 +399,11 @@ export async function GET(request: Request) {
       // Projeções semanais gravadas para este gerente em cm_weekly_projections
       const managerProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix === '_TOTAL_');
 
-      const desafioVol = targetVol;
-      const desafioFat = targetFat;
+      const customDesafioVol = managerProjs.find((p: any) => p.kpi === 'DESAFIO_VOL');
+      const customDesafioFat = managerProjs.find((p: any) => p.kpi === 'DESAFIO_FAT');
+
+      const desafioVol = customDesafioVol ? Number(customDesafioVol.projection_value) : targetVol;
+      const desafioFat = customDesafioFat ? Number(customDesafioFat.projection_value) : targetFat;
 
       const customDesafioInvest = managerProjs.find((p: any) => p.kpi === 'DESAFIO_INVEST');
       const desafioInvest = customDesafioInvest ? Number(customDesafioInvest.projection_value) : targetInvest;
@@ -754,57 +757,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Processar edições de Desafios (DESAFIO_FAT e DESAFIO_VOL) salvando diretamente na fonte oficial public.targets
-    // REGRA DE GOVERNANÇA: Gerentes comerciais (1000-1003) possuem registros segregados
-    // em targets com sufixo (KA)/(Dist). A RPS NÃO deve criar registros sem sufixo.
-    // A gravação em targets via RPS é permitida apenas para canais corporativos
-    // (Inside Sales, Ecommerce, Marketplace, etc.) que não possuem segregação.
-    // O módulo /metas é o SSOT para metas de gerentes comerciais.
-    const COMMERCIAL_MANAGER_IDS_SET = new Set(['1000', '1001', '1002', '1003']);
-
-    const managersInPayload = Array.from(new Set(filteredProjections.map((p: any) => p.manager)));
-    const targetsToUpsert: any[] = [];
-
-    for (const mName of managersInPayload) {
-      const canonical = resolveCanonicalManager(mName as string);
-
-      // Pular gerentes comerciais — seus registros em targets são geridos exclusivamente pelo /metas
-      // com sufixo (KA)/(Dist). Gravar sem sufixo criaria registros duplicados/conflitantes.
-      if (COMMERCIAL_MANAGER_IDS_SET.has(canonical.managerId)) {
-        continue;
-      }
-
-      const fatItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_FAT');
-      const volItem = filteredProjections.find((p: any) => isSameManager(p.manager, mName as string) && p.client_matrix === '_TOTAL_' && p.kpi === 'DESAFIO_VOL');
-
-      if (fatItem || volItem) {
-        targetsToUpsert.push({
-          manager: canonical.managerName,
-          manager_id: canonical.managerId,
-          year: parseInt(year),
-          month: parseInt(month),
-          target_revenue: fatItem ? Number(fatItem.projection_value) : 0,
-          target_tons: volItem ? Number(volItem.projection_value) : 0,
-          updated_at: new Date().toISOString()
-        });
-      }
-    }
-
-    if (targetsToUpsert.length > 0) {
-      const { error: targetsErr } = await supabase
-        .from('targets')
-        .upsert(targetsToUpsert, { onConflict: 'manager,year,month' });
-      if (targetsErr) throw targetsErr;
-    }
-
-
-    // 2. PROIBIÇÃO DE DUPLICIDADE: Filtrar rowsToUpsert para NUNCA persistir DESAFIO_FAT ou DESAFIO_VOL em cm_weekly_projections
-    const weeklyProjectionsOnly = filteredProjections.filter((p: any) => {
-      return p.kpi !== 'DESAFIO_FAT' && p.kpi !== 'DESAFIO_VOL';
-    });
-
-    // Converter SEMPRE a propriedade manager para o nome canônico único do gerente antes do UPSERT
-    const rowsToUpsert = weeklyProjectionsOnly.map((p: any) => ({
+    // Converter SEMPRE a propriedade manager para o nome canônico único do gerente antes do UPSERT em cm_weekly_projections
+    const rowsToUpsert = filteredProjections.map((p: any) => ({
       manager: resolveCanonicalManager(p.manager).managerName,
       client_matrix: p.client_matrix,
       year: parseInt(year),
@@ -885,7 +839,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ success: true, count: targetsToUpsert.length + rowsToUpsert.length });
+    return NextResponse.json({ success: true, count: rowsToUpsert.length });
   } catch (error: any) {
     return handleAuthError(error);
   }
