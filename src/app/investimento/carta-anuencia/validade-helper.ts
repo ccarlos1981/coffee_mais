@@ -1,10 +1,13 @@
 /**
- * Helper Único Compartilhado — Regra Corporativa de Validade das Cartas de Anuência
- * 
- * Regras Homologadas:
- * - 1º Ciclo (Janeiro, Fevereiro, Março): Validade em 31 de março do mesmo ano (YYYY-03-31).
- * - 2º Ciclo (Junho, Julho, Agosto): Validade em 31 de agosto do mesmo ano (YYYY-08-31).
+ * Dados Oficiais da Empresa Emissora da Carta de Anuência
  */
+export const EMISSORA_CARTA_ANUENCIA = {
+  razaoSocial: "COFFEE MAIS INDÚSTRIA E COMÉRCIO DE CAFÉ LTDA",
+  nomeFantasia: "Indústria e Comércio de Café Ltda",
+  cnpj: "36.782.675/0001-87",
+  cidadeEmissao: "Piumhi",
+} as const;
+
 
 /**
  * Calcula a data de validade em formato ISO (YYYY-MM-DD) a partir da string da competência.
