@@ -647,20 +647,46 @@ export async function POST(request: Request) {
       month: '2-digit',
       day: '2-digit'
     });
-    const parts = formatterDate.formatToParts(now);
-    const y = parts.find(p => p.type === 'year')?.value;
-    const m = parts.find(p => p.type === 'month')?.value;
-    const dVal = parts.find(p => p.type === 'day')?.value;
-    const serverTodayStr = `${y}-${m}-${dVal}`;
-
-    const formatterHour = new Intl.DateTimeFormat('en-US', {
+    const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'America/Sao_Paulo',
-      hour: 'numeric',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
       hour12: false
     });
-    const serverHour = parseInt(formatterHour.format(now), 10);
-    const dateSP = new Date(now.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
-    const isTodayMonday = dateSP.getDay() === 1;
+    const parts = formatter.formatToParts(now);
+    const yStr = parts.find(p => p.type === 'year')?.value || '2026';
+    const mStr = parts.find(p => p.type === 'month')?.value || '08';
+    const dStr = parts.find(p => p.type === 'day')?.value || '10';
+    const hStr = parts.find(p => p.type === 'hour')?.value || '12';
+
+    const serverYear = parseInt(yStr);
+    const serverMonth = parseInt(mStr);
+    const serverDay = parseInt(dStr);
+    const serverHour = parseInt(hStr);
+    const serverTodayStr = `${yStr}-${mStr}-${dStr}`;
+
+    const dateObj = new Date(serverYear, serverMonth - 1, serverDay);
+    const dayOfWeek = dateObj.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
+
+    // Se for Domingo (0), a segunda-feira alvo de projeção é AMANHÃ (+1 dia)
+    // Se for Segunda (1), a segunda-feira alvo é HOJE (0 dias)
+    let diffToMonday = 0;
+    if (dayOfWeek === 0) {
+      diffToMonday = 1;
+    } else {
+      diffToMonday = 1 - dayOfWeek;
+    }
+
+    const targetMondayDate = new Date(dateObj);
+    targetMondayDate.setDate(dateObj.getDate() + diffToMonday);
+
+    const targetWeekStart = `${targetMondayDate.getFullYear()}-${String(targetMondayDate.getMonth() + 1).padStart(2, '0')}-${String(targetMondayDate.getDate()).padStart(2, '0')}`;
+
+    // Janela de Edição dos Gerentes: Domingo (todo o dia) OU Segunda-feira até 15:00 BRT
+    const isEditingAllowedForManager = (dayOfWeek === 0) || (dayOfWeek === 1 && serverHour < 15);
 
     // Exceção Operacional Temporária (11/08/2026): Regularização do DESAFIO por perfis administrativos autorizados (isAdmin)
     const isExceptionalDesafioWindow = serverTodayStr === '2026-08-11';
@@ -685,7 +711,7 @@ export async function POST(request: Request) {
     }
 
     // TRAVA OBRIGATÓRIA DE SEGURANÇA TEMPORAL E DE GERENTE NO BACKEND (HTTP 403):
-    // Gerentes podem editar APENAS a sua própria carteira, APENAS a semana corrente E APENAS até as 15:00 da segunda-feira (Server Time America/Sao_Paulo).
+    // Gerentes podem editar APENAS a sua própria carteira, APENAS a semana corrente E APENAS no Domingo ou Segunda até 15:00.
     if (isRestricted) {
       // 1. Validar autorização de gerente/carteira: gerente restrito não pode alterar carteira de outros gerentes
       const invalidManagerProjections = projections.filter((p: any) => {
@@ -699,86 +725,23 @@ export async function POST(request: Request) {
         );
       }
 
-      // 2. Validar janela temporal (apenas segundas-feiras até 15:00 no fuso de SP)
-      if (!isTodayMonday || serverHour >= 15) {
+      // 2. Validar janela temporal (Domingo todo o dia OU Segunda-feira até 15:00 no fuso de SP)
+      if (!isEditingAllowedForManager) {
         return NextResponse.json(
-          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes encerra-se impreterivelmente às 15:00 da segunda-feira." },
+          { success: false, error: "Acesso negado (403 Forbidden): A janela de edição de projeções para gerentes é aberta no Domingo (todo o dia) e na Segunda-feira impreterivelmente até as 15:00." },
           { status: 403 }
         );
       }
 
-      // 3. Validar se o gerente tentou ALTERAR projeções de semanas diferentes da semana atual
-      // Buscar projeções existentes no banco para este ano, mês e gerente
-      const { data: existingProjs } = await supabase
-        .from('cm_weekly_projections')
-        .select('client_matrix, week_start_date, kpi, projection_value, manager')
-        .eq('year', parseInt(year))
-        .eq('month', parseInt(month));
-
-      const canonicalMgr = resolveCanonicalManager(userManagerName);
-      const { data: existingTargets } = await supabase
-        .from('targets')
-        .select('target_tons')
-        .eq('year', parseInt(year))
-        .eq('month', parseInt(month))
-        .or(`manager.eq.${canonicalMgr.managerName},manager_id.eq.${canonicalMgr.managerId}`);
-
-      const targetVol = existingTargets && existingTargets.length > 0 ? Number(existingTargets[0].target_tons || 0) : 0;
-
-      const dbMgrProjs = (existingProjs || []).filter((dbP: any) => isSameManager(dbP.manager, userManagerName));
-
-      const dbMap = new Map<string, number>();
-      const clientMetaMap = new Map<string, number>();
-
-      dbMgrProjs.forEach((dbP: any) => {
-        const clientKey = (dbP.client_matrix || '').trim().toUpperCase();
-        if (dbP.kpi === 'META') {
-          clientMetaMap.set(clientKey, Number(dbP.projection_value || 0));
-        } else {
-          const key = `${clientKey}|${dbP.week_start_date}|${dbP.kpi}`;
-          dbMap.set(key, Number(dbP.projection_value || 0));
-        }
+      // 3. TRAVA DE AUTORIDADE ABSOLUTA NO BACKEND (HTTP 403):
+      // Gerentes comerciais restritos possuem autorização para enviar exclusivamente itens da semana corrente de projeção (targetWeekStart).
+      const nonCurrentWeekItems = projections.filter((p: any) => {
+        return !DESAFIO_KPIS_SET.has(p.kpi) && p.week_start_date && p.week_start_date !== targetWeekStart;
       });
 
-      const alteredNonCurrentWeekProjections = projections.filter((p: any) => {
-        // Ignorar registros de DESAFIO/META, sem semana ou semana corrente
-        if (DESAFIO_KPIS_SET.has(p.kpi) || !p.week_start_date || p.week_start_date === serverTodayStr) {
-          return false;
-        }
-
-        const clientKey = (p.client_matrix || '').trim().toUpperCase();
-        const key = `${clientKey}|${p.week_start_date}|${p.kpi}`;
-
-        let expectedVal = 0;
-        if (dbMap.has(key)) {
-          expectedVal = dbMap.get(key)!;
-        } else {
-          // Replicar os fallbacks da rota GET para registros sem histórico no banco
-          if (clientKey === '_TOTAL_') {
-            if (p.kpi === 'VOL') {
-              expectedVal = p.week_start_date > serverTodayStr ? 0 : targetVol;
-            } else if (p.kpi === 'INVEST') {
-              expectedVal = p.week_start_date > serverTodayStr ? 0 : 10.0;
-            } else {
-              expectedVal = 0;
-            }
-          } else {
-            if (p.kpi === 'FAT') {
-              const clientMeta = clientMetaMap.get(clientKey) || 0;
-              expectedVal = p.week_start_date > serverTodayStr ? 0 : clientMeta;
-            } else {
-              expectedVal = 0;
-            }
-          }
-        }
-
-        const newVal = Number(p.projection_value || 0);
-        return Math.abs(newVal - expectedVal) > 0.001;
-      });
-
-      if (alteredNonCurrentWeekProjections.length > 0) {
+      if (nonCurrentWeekItems.length > 0) {
         return NextResponse.json(
-          { success: false, error: "Acesso negado (403 Forbidden): Gerentes possuem autorização para alterar exclusivamente a semana corrente." },
+          { success: false, error: "Acesso negado (403 Forbidden): Gerentes possuem autorização para alterar exclusivamente a semana corrente de projeção." },
           { status: 403 }
         );
       }
@@ -787,7 +750,7 @@ export async function POST(request: Request) {
     let filteredProjections = projections;
     if (isRestricted) {
       filteredProjections = projections.filter((p: any) => 
-        isSameManager(p.manager, userManagerName) && p.week_start_date === serverTodayStr && !DESAFIO_KPIS_SET.has(p.kpi)
+        isSameManager(p.manager, userManagerName) && p.week_start_date === targetWeekStart && !DESAFIO_KPIS_SET.has(p.kpi)
       );
     }
 

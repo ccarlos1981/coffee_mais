@@ -66,45 +66,93 @@ async function renderMermaidDiagrams(markdownContent: string): Promise<Record<st
 
         const svgElement = container.querySelector("svg");
         if (svgElement) {
-          const svgData = new XMLSerializer().serializeToString(svgElement);
+          let svgData = new XMLSerializer().serializeToString(svgElement);
+
+          // Limpeza do SVG para evitar contaminação do canvas (Tainted Canvas SecurityError):
+          // 1. Remover regras @import (ex: Google Fonts ou CSS remoto)
+          svgData = svgData.replace(/@import\s+url\([^)]+\);?/gi, "");
+          // 2. Remover fontes externas ou links remotos http/https
+          svgData = svgData.replace(/url\(['"]?https?:\/\/[^'"]+['"]?\)/gi, "none");
+          // 3. Garantir o namespace xmlns oficial
+          if (!svgData.includes('xmlns="http://www.w3.org/2000/svg"')) {
+            svgData = svgData.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+          }
+
           const canvas = document.createElement("canvas");
           const ctx = canvas.getContext("2d");
           const img = new Image();
+          img.crossOrigin = "anonymous";
 
-          const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-          const url = URL.createObjectURL(svgBlob);
+          // Codificação segura em Data URL Base64
+          const encodedSvg = btoa(unescape(encodeURIComponent(svgData)));
+          const dataUrlSrc = `data:image/svg+xml;base64,${encodedSvg}`;
 
           const pngDataUrl = await new Promise<string>((resolve) => {
-            img.onload = () => {
-              const bbox = svgElement.viewBox?.baseVal;
-              const width = (bbox && bbox.width > 0) ? bbox.width : (svgElement.clientWidth || 800);
-              const height = (bbox && bbox.height > 0) ? bbox.height : (svgElement.clientHeight || 400);
+            let settled = false;
 
-              canvas.width = Math.max(width * 2, 800);
-              canvas.height = Math.max(height * 2, 400);
-
-              if (ctx) {
-                ctx.fillStyle = "#141414";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const cleanup = () => {
+              if (container.parentNode) {
+                container.parentNode.removeChild(container);
               }
-              URL.revokeObjectURL(url);
-              document.body.removeChild(container);
-              resolve(canvas.toDataURL("image/png"));
             };
-            img.onerror = () => {
-              URL.revokeObjectURL(url);
-              document.body.removeChild(container);
+
+            const timer = setTimeout(() => {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                resolve("");
+              }
+            }, 5000);
+
+            img.onload = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+
+              try {
+                const bbox = svgElement.viewBox?.baseVal;
+                const width = (bbox && bbox.width > 0) ? bbox.width : (svgElement.clientWidth || 800);
+                const height = (bbox && bbox.height > 0) ? bbox.height : (svgElement.clientHeight || 400);
+
+                canvas.width = Math.max(width * 2, 800);
+                canvas.height = Math.max(height * 2, 400);
+
+                if (ctx) {
+                  ctx.fillStyle = "#141414";
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                }
+
+                // Execução segura de toDataURL envelopada contra Tainted Canvas
+                const resultDataUrl = canvas.toDataURL("image/png");
+                cleanup();
+                resolve(resultDataUrl);
+              } catch (exportErr) {
+                console.warn("Falha ao exportar canvas (tainted canvas fallback):", exportErr);
+                cleanup();
+                resolve("");
+              }
+            };
+
+            img.onerror = (err) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              console.warn("Falha ao carregar imagem SVG:", err);
+              cleanup();
               resolve("");
             };
-            img.src = url;
+
+            img.src = dataUrlSrc;
           });
 
           if (pngDataUrl) {
             diagramImages[match[0]] = pngDataUrl;
           }
         } else {
-          document.body.removeChild(container);
+          if (container.parentNode) {
+            container.parentNode.removeChild(container);
+          }
         }
       } catch (err) {
         console.warn(`Falha ao renderizar diagrama Mermaid #${i}:`, err);

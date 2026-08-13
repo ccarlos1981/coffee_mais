@@ -51,7 +51,6 @@ export function ExportPdfButton({
 
         if (!res.ok || !data.content) {
           alert(`Erro ao carregar o documento: ${data.error || "Não encontrado"}`);
-          setLoading(false);
           return;
         }
         content = data.content;
@@ -59,7 +58,6 @@ export function ExportPdfButton({
 
       if (!content) {
         alert("Nenhum conteúdo de documento foi encontrado para exportação.");
-        setLoading(false);
         return;
       }
 

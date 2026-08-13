@@ -607,11 +607,15 @@ export default function RpsPage() {
         });
       });
 
-      // Garantia defensiva: se o usuário não for Admin ou Admin Master, expurgar qualquer item de DESAFIO / META antes do envio
+      // Garantia defensiva: para Gerentes Comerciais restritos (Opção C - Payload Scoping),
+      // incluir no payload EXCLUSIVAMENTE itens da semana corrente (week_start_date === todayStr) e expurgar DESAFIO/META.
+      // Perfis Administrativos preservam o payload completo.
       const DESAFIO_KPIS_SET = new Set(['META', 'DESAFIO_FAT', 'DESAFIO_VOL', 'DESAFIO_INVEST']);
-      const finalProjections = isAdmin
-        ? payloadProjs
-        : payloadProjs.filter((p: any) => !DESAFIO_KPIS_SET.has(p.kpi));
+      const isRestrictedManager = !isAdmin && !isGerenteNacionalAdmin;
+
+      const finalProjections = isRestrictedManager
+        ? payloadProjs.filter((p: any) => !DESAFIO_KPIS_SET.has(p.kpi) && p.week_start_date === todayStr)
+        : (isAdmin ? payloadProjs : payloadProjs.filter((p: any) => !DESAFIO_KPIS_SET.has(p.kpi)));
 
       // Montar payload da Carteira Dinâmica de Planejamento (Exclusivo Admin)
       const customCarteiraPayload: any[] = [];
@@ -655,16 +659,16 @@ export default function RpsPage() {
       });
 
       const json = await res.json();
-      if (json.success) {
+      if (res.ok && json.success) {
         setSuccess("Projeções e Carteira de Planejamento salvas com sucesso!");
         loadProjectionsData(filterYear, filterMonth);
         setTimeout(() => setSuccess(null), 3500);
       } else {
-        throw new Error(json.error || "Erro ao salvar.");
+        throw new Error(json.error || `Falha ao salvar (HTTP ${res.status}).`);
       }
     } catch (err: any) {
       console.error(err);
-      setError(`Erro ao salvar projeções: ${err.message}`);
+      setError(`Não foi possível salvar as projeções: ${err.message}`);
     } finally {
       setSaving(false);
     }

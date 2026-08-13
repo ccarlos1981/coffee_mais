@@ -67,8 +67,17 @@ export async function GET(request: Request) {
     const mondayDay = mondayDate.getDate();
     const currentMondayStr = `${mondayYear}-${String(mondayMonth).padStart(2, '0')}-${String(mondayDay).padStart(2, '0')}`;
 
-    // Começo do dia de hoje (segunda-feira) no fuso de Brasília: 00:00 BRT = 03:00 UTC
-    const startOfTodayBRT = new Date(Date.UTC(year, month - 1, day, 3, 0, 0));
+    // Calcular o início da janela de verificação: Domingo 00:00:00 BRT imediatamente anterior à segunda-feira
+    const sundayDate = new Date(mondayDate);
+    sundayDate.setDate(mondayDate.getDate() - 1);
+    const sunYear = sundayDate.getFullYear();
+    const sunMonth = sundayDate.getMonth() + 1;
+    const sunDay = sundayDate.getDate();
+
+    // Domingo 00:00:00 BRT = 03:00 UTC do Domingo
+    const windowStartBRT = new Date(Date.UTC(sunYear, sunMonth - 1, sunDay, 3, 0, 0));
+    // Segunda-feira 14:00:00 BRT = 17:00 UTC da Segunda-feira
+    const windowEndBRT = new Date(Date.UTC(mondayYear, mondayMonth - 1, mondayDay, 17, 0, 0));
 
     // 4. Buscar e mapear os e-mails dos gerentes regionais
     const { data: perfis, error: perfisError } = await supabase
@@ -90,20 +99,35 @@ export async function GET(request: Request) {
       }
     }
 
-    // 5. Verificar no banco quem salvou projeções hoje (desde as 00:00 BRT)
+    // 5. Verificar no banco quem salvou PROJEÇÕES comerciais completas (FAT + VOL + INVEST)
+    // na linha consolidada _TOTAL_ para a semana corrente dentro da janela aberta (Domingo 00:00 BRT a Segunda 14:00 BRT)
     const { data: projections, error: projError } = await supabase
       .from("cm_weekly_projections")
-      .select("manager, updated_at")
+      .select("manager, kpi, updated_at")
       .eq("week_start_date", currentMondayStr)
-      .gte("updated_at", startOfTodayBRT.toISOString());
+      .eq("client_matrix", "_TOTAL_")
+      .in("kpi", ["VOL", "FAT", "INVEST"])
+      .gte("updated_at", windowStartBRT.toISOString())
+      .lte("updated_at", windowEndBRT.toISOString());
 
     if (projError) throw projError;
 
-    const updatedManagers = Array.from(
-      new Set((projections || []).map((p) => p.manager))
-    );
+    // Mapear os KPIs atualizados por gerente na janela oficial no _TOTAL_
+    const managerKpiMap: Record<string, Set<string>> = {};
+    (projections || []).forEach((p) => {
+      if (!managerKpiMap[p.manager]) {
+        managerKpiMap[p.manager] = new Set();
+      }
+      managerKpiMap[p.manager].add(p.kpi);
+    });
 
-    // Filtrar gerentes pendentes
+    // Um gerente só é considerado PREENCHIDO se possuir os 3 KPIs (FAT, VOL e INVEST) no _TOTAL_
+    const updatedManagers = OFFICIAL_MANAGERS.filter((m) => {
+      const kpis = managerKpiMap[m];
+      return kpis && kpis.has("FAT") && kpis.has("VOL") && kpis.has("INVEST");
+    });
+
+    // Filtrar gerentes pendentes (aqueles que não possuem o trio completo FAT + VOL + INVEST)
     const pendingManagers = OFFICIAL_MANAGERS.filter(
       (m) => !updatedManagers.includes(m)
     );
@@ -135,11 +159,25 @@ export async function GET(request: Request) {
     // URL do app para redirecionar o usuário
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://mais.coffeemais.com";
 
-    // 7. Enviar e-mails para cada gerente pendente
+    // 7. Enviar e-mails para cada gerente pendente com controle de idempotência
     for (const managerName of pendingManagers) {
       const emailDest = gerenteEmailMap[managerName];
       if (!emailDest) {
         console.warn(`[rps-alert] Sem e-mail mapeado para o gerente: ${managerName}`);
+        continue;
+      }
+
+      // Idempotência: verificar se o alerta já foi disparado nesta semana para este gerente
+      const alertKey = `RPS_ALERT|${managerName}|${currentMondayStr}`;
+      const { data: existingLog } = await supabase
+        .from("cm_audit_logs")
+        .select("id")
+        .eq("action", "INSERT")
+        .eq("table_name", alertKey)
+        .limit(1);
+
+      if (existingLog && existingLog.length > 0) {
+        console.log(`[rps-alert] Alerta já enviado para ${managerName} na semana ${currentMondayStr}. Ignorando duplicata.`);
         continue;
       }
 
@@ -164,12 +202,12 @@ export async function GET(request: Request) {
               <h3 style="margin-top: 0; font-size: 20px; font-weight: 700; color: #3e2723;">Olá, Regional ${managerName},</h3>
               
               <p style="font-size: 15px; line-height: 1.6; color: #5d4037; margin-bottom: 24px;">
-                Identificamos que as suas <strong>Projeções Semanais (RPS)</strong> para a semana que se inicia hoje (<strong>${mondayDay}/${String(mondayMonth).padStart(2, '0')}/${mondayYear}</strong>) ainda não foram salvas no portal.
+                Identificamos que as suas <strong>Projeções Semanais (RPS)</strong> referente à semana de <strong>${mondayDay}/${String(mondayMonth).padStart(2, '0')}/${mondayYear}</strong> ainda não foram salvas no portal.
               </p>
               
               <div style="background-color: #fdfbf7; border-left: 4px solid #c8a96e; padding: 16px 20px; border-radius: 4px; margin-bottom: 30px;">
                 <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #5d4037; font-weight: 500;">
-                  ⚠️ <strong>Atenção:</strong> O prazo limite para envio das projeções é até o **meio-dia de segunda-feira**. Pedimos que acesse o portal e finalize o lançamento das informações de Volume, Faturamento e Investimento.
+                  ⚠️ <strong>Atenção:</strong> O prazo limite para envio das projeções encerra-se impreterivelmente às <strong>15:00 de hoje</strong> (horário de Brasília). Pedimos que acesse o portal e finalize o lançamento das suas informações de Volume, Faturamento e Investimento.
                 </p>
               </div>
               
@@ -200,6 +238,13 @@ export async function GET(request: Request) {
         cc: CC_ALWAYS,
         subject: `[Coffee++] Lembrete: Projeções RPS Pendentes (${mondayDay}/${String(mondayMonth).padStart(2, '0')})`,
         html: emailHtml,
+      });
+
+      // Gravar log de idempotência corporativo em cm_audit_logs
+      await supabase.from("cm_audit_logs").insert({
+        user_id: null,
+        action: "INSERT",
+        table_name: alertKey
       });
 
       sentEmailsList.push(emailDest);

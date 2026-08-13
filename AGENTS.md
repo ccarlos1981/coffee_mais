@@ -2826,6 +2826,59 @@ A Seção 115 permanece como a ÚNICA fonte de verdade (Single Source of Truth) 
 
 Status Arquitetural: `RPS_GOVERNANCE_AUTHORIZATION = LOCKED` & `BASELINE = CONFIRMED` & `NON_REGRESSION = REQUIRED`.
 
+### Aditivo de Governança — Janela Estendida (Domingo + Segunda), Milhares (k) e Alerta Operacional 14h — 13/08/2026
+
+A partir de 13/08/2026, as novas diretrizes operacionais do módulo RPS entram em vigor sob as seguintes regras mandatórias:
+
+1. **Unidade Visual de Faturamento (Milhares k)**:
+   - Todo valor de Faturamento (FAT) exibido ou editado nos inputs da interface RPS utiliza a unidade de **Milhares (k)** (ex: R$ 300.000 é exibido e digitado como `300`).
+   - O banco de dados Supabase (`cm_weekly_projections`), DRE, BI e motores analíticos permanecem armazenando e processando valores monetários integrais em **Reais** (`300000`). A conversão de divisão/multiplicação por 1.000 é estritamente restrita à camada de apresentação visual do React (`page.tsx`).
+2. **Janela Estendida de Lançamento (Domingo + Segunda-feira)**:
+   - A janela de lançamento para Gerentes Comerciais restritos passa a ser aberta no **Domingo (todo o dia, 00:00 às 23:59 BRT)** e na **Segunda-feira até as 15:00 BRT**.
+   - No Domingo (ex: 09/08/2026), o lançamento projeta a semana comercial que se inicia na Segunda-feira seguinte (`2026-08-10`).
+   - Terça-feira a Sábado permanece 100% bloqueado para edição por gerentes restritos.
+3. **Cutoff Temporal Mantido às 15:00 BRT**:
+   - O encerramento da janela de segunda-feira ocorre impreterivelmente às **15:00 BRT** (`America/Sao_Paulo`).
+4. **Alerta de Atraso das 14:00 BRT**:
+   - Disparo automatizado de e-mail agendado em `vercel.json` às **14:00 BRT** (17:00 UTC, `"0 17 * * 1"`).
+   - Um Gerente Comercial é considerado **PREENCHIDO** exclusivamente se possuir os três KPIs comerciais (**FAT + VOL + INVEST**) completos no registro consolidado `client_matrix = '_TOTAL_'` para a semana corrente dentro da janela entre **Domingo 00:00 BRT** e **Segunda-feira 14:00 BRT**.
+   - O preenchimento parcial (apenas FAT, apenas VOL, apenas INVEST, combinações de 2 KPIs ou lançamentos exclusivamente em redes individuais sem `_TOTAL_`) classifica o gerente como **PENDENTE** e gera a notificação por e-mail.
+   - Idempotência de envio garantida via registro de auditoria em `cm_audit_logs` (máximo 1 e-mail por gerente/semana/ciclo).
+5. **Permissões Administrativas Irrestritas**:
+   - Perfis administrativos (`Admin`, `Admin Master`, `Gerente Nacional`, `CEO`, `Diretor`) continuam com edição aberta todos os dias sobre todas as semanas e carteiras.
+
+### Registro de Congelamento Operacional Final — RPS (13/08/2026)
+
+A arquitetura, regras de autorização, janela de lançamento, unidade de exibição e alerta por e-mail do módulo RPS encontram-se **oficialmente homologados e congelados** em baseline permanente.
+
+- `RPS_GOVERNANCE = LOCKED`
+- `RPS_ALERT_COMPLETION_RULE = FAT + VOL + INVEST + _TOTAL_`
+- `RPS_ALERT_WINDOW = DOMINGO 00:00 → SEGUNDA 14:00 BRT`
+- `RPS_ALERT_TIME = 14:00 BRT`
+- `RPS_ALERT_IDEMPOTENCY = LOCKED`
+- `RPS_NON_REGRESSION = REQUIRED`
+- `READ_ONLY_AUDIT = PASSED`
+- `CODE_CHANGES = 0`
+- `DATABASE_CHANGES = 0`
+- `MIGRATION_CHANGES = 0`
+- `GOVERNANCE_CHANGES = 0`
+
+**Diretriz de Auditoria Obrigatória Pré-Alteração:** Qualquer evolução ou alteração futura no módulo RPS exige obrigatoriamente uma auditoria prévia 100% READ-ONLY do fluxo integral (Frontend → API → Supabase → Cron → E-mail) apresentando diagnósticos e riscos antes de qualquer escrita no código ou banco.
+
+### Protocolo Permanente de Incidente — RPS (Read-Only First / No Blind Fix) — 13/08/2026
+
+Qualquer relato futuro de divergência, erro de salvamento, projeção não exibida, alerta indevido, valor incorreto ou comportamento inesperado no módulo RPS deve seguir obrigatoriamente o protocolo de resposta:
+
+1. **Read-Only First (Somente Leitura Inicial):** Proibido alterar código, banco, RLS, migrations, `AGENTS.md`, criar exceções ou realizar commits antes da conclusão e homologação da auditoria forense.
+2. **Rastreamento Ponta a Ponta Obrigatório:**
+   `Gerente → UI (page.tsx) → Estado React → Payload → POST (/api/processo-comercial/rps) → Validação 403 → Upsert (cm_weekly_projections) → GET → Renderização UI → Cron (/api/cron/rps-alert) → E-mail → Audit Log (cm_audit_logs)`.
+3. **Formato Obrigatório do Relatório de Auditoria:**
+   - 1. Incidente reportado; 2. Evidências encontradas; 3. Fluxo FE → API → Banco → GET → UI; 4. Fluxo Banco → Cron → E-mail; 5. Causa raiz; 6. Regra de governança envolvida; 7. Bug confirmado? (SIM/NÃO); 8. Impacto; 9. Arquivos envolvidos; 10. Risco de regressão; 11. Correção recomendada; 12. Testes necessários.
+   - Status obrigatório de saída da auditoria: `CODE_CHANGES = 0`, `DATABASE_CHANGES = 0`, `GOVERNANCE_CHANGES = 0`, `COMMIT = PROIBIDO`.
+4. **Dois Estágios Mandatórios:** A correção somente poderá ser iniciada após autorização explícita do plano de auditoria apresentado (*Estágio 2: Implementação Autorizada*), sendo estritamente restrita à causa raiz comprovada sem refatorações ou melhorias cosméticas não solicitadas.
+
+Status Arquitetural: `RPS_INCIDENT_PROTOCOL = LOCKED` & `RPS_READ_ONLY_FIRST = REQUIRED` & `BASELINE = PERMANENTE`.
+
 ---
 
 ## 116. Baseline Oficial — Sanitização Simétrica de ST e Normalização Gerencial DRE Comercial
