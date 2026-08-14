@@ -307,6 +307,13 @@ export default function AjudaInvestimentoPage() {
             Para evitar o famoso <em>"achava que fulano ia fazer isso"</em>, o módulo possui papéis e responsabilidades 100% delimitados por perfil no sistema.
           </p>
 
+          <ScreenshotCard 
+            src="/images/guia-investimento/workflow_geral_white_1781486116926.png"
+            alt="Divisão de Responsabilidades e Fases de Atuação"
+            title="Mapeamento de Fases por Responsável no Sistema"
+            purpose="Cada área possui uma etapa específica de atuação no painel corporativo para garantir independência de auditoria."
+          />
+
           <div className="overflow-x-auto rounded-2xl border border-border">
             <table className="w-full text-xs text-left border-collapse">
               <thead>
@@ -369,6 +376,46 @@ export default function AjudaInvestimentoPage() {
             </p>
           </div>
 
+          {/* PAINEL DIDÁTICO ESPECIAL: A DIFERENÇA DOS 4 CONCEITOS DE DATAS */}
+          <div className="bg-gradient-to-br from-gold/10 via-card to-card border-2 border-gold/40 rounded-2xl p-5 space-y-4 shadow-md">
+            <h4 className="text-sm font-bold text-gold uppercase tracking-wider flex items-center gap-2">
+              <Calendar className="w-5 h-5" /> Entenda a Diferença entre as 4 Datas do Sistema (Sem Confusão!)
+            </h4>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              É muito comum quem está começando confundir o mês em que está lançando com o mês da promoção. Veja a diferença exata com um exemplo prático:
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-muted/60 rounded-xl border border-border space-y-1">
+                <span className="font-bold text-foreground block flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-blue-500" /> 1. Data de Registro (Timestamp)
+                </span>
+                <p className="text-muted-foreground">O dia e a hora em que você clicou no botão "Salvar". Gravado 100% automático pelo sistema (ex: 15/07/2026 às 14:30).</p>
+              </div>
+
+              <div className="p-3 bg-muted/60 rounded-xl border border-border space-y-1">
+                <span className="font-bold text-foreground block flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-gold" /> 2. Mês de Referência (YYYY-MM)
+                </span>
+                <p className="text-muted-foreground">O mês comercial/orçamentário que pagará a verba (ex: <span className="font-semibold text-foreground">2026-08</span> = Agosto/2026). NUNCA é simplesmente o "mês anterior" ou a "data de hoje".</p>
+              </div>
+
+              <div className="p-3 bg-muted/60 rounded-xl border border-border space-y-1">
+                <span className="font-bold text-foreground block flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-emerald-500" /> 3. Período Planejado da Ação
+                </span>
+                <p className="text-muted-foreground">As datas em que o folheto rodará nas lojas (ex: <span className="font-semibold text-foreground">10/08/2026 a 20/08/2026</span>).</p>
+              </div>
+
+              <div className="p-3 bg-muted/60 rounded-xl border border-border space-y-1">
+                <span className="font-bold text-foreground block flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> 4. Período Real (Divergência)
+                </span>
+                <p className="text-muted-foreground">Se a entrega atrasar, a data real em que rodou (ex: <span className="font-semibold text-foreground">15/08/2026 a 25/08/2026</span>), registrada pelo Trade na Fase 2.</p>
+              </div>
+            </div>
+          </div>
+
           <ScreenshotCard 
             src="/images/guia-investimento/fase1_lancar_real.png"
             alt="Formulário de Cadastro de Investimento Comercial - Topo"
@@ -417,6 +464,12 @@ export default function AjudaInvestimentoPage() {
               <li>Na aba <span className="font-semibold text-foreground">Planejamento</span>, clique em <span className="font-semibold text-foreground">Promover</span> e depois em <span className="font-semibold text-foreground">Passar para o Trade</span>.</li>
             </ol>
           </BoxComoFazer>
+
+          <BoxNaoFaca title="O que pode dar errado na Fase 1?">
+            <p>
+              Salvar a ação e esquecer de clicar em <strong>Promover</strong>. A ação continuará no status Rascunho e o Trade Marketing não receberá o aviso para auditoria!
+            </p>
+          </BoxNaoFaca>
         </div>
       )
     },
@@ -468,6 +521,12 @@ export default function AjudaInvestimentoPage() {
               Ao concluir a análise, o Trade clica em <span className="font-semibold text-foreground">Validado pelo Trade</span>. A ação é automaticamente impulsionada para a <strong>Fase 3 (Apuração & Boleto)</strong>, aguardando o término da oferta para prestação de contas pelo Gerente.
             </p>
           </BoxAtencao>
+
+          <BoxNaoFaca title="O que pode dar errado na Fase 2?">
+            <p>
+              O Trade reprovar a ação por falta de saldo de estoque no CD. Nesse caso, a ação retorna para o Gerente na Fase 1 para reprogramação.
+            </p>
+          </BoxNaoFaca>
         </div>
       )
     },
@@ -507,6 +566,12 @@ export default function AjudaInvestimentoPage() {
               <li>Clique no botão <span className="font-semibold text-foreground">Concluir Apuração</span>.</li>
             </ol>
           </BoxComoFazer>
+
+          <BoxNaoFaca title="O que pode dar errado na Fase 3?">
+            <p>
+              Preencher o volume vendido sem anexar o relatório em PDF ou esquecer de vincular o boleto. O Trade devolverá a apuração na Fase 4.
+            </p>
+          </BoxNaoFaca>
         </div>
       )
     },
@@ -714,6 +779,13 @@ export default function AjudaInvestimentoPage() {
             No dia a dia comercial, imprevistos acontecem: um caminhão pode atrasar, a rede pode adiar o encarte ou a loja física pode não montar a ponta de gôndola. O sistema Coffee++ prevê exatamente como agir nesses dois cenários sem burlar regras de auditoria.
           </p>
 
+          <ScreenshotCard 
+            src="/images/guia-investimento/fase2_checklist_real.png"
+            alt="Divergência de Calendário e Botão Ação Não Aconteceu"
+            title="Tela de Ajuste de Execução Real e Trava Rastreável"
+            purpose="Exibe a interface onde o usuário registra atrasos logísticos reais sem apagar o histórico de planejamento original."
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Cenário A: Ação Atrasou */}
             <div className="bg-card border border-border p-4 rounded-2xl space-y-3">
@@ -770,6 +842,13 @@ export default function AjudaInvestimentoPage() {
             Para garantir a liquidez das contas e não acumular pendências de um mês para o outro, a Coffee Mais estabelece a **Regra Operacional do Prazo de 10 Dias**.
           </p>
 
+          <ScreenshotCard 
+            src="/images/guia-investimento/fase3_apuracao_real.png"
+            alt="Interface de Fechamento de Apuração até 10 Dias"
+            title="Interface de Submissão de Fechamento Comercial"
+            purpose="Mostra a janela de apuração onde o gerente deve digitar o sell-out e vincular o boleto antes do vencimento do limite de 10 dias."
+          />
+
           <div className="bg-card border border-border p-5 rounded-2xl space-y-4">
             <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
               <Clock className="w-5 h-5 text-gold" /> Linha do Tempo dos 10 Dias de Fechamento:
@@ -784,7 +863,7 @@ export default function AjudaInvestimentoPage() {
               <div className="relative">
                 <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-amber-500 border-4 border-card" />
                 <strong className="text-foreground block font-bold">Dias 1 a 7: Coleta de Sell-Out e Evidências</strong>
-                <p className="text-muted-foreground">O Gerente Regional baixa o relatório do portal do cliente e junta as fotos.</p>
+                <p className="text-muted-foreground">O Gerente Regional baixar o relatório do portal do cliente e junta as fotos.</p>
               </div>
               <div className="relative">
                 <div className="absolute -left-[31px] top-0 w-4 h-4 rounded-full bg-emerald-500 border-4 border-card" />
@@ -854,6 +933,13 @@ export default function AjudaInvestimentoPage() {
           <p className="text-base text-muted-foreground leading-relaxed">
             Mapeamos os 5 erros mais frequentes cometidos pelos usuários durante a operação e como resolvê-los de forma rápida:
           </p>
+
+          <ScreenshotCard 
+            src="/images/guia-investimento/fase1_lancar_real.png"
+            alt="Erros de Cadastro e Verificação no Formulário"
+            title="Atenção aos Campos do Formulário de Lançamento"
+            purpose="Demonstra a tela onde a conferência prévia da Rede e do Mês de Referência previne os principais erros operacionais."
+          />
 
           <div className="space-y-3">
             <div className="p-4 bg-card border border-border rounded-2xl space-y-2">
@@ -936,6 +1022,13 @@ export default function AjudaInvestimentoPage() {
             Consulte a ação exata executada por cada botão disponível na plataforma Coffee++:
           </p>
 
+          <ScreenshotCard 
+            src="/images/guia-investimento/fase1_planejamento_real.png"
+            alt="Localização dos Botões de Ação na Plataforma"
+            title="Interface da Tabela com os Botões de Ação Principais"
+            purpose="Mostra onde cada botão fica localizado na barra de ações da tabela corporativa."
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
             <div className="p-3 bg-card border border-border rounded-xl space-y-1">
               <span className="font-mono text-gold font-bold bg-gold/10 px-2 py-0.5 rounded inline-flex items-center gap-1">
@@ -1000,6 +1093,13 @@ export default function AjudaInvestimentoPage() {
           <p className="text-base text-muted-foreground leading-relaxed">
             Antes de submeter a sua ação ou considerar a prestação de contas encerrada, utilize este checklist interativo de segurança:
           </p>
+
+          <ScreenshotCard 
+            src="/images/guia-investimento/fase3_apuracao_real.png"
+            alt="Checklist de Conferência de Dossiê Comercial"
+            title="Visualização da Tela de Conferência Pré-Submissão"
+            purpose="Demonstra os campos de apuração que devem ser checados antes da finalização."
+          />
 
           <div className="bg-card border border-border rounded-2xl p-5 space-y-3">
             <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
@@ -1106,6 +1206,13 @@ export default function AjudaInvestimentoPage() {
           <p className="text-base text-muted-foreground leading-relaxed">
             Tenha a <strong>"Cola de Operação Rápida"</strong> sempre à mão para o seu dia a dia:
           </p>
+
+          <ScreenshotCard 
+            src="/images/guia-investimento/workflow_geral_white_1781486116926.png"
+            alt="Resumo do Caminho das 6 Fases"
+            title="Fluxo Visual Sintético de Prestação de Contas"
+            purpose="Guia visual dos 4 passos rápidos de operação."
+          />
 
           <div className="bg-card border-2 border-gold/40 rounded-2xl p-5 space-y-4 shadow-lg">
             <h4 className="font-bold text-sm text-gold uppercase tracking-wider flex items-center gap-2">
