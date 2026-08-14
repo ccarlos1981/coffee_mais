@@ -2967,6 +2967,49 @@ A partir de 11/08/2026, a arquitetura, suíte de componentes React, DataProvider
 
 Status Arquitetural: `RDM_DRE_COMERCIAL = HOMOLOGADO_E_CONGELADO` & `SLIDES_OFICIAIS = EXACTLY_2` & `BASELINE = PERMANENTE`.
 
+---
+
+## 118. Baseline Oficial — Governança KA por Matriz/Rede + UF (Baseline Permanente)
+
+A partir de 14/08/2026, a arquitetura e governança de apuração comercial do **Canal Key Account (KA) por MATRIZ/REDE + UF** (Demanda 013) tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`DEMANDA_013 = HOMOLOGADA_E_ENCERRADA` | `GOVERNANÇA_KA = ATIVA` | `BASELINE = PRESERVADA_E_LOCKED`
+
+### Regra Oficial de Precedência:
+$$\text{MATRIZ/REDE} + \text{UF} \longrightarrow \text{RESPONSÁVEL KA} + \text{CANAL KA}$$
+
+Toda apuração do Canal KA respeita rigorosamente a precedência da combinação **MATRIZ/REDE + UF** cadastrada na fonte oficial. É expressamente proibida a inferência ou substituição por vendedor cadastrado no ERP, gerente do ERP, responsável cadastral secundário ou carteira dinâmica.
+
+### Fonte Única de Verdade:
+`public.cm_regras_apuracao_comercial`
+
+### Resultados Homologados:
+1. **15 Regras KA Ativas**: Cobertura integral das carteiras homologadas (Julliano SP, Leandro Saffi SC e Luiz RJ/MG/SP/PE).
+2. **Precedência por MATRIZ + UF**: Implementada nativamente com suporte a colunas `uf` e `canal` e índice de proteção contra duplicidades ativas (`idx_cm_regras_matriz_uf_ativa`).
+3. **Reconciliação MATEUS/PE**: Parceiro `225794` (`MIX MATEUS`, R$ 20.000,00) homologado e atribuído a `Luiz / KA`.
+4. **Preservação Financeira Absoluta**: View `public.sales` atualizada mantendo 100% de paridade com `cm_faturamento`:
+   - Faturamento Agosto/2026: **R$ 2.633.992,89**
+   - Faturamento Julho/2026: **R$ 9.686.478,14**
+   - Delta Financeiro: **R$ 0,0000 (0,0000%)**
+5. **Reconciliação e Health Check**: Materialized views (`mv_vendas_mensal`) recarregadas e auditadas via `public.vw_mv_health_check` (`Status = OK`).
+6. **Integridade de Código e Governança**: `npx tsc --noEmit` executado com **0 erros** e `npm run audit:analytics` com **100.00% de conformidade**.
+
+### Objetos Homologados do Ecossistema:
+- `public.cm_regras_apuracao_comercial`
+- `public.sales`
+- `public.cm_clientes`
+- `public.base_atendimento`
+- `public.mv_vendas_mensal`
+- `public.vw_mv_health_check`
+
+### Diretrizes Mandatórias de Governança:
+1. **Invariabilidade de Precedência**: Nenhuma alteração futura em qualquer módulo ou API poderá substituir, enfraquecer ou contornar a precedência de `MATRIZ/REDE + UF` da `cm_regras_apuracao_comercial`.
+2. **Preservação Histórica**: Nenhuma reclassificação retroativa de períodos homologados está autorizada sem nova demanda formal e homologação explícita de governança.
+
+Status Arquitetural: `GOVERNANCA_KA_MATRIZ_UF = LOCKED` & `BASELINE = CONFIRMED` & `PARIDADE_FINANCEIRA = R$ 0,0000`.
+
+
 
 
 

@@ -1836,7 +1836,7 @@ async function enviarEmailNotificacaoApuracao(
           </h3>
           <table style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
             <tr>
-              <td style="padding: 4px 0; color: #475569; font-weight: 500; width: 40%;">Número do Acordo:</td>
+              <td style="padding: 4px 0; color: #475569; font-weight: 500; width: 40%;">Dados do Acordo:</td>
               <td style="padding: 4px 0; color: #1f2937; font-weight: bold;">${acao.apuracao_numero_acordo || "-"}</td>
             </tr>
             <tr>
@@ -1946,7 +1946,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
   const sem_boleto = formData.get("sem_boleto") === "true";
 
   if (!apuracao_numero_acordo) {
-    throw new Error("Número do Acordo é obrigatório.");
+    throw new Error("Dados do Acordo é obrigatório.");
   }
 
   const { error } = await supabase
