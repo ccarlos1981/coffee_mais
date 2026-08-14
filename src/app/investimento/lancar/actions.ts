@@ -1940,10 +1940,11 @@ export async function preencherApuracao(id: string, formData: FormData) {
   const vinculos = JSON.parse(vinculosStr) as Array<{ boleto_id: string, valor_associado: number }>;
   const apuracao_boleto_id = vinculos[0]?.boleto_id || null;
   
-  // Evidências
+  // Evidências e Observações
   const apuracao_evidencias_url = formData.get("apuracao_evidencias_url") as string || null;
   const condicao_pagamento = formData.get("condicao_pagamento") as string || null;
   const sem_boleto = formData.get("sem_boleto") === "true";
+  const post_action_notes = formData.get("post_action_notes") as string || null;
 
   if (!apuracao_numero_acordo) {
     throw new Error("Dados do Acordo é obrigatório.");
@@ -1963,6 +1964,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
       apuracao_evidencias_url,
       condicao_pagamento,
       sem_boleto,
+      post_action_notes,
       apuracao_preenchida_em: new Date().toISOString(),
       apuracao_preenchida_por: user?.email || "unknown"
     })
