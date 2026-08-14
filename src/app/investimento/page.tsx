@@ -28,6 +28,7 @@ import {
   Download,
   AlertCircle,
   AlertTriangle,
+  Plus,
   List,
   X,
   Lock,
@@ -509,15 +510,72 @@ export default function InvestimentoPage() {
     };
     fetchAuditLogs();
   }, [selectedAction?.id]);
+  const filterAndDeduplicateBoletos = (boletos: any[]): any[] => {
+    if (!Array.isArray(boletos) || boletos.length === 0) return [];
+
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const parseVencimentoDateStr = (venc: any): string => {
+      if (!venc) return '';
+      if (typeof venc === 'string') {
+        const match = venc.match(/^\d{4}-\d{2}-\d{2}/);
+        if (match) return match[0];
+      }
+      const d = new Date(venc);
+      if (isNaN(d.getTime())) return '';
+      const year = d.getUTCFullYear();
+      const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const seenKeys = new Set<string>();
+    const result: any[] = [];
+
+    for (const b of boletos) {
+      if (!b || b.status !== 'Aberto') continue;
+
+      const vencDateStr = parseVencimentoDateStr(b.vencimento);
+
+      // REGRA 1 — NÃO EXIBIR BOLETO VENCIDO (vencimento < hoje)
+      if (vencDateStr && vencDateStr < todayStr) {
+        continue;
+      }
+
+      // REGRA 2 — DEDUPLICAÇÃO (chave única por número, rede, valor e vencimento)
+      const numBoleto = (b.numero_boleto || b.nro_nota || b.id || '').toString().trim().toUpperCase();
+      const redeStr = (b.rede || '').toString().trim().toUpperCase();
+      const valStr = Number(b.valor_total || b.valor_liquido || 0).toFixed(2);
+      const key = `${numBoleto}_${redeStr}_${valStr}_${vencDateStr}`;
+
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        result.push(b);
+      }
+    }
+
+    return result;
+  };
+
   const fetchBoletosDaRede = async (rede: string) => {
     const redeUpper = rede.toUpperCase().trim();
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     const { data } = await supabase
       .from('cm_boletos')
       .select('*')
       .or(`rede.eq.${redeUpper},rede.ilike.%${redeUpper}%`)
       .eq('status', 'Aberto')
+      .gte('vencimento', todayStr)
       .order('vencimento', { ascending: true });
-    if (data) setBoletosAbertos(data);
+
+    if (data) {
+      setBoletosAbertos(filterAndDeduplicateBoletos(data));
+    } else {
+      setBoletosAbertos([]);
+    }
     setBoletoSearchTerm("");
     setBoletoSearchResults([]);
     setSelectedBoletoLabel("");
@@ -529,14 +587,19 @@ export default function InvestimentoPage() {
       return;
     }
     setBoletoSearchLoading(true);
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
     const { data } = await supabase
       .from('cm_boletos')
       .select('*')
       .ilike('rede', `%${term.toUpperCase()}%`)
       .eq('status', 'Aberto')
+      .gte('vencimento', todayStr)
       .order('vencimento', { ascending: true })
-      .limit(30);
-    setBoletoSearchResults(data || []);
+      .limit(50);
+
+    setBoletoSearchResults(filterAndDeduplicateBoletos(data || []));
     setBoletoSearchLoading(false);
   }, []);
 
@@ -2059,21 +2122,35 @@ export default function InvestimentoPage() {
     }
   };
 
-  const handleActionEvidenceUpload = async (file: File | null) => {
-    if (!file || !selectedAction) return;
-    setActionLoading(selectedAction.id);
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `evidence_${selectedAction.id}_${Date.now()}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from("comprovantes_investimento")
-        .upload(fileName, file);
+  const handleActionEvidenceUpload = async (inputFiles: FileList | File[] | File | null) => {
+    if (!inputFiles || !selectedAction) return;
+    const filesArray: File[] = inputFiles instanceof FileList 
+      ? Array.from(inputFiles) 
+      : Array.isArray(inputFiles) 
+        ? inputFiles 
+        : [inputFiles];
 
-      if (uploadError) throw uploadError;
+    if (filesArray.length === 0) return;
+
+    setActionLoading(selectedAction.id);
+    setUploadingId(selectedAction.id);
+    try {
+      const newFileNames: string[] = [];
+      for (let i = 0; i < filesArray.length; i++) {
+        const file = filesArray[i];
+        const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileName = `evidence_${selectedAction.id}_${Date.now()}_${i}_${cleanName}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from("comprovantes_investimento")
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+        newFileNames.push(fileName);
+      }
 
       const currentEvidencias = Array.isArray(selectedAction.evidencias_urls) ? selectedAction.evidencias_urls : [];
-      const updatedEvidencias = [...currentEvidencias, fileName];
+      const updatedEvidencias = [...currentEvidencias, ...newFileNames];
 
       const { error: dbError } = await supabase
         .from("cm_acoes_investimento")
@@ -2085,11 +2162,54 @@ export default function InvestimentoPage() {
       setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, evidencias_urls: updatedEvidencias } : item));
       setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, evidencias_urls: updatedEvidencias } : prev);
       
-      setFeedback({ type: "success", msg: "Evidência anexada com sucesso!" });
+      setFeedback({ type: "success", msg: `${newFileNames.length} anexo(s) adicionado(s) com sucesso!` });
       setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       console.error(err);
-      alert("Erro ao enviar evidência: " + err.message);
+      alert("Erro ao enviar anexo(s): " + err.message);
+    } finally {
+      setActionLoading(null);
+      setUploadingId(null);
+    }
+  };
+
+  const handleRemoveEvidence = async (urlToRemove: string) => {
+    if (!selectedAction) return;
+    setActionLoading(selectedAction.id);
+    try {
+      const isDocUrl = selectedAction.documento_url === urlToRemove;
+      const currentEvidencias = Array.isArray(selectedAction.evidencias_urls) ? selectedAction.evidencias_urls : [];
+      const updatedEvidencias = currentEvidencias.filter((url: string) => url !== urlToRemove);
+      
+      const updatePayload: any = { evidencias_urls: updatedEvidencias };
+      if (isDocUrl) {
+        updatePayload.documento_url = null;
+      }
+
+      const { error: dbError } = await supabase
+        .from("cm_acoes_investimento")
+        .update(updatePayload)
+        .eq("id", selectedAction.id);
+
+      if (dbError) throw dbError;
+
+      const updateItem = (item: any) => {
+        if (item.id !== selectedAction.id) return item;
+        return {
+          ...item,
+          evidencias_urls: updatedEvidencias,
+          ...(isDocUrl ? { documento_url: null } : {})
+        };
+      };
+
+      setData(prev => prev.map(updateItem));
+      setSelectedAction(prev => prev && prev.id === selectedAction.id ? updateItem(prev) : prev);
+      
+      setFeedback({ type: "success", msg: "Anexo removido com sucesso!" });
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao remover anexo: " + err.message);
     } finally {
       setActionLoading(null);
     }
@@ -5434,11 +5554,11 @@ export default function InvestimentoPage() {
                       <span className="text-sm font-bold text-foreground">Preencher Apuração</span>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-xs font-medium text-muted mb-1">Número do Acordo</label>
+                          <label className="block text-xs font-medium text-muted mb-1">Dados do Acordo</label>
                           <input type="text" value={apuracaoForm.numero_acordo} onChange={e => setApuracaoForm({...apuracaoForm, numero_acordo: e.target.value})} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Ex: AC-2026-001" />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-muted mb-1">Condição de Pagamento</label>
+                          <label className="block text-xs font-medium text-muted mb-1">Condição de pagamento do Cliente</label>
                           <input type="text" value={apuracaoForm.condicao_pagamento} onChange={e => setApuracaoForm({...apuracaoForm, condicao_pagamento: e.target.value})} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Ex: 30 dias, Crédito em Nota, etc." />
                         </div>
                         <div>
@@ -5742,40 +5862,91 @@ export default function InvestimentoPage() {
                           })()}
                         </div>
                         <div className="md:col-span-2">
-                          <label className="block text-xs font-medium text-muted mb-1">Anexar Acordo / Evidência (Obrigatório)</label>
-                          <div className="flex items-center gap-3">
-                            {selectedAction.documento_url ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded-lg flex-1">
-                                <FileText className="w-4 h-4" />
-                                <span className="text-sm font-medium truncate">Documento Anexado</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleViewDocument(selectedAction.documento_url!); }}
-                                  className="ml-auto text-xs underline hover:text-blue-400"
-                                >
-                                  Visualizar
-                                </button>
-                              </div>
-                            ) : (
-                              <label className="flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-border border border-dashed border-border rounded-lg flex-1 cursor-pointer transition-colors group">
-                                {uploadingId === selectedAction.id ? (
-                                  <RefreshCw className="w-4 h-4 animate-spin text-muted" />
-                                ) : (
-                                  <>
-                                    <FileUp className="w-4 h-4 text-muted group-hover:text-purple-400 transition-colors" />
-                                    <span className="text-sm text-muted group-hover:text-foreground font-medium transition-colors">Selecionar arquivo (PDF ou Imagem)...</span>
-                                  </>
-                                )}
-                                <input 
-                                  type="file" 
-                                  className="hidden" 
-                                  accept=".pdf,image/*"
-                                  onChange={(e) => handleFileUpload(selectedAction.id, e.target.files?.[0] || null)}
-                                  disabled={uploadingId === selectedAction.id}
-                                />
-                              </label>
-                            )}
+                          <div className="space-y-1 mb-2">
+                            <label className="block text-xs font-bold text-foreground">
+                              Anexar Acordo / Evidências
+                            </label>
+                            <p className="text-[11px] text-muted leading-tight">
+                              Adicione todos os documentos e evidências necessários para comprovar a ação. Você pode adicionar vários arquivos.
+                            </p>
+                            <span className="text-[10px] text-muted/80 italic block">
+                              PDF, imagens e formatos permitidos pelo sistema.
+                            </span>
                           </div>
+
+                          {(() => {
+                            const allAttachments: string[] = Array.from(new Set([
+                              ...(selectedAction.documento_url ? [selectedAction.documento_url] : []),
+                              ...(Array.isArray(selectedAction.evidencias_urls) ? selectedAction.evidencias_urls : [])
+                            ]));
+
+                            return (
+                              <div className="space-y-2">
+                                {allAttachments.length > 0 && (
+                                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                    {allAttachments.map((url, idx) => {
+                                      const isPdf = url.toLowerCase().endsWith('.pdf');
+                                      const ext = url.split('.').pop()?.toUpperCase() || 'FILE';
+                                      const parts = url.split('_');
+                                      const displayName = parts.length >= 5 ? parts.slice(4).join('_') : (url.split('/').pop() || url);
+
+                                      return (
+                                        <div key={idx} className="flex items-center justify-between p-2 bg-background border border-border rounded-xl text-xs gap-2 hover:border-purple-500/30 transition-colors">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            <span className="text-sm">{isPdf ? "📄" : "🖼️"}</span>
+                                            <div className="flex flex-col min-w-0">
+                                              <span className="font-medium text-foreground truncate" title={displayName}>{displayName}</span>
+                                              <span className="text-[9px] text-muted font-mono">{ext}</span>
+                                            </div>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-emerald-500 font-bold text-xs px-1" title="Upload concluído">✓</span>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); handleViewDocument(url); }}
+                                              className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 rounded-lg text-[11px] font-semibold transition-colors"
+                                            >
+                                              Visualizar
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => { e.stopPropagation(); handleRemoveEvidence(url); }}
+                                              disabled={actionLoading === selectedAction.id}
+                                              className="p-1 text-muted hover:text-red-400 transition-colors rounded-lg hover:bg-red-500/10 disabled:opacity-50"
+                                              title="Remover anexo"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+
+                                <label className="flex items-center justify-center gap-2 px-3 py-2.5 bg-background hover:bg-border border border-dashed border-purple-500/30 hover:border-purple-500/60 rounded-xl cursor-pointer transition-all group">
+                                  {uploadingId === selectedAction.id ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin text-purple-400" />
+                                  ) : (
+                                    <>
+                                      <Plus className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform" />
+                                      <span className="text-xs font-bold text-purple-400 group-hover:text-purple-300">
+                                        {allAttachments.length > 0 ? "+ Adicionar mais arquivos" : "Selecionar arquivos (PDF ou Imagem)..."}
+                                      </span>
+                                    </>
+                                  )}
+                                  <input 
+                                    type="file" 
+                                    multiple 
+                                    className="hidden" 
+                                    accept=".pdf,image/*"
+                                    onChange={(e) => handleActionEvidenceUpload(e.target.files)}
+                                    disabled={actionLoading === selectedAction.id || uploadingId === selectedAction.id}
+                                  />
+                                </label>
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
                       <button

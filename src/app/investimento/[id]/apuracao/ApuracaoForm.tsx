@@ -69,7 +69,7 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
     setError(null);
     
     if (!numeroAcordo.trim()) {
-      setError("Número do Acordo é obrigatório.");
+      setError("Dados do Acordo é obrigatório.");
       return;
     }
 
@@ -145,9 +145,9 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
       {/* Form */}
       <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-5">
         
-        {/* Número do Acordo */}
+        {/* Dados do Acordo */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-muted">Número do Acordo *</label>
+          <label className="block text-sm font-medium text-muted">Dados do Acordo *</label>
           <input
             type="text"
             value={numeroAcordo}
@@ -158,30 +158,50 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
           />
         </div>
 
-        {/* Evidências */}
+        {/* Anexar Acordo / Evidências */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-muted">Evidências (Fotos / Relatórios)</label>
+          <div className="space-y-1">
+            <label className="block text-sm font-bold text-foreground">Anexar Acordo / Evidências</label>
+            <p className="text-xs text-muted">Adicione todos os documentos e evidências necessários para comprovar a ação. Você pode adicionar vários arquivos.</p>
+            <span className="text-[11px] text-muted/80 italic block">PDF, imagens e formatos permitidos pelo sistema.</span>
+          </div>
           
           {evidencias.length > 0 && (
-            <div className="space-y-2">
-              {evidencias.map((url, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-elevated border border-border rounded-lg px-3 py-2">
-                  <span className="text-xs text-foreground truncate flex-1">{url.split('/').pop()}</span>
-                  <button type="button" onClick={() => removeEvidencia(idx)} className="p-1 text-muted hover:text-danger transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {evidencias.map((url, idx) => {
+                const isPdf = url.toLowerCase().endsWith('.pdf');
+                const ext = url.split('.').pop()?.toUpperCase() || 'FILE';
+                const parts = url.split('_');
+                const displayName = parts.length >= 4 ? parts.slice(3).join('_') : (url.split('/').pop() || url);
+
+                return (
+                  <div key={idx} className="flex items-center justify-between bg-elevated border border-border rounded-xl px-3 py-2 text-xs gap-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span>{isPdf ? "📄" : "🖼️"}</span>
+                      <span className="text-xs text-foreground font-medium truncate" title={displayName}>{displayName}</span>
+                      <span className="text-[10px] text-muted uppercase font-mono">{ext}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-emerald-500 font-bold text-xs">✓</span>
+                      <button type="button" onClick={() => removeEvidencia(idx)} className="p-1 text-muted hover:text-danger transition-colors" title="Remover anexo">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-elevated hover:bg-border border-2 border-dashed border-border rounded-xl cursor-pointer transition-colors">
+          <label className="flex items-center justify-center gap-2 px-4 py-3 bg-elevated hover:bg-border border-2 border-dashed border-border rounded-xl cursor-pointer transition-colors group">
             {uploading ? (
               <RefreshCw className="w-5 h-5 animate-spin text-gold" />
             ) : (
               <>
-                <Upload className="w-5 h-5 text-muted" />
-                <span className="text-sm text-muted font-medium">Adicionar arquivos</span>
+                <Upload className="w-5 h-5 text-muted group-hover:text-gold transition-colors" />
+                <span className="text-sm text-muted group-hover:text-foreground font-medium transition-colors">
+                  {evidencias.length > 0 ? "+ Adicionar mais arquivos" : "Selecionar arquivos (PDF ou Imagem)..."}
+                </span>
               </>
             )}
             <input
