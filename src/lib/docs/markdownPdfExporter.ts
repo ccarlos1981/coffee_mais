@@ -614,7 +614,7 @@ export async function exportMarkdownToPdf(
       calloutHeader: { fontSize: 9, bold: true, margin: [0, 0, 0, 3] },
       calloutText: { fontSize: 8.5, color: "#E5E5E5", leading: 12 },
       codeTitle: { fontSize: 9, bold: true, color: "#D4A373", margin: [0, 0, 0, 4] },
-      codeContent: { fontSize: 8, color: "#A3E635", font: "Courier" },
+      codeContent: { fontSize: 8, color: "#A3E635" },
       tableTh: { fontSize: 8.5, bold: true, color: "#D4A373", fillColor: "#1F1A14", padding: 5 },
       tableTd: { fontSize: 8, color: "#E5E5E5", fillColor: "#141414", padding: 4 },
       tableTdAlt: { fontSize: 8, color: "#E5E5E5", fillColor: "#191919", padding: 4 },
