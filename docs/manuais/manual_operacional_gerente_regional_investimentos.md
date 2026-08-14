@@ -1,418 +1,231 @@
-# MANUAL OPERACIONAL DO GERENTE REGIONAL — MÓDULO DE INVESTIMENTOS
+# MANUAL OPERACIONAL DE INVESTIMENTOS — COFFEE MAIS
 
-> 📌 **Público-Alvo:** Gerentes Regionais Comerciais da Coffee Mais  
-> 💡 **Objetivo:** Guia prático e autoexplicativo passo a passo para planejar, cadastrar, acompanhar, apurar e solicitar quitação de verbas comerciais sem complicação.
-
----
-
-## SUMÁRIO DE NAVEGAÇÃO
-
-1. [O que é o Módulo de Investimentos](#1-o-que-é-o-módulo-de-investimentos)
-2. [Quando devo lançar um investimento?](#2-quando-devo-lançar-um-investimento)
-3. [Antes de começar (Checklist de Preparação)](#3-antes-de-começar-checklist-de-preparação)
-4. [Como criar uma Campanha comercial](#4-como-criar-uma-campanha-comercial)
-5. [Como lançar uma Ação Comercial (Campo a Campo)](#5-como-lançar-uma-ação-comercial-campo-a-campo)
-6. [Como anexar documentos e relatórios](#6-como-anexar-documentos-e-relatórios)
-7. [Como enviar a ação para o Trade Marketing](#7-como-enviar-a-ação-para-o-trade-marketing)
-8. [O que acontece depois? (Entenda a Esteira de 6 Fases)](#8-o-que-acontece-depois-entenda-a-esteira-de-6-fases)
-9. [Como acompanhar o status das suas ações](#9-como-acompanhar-o-status-das-suas-ações)
-10. [Como preencher a apuração (Resultado Real de Vendas)](#10-como-preencher-a-apuração-resultado-real-de-vendas)
-11. [Como vincular o boleto bancário](#11-como-vincular-o-boleto-bancário)
-12. [Como funciona o processo de aprovação](#12-como-funciona-o-processo-de-aprovação)
-13. [Como acompanhar o pagamento pelo Financeiro](#13-como-acompanhar-o-pagamento-pelo-financeiro)
-14. [Carta de Anuência: Quando e como utilizar](#14-carta-de-anuência-quando-e-como-utilizar)
-15. [Perguntas Frequentes (FAQ)](#15-perguntas-frequentes-faq)
-16. [Principais erros dos gerentes e como evitá-los](#16-principais-erros-dos-gerentes-e-como-evitá-los)
-17. [Boas práticas de gestão comercial](#17-boas-práticas-de-gestão-comercial)
-18. [Fluxograma visual do processo](#18-fluxograma-visual-do-processo)
-19. [Checklist final antes de submeter](#19-checklist-final-antes-de-submeter)
-20. [Guia Rápido de Bolso ("Cola" de Operação)](#20-guia-rápido-de-bolso-cola-de-operação)
+> 📌 **Público-Alvo:** Todos os Colaboradores da Coffee Mais (Gerentes Regionais, Trade Marketing, Financeiro, Diretoria e novos colaboradores)  
+> 💡 **Objetivo:** Guia didático completo, passo a passo e ilustrado para planejar, cadastrar, acompanhar, apurar, auditar e quitar verbas comerciais de investimentos sem complicação.  
+> 🛡️ **Status Arquitetural:** `INVESTIMENTOS_MODULE = LOCKED & CONFIRMED` (Release X.2)
 
 ---
 
-## 1. O QUE É O MÓDULO DE INVESTIMENTOS
+## SUMÁRIO DO CURSO OPERACIONAL
 
-O **Módulo de Investimentos** é a sua ferramenta oficial dentro da plataforma Coffee Mais para registrar, gerenciar e solicitar o pagamento de todas as verbas comerciais e ações promocionais combinadas com os seus clientes (redes de supermercados e distribuidores).
-
-### Por que ele é importante para você?
-- **Segurança de Pagamento:** É a única forma de garantir que o boleto ou abatimento do seu cliente seja pago no prazo certo pelo Financeiro.
-- **Transparência Total:** Você acompanha em tempo real em qual mesa ou fase a sua verba está parada (Trade, Financeiro ou Aguardando Apuração).
-- **Sem Troca de E-mails Perdidos:** Chega de enviar comprovantes por e-mail ou WhatsApp. Tudo fica salvo em um único lugar seguro.
-
----
-
-## 2. QUANDO DEVO LANÇAR UM INVESTIMENTO?
-
-Você deve cadastrar uma ação no módulo sempre que fechar um acordo comercial com um cliente que envolva contrapartida financeira ou bonificação.
-
-### Exemplos comuns de quando lançar:
-- 🛒 **Tabloide / Encarte de Promoção:** O cliente colocou o Café Moído 250g em oferta no jornal da rede.
-- 🎯 **Ponta de Gôndola / Top de Fita:** Negociação de espaço nobre de exposição na loja física.
-- ☕ **Ação de Degustação:** Contratação de promotoras para servir café quentinho na loja durante o final de semana.
-- 📉 **Desconto de Sell-Out:** Acordo de redução temporária de preço na ponta para acelerar o giro do estoque.
-- 📦 **Inauguração de Loja / Aniversário da Rede:** Verba institucional de participação em eventos do cliente.
-
-> ⚠️ **Atenção:** NUNCA autorize um cliente a descontar um boleto ou realizar uma ação sem antes ter cadastrado e promovido o investimento no sistema com antecedência!
+1. [Capítulo 1: O que é um Investimento Comercial?](#capítulo-1-o-que-é-um-investimento-comercial)
+2. [Capítulo 2: Como funciona o Ciclo Completo de uma Ação?](#capítulo-2-como-funciona-o-ciclo-completo-de-uma-ação)
+3. [Capítulo 3: Quem faz o quê? (Matriz RACI)](#capítulo-3-quem-faz-o-quê-matriz-raci)
+4. [Capítulo 4: Fase 1 — Planejamento Comercial & Lançamento](#capítulo-4-fase-1--planejamento-comercial--lançamento)
+5. [Capítulo 5: Fase 2 — Validação Trade & Divergência de Calendário](#capítulo-5-fase-2--validação-trade--divergência-de-calendário)
+6. [Capítulo 6: Fase 3 — Apuração & Boleto (Dossiê Comercial)](#capítulo-6-fase-3--apuração--boleto-dossiê-comercial)
+7. [Capítulo 7: Fase 4 — Auditoria Trade (Conferência do Dossiê)](#capítulo-7-fase-4--auditoria-trade-conferência-do-dossiê)
+8. [Capítulo 8: Fase 5 — Pagamento Financeiro & Quitação](#capítulo-8-fase-5--pagamento-financeiro--quitação)
+9. [Capítulo 9: Fase 6 — Concluído & Blindagem Imutável](#capítulo-9-fase-6--concluído--blindagem-imutável)
+10. [Capítulo 10: E-mails e Notificações (Mapeamento dos 8 Eventos)](#capítulo-10-e-mails-e-notificações-mapeamento-dos-8-eventos)
+11. [Capítulo 11: O que fazer quando a Ação não Aconteceu ou Atrasou?](#capítulo-11-o-que-fazer-quando-a-ação-não-aconteceu-ou-atrasou)
+12. [Capítulo 12: Prazos e Regra de Fechamento em 10 Dias](#capítulo-12-prazos-e-regra-de-fechamento-em-10-dias)
+13. [Capítulo 13: Como funciona o Boleto no Processo? (Guia para Leigos)](#capítulo-13-como-funciona-o-boleto-no-processo-guia-para-leigos)
+14. [Capítulo 14: Erros mais Comuns dos Gerentes e Como Evitá-los](#capítulo-14-erros-mais-comuns-dos-gerentes-e-como-evitá-los)
+15. [Capítulo 15: Dicionário Geral de Botões e Interfaces](#capítulo-15-dicionário-geral-de-botões-e-interfaces)
+16. [Capítulo 16: Checklist Final do Gerente Comercial](#capítulo-16-checklist-final-do-gerente-comercial)
+17. [Capítulo 17: Glossário Comercial & Financeiro para Leigos](#capítulo-17-glossário-comercial--financeiro-para-leigos)
+18. [Capítulo 18: Fluxo Completo Visual & Resumo de Bolso](#capítulo-18-fluxo-completo-visual--resumo-de-bolso)
 
 ---
 
-## 3. ANTES DE COMECAR (CHECKLIST DE PREPARAÇÃO)
+## CAPÍTULO 1: O QUE É UM INVESTIMENTO COMERCIAL?
 
-Antes de abrir a tela de lançamento, certifique-se de ter em mãos as seguintes informações:
+Para quem nunca trabalhou na área comercial ou de vendas, o termo **"Investimento Comercial"** pode soar como uma aplicação financeira na bolsa de valores. No varejo de cafés e supermercados, significa algo totalmente diferente.
 
-- [ ] **Nome exato da Rede/Matriz Comercial** (ex: *Supermercados Guanabara*).
-- [ ] **Data de início e fim da promoção** (ex: *10/08/2026 a 20/08/2026*).
-- [ ] **Produtos participantes** (ex: *Linha de Cápsulas* ou *Café Grão 1KG*).
-- [ ] **Valores acordados:** Preço normal (Flat), Preço em promoção e Valor unitário do investimento.
-- [ ] **Expectativa de volume de vendas** (em Caixas, Unidades ou Quilogramas).
-- [ ] **Forma de pagamento negociada** (Boleto bancário, Abatimento em nota ou Bonificação em mercadoria).
+Um **investimento comercial** é um acordo financeiro negociado entre a **Coffee Mais** e uma **Rede de Supermercados ou Distribuidor** para acelerar a venda dos nossos cafés. Em troca de um desconto ou repasse financeiro, a rede parceira concede destaque para a marca (ex: capa do tabloide promocional, topo de fita, ponta de gôndola ou degustação nas lojas).
 
----
-
-## 4. COMO CRIAR UMA CAMPANHA COMERCIAL
-
-Todas as ações individuais devem pertencer a uma **Campanha**. A Campanha funciona como uma "pasta mãe" ou orçamento global sob a sua responsabilidade.
-
-### Passo a passo para criar a Campanha:
-1. No menu lateral da plataforma, clique em **Investimento** -> **Planejamento** (ou **Lançar**).
-2. Clique no botão superior **`+ Nova Campanha`**.
-3. Preencha o **Nome da Campanha** (ex: *Campanha Dia dos Pais 2026 - Regional SP*).
-4. Defina o **Orçamento Total Reservado** para essa campanha (ex: *R$ 50.000,00*).
-5. Defina a data de **Início** e **Fim** da campanha.
-6. Clique em **`Salvar Campanha`**.
-
-> 💡 **Dica de Ouro:** Como Gerente Regional, você é o dono da sua Campanha. Todas as ações que você criar dentro dela carregarão automaticamente o seu nome como responsável comercial!
+### Por que ele existe?
+- **Visibilidade de Prateleira:** Impede que o café fique escondido no fundo da loja.
+- **Giro de Vendas:** Atrai o consumidor final com preços promocionais competitivos.
+- **Parceria Estratégica:** Garante espaço contínuo nas grandes redes de supermercados do Brasil.
 
 ---
 
-## 5. COMO LANÇAR UMA AÇÃO COMERCIAL (CAMPO A CAMPO)
+## CAPÍTULO 2: COMO FUNCIONA O CICLO COMPLETO DE UMA AÇÃO?
 
-Acesse a tela de lançamento em **Investimento** -> **Lançar Novo** e preencha o formulário conforme as orientações detalhadas abaixo:
+Uma verba promocional percorre uma jornada em 6 fases encadeadas:
 
-```
-+-------------------------------------------------------------------------+
-| FORMULÁRIO DE LANÇAMENTO COMERCIAL                                      |
-|                                                                         |
-| 1. Selecionar Rede  ──> [ Guanabara - RJ                     v ]        |
-| 2. Selecionar Campanha ─> [ Promoções 3Q 2026 - Gerente Leo   v ]       |
-| 3. Tipo de Ação ──────> [ Tabloide de Oferta                 v ]        |
-| 4. Forma Pagamento ───> [ Abatimento em Boleto              v ]        |
-| 5. Vigência ──────────> [ 10/08/2026 ] até [ 20/08/2026 ]               |
-|                                                                         |
-| ── PARÂMETROS COMERCIAIS ────────────────────────────────────────────── |
-| Preço Flat: R$ 18,90 | Preço Ação: R$ 14,90 | Invest/UN: R$ 4,00       |
-| Volume Planejado: 1.000 CX | Total Investimento: R$ 48.000,00          |
-+-------------------------------------------------------------------------+
-```
+1. **Fase 1 (Planejamento Comercial):** O Gerente Regional cria a campanha e cadastra a ação.
+2. **Fase 2 (Validação Trade):** O Trade Marketing confere se há estoque no CD e alinha promotores.
+3. **Fase 3 (Apuração & Boleto):** A promoção roda nas lojas. No término, o Gerente digita as vendas reais, anexa fotos e escolhe o boleto do cliente.
+4. **Fase 4 (Auditoria Trade):** O Trade confere as fotos e os relatórios em PDF do cliente.
+5. **Fase 5 (Pagamento Financeiro):** O Financeiro faz o abatimento no ERP Sankhya ou PIX e anexa o comprovante bancário.
+6. **Fase 6 (Concluído):** O sistema finaliza a ação com o selo verde de concluído (✅) protegendo as informações contra edições.
 
 ---
+
+## CAPÍTULO 3: QUEM FAZ O QUÊ? (MATRIZ RACI)
+
+| Papel / Perfil | Descrição do Ator | Responsabilidade no Módulo | Fases de Atuação |
+| :--- | :--- | :--- | :--- |
+| **Gerente Regional (GRV)** | Executivo de Vendas | Cadastra, promove, apura vendas reais, anexa evidências e indica o boleto. | **Fase 1 e Fase 3** |
+| **Trade Marketing** | Equipe de Estratégia de Mercado | Confere estoque, alinha campo, registra divergência e audita dossiês. | **Fase 2 e Fase 4** |
+| **Financeiro / Tesouraria** | Analista de Contas a Pagar | Efetua a baixa no ERP Sankhya, quita duplicatas e insere comprovantes bancários. | **Fase 5** |
+| **Sistema (Automação)** | Plataforma Coffee++ | Notifica via e-mail, calcula conversões físicas e sela imutavelmente. | **Fase 6** |
+
+---
+
+## CAPÍTULO 4: FASE 1 — PLANEJAMENTO COMERCIAL & LANÇAMENTO
+
+### O que é?
+Etapa em que o Gerente Regional rascunha as ações comerciais futuras para reservar orçamento e prever volumes.
 
 ### Detalhamento dos Campos do Formulário:
+- **Rede / Cliente:** Matriz comercial compradora (ex: *Supermercados Zaffari*).
+- **Tipo de Ação:** Mecânica promocional (Tabloide, Ponta de Gôndola, Degustação, etc.).
+- **Mês de Referência:** Mês comercial/orçamentário a que pertence a verba (ex: `2026-08`).
+- **Data Início e Fim:** Vigência em que a promoção fica ativa nas prateleiras das lojas.
+- **Preço Flat:** Preço regular de gôndola fora da oferta (ex: R$ 19,90).
+- **Preço da Ação:** Preço em promoção anunciado ao consumidor (ex: R$ 14,90).
+- **Investimento Unitário:** Subsídio Coffee Mais por embalagem (ex: R$ 4,00).
+- **Volume Planejado:** Expectativa de vendas em Caixas ou Unidades.
 
-#### 1. Campo: `Rede / Cliente`
-* **O que significa:** A matriz comercial ou rede de supermercado onde a ação será executada.
-* **Quando preencher:** Sempre no início do formulário.
-* **Exemplo real:** `SUPERMERCADOS ZAFFARI (RS)`
-* ❌ **Erro comum:** Selecionar a filial errada caso a rede possua múltiplas unidades. Verifique se a UF e a Regional batem com a sua carteira.
-
-#### 2. Campo: `Campanha`
-* **O que significa:** A pasta/agrupador orçamentário ao qual essa ação pertence.
-* **Quando preencher:** Campo obrigatório.
-* **Exemplo real:** `Ações Festival de Inverno 2026`
-* ❌ **Erro comum:** Deixar em branco ou selecionar a campanha de outro gerente.
-
-#### 3. Campo: `Tipo de Ação`
-* **O que significa:** A mecânica comercial acordada com o cliente.
-* **Opções disponíveis:** `Tabloide`, `Ponta de Gôndola`, `Top de Fita`, `Degustação`, `Desconto Sell-Out`, `Rebaixe de Preço`, `Aniversário de Rede`.
-* **Exemplo real:** Selecionar `Tabloide` quando o produto sair no encarte impresso/digital do cliente.
-
-#### 4. Campo: `Modalidade de Pagamento`
-* **O que significa:** Como o dinheiro será quitado pela Coffee Mais.
-* **Opções:**
-  * `Abatimento / Boleto`: O cliente desconta o valor em um boleto a vencer.
-  * `Transferência Bancária`: Pagamento direto via depósito em conta jurídica da rede.
-  * `Bonificação`: Envio de caixa física de café sem cobrança para compensar o valor negociado.
-
-#### 5. Campo: `Vigência (Data Início e Data Fim)`
-* **O que significa:** O período em que a promoção estará válida nas lojas físicas.
-* **Exemplo real:** `01/09/2026` a `15/09/2026`.
-* ❌ **Erro comum:** Colocar a data de lançamento do sistema em vez da data real em que a oferta roda na loja.
-
-#### 6. Campo: `Abrangência (Família ou SKU)`
-* **O que significa:** Se o desconto vale para uma categoria inteira (ex: *Todas as Cápsulas*) ou para um produto específico (ex: *Café Moído 250g Clássico*).
-* **Exemplo real:** Selecionar a família `Moído` para aplicar a promoção em todas as variações de moído.
-
-#### 7. Campo: `Preço Flat (Normal)`
-* **O que significa:** O preço de venda regular do produto no supermercado fora da promoção.
-* **Exemplo real:** `R$ 19,90` por embalagem.
-
-#### 8. Campo: `Preço da Ação (Promocional)`
-* **O que significa:** O preço de oferta final estampado na prateleira para o consumidor.
-* **Exemplo real:** `R$ 15,90` por embalagem.
-
-#### 9. Campo: `Investimento Unitário`
-* **O que significa:** Quanto a Coffee Mais está pagando de subsídio por cada unidade vendida.
-* **Fórmula simples:** $\text{Preço Flat} - \text{Preço Ação} = \text{Investimento Unitário}$ (ex: $19,90 - 15,90 = \text{R\$ 4,00}$).
-
-#### 10. Campo: `Volume Planejado`
-* **O que significa:** A quantidade esperada de vendas durante a promoção.
-* **Exemplo real:** `500` caixas.
-* 💡 **Nota do Sistema:** O sistema converte automaticamente o volume de Caixas para Unidades e Quilogramas de forma perfeita, sem que você precise fazer contas na calculadora!
+### Como promover para o Trade:
+1. Cadastre a ação no menu **Investimento → Lançar Novo**.
+2. Na aba **Planejamento**, clique em **Promover** (a verba deixa de ser rascunho).
+3. Clique no botão **Passar para o Trade** para enviar à Fase 2.
 
 ---
 
-## 6. COMO ANEXAR DOCUMENTOS E RELATÓRIOS
+## CAPÍTULO 5: FASE 2 — VALIDAÇÃO TRADE & DIVERGÊNCIA DE CALENDÁRIO
 
-Para comprovar a ação promocional e aprovar a verba, a inclusão de comprovantes é fundamental.
+O Trade Marketing analisa os **4 Pilares de Validação**:
+1. **Comunicação:** Confirmação de aviso às equipes de campo e agências.
+2. **Logística:** Verificação de saldo de estoque no CD para evitar ruptura.
+3. **Auditoria:** Agendamento de promotores para fotos e checagem de preço.
+4. **Garantia:** Validação geral do acordo e score de execução.
 
-### Quais documentos anexar em cada fase?
-* **Fase de Planejamento (Opcional):** Proposta comercial assinada pelo comprador ou e-mail de negociação em PDF.
-* **Fase de Apuração (Obrigatório):**
-  1. 📄 **Relatório de Sell-Out do Cliente:** Extrato do portal do cliente mostrando as vendas reais no período.
-  2. 📸 **Fotos das Gôndolas / Encarte:** Foto nítida da ponta de gôndola montada ou foto do jornal promocional com o preço visível.
-
-### Como anexar na tela:
-1. No formulário de apuração, clique no botão **`Selecionar arquivo (PDF ou Imagem)...`**.
-2. Escolha o arquivo no seu computador ou celular.
-3. Aguarde a barra de progresso verde indicar **"Arquivo Carregado"**.
+### Divergência Operacional de Calendário:
+Se a promoção atrasar por questões logísticas ou mudança no jornal do cliente:
+- O Trade **NÃO altera as datas planejadas originais** (`data_inicio`, `data_fim`).
+- O Trade marca a opção **Divergência de Calendário** e registra as datas reais (`data_inicio_real`, `data_fim_real`) com o motivo padronizado (`ATRASO_LOGISTICO`, `ALTERACAO_REDE`, etc.).
 
 ---
 
-## 7. COMO ENVIAR A AÇÃO PARA O TRADE MARKETING
+## CAPÍTULO 6: FASE 3 — APURAÇÃO & BOLETO (DOSSIÊ COMERCIAL)
 
-Quando você preenche o formulário de lançamento, a ação fica salva como um **Rascunho**. Isso significa que ela é apenas uma anotação sua e ainda não entrou na fila da empresa.
-
-### Para oficializar o lançamento:
-1. Vá na tela de **Planejamento**.
-2. Localize a linha da ação cadastrada.
-3. Clique no botão de ação **`Promover`** (ou **`Promover Selecionadas`**).
-4. O status da ação mudará para **Fase 1 (Ativa)** e um botão chamado **`Passar para o Trade`** ficará disponível.
-5. Clique em **`Passar para o Trade`**. 
-
-PRONTO! A sua ação agora está oficialmente na esteira do Trade Marketing para validação de estoque e materiais!
+Após o encerramento da promoção nas lojas do cliente:
+1. O Gerente acessa a aba **Fase 3: Apuração**.
+2. Clique em **Preencher Apuração**.
+3. Digite o **Número do Acordo do Cliente** e a quantidade real vendida (**Sell-Out Real**).
+4. Anexe o relatório oficial em PDF e as fotos da gôndola/tabloide.
+5. Selecione o **Boleto Bancário Pendente** do cliente no dropdown de busca.
+6. Clique em **Concluir Apuração** (avança para a Fase 4).
 
 ---
 
-## 8. O QUE ACONTECE DEPOIS? (ENTENDA A ESTEIRA DE 6 FASES)
+## CAPÍTULO 7: FASE 4 — AUDITORIA TRADE (CONFERÊNCIA)
 
-A sua ação percorre um caminho de 6 fases com responsabilidades bem definidas:
-
-```
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   FASE 1     │ ──> │   FASE 2     │ ──> │   FASE 3     │
-│ Planejamento │     │  Validação   │     │  Apuração &  │
-│  Comercial   │     │    Trade     │     │    Boleto    │
-└──────────────┘     └──────────────┘     └──────────────┘
-                                                 │
-                                                 ▼
-┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   FASE 6     │ <── │   FASE 5     │ <── │   FASE 4     │
-│ Concluído ✅ │     │ Pagamento    │     │ Auditoria    │
-│ (Imutável)   │     │ Financeiro   │     │ Trade        │
-└──────────────┘     └──────────────┘     └──────────────┘
-```
-
-* **Fase 1 — Planejamento Comercial (Sua Responsabilidade):** Cadastro e promoção da ação.
-* **Fase 2 — Validação Trade (Mesa do Trade):** O Trade confere se há estoque no CD e se o material promocional foi enviado para a equipe de campo.
-* **Fase 3 — Apuração & Boleto (Sua Responsabilidade):** Após o término da promoção, você entra no sistema, digita os números reais de vendas, anexa fotos e escolhe o boleto bancário.
-* **Fase 4 — Auditoria Trade (Mesa do Trade):** O Trade confere se o seu relatório de vendas bate com as fotos enviadas. Se estiver tudo OK, ele **Aprova**. Se tiver erro, ele **Devolve** para você corrigir.
-* **Fase 5 — Pagamento (Mesa do Financeiro):** O Financeiro faz o PIX/Depósito ou abate o valor do boleto no sistema e sobe o comprovante bancário.
-* **Fase 6 — Concluído (Finalizado pelo Sistema):** A ação recebe o selo verde de concluída (✅). Ninguém mais pode alterar nada e a verba fica 100% quitada e auditada!
+O Trade Marketing audita o dossiê enviado pelo comercial:
+- **Aprovar:** Se o relatório de vendas e as fotos provarem a execução correta, o Trade clica em Aprovar e a ação avança para a **Fase 5 (Financeiro)**.
+- **Devolver / Reprovar:** Se faltar foto ou o boleto estiver incorreto, o Trade digita a justificativa e clica em Devolver. A ação retorna para a **Fase 3** para ajuste pelo Gerente.
 
 ---
 
-## 9. COMO ACOMPANHAR O STATUS DAS SUAS AÇÕES
+## CAPÍTULO 8: FASE 5 — PAGAMENTO FINANCEIRO & QUITAÇÃO
 
-Você pode acompanhar a evolução das suas verbas a qualquer momento pelo painel central:
-
-1. Acesse o menu **Investimento** -> **Dashboard**.
-2. Utilize os cartões no topo da tela para filtrar:
-   - 🟡 **Em Validação Trade:** Ações aguardando o ok do Trade.
-   - 🟣 **Aguardando Apuração:** Ações com promoção já encerrada esperando você preencher o resultado.
-   - 🔵 **Em Auditoria Trade:** Ações que você já apurou e que o Trade está conferindo.
-   - 🟢 **Em Pagamento / Concluídas:** Ações aprovadas na mesa do Financeiro.
+A equipe de Tesouraria/Financeiro:
+1. Valida o boleto associado e os dados de auditoria.
+2. Executa a baixa por abatimento no ERP Sankhya ou faz o PIX/Depósito.
+3. Sobe o **Comprovante de Pagamento Bancário em PDF**.
+4. Clica em **Confirmar Pagamento** (avança para a Fase 6).
 
 ---
 
-## 10. COMO PREENCHER A APURAÇÃO (RESULTADO REAL DE VENDAS)
+## CAPÍTULO 9: FASE 6 — CONCLUÍDO & BLINDAGEM IMUTÁVEL
 
-Assim que a promoção chegar ao fim nas lojas do cliente, a ação entrará automaticamente na **Fase 3 (Apuração)**. Você receberá um aviso no sistema para prestar contas.
-
-### Passo a passo para apurar:
-1. Localize a ação na aba **Fase 3: Apuração**.
-2. Clique no botão **`Preencher Apuração`**.
-3. Preencha os campos obrigatoriamente:
-   - **Número do Acordo Comercial do Cliente:** (ex: *ACORDO-2026-994*).
-   - **Volume Real Vendido (Sell-Out Real):** Digite a quantidade real informada no relatório do cliente (ex: *1.250 caixas*).
-   - **Valor Final Apurado (R$):** O valor total a ser pago com base nas vendas reais.
-4. Anexe o relatório em PDF e as fotos das prateleiras.
-5. Clique em **`Concluir Apuração`**.
+A ação recebe o selo verde de **Concluído (✅)**. As informações ficam 100% protegidas contra edições informais e o histórico completo de auditoria fica gravado permanentemente.
 
 ---
 
-## 11. COMO VINCULAR O BOLETO BANCÁRIO
+## CAPÍTULO 10: E-MAILS E NOTIFICAÇÕES (MAPEAMENTO DOS 8 EVENTOS)
 
-O Financeiro NÃO realiza nenhum pagamento por abatimento sem que um boleto em aberto esteja formalmente vinculado à ação no sistema.
+O sistema dispara 8 eventos reais de e-mail automático via Nodemailer:
 
-```
-+-------------------------------------------------------------------------+
-| VINCULAÇÃO DE BOLETO BANCÁRIO (FASE 3)                                  |
-|                                                                         |
-|  [X] Ação com Pagamento via Abatimento de Boleto                        |
-|                                                                         |
-|  Buscar Boleto do Cliente:                                              |
-|  [ Guanabara - Duplicata nº 88472 - Venc: 30/08/2026 - R$ 15.000,00  v ]|
-|                                                                         |
-|  Boleto Selecionado com Sucesso! ✅                                     |
-+-------------------------------------------------------------------------+
-```
-
-### Como vincular:
-1. Na tela de Apuração (Fase 3), localize a seção **Documento Financeiro / Boleto**.
-2. No campo de busca por palavra-chave, digite o número do título ou o nome do cliente.
-3. O sistema exibirá a lista de boletos em aberto no ERP da Coffee Mais para aquela rede.
-4. Selecione o boleto correspondente ao valor negociado.
-5. Se a ação **NÃO tiver boleto físico** (ex: bonificação em produto ou transferência em conta), marque a caixa `Ação Sem Boleto Físico` e escolha o motivo no menu (ex: *Desconto em Nota* ou *Bonificação de Mercadoria*).
+| Evento | Transição de Fase | Destinatários | Significado & Ação Requerida |
+| :--- | :--- | :--- | :--- |
+| **1. ENVIAR_TRADE** | Fase 1 → Fase 2 | Trade + Gerente | Nova ação enviada pelo comercial. Trade deve validar. |
+| **2. REPROVAR_TRADE** | Fase 2 → Fase 1 | Gerente + Trade | Trade reprovou planejamento. Gerente deve revisar. |
+| **3. VALIDAR_TRADE** | Fase 2 → Fase 3 | Trade + Gerente | Trade aprovou viabilidade. Promoção liberada nas lojas. |
+| **4. CONCLUIR_APURACAO** | Fase 3 → Fase 4 | Financeiro + Gerente + Admins | Apuração e boleto preenchidos. Trade deve auditar. |
+| **5. DEVOLVER_FINANCEIRO** | Fase 4 → Fase 3 | Gerente + Trade | Conferência devolvida por falha. Gerente deve ajustar. |
+| **6. APROVAR_FINANCEIRO** | Fase 4 → Fase 5 | Financeiro + Gerente + Trade | Auditoria aprovada. Financeiro deve efetuar o pagamento. |
+| **7. PAGAMENTO_CONFIRMADO** | Fase 5 → Fase 6 | Gerente + Trade | Comprovante anexado. Ação concluída com sucesso! |
+| **8. ACAO_NAO_OCORREU** | Qualquer → Rascunho | Gerente + Trade + Admins | Ação não rodou no PDV. Revertida para rascunho. |
 
 ---
 
-## 12. COMO FUNCIONA A PROCESSO DE APROVAÇÃO
+## CAPÍTULO 11: O QUE FAZER QUANDO A AÇÃO NÃO ACONTECEU OU ATRASOU?
 
-Depois que você conclui a apuração (Fase 3), a ação vai para a mesa de **Auditoria do Trade (Fase 4)**.
-
-### O que o Trade analisa na sua apuração?
-1. Se as fotos mostram o produto Coffee Mais exposto de acordo com a negociação.
-2. Se o relatório de vendas do cliente bate com o valor apurado.
-3. Se o boleto vinculado pertence à mesma matriz e possui saldo suficiente.
-
-### Resultados possíveis na Fase 4:
-* ✅ **APROVADO:** O Trade valida as evidências e manda a ação direto para o Financeiro pagar (Fase 5).
-* 🔄 **DEVOLVIDO:** Se faltar foto, se o boleto estiver errado ou se o valor não bater, o Trade clica em **`Devolver`**. 
-  * Você receberá um e-mail informando a devolução.
-  * A ação voltará para você na **Fase 3** com uma mensagem explicativa do Trade (ex: *"Favor anexar relatório em PDF legível"*).
-  * Basta corrigir a informação e clicar novamente em `Concluir Apuração`.
+- **Se a Ação Atrasou:** Registra-se a **Divergência de Calendário** na Fase 2 com as datas reais de execução. As datas planejadas originais NUNCA são alteradas.
+- **Se a Ação NÃO Aconteceu:** Clica-se no botão **Marcar Ação Não Aconteceu** digitando a justificativa. A ação é revertida para a Fase 1 (Rascunho) e o e-mail de alerta `ACAO_NAO_OCORREU` é enviado.
 
 ---
 
-## 13. COMO ACOMPANHAR O PAGAMENTO PELO FINANCEIRO
+## CAPÍTULO 12: PRAZOS E REGRA DE FECHAMENTO EM 10 DIAS
 
-Após a aprovação pelo Trade na Fase 4, você não precisa realizar mais nenhuma ação! O investimento entra na fila do Financeiro na **Fase 5**.
-
-### O que o Financeiro faz:
-1. Realiza o pagamento bancário ou efetua a baixa por abatimento no ERP Sankhya.
-2. Faz o upload do **Comprovante de Pagamento em PDF**.
-3. Clica em **`Confirmar Pagamento`**.
-
-### Como você confirma que foi pago?
-Na sua tela, o status da ação mudará para **Fase 6: Concluído (✅)**. Ao clicar sobre a ação, você poderá visualizar e baixar o comprovante de pagamento bancário anexado pelo Financeiro a qualquer momento!
+- **Prazo Limite:** Até **10 dias corridos** após o término da promoção para preencher a apuração na Fase 3, anexar evidências, vincular o boleto e clicar em Concluir Apuração.
+- **Impacto de Atraso:** Ações pendentes após 10 dias entram no relatório de irregularidades do dashboard e travam novos orçamentos da regional.
 
 ---
 
-## 14. CARTA DE ANUÊNCIA: QUANDO E COMO UTILIZAR
+## CAPÍTULO 13: COMO FUNCIONA O BOLETO NO PROCESSO? (GUIA PARA LEIGOS)
 
-A **Carta de Anuência** é um documento formal emitido pela Coffee Mais que autoriza a rede de supermercados a efetuar um abatimento financeiro legal em duplicatas a vencer.
+Grandes redes de supermercados costumam cobrar verbas comerciais por **Abatimento em Boleto (Duplicata)**. Em vez da Coffee Mais enviar dinheiro via PIX, o cliente desconta o valor aprovado do boleto que ele tem a vencer conosco.
 
-```
-+-------------------------------------------------------------------------+
-| EMISSÃO DE CARTA DE ANUÊNCIA                                            |
-|                                                                         |
-|  1. Selecionar Rede: [ Supermercados Guanabara                       v ]|
-|  2. Logo da Rede: [ ✅ Logo Oficial Carregado em Alta Resolução      ] |
-|  3. Ações Vinculadas: [ X ] Ação #1042 - Tabloide Agosto (R$ 5.000,00)  |
-|                       [ X ] Ação #1048 - Ponta Gôndola (R$ 3.000,00)    |
-|                                                                         |
-|  [ IMPRIMIR / GERAR CARTA DE ANUÊNCIA EM PDF ]                          |
-+-------------------------------------------------------------------------+
-```
-
-### Quando utilizar a Carta de Anuência?
-Sempre que a rede parceira exigir uma autorização assinada da diretoria da Coffee Mais para liberar o abatimento de verbas em títulos bancários.
-
-### Passo a passo para emitir a Carta de Anuência:
-1. Acesse no menu principal: **Investimento** -> **Carta de Anuência**.
-2. Clique em **`+ Nova Carta de Anuência`**.
-3. Selecione a **Rede Comercial**.
-4. **Verificação de Logo:** O sistema exibirá a logo oficial da rede cadastrada. Se a rede não tiver logo cadastrada, faça o upload do arquivo de imagem do logo no botão **`Upload de Logo`**.
-5. Marque quais ações de investimento aprovadas farão parte dessa carta.
-6. O sistema calculará o valor total e gerará o documento PDF oficial com a logo da rede e a assinatura da Coffee Mais.
-7. Baixe o PDF e envie para o departamento de contas a pagar do seu cliente!
+- **Seleção Obrigatória:** Na Fase 3, o gerente deve pesquisar o número da duplicata no dropdown de busca.
+- **Ação Sem Boleto Físico:** Se a verba for quitada via bonificação de café ou PIX direto, marca-se a caixa *Sem Boleto Físico* justificando a modalidade.
 
 ---
 
-## 15. PERGUNTAS FREQUENTES (FAQ)
+## CAPÍTULO 14: ERROS MAIS COMUNS DOS GERENTES E COMO EVITÁ-LOS
 
-### Q1: Posso lançar uma promoção que já começou ou que já terminou?
-**Resposta:** O ideal é lançar sempre antes da promoção iniciar. Caso ocorra uma negociação de urgência, lance a ação imediatamente e comunique a equipe de Trade Marketing para acelerar a validação da Fase 2.
-
-### Q2: Esqueci de anexar o relatório de sell-out e a ação foi devolvida. O que faço?
-**Resposta:** Não entre em pânico! Acesse a ação que está na Fase 3 (Devolvida), abra a apuração, anexe o arquivo correto e clique no botão `Concluir Apuração` novamente.
-
-### Q3: Por que não consigo alterar o nome do Gerente na ação?
-**Resposta:** O sistema vincula o nome do gerente comercial automaticamente através da Campanha. Se a ação está no seu nome, é porque pertence a uma campanha cadastrada na sua carteira.
-
-### Q4: O cliente adiou o tabloide para o mês que vem. Preciso cancelar a ação?
-**Resposta:** Não! Peça ao Trade Marketing para registrar uma **Divergência de Calendário** na Fase 2. Ele atualizará as datas reais de execução no sistema sem apagar o seu planejamento original.
-
-### Q5: O valor final apurado vendeu mais do que o planejado. Posso alterar o valor total?
-**Resposta:** Sim. Na Fase 3 (Apuração), você deve atualizar o valor total com base nas vendas reais demonstradas no relatório do cliente antes de enviar para a auditoria do Trade.
+1. **Esquecer a ação em Rascunho:** Lembre-se de clicar em *Promover* e *Passar para o Trade*.
+2. **Anexar fotos escuras/ilegíveis:** Confira se o preço promocional na gôndola está visível antes do upload.
+3. **Não vincular o boleto:** Selecione a duplicata no dropdown para que o Financeiro saiba o que abater.
+4. **Errar o Mês de Referência:** Preencha sempre o mês comercial a que a verba pertence (`YYYY-MM`).
 
 ---
 
-## 16. PRINCIPAIS ERROS DOS GERENTES E COMO EVITÁ-LOS
+## CAPÍTULO 15: DICIONÁRIO GERAL DE BOTÕES E INTERFACES
 
-| ❌ Erro Comum | ⚠️ Impacto no Seu Dia a Dia | 💡 Como Evitar (Solução Fácil) |
-| :--- | :--- | :--- |
-| **Esquecer a ação salva em Rascunho** | A ação não vai para o Trade e o dinheiro não é liberado para pagamento. | Após salvar, vá na tela de Planejamento e clique no botão **`Promover`**! |
-| **Anexar fotos escuras ou illegíveis** | O Trade reprova a apuração na Fase 4 e a ação volta para você. | Confira o arquivo antes de subir. Garanta que o preço promocional esteja legível. |
-| **Não vincular o boleto bancário** | O Financeiro não consegue pagar e o cliente liga cobrando o abatimento. | Na Fase 3, busque e selecione o boleto em aberto no dropdown do formulário. |
-| **Cadastrar a rede com código de matriz errado** | A Carta de Anuência é gerada com o CNPJ errado e o cliente recusa. | Verifique se a UF e a Regional da rede selecionada batem com a unidade negociada. |
-| **Deixar ações acumuladas sem apurar** | Descasa o faturamento do mês e trava a verba da regional. | Toda segunda-feira, reserve 15 minutos para apurar as ações encerradas na semana anterior. |
-
----
-
-## 17. BOAS PRÁTICAS DE GESTÃO COMERCIAL
-
-1. 🗓️ **Planejamento Mensal:** Cadastre todas as ações do mês nos primeiros 5 dias do período para garantir reserva orçamentária.
-2. 📱 **Fotos de Campo:** Peça aos promotores de vendas da sua rota para tirarem fotos bem enquadradas da gôndola assim que a oferta entrar no ar.
-3. 🤝 **Alinhamento com o Comprador:** Envie a Carta de Anuência gerada pelo sistema para o comprador assim que a ação for aprovada na Fase 4.
-4. 📊 **Acompanhamento de Vendas:** Compare o volume planejado com o volume real apurado para entender quais mecânicas promocionais dão mais resultado na sua região!
+- **+ Lançar Novo:** Abre formulário de cadastro individual na Fase 1.
+- **Importar Planilha:** Carrega múltiplos planejamentos via modelo Excel.
+- **Promover:** Transforma o rascunho em investimento oficial ativo.
+- **Passar para o Trade:** Envia da Fase 1 para a Fase 2 (auditoria do Trade).
+- **Validado pelo Trade:** Autoriza a promoção nas lojas e impulsiona para a Fase 3.
+- **Preencher Apuração:** Abre formulário da Fase 3 para informar sell-out e boleto.
+- **Concluir Apuração:** Finaliza dossiê e dispara alerta ao Financeiro (Fase 4).
+- **Confirmar Pagamento:** Utilizado pelo Financeiro na Fase 5 para anexar comprovante bancário.
 
 ---
 
-## 18. FLUXOGRAMA VISUAL DO PROCESSO
+## CAPÍTULO 16: CHECKLIST FINAL DO GERENTE COMERCIAL
 
-Acompanhe o caminho simples da sua verba comercial do início ao fim:
-
-```mermaid
-flowchart TD
-    A[1. Você cria a Campanha e a Ação no Sistema] --> B[2. Você clica em PROMOVER]
-    B --> C[3. Trade Marketing valida Estoque e Materiais na Fase 2]
-    C --> D[4. A promoção roda nas Lojas do Cliente]
-    D --> E[5. Você preenche a Apuração, Fotos e Boleto na Fase 3]
-    E --> F[6. Sistema envia E-mail Automático ao Financeiro e Trade]
-    F --> G{7. Trade Audita na Fase 4}
-    G -- Devolvido (Falta foto/Erro) --> E
-    G -- Aprovado --> H[8. Financeiro Quita o Pagamento na Fase 5]
-    H --> I[9. Ação Concluída com Sucesso! Fase 6 ✅]
-```
+- [ ] Rede e CNPJ conferidos com a carteira regional.
+- [ ] Tipo de Ação condiz com a mecânica negociada.
+- [ ] Mês de Referência representa o mês orçamentário correto.
+- [ ] Datas de início e fim cobrem o período real em loja.
+- [ ] Sell-Out real batendo com relatório oficial do cliente.
+- [ ] Fotos das prateleiras e tabloides anexadas e legíveis.
+- [ ] Boleto pendente selecionado no dropdown da apuração.
+- [ ] Prazo de até 10 dias respeitado.
 
 ---
 
-## 19. CHECKLIST FINAL ANTES DE SUBMETER
+## CAPÍTULO 17: GLOSSÁRIO COMERCIAL & FINANCEIRO PARA LEIGOS
 
-Antes de clicar em **`Concluir Apuração`**, faça a última checagem de segurança:
-
-- [ ] O número do acordo comercial da rede está preenchido?
-- [ ] O volume real de vendas condiz com o relatório do cliente?
-- [ ] O relatório em PDF ou comprovante do portal foi anexado?
-- [ ] As fotos da gôndola/encarte estão legíveis e salvas?
-- [ ] O boleto bancário correto foi vinculado na tela (ou o checkbox "Sem Boleto" marcado com justificativa)?
+- **Sell-In:** Venda da fábrica Coffee Mais para o supermercado.
+- **Sell-Out:** Venda da gôndola do supermercado para o consumidor final.
+- **Preço Flat:** Preço normal de tabela sem desconto.
+- **Investimento Unitário:** Subsídio Coffee Mais por embalagem.
+- **Tabloide:** Folheto de ofertas impresso ou digital do supermercado.
+- **Dossiê:** Conjunto de comprovantes (relatório + fotos + boleto).
 
 ---
 
-## 20. GUIA RÁPIDO DE BOLSO ("COLA" DE OPERAÇÃO)
-
-### 📌 Resumão em 4 Passos para o Gerente Regional:
+## CAPÍTULO 18: FLUXO COMPLETO VISUAL & RESUMO DE BOLSO
 
 ```
 +-----------------------------------------------------------------------------+
@@ -423,18 +236,15 @@ Antes de clicar em **`Concluir Apuração`**, faça a última checagem de segura
 | 'Promover' -> Clique em 'Passar para o Trade'.                              |
 |                                                                             |
 | STEP 2: ACOMPANHAR A EXECUÇÃO (Durante a Promoção)                          |
-| Acompanhe a ação na Fase 2. Garanta que o promotor de campo organize as     |
-| gôndolas e tire fotos do expositor.                                         |
+| Trade valida estoque na Fase 2. Promotores organizam as gôndolas e tiram    |
+| fotos dos expositores.                                                      |
 |                                                                             |
-| STEP 3: APURAR & VINCULAR BOLETO (Fim da Promoção)                          |
+| STEP 3: APURAR & VINCULAR BOLETO (Até 10 dias pós-fim)                      |
 | Acesse 'Fase 3: Apuração' -> Digite o sell-out real -> Anexe os PDFs/fotos  |
 | -> Selecione o Boleto do cliente -> Clique em 'Concluir Apuração'.          |
 |                                                                             |
-| STEP 4: EMITIR CARTA & CONFERIR PAGAMENTO (Pós-Aprovação)                   |
-| Se necessário, acesse 'Carta de Anuência' -> Baixe o PDF -> Acompanhe a    |
-| baixa financeira na 'Fase 6: Concluído' ✅.                                 |
+| STEP 4: ACOMPANHAR QUITAÇÃO (Pós-Aprovação)                                 |
+| Trade audita na Fase 4. Financeiro quita na Fase 5. Ação encerra com selo   |
+| verde na Fase 6 (Concluído ✅).                                              |
 +-----------------------------------------------------------------------------+
 ```
-
----
-*Dúvidas operacionais ou problemas de acesso? Entre em contato com a equipe de suporte interno através do e-mail: `suporte@coffeemais.com`.*
