@@ -558,21 +558,123 @@ export default function InvestimentoPage() {
     return result;
   };
 
-  const fetchBoletosDaRede = async (rede: string) => {
-    const redeUpper = rede.toUpperCase().trim();
+  const fetchBoletosDaRede = async (
+    rede: string, 
+    codigoMatriz?: string | null, 
+    actionGerente?: string | null, 
+    actionUf?: string | null, 
+    actionRegional?: string | null
+  ) => {
+    if (!rede) {
+      setBoletosAbertos([]);
+      return;
+    }
+    const redeClean = rede.toUpperCase().trim();
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // 1. Mapeamento de ownership comercial das filiais/parceiros da rede em cm_clientes
+    const corporateCodes = new Set<string>();
+    const allowedCarteiraCodes = new Set<string>();
+    const blockedOtherBranchCodes = new Set<string>();
+    const partnerCodes: string[] = [];
+
+    const normActionGerente = (actionGerente || '').trim().toLowerCase();
+    const normActionUf = (actionUf || '').trim().toLowerCase();
+    const normActionRegional = (actionRegional || '').trim().toLowerCase();
+
+    try {
+      const clientQueries: string[] = [];
+      if (codigoMatriz) {
+        clientQueries.push(`codigo_matriz.eq.${codigoMatriz}`);
+        clientQueries.push(`codigo.eq.${parseInt(codigoMatriz, 10) || 0}`);
+      }
+      clientQueries.push(`matriz.ilike.%${redeClean}%`);
+      clientQueries.push(`nome_matriz.ilike.%${redeClean}%`);
+
+      const { data: clients } = await supabase
+        .from('cm_clientes')
+        .select('codigo, codigo_matriz, responsavel, gerente_id, uf, regional, razao_social, matriz')
+        .or(clientQueries.join(','));
+
+      if (clients && clients.length > 0) {
+        const matCodeStr = codigoMatriz ? String(codigoMatriz) : '';
+
+        clients.forEach((c: any) => {
+          if (c.codigo === undefined || c.codigo === null) return;
+          const codeStr = String(c.codigo);
+          partnerCodes.push(codeStr);
+
+          const cResponsavel = (c.responsavel || c.gerente_id || '').trim().toLowerCase();
+          const cUf = (c.uf || '').trim().toLowerCase();
+          const cRegional = (c.regional || '').trim().toLowerCase();
+
+          const isCorporateMatriz = (matCodeStr && codeStr === matCodeStr) ||
+            (!cResponsavel && !cUf && !cRegional) ||
+            (c.razao_social || '').toUpperCase().includes('MATRIZ') ||
+            (c.razao_social || '').toUpperCase().includes('CORPORATIVO');
+
+          if (isCorporateMatriz) {
+            corporateCodes.add(codeStr);
+          } else {
+            // Verificar se a filial pertence à regional/gerente da ação
+            const isManagerMatch = normActionGerente && cResponsavel && (cResponsavel.includes(normActionGerente) || normActionGerente.includes(cResponsavel));
+            const isUfMatch = normActionUf && cUf && (cUf === normActionUf);
+            const isRegionalMatch = normActionRegional && cRegional && (cRegional === normActionRegional);
+
+            if (isManagerMatch || isUfMatch || isRegionalMatch || (!normActionGerente && !normActionUf && !normActionRegional)) {
+              allowedCarteiraCodes.add(codeStr);
+            } else if (cResponsavel || cUf || cRegional) {
+              // Filial pertence expressamente a outra regional/gerente
+              blockedOtherBranchCodes.add(codeStr);
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Erro ao buscar parceiros da rede:", e);
+    }
+
+    // 2. Construir filtros para consultar cm_boletos
+    const boletoFilters: string[] = [`rede.ilike.%${redeClean}%`];
+    
+    const firstWord = redeClean.split(' ')[0];
+    if (firstWord && firstWord.length >= 3 && firstWord !== redeClean) {
+      boletoFilters.push(`rede.ilike.%${firstWord}%`);
+    }
+
+    if (partnerCodes.length > 0) {
+      const uniqueCodes = Array.from(new Set(partnerCodes));
+      uniqueCodes.forEach(code => {
+        boletoFilters.push(`parceiro_codigo.eq.${code}`);
+      });
+    }
+
+    const limitedFilters = Array.from(new Set(boletoFilters)).slice(0, 60);
 
     const { data } = await supabase
       .from('cm_boletos')
       .select('*')
-      .or(`rede.eq.${redeUpper},rede.ilike.%${redeUpper}%`)
+      .or(limitedFilters.join(','))
       .eq('status', 'Aberto')
       .gte('vencimento', todayStr)
       .order('vencimento', { ascending: true });
 
     if (data) {
-      setBoletosAbertos(filterAndDeduplicateBoletos(data));
+      // 3. Filtrar boletos respeitando a responsabilidade regional
+      const regionalBoletos = data.filter((b: any) => {
+        if (!b) return false;
+        const pCode = b.parceiro_codigo ? String(b.parceiro_codigo) : '';
+
+        // Se o boleto pertence a uma filial de outra regional/gerente -> Bloquear
+        if (pCode && blockedOtherBranchCodes.has(pCode) && !allowedCarteiraCodes.has(pCode) && !corporateCodes.has(pCode)) {
+          return false;
+        }
+
+        return true;
+      });
+
+      setBoletosAbertos(filterAndDeduplicateBoletos(regionalBoletos));
     } else {
       setBoletosAbertos([]);
     }
@@ -587,17 +689,18 @@ export default function InvestimentoPage() {
       return;
     }
     setBoletoSearchLoading(true);
+    const termClean = term.toUpperCase().trim();
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
     const { data } = await supabase
       .from('cm_boletos')
       .select('*')
-      .ilike('rede', `%${term.toUpperCase()}%`)
+      .or(`rede.ilike.%${termClean}%,numero_boleto.ilike.%${termClean}%,nro_nota.ilike.%${termClean}%,parceiro_codigo.ilike.%${termClean}%`)
       .eq('status', 'Aberto')
       .gte('vencimento', todayStr)
       .order('vencimento', { ascending: true })
-      .limit(50);
+      .limit(60);
 
     setBoletoSearchResults(filterAndDeduplicateBoletos(data || []));
     setBoletoSearchLoading(false);
@@ -725,7 +828,13 @@ export default function InvestimentoPage() {
       fetchModalPrazo();
       
       if ((selectedAction.fase_atual || 1) >= 3) {
-        fetchBoletosDaRede(selectedAction.rede);
+        fetchBoletosDaRede(
+          selectedAction.rede, 
+          selectedAction.codigo_matriz,
+          (selectedAction as any).gerente_nome || (selectedAction as any).gerente_id || (selectedAction as any).user_name,
+          (selectedAction as any).uf || (selectedAction as any).estado,
+          (selectedAction as any).regional || (selectedAction as any).regiao
+        );
         
         // Buscar boletos vinculados na tabela de relações
         supabase
