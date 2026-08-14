@@ -231,6 +231,14 @@ export default function ImportHubPage() {
         body: formData,
       });
 
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        if (response.status === 413) {
+          throw new Error("O arquivo enviado excede o limite máximo de payload permitido pelo servidor (50MB).");
+        }
+        throw new Error(`O servidor retornou uma resposta não-JSON inesperada (HTTP ${response.status}). Tente novamente.`);
+      }
+
       const resultData = await response.json();
 
       if (!response.ok || !resultData.success) {
