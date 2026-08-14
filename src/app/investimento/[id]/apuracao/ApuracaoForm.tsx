@@ -22,6 +22,7 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
   );
   const [vencimento, setVencimento] = useState(investment.vencimento || "");
   const [dadosQuitacao, setDadosQuitacao] = useState(investment.dados_quitacao || "");
+  const [postActionNotes, setPostActionNotes] = useState(investment.post_action_notes || "");
   
   // File uploads
   const [evidencias, setEvidencias] = useState<string[]>(investment.evidencias_urls || []);
@@ -78,6 +79,7 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
     formData.append("volume_vendido_sellout", volumeVendido);
     formData.append("vencimento", vencimento);
     formData.append("dados_quitacao", dadosQuitacao);
+    formData.append("post_action_notes", postActionNotes);
     formData.append("evidencias_urls", JSON.stringify(evidencias));
 
     startTransition(async () => {
@@ -155,6 +157,18 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
             placeholder="Referência do contrato ou sistema"
             className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50"
             required
+          />
+        </div>
+
+        {/* Observações */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-muted">Observações</label>
+          <textarea
+            value={postActionNotes}
+            onChange={(e) => setPostActionNotes(e.target.value)}
+            rows={3}
+            className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50 resize-y min-h-[80px] max-h-[200px]"
+            placeholder="Digite aqui informações complementares sobre a apuração..."
           />
         </div>
 

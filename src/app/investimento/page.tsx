@@ -2353,6 +2353,7 @@ export default function InvestimentoPage() {
       fd.append('apuracao_evidencias_url', apuracaoForm.evidencias_url);
       fd.append('condicao_pagamento', apuracaoForm.condicao_pagamento);
       fd.append('sem_boleto', semBoleto ? 'true' : 'false');
+      fd.append('post_action_notes', postActionNotes || '');
       
       const { preencherApuracao } = await import('./lancar/actions');
       await preencherApuracao(selectedAction.id, fd);
@@ -5686,6 +5687,16 @@ export default function InvestimentoPage() {
                         <div>
                           <label className="block text-xs font-medium text-muted mb-1">Valor Realizado (R$) - Automático</label>
                           <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado), false) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-medium text-muted mb-1">Observações</label>
+                          <textarea
+                            value={postActionNotes}
+                            onChange={(e) => setPostActionNotes(e.target.value)}
+                            rows={3}
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-y min-h-[80px] max-h-[200px] placeholder:text-muted/60"
+                            placeholder="Digite aqui informações complementares sobre a apuração..."
+                          />
                         </div>
                         <div className="md:col-span-2" ref={boletoDropdownRef}>
                           <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">
