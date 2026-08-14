@@ -2344,6 +2344,23 @@ export async function confirmarPagamento(id: string, formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
+  if (!user) {
+    throw new Error("Usuário não autenticado.");
+  }
+
+  const { data: profile } = await supabase
+    .from("cm_user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  const userRole = (profile?.role || "").toLowerCase();
+  const isFinanceiroAllowed = ["admin", "admin master", "financeiro", "ceo"].includes(userRole);
+
+  if (!isFinanceiroAllowed) {
+    throw new Error("Acesso negado: Confirmação de pagamento é uma operação exclusiva do perfil Financeiro.");
+  }
+
   const financeiro_observacoes = formData.get("financeiro_observacoes") as string || null;
   
   // Comprovante é URL já salva no storage
