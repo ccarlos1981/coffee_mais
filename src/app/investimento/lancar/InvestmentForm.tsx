@@ -627,6 +627,9 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                       key={`${r.codigo}-${r.nome}-${r.gerente || ''}-${idx}`}
                       type="button"
                       className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-gold/10 hover:text-gold transition-colors flex items-center justify-between"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                      }}
                       onClick={() => {
                         setSelectedRede(r);
                         setSearchRede("");
