@@ -153,6 +153,15 @@ export class ImportService {
       };
     }
 
+    if (existingDuplicateBatchInfo) {
+      const err: any = new Error(
+        `Este arquivo já foi importado anteriormente em ${existingDuplicateBatchInfo.importedAt} por ${existingDuplicateBatchInfo.importedBy}.`
+      );
+      err.isDuplicate = true;
+      err.existingBatch = existingDuplicateBatchInfo;
+      throw err;
+    }
+
     const allowedTriggers = ["manual", "cron_06", "cron_12", "cron_18", "reconciliation"];
     const triggerValue = allowedTriggers.includes(triggeredBy) ? triggeredBy : "manual";
     const triggeredEmail = allowedTriggers.includes(triggeredBy) ? null : triggeredBy;
