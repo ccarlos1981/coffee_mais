@@ -68,6 +68,8 @@ const buildMonths = (
 interface AcaoRow {
   id: string;
   rede: string;
+  gerente_responsavel?: string | null;
+  gerente?: string | null;
   valor_investimento: number | null;
   apuracao_valor_realizado: number | null;
   mes_referencia: string | null;
@@ -146,11 +148,11 @@ export default function InvestClientePage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      // 1. All open investment actions
+      // 1. All open investment actions with manager info
       const { data: acoes, error: aErr } = await supabase
-        .from("cm_acoes_investimento")
+        .from("v_acoes_investimento_com_gerente")
         .select(
-          "id, rede, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
+          "id, rede, gerente_responsavel, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
         )
         .eq("is_planejamento", false)
         .is("financeiro_pago_em", null);
@@ -254,10 +256,11 @@ export default function InvestClientePage() {
     cutoff.setDate(cutoff.getDate() - 7);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-    // Aggregate per rede
+    // Aggregate per (gerente, rede) composite key
     const redeAgg: Record<
       string,
       {
+        rede: string;
         gerente: string;
         expectativaInvest: number;
         naoProvisionado: number;
@@ -271,13 +274,17 @@ export default function InvestClientePage() {
       // Fase 1 (Planej. GRV) não entra no painel
       if ((a.fase_atual ?? 0) === 1) return;
 
-      const redeKey = (a.rede || "SEM REDE").toUpperCase().trim();
+      const redeName = (a.rede || "SEM REDE").trim();
+      const redeKey = redeName.toUpperCase();
+      const gerenteAcao = (a.gerente_responsavel || a.gerente || gerenteMap[redeKey] || "Sem Gerente").trim() || "Sem Gerente";
+      const compositeKey = `${gerenteAcao}___${redeKey}`;
       const valor =
         (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
 
-      if (!redeAgg[redeKey]) {
-        redeAgg[redeKey] = {
-          gerente: gerenteMap[redeKey] || "Sem Gerente",
+      if (!redeAgg[compositeKey]) {
+        redeAgg[compositeKey] = {
+          rede: redeName,
+          gerente: gerenteAcao,
           expectativaInvest: 0,
           naoProvisionado: 0,
           provisionado: 0,
@@ -288,7 +295,7 @@ export default function InvestClientePage() {
 
       // Expect. Investimento — only for selectedMes
       if (a.mes_referencia === selectedMes) {
-        redeAgg[redeKey].expectativaInvest += valor;
+        redeAgg[compositeKey].expectativaInvest += valor;
       }
 
       const vinculosAcao = rawVinculoMap[a.id] || [];
@@ -300,12 +307,12 @@ export default function InvestClientePage() {
         vinculosAcao.forEach((v) => {
           const mesVenc = v.boleto_vencimento?.slice(0, 7) ?? "";
           if (acaoNoMes) {
-            redeAgg[redeKey].provisionado += v.valor_associado;
+            redeAgg[compositeKey].provisionado += v.valor_associado;
           }
           // Colunas de mês: ainda agrupa por vencimento (visão histórica/futura)
           if (mesVenc) {
-            redeAgg[redeKey].meses[mesVenc] =
-              (redeAgg[redeKey].meses[mesVenc] || 0) + v.valor_associado;
+            redeAgg[compositeKey].meses[mesVenc] =
+              (redeAgg[compositeKey].meses[mesVenc] || 0) + v.valor_associado;
           }
         });
       } else if (a.apuracao_boleto_id) {
@@ -313,16 +320,16 @@ export default function InvestClientePage() {
         const valorReal = Number(a.apuracao_valor_realizado) || valor;
         const mesBoleto = a.mes_referencia || "";
         if (acaoNoMes) {
-          redeAgg[redeKey].provisionado += valorReal;
+          redeAgg[compositeKey].provisionado += valorReal;
         }
         if (mesBoleto) {
-          redeAgg[redeKey].meses[mesBoleto] =
-            (redeAgg[redeKey].meses[mesBoleto] || 0) + valorReal;
+          redeAgg[compositeKey].meses[mesBoleto] =
+            (redeAgg[compositeKey].meses[mesBoleto] || 0) + valorReal;
         }
       } else if (!temBoleto && acaoNoMes) {
         // Não provisionado: qualquer ação sem boleto, no mês selecionado (qualquer fase)
         const valorReal = Number(a.apuracao_valor_realizado) || valor;
-        redeAgg[redeKey].naoProvisionado += valorReal;
+        redeAgg[compositeKey].naoProvisionado += valorReal;
       }
 
       // Ações atrasadas: apuracao_preenchida_em is null + (fase_atual <= 3) + date vencida (end_date < cutoffStr)
@@ -336,26 +343,26 @@ export default function InvestClientePage() {
             hasAtrasadoItem = a.skus_detalhes.some((s: any) => s.end_date && s.end_date <= cutoffStr);
           }
           if (hasAtrasadoItem) {
-            redeAgg[redeKey].acoesAtrasadas += 1;
+            redeAgg[compositeKey].acoesAtrasadas += 1;
           }
         } else {
           // single mode
           if (a.data_fim && a.data_fim <= cutoffStr) {
-            redeAgg[redeKey].acoesAtrasadas += 1;
+            redeAgg[compositeKey].acoesAtrasadas += 1;
           }
         }
       }
     });
 
     // Build clientes list
-    const clientesList: ClienteData[] = Object.entries(redeAgg)
-      .filter(([, v]) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
-      .map(([rede, agg]) => {
-        const fat = fatMap[rede] || 0;
+    const clientesList: ClienteData[] = Object.values(redeAgg)
+      .filter((v) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
+      .map((agg) => {
+        const fat = fatMap[agg.rede.toUpperCase()] || 0;
         const perc =
           fat > 0 ? ((agg.naoProvisionado + agg.provisionado) / fat) * 100 : null;
         return {
-          rede,
+          rede: agg.rede,
           gerente: agg.gerente,
           faturamento: fat,
           percInvest: perc,
@@ -521,50 +528,67 @@ export default function InvestClientePage() {
   // ─── cell helpers ─────────────────────────────────────────────────────────
   const CellPos = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-muted">-</span>
+      <span className="text-slate-300 font-normal">—</span>
     ) : (
-      <span className="text-emerald-400 font-medium">{fmtCur(v)}</span>
+      <span className="text-emerald-700 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const CellAmber = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-muted">-</span>
+      <span className="text-slate-300 font-normal">—</span>
     ) : (
-      <span className="text-amber-400 font-medium">{fmtCur(v)}</span>
+      <span className="text-amber-800 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const CellSky = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-muted">-</span>
+      <span className="text-slate-300 font-normal">—</span>
     ) : (
-      <span className="text-sky-400">{fmtCur(v)}</span>
+      <span className="text-sky-700 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const percColor = (p: number) =>
     p > 10
-      ? "text-rose-400 font-semibold"
+      ? "text-rose-600 font-extrabold"
       : p > 8
-      ? "text-amber-400"
-      : "text-emerald-400";
+      ? "text-amber-700 font-bold"
+      : "text-emerald-700 font-bold";
 
   // ─── render ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Header */}
-      <header className="border-b border-border px-4 lg:px-6 py-3 sticky top-0 left-0 z-30 bg-background/95 backdrop-blur w-full">
+    <div className="min-h-screen bg-slate-50/60 text-slate-800 overflow-x-hidden font-sans print:bg-white print:p-0">
+      {/* Print CSS override */}
+      <style jsx global>{`
+        @media print {
+          body {
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+          .break-inside-avoid {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      `}</style>
+
+      {/* Top Bar / Navigation */}
+      <header className="border-b border-slate-200/80 px-4 lg:px-6 py-3 sticky top-0 left-0 z-30 bg-white/90 backdrop-blur w-full shadow-2xs print:hidden">
         <div className="max-w-[1800px] mx-auto flex items-center gap-1.5 lg:gap-3">
           <Link
             href="/"
-            className="flex items-center justify-center w-8 h-8 rounded-lg text-muted hover:text-foreground hover:bg-foreground/5 transition-colors shrink-0"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0"
           >
             <Home className="w-4 h-4" />
           </Link>
-          <span className="text-border">/</span>
-          <Link href="/investimento" className="hidden sm:block text-xs text-muted hover:text-foreground transition-colors truncate">
+          <span className="text-slate-300">/</span>
+          <Link href="/investimento" className="hidden sm:block text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors truncate">
             Investimento
           </Link>
-          <span className="hidden sm:block text-border">/</span>
-          <span className="text-xs font-semibold text-foreground truncate">Invest. Cliente</span>
+          <span className="hidden sm:block text-slate-300">/</span>
+          <span className="text-xs font-bold text-slate-900 truncate">Invest. Cliente (Dash Resumido)</span>
 
           <div className="ml-auto flex items-center gap-1.5 lg:gap-2 shrink-0">
             <ThemeToggle />
@@ -572,756 +596,521 @@ export default function InvestClientePage() {
               onClick={loadData}
               disabled={loading}
               title="Atualizar"
-              className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 text-xs font-semibold text-muted hover:text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Atualizar</span>
+            </button>
+            <button
+              onClick={() => window.print()}
+              title="Imprimir ou Salvar PDF"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-all"
+            >
+              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <span className="hidden sm:inline">Print / PDF</span>
             </button>
             <button
               onClick={exportCSV}
               disabled={loading || filteredGrupos.length === 0}
               title="Exportar CSV"
-              className="flex items-center gap-1.5 px-2 lg:px-3 py-1.5 text-xs font-semibold text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-2xs transition-all disabled:opacity-50"
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Exportar</span>
+              <Download className="w-3.5 h-3.5 text-slate-600" />
+              <span className="hidden sm:inline">Exportar CSV</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Page title + filters */}
-      <div className="max-w-[1800px] mx-auto px-4 lg:px-6 pt-4 pb-3">
-        {/* Title row: always visible */}
-        <div className="flex items-center gap-3 mb-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 shadow-sm shrink-0">
-            <TrendingDown className="w-4 h-4 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-bold text-foreground leading-tight">Invest. Cliente</h1>
-            <p className="text-[11px] text-muted truncate">
-              Referência: <span className="font-semibold text-foreground">{mesLabel(selectedMes)}</span>
-            </p>
-          </div>
+      {/* Main Content Area */}
+      <div className="max-w-[1800px] mx-auto px-3 sm:px-6 pt-5 pb-12">
+        {/* Title & Control Panel */}
+        <div className="mb-5 bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs print:hidden">
+          {/* Header Row */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs shrink-0">
+                <TrendingDown className="w-4 h-4 text-slate-700" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight tracking-tight">
+                  Relatório Executivo — Investimento por Cliente
+                </h1>
+                <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                  Mês de Referência: <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{mesLabel(selectedMes)}</span>
+                </p>
+              </div>
+            </div>
 
-          {/* Mobile: filter toggle button */}
-          <button
-            onClick={() => setShowFilters((s) => !s)}
-            className={`lg:hidden flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all ${
-              showFilters || searchTerm || filterGerente || selectedMes !== currentMonthKey()
-                ? "bg-gold/10 border-gold/40 text-gold"
-                : "bg-elevated border-border text-muted hover:text-foreground"
-            }`}
-          >
-            <SlidersHorizontal className="w-3.5 h-3.5" />
-            Filtros
-            {(searchTerm || filterGerente) && (
-              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gold text-background text-[9px] font-bold">
-                {(searchTerm ? 1 : 0) + (filterGerente ? 1 : 0)}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Filters: always visible on desktop, collapsible on mobile */}
-        <div className={`${
-          showFilters ? "flex" : "hidden lg:flex"
-        } flex-col lg:flex-row flex-wrap items-stretch lg:items-center gap-2`}>
-          {/* Search */}
-          <div className="relative flex-1 min-w-0 lg:min-w-[180px] lg:max-w-xs">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Buscar rede/cliente..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-8 pr-8 py-2 lg:py-1.5 text-sm lg:text-xs bg-elevated border border-border rounded-lg text-foreground placeholder-muted focus:outline-none focus:border-gold transition-colors"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-
-          {/* Gerente filter */}
-          <div className="relative">
-            <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
-            <select
-              value={filterGerente}
-              onChange={(e) => setFilterGerente(e.target.value)}
-              className="w-full lg:w-auto pl-8 pr-6 py-2 lg:py-1.5 text-sm lg:text-xs bg-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-gold appearance-none cursor-pointer"
+            {/* Mobile Filter Toggle */}
+            <button
+              onClick={() => setShowFilters((s) => !s)}
+              className={`lg:hidden flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-all ${
+                showFilters || searchTerm || filterGerente || selectedMes !== currentMonthKey()
+                  ? "bg-slate-800 border-slate-800 text-white"
+                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+              }`}
             >
-              <option value="">Todos os responsáveis</option>
-              {gerentesDisponiveis.map((g) => (
-                <option key={g} value={g}>{g}</option>
-              ))}
-            </select>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Filtros
+              {(searchTerm || filterGerente) && (
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold">
+                  {(searchTerm ? 1 : 0) + (filterGerente ? 1 : 0)}
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Month selector */}
-          <div className="relative">
-            <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted pointer-events-none" />
-            <select
-              value={selectedMes}
-              onChange={(e) => setSelectedMes(e.target.value)}
-              className="w-full lg:w-auto pl-8 pr-6 py-2 lg:py-1.5 text-sm lg:text-xs bg-elevated border border-border rounded-lg text-foreground focus:outline-none focus:border-gold appearance-none cursor-pointer font-semibold"
-            >
-              {[currentMonthKey(), ...availableMeses]
-                .filter((v, i, a) => a.indexOf(v) === i)
-                .sort((a, b) => b.localeCompare(a))
-                .map((m) => (
-                  <option key={m} value={m}>{m} — {mesLabel(m)}</option>
+          {/* Filters Bar */}
+          <div className={`${
+            showFilters ? "flex" : "hidden lg:flex"
+          } flex-col lg:flex-row flex-wrap items-stretch lg:items-center gap-2.5 pt-4`}>
+            {/* Search */}
+            <div className="relative flex-1 min-w-0 lg:min-w-[200px] lg:max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar rede ou cliente..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:border-slate-400 transition-colors"
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Gerente Filter */}
+            <div className="relative">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={filterGerente}
+                onChange={(e) => setFilterGerente(e.target.value)}
+                className="w-full lg:w-auto pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-slate-400 appearance-none cursor-pointer"
+              >
+                <option value="">Todos os responsáveis</option>
+                {gerentesDisponiveis.map((g) => (
+                  <option key={g} value={g}>{g}</option>
                 ))}
-            </select>
-          </div>
+              </select>
+            </div>
 
-          {/* Expand / collapse */}
-          <button
-            onClick={() => {
-              if (expandedGerentes.size === filteredGrupos.length) {
-                setExpandedGerentes(new Set());
-              } else {
-                setExpandedGerentes(new Set(filteredGrupos.map((g) => g.gerente)));
-              }
-            }}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 lg:py-1.5 text-sm lg:text-xs font-semibold text-muted hover:text-foreground bg-elevated hover:bg-border border border-border rounded-lg transition-all"
-          >
-            <ChevronDown className="w-3.5 h-3.5" />
-            {expandedGerentes.size === filteredGrupos.length ? "Recolher" : "Expandir"}
-          </button>
+            {/* Month Selector */}
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <select
+                value={selectedMes}
+                onChange={(e) => setSelectedMes(e.target.value)}
+                className="w-full lg:w-auto pl-9 pr-8 py-1.5 text-xs bg-slate-800 border border-slate-800 text-white rounded-xl font-bold focus:outline-none appearance-none cursor-pointer"
+              >
+                {[currentMonthKey(), ...availableMeses]
+                  .filter((v, i, a) => a.indexOf(v) === i)
+                  .sort((a, b) => b.localeCompare(a))
+                  .map((m) => (
+                    <option key={m} value={m}>{m} — {mesLabel(m)}</option>
+                  ))}
+              </select>
+            </div>
 
-          {/* Month range indicator */}
-          <div className="ml-auto flex items-center gap-1.5 px-3 py-2 lg:py-1.5 bg-sky-500/10 border border-sky-500/20 rounded-lg">
-            <Calendar className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="text-xs font-semibold text-sky-400">
-              {showPastMonths ? "↑ anteriores" : "↓ seguintes"}: {MONTHS.map((m) => m.label).join(", ")}
-            </span>
+            {/* Expand / Collapse All */}
+            <button
+              onClick={() => {
+                if (expandedGerentes.size === filteredGrupos.length) {
+                  setExpandedGerentes(new Set());
+                } else {
+                  setExpandedGerentes(new Set(filteredGrupos.map((g) => g.gerente)));
+                }
+              }}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
+            >
+              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+              {expandedGerentes.size === filteredGrupos.length ? "Recolher Todos" : "Expandir Todos"}
+            </button>
+
+            {/* Month Toggle indicator */}
+            <button
+              onClick={() => setShowPastMonths((p) => !p)}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-sky-50/70 border border-sky-200/80 text-sky-800 hover:bg-sky-100/70 font-medium rounded-xl text-xs transition-all"
+            >
+              <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <span>
+                Meses: {showPastMonths ? "Anteriores ‹" : "Futuros ›"} ({MONTHS.map((m) => m.label).join(", ")})
+              </span>
+            </button>
           </div>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="max-w-[1800px] mx-auto px-3 lg:px-6 pb-10">
+        {/* Content Body */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <RefreshCw className="w-6 h-6 text-muted animate-spin" />
-            <span className="ml-3 text-sm text-muted">Carregando...</span>
+          <div className="flex items-center justify-center py-20 bg-white border border-slate-200/80 rounded-2xl shadow-2xs">
+            <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
+            <span className="ml-3 text-xs font-semibold text-slate-600">Carregando relatório executivo...</span>
           </div>
         ) : filteredGrupos.length === 0 ? (
-          <div className="text-center py-20 text-muted text-sm">
-            Nenhum dado encontrado para <strong>{mesLabel(selectedMes)}</strong>.
+          <div className="text-center py-20 bg-white border border-slate-200/80 rounded-2xl text-slate-500 text-xs font-medium shadow-2xs">
+            Nenhum registro encontrado para <strong className="text-slate-800">{mesLabel(selectedMes)}</strong>.
           </div>
         ) : (
           <>
-          {/* ── Desktop: tabela horizontal ────────────────────────────── */}
-          <div className="hidden lg:block overflow-x-auto rounded-xl border border-border shadow-sm">
-            <table className="w-full text-xs border-collapse">
-              {/* ── THEAD ────────────────────────────────────────────────── */}
-              <thead>
-                {/* Group row */}
-                <tr className="bg-elevated border-b border-border">
-                  <th colSpan={2} className="px-3 py-2" />
-                  <th
-                    colSpan={2}
-                    className="text-center px-3 py-2 text-muted font-semibold tracking-wide uppercase text-[10px] border-r border-border/50"
-                  >
-                    Faturamento
-                  </th>
-                  <th
-                    colSpan={4}
-                    className="text-center px-3 py-2 text-muted font-semibold tracking-wide uppercase text-[10px] border-r border-border"
-                  >
-                    Valores · {mesLabel(selectedMes)}
-                  </th>
-                  {/* Toggle button + month cols */}
-                  <th
-                    colSpan={1 + MONTHS.length}
-                    className="text-center px-3 py-2 text-muted font-semibold tracking-wide uppercase text-[10px]"
-                  >
-                    Provisionado por mês
-                  </th>
-                </tr>
-
-                {/* Column labels */}
-                <tr className="bg-elevated border-b-2 border-border">
-                  <th className="sticky left-0 z-10 bg-elevated text-left px-3 py-2 font-semibold text-foreground whitespace-nowrap min-w-[110px]">
-                    Responsável
-                  </th>
-                  <th className="sticky left-[110px] z-10 bg-elevated text-left px-3 py-2 font-semibold text-foreground whitespace-nowrap min-w-[200px] border-r border-border">
-                    Rede
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-foreground min-w-[120px] leading-tight">
-                    Fat.<br />{mesLabel(selectedMes)}
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-foreground whitespace-nowrap min-w-[80px] border-r border-border/50">
-                    % Invest.
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-foreground min-w-[120px] leading-tight">
-                    Expect.<br />Investimento
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-foreground min-w-[120px] leading-tight">
-                    Não<br />provisionado
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold text-foreground whitespace-nowrap min-w-[120px]">
-                    Provisionado
-                  </th>
-                  <th className="text-center px-3 py-2 font-semibold min-w-[90px] leading-tight border-r border-border">
-                    <span className="text-orange-400">Ações</span><br />
-                    <span className="text-orange-400">Atrasadas</span>
-                  </th>
-
-                  {/* ── Toggle button cell ── */}
-                  <th className="px-2 py-2 text-center whitespace-nowrap w-8">
-                    <button
-                      onClick={() => setShowPastMonths((p) => !p)}
-                      title={showPastMonths ? "Mostrar meses futuros" : "Mostrar meses anteriores"}
-                      className={`inline-flex items-center justify-center w-6 h-6 rounded-full border text-[11px] font-bold transition-all ${
-                        showPastMonths
-                          ? "bg-sky-500/20 border-sky-500/40 text-sky-400 hover:bg-sky-500/30"
-                          : "bg-foreground/8 border-border text-muted hover:bg-foreground/15 hover:text-foreground"
-                      }`}
-                    >
-                      {showPastMonths ? "›" : "‹"}
-                    </button>
-                  </th>
-
-                  {/* Month columns */}
-                  {MONTHS.map((m) => (
-                    <th
-                      key={m.key}
-                      className="text-right px-3 py-2 font-semibold text-foreground whitespace-nowrap min-w-[100px]"
-                    >
-                      {m.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-
-              {/* ── TBODY ────────────────────────────────────────────────── */}
-              <tbody>
-                {filteredGrupos.map((grupo) => {
-                  const isExpanded = expandedGerentes.has(grupo.gerente);
-                  return (
-                    <React.Fragment key={grupo.gerente}>
-                      {/* Individual client rows */}
-                      {isExpanded &&
-                        grupo.clientes.map((c, idx) => (
-                          <tr
-                            key={`${grupo.gerente}__${c.rede}__${idx}`}
-                            className="border-b border-border hover:bg-foreground/3 transition-colors"
-                          >
-                            <td className="sticky left-0 z-10 bg-background hover:bg-foreground/3 px-3 py-2 text-muted whitespace-nowrap">
-                              {grupo.gerente}
-                            </td>
-                            <td className="sticky left-[110px] z-10 bg-background hover:bg-foreground/3 px-3 py-2 text-foreground whitespace-nowrap border-r border-border font-medium">
-                              {c.rede}
-                            </td>
-                            {/* Fat. Mês */}
-                            <td className="text-right px-3 py-2 text-foreground whitespace-nowrap">
-                              {c.faturamento > 0 ? fmtCur(c.faturamento) : <span className="text-muted">-</span>}
-                            </td>
-                            {/* % Invest. */}
-                            <td className="text-right px-3 py-2 whitespace-nowrap border-r border-border/50">
-                              {c.percInvest != null ? (
-                                <span className={percColor(c.percInvest)}>
-                                  {c.percInvest.toFixed(1)}%
-                                </span>
-                              ) : (
-                                <span className="text-muted">-</span>
-                              )}
-                            </td>
-                            {/* Expect. Investimento */}
-                            <td className="text-right px-3 py-2 whitespace-nowrap">
-                              {c.expectativaInvest > 0 ? (
-                                <span className="text-foreground font-medium">{fmtCur(c.expectativaInvest)}</span>
-                              ) : (
-                                <span className="text-muted">-</span>
-                              )}
-                            </td>
-                            {/* Não provisionado */}
-                            <td className="text-right px-3 py-2 whitespace-nowrap">
-                              <CellAmber v={c.naoProvisionado} />
-                            </td>
-                            {/* Provisionado */}
-                            <td className="text-right px-3 py-2 whitespace-nowrap">
-                              <CellPos v={c.provisionado} />
-                            </td>
-                            {/* Ações Atrasadas */}
-                            <td className="text-center px-3 py-2 whitespace-nowrap border-r border-border">
-                              {c.acoesAtrasadas > 0 ? (
-                                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-400 font-bold text-[11px]">
-                                  {c.acoesAtrasadas}
-                                </span>
-                              ) : (
-                                <span className="text-muted">-</span>
-                              )}
-                            </td>
-                            {/* Toggle placeholder */}
-                            <td className="px-2 py-2" />
-                            {/* Month columns */}
-                            {MONTHS.map((m) => (
-                              <td key={m.key} className="text-right px-3 py-2 whitespace-nowrap">
-                                <CellSky v={c.meses[m.key] || 0} />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-
-                      {/* Subtotal row */}
-                      <tr
-                        onClick={() => toggleGerente(grupo.gerente)}
-                        className="cursor-pointer border-b-2 border-border bg-amber-500/8 hover:bg-amber-500/12 transition-colors"
-                      >
-                        <td
-                          colSpan={2}
-                          className="sticky left-0 z-10 bg-amber-500/10 hover:bg-amber-500/15 px-3 py-2.5 font-bold text-amber-400 whitespace-nowrap"
-                          style={{ minWidth: "310px" }}
-                        >
-                          <div className="flex items-center gap-2">
-                            {isExpanded ? (
-                              <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                            ) : (
-                              <ChevronRightIcon className="w-3.5 h-3.5 shrink-0" />
-                            )}
-                            <Users className="w-3 h-3 shrink-0" />
-                            <span>{grupo.gerente} Total</span>
-                            {!isExpanded && (
-                              <span className="text-[10px] text-amber-400/60 font-normal ml-1">
-                                ({grupo.clientes.length} cliente{grupo.clientes.length !== 1 ? "s" : ""})
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="text-right px-3 py-2.5 font-bold text-foreground whitespace-nowrap">
-                          {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                        <td className="text-right px-3 py-2.5 font-bold whitespace-nowrap border-r border-border/50">
-                          {grupo.totals.percInvest != null ? (
-                            <span className={percColor(grupo.totals.percInvest)}>
-                              {grupo.totals.percInvest.toFixed(1)}%
-                            </span>
-                          ) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                        <td className="text-right px-3 py-2.5 font-bold text-foreground whitespace-nowrap">
-                          {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                        <td className="text-right px-3 py-2.5 font-bold text-amber-400 whitespace-nowrap">
-                          {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                        <td className="text-right px-3 py-2.5 font-bold text-emerald-400 whitespace-nowrap">
-                          {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                        {/* Ações Atrasadas subtotal */}
-                        <td className="text-center px-3 py-2.5 whitespace-nowrap border-r border-border">
-                          {grupo.totals.acoesAtrasadas > 0 ? (
-                            <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/25 border border-orange-500/40 text-orange-400 font-bold text-[11px]">
-                              {grupo.totals.acoesAtrasadas}
-                            </span>
-                          ) : (
-                            <span className="text-muted font-normal">-</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-2.5" />
-                        {MONTHS.map((m) => (
-                          <td key={m.key} className="text-right px-3 py-2.5 font-bold whitespace-nowrap">
-                            {grupo.totals.meses[m.key] ? (
-                              <span className="text-sky-400">{fmtCur(grupo.totals.meses[m.key])}</span>
-                            ) : (
-                              <span className="text-muted font-normal">-</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    </React.Fragment>
-                  );
-                })}
-
-                {/* ── Grand Total ────────────────────────────────────────── */}
-                <tr className="bg-foreground/5 border-t-2 border-foreground/20">
-                  <td
-                    colSpan={2}
-                    className="sticky left-0 z-10 bg-foreground/5 px-3 py-3 font-bold text-foreground whitespace-nowrap text-[11px] uppercase tracking-wide"
-                    style={{ minWidth: "310px" }}
-                  >
-                    Total Geral
-                  </td>
-                  <td className="text-right px-3 py-3 font-bold text-foreground whitespace-nowrap text-[11px]">
-                    {grandTotals.faturamento > 0 ? fmtCur(grandTotals.faturamento) : <span className="text-muted font-normal">-</span>}
-                  </td>
-                  <td className="text-right px-3 py-3 font-bold whitespace-nowrap text-[11px] border-r border-border/50">
-                    {grandTotals.percInvest != null ? (
-                      <span className={percColor(grandTotals.percInvest)}>
-                        {grandTotals.percInvest.toFixed(1)}%
-                      </span>
-                    ) : <span className="text-muted font-normal">-</span>}
-                  </td>
-                  <td className="text-right px-3 py-3 font-bold text-foreground whitespace-nowrap text-[11px]">
-                    {grandTotals.expectativaInvest > 0 ? fmtCur(grandTotals.expectativaInvest) : <span className="text-muted font-normal">-</span>}
-                  </td>
-                  <td className="text-right px-3 py-3 font-bold text-amber-400 whitespace-nowrap text-[11px]">
-                    {grandTotals.naoProvisionado > 0 ? fmtCur(grandTotals.naoProvisionado) : <span className="text-muted font-normal">-</span>}
-                  </td>
-                  <td className="text-right px-3 py-3 font-bold text-emerald-400 whitespace-nowrap text-[11px]">
-                    {grandTotals.provisionado > 0 ? fmtCur(grandTotals.provisionado) : <span className="text-muted font-normal">-</span>}
-                  </td>
-                  {/* Ações Atrasadas grand total */}
-                  <td className="text-center px-3 py-3 whitespace-nowrap border-r border-border text-[11px]">
-                    {grandTotals.acoesAtrasadas > 0 ? (
-                      <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/25 border border-orange-500/40 text-orange-400 font-bold text-[11px]">
-                        {grandTotals.acoesAtrasadas}
-                      </span>
-                    ) : (
-                      <span className="text-muted font-normal">-</span>
-                    )}
-                  </td>
-                  <td className="px-2 py-3" />
-                  {MONTHS.map((m) => (
-                    <td key={m.key} className="text-right px-3 py-3 font-bold whitespace-nowrap text-[11px]">
-                      {grandTotals.meses[m.key] ? (
-                        <span className="text-sky-400">{fmtCur(grandTotals.meses[m.key])}</span>
-                      ) : (
-                        <span className="text-muted font-normal">-</span>
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {/* ── Mobile: 3 blocos verticais ──────────────────────────────── */}
-          <div className="lg:hidden space-y-4">
-
-            {/* ── BLOCO 1: Faturamento ─────────────────────────────────── */}
-            <div className="rounded-xl border border-border overflow-hidden shadow-sm">
-              <div className="bg-elevated px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted border-b border-border">
-                Faturamento
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-elevated border-b-2 border-border">
-                      <th className="sticky left-0 z-10 bg-elevated text-left px-2 py-1.5 font-semibold text-foreground whitespace-nowrap w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]">
-                        Rede
-                      </th>
-                      <th className="text-right px-2 py-1.5 font-semibold text-foreground min-w-[100px] leading-tight">
-                        Fat.<br />{mesLabel(selectedMes)}
-                      </th>
-                      <th className="text-right px-2 py-1.5 font-semibold text-foreground whitespace-nowrap min-w-[80px]">
-                        % Invest.
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredGrupos.map((grupo) => {
-                      const isExpanded = expandedGerentes.has(grupo.gerente);
-                      return (
-                        <React.Fragment key={`m1-${grupo.gerente}`}>
-                          {/* Gerente label row */}
-                          <tr className="bg-amber-500/5 border-b border-amber-500/20">
-                            <td colSpan={3} className="px-2 py-1 text-[10px] font-semibold text-amber-400/80 uppercase tracking-wide">
-                              {grupo.gerente}
-                            </td>
-                          </tr>
-                          {isExpanded && grupo.clientes.map((c, idx) => (
-                            <tr key={`m1-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
-                              <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                                {c.rede}
-                              </td>
-                              <td className="text-right px-2 py-1.5 text-foreground whitespace-nowrap">
-                                {c.faturamento > 0 ? fmtCur(c.faturamento) : <span className="text-muted">-</span>}
-                              </td>
-                              <td className="text-right px-2 py-1.5 whitespace-nowrap">
-                                {c.percInvest != null ? (
-                                  <span className={percColor(c.percInvest)}>{c.percInvest.toFixed(1)}%</span>
-                                ) : <span className="text-muted">-</span>}
-                              </td>
-                            </tr>
-                          ))}
-                          {/* Subtotal */}
-                          <tr
-                            onClick={() => toggleGerente(grupo.gerente)}
-                            className="cursor-pointer border-b-2 border-border bg-amber-500/10 hover:bg-amber-500/15"
-                          >
-                            <td className="sticky left-0 z-10 px-2 py-1.5 font-bold text-amber-400 w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(245,158,11,0.12)]">
-                              <div className="flex items-center gap-1.5">
-                                {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
-                                <span className="text-[11px]">{grupo.gerente} Total</span>
-                              </div>
-                            </td>
-                            <td className="text-right px-2 py-1.5 font-bold text-foreground whitespace-nowrap">
-                              {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                            <td className="text-right px-2 py-1.5 font-bold whitespace-nowrap">
-                              {grupo.totals.percInvest != null ? (
-                                <span className={percColor(grupo.totals.percInvest)}>{grupo.totals.percInvest.toFixed(1)}%</span>
-                              ) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })}
-                    {/* Grand total */}
-                    <tr className="bg-foreground/5 border-t-2 border-foreground/20">
-                      <td className="sticky left-0 z-10 bg-background px-2 py-1.5 font-bold text-foreground text-[11px] uppercase tracking-wide w-[88px] min-w-[88px] max-w-[88px] truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(0,0,0,0.04)]">
-                        Total Geral
-                      </td>
-                      <td className="text-right px-3 py-3 font-bold text-foreground whitespace-nowrap text-[11px]">
-                        {grandTotals.faturamento > 0 ? fmtCur(grandTotals.faturamento) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                      <td className="text-right px-3 py-3 font-bold whitespace-nowrap text-[11px]">
-                        {grandTotals.percInvest != null ? (
-                          <span className={percColor(grandTotals.percInvest)}>{grandTotals.percInvest.toFixed(1)}%</span>
-                        ) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ── BLOCO 2: Valores ─────────────────────────────────────── */}
-            <div className="rounded-xl border border-border overflow-hidden shadow-sm">
-              <div className="bg-elevated px-2 py-1.5 text-center text-[10px] font-semibold uppercase tracking-widest text-muted border-b border-border">
-                Valores · {mesLabel(selectedMes)}
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-elevated border-b-2 border-border">
-                      <th className="sticky left-0 z-10 bg-elevated text-left px-2 py-1.5 font-semibold text-foreground whitespace-nowrap w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]">
-                        Rede
-                      </th>
-                      <th className="text-right px-2 py-1.5 font-semibold text-foreground min-w-[100px] leading-tight">
-                        Expect.<br />Invest.
-                      </th>
-                      <th className="text-right px-2 py-1.5 font-semibold text-foreground min-w-[90px] leading-tight">
-                        Não<br />prov.
-                      </th>
-                      <th className="text-right px-2 py-1.5 font-semibold text-foreground whitespace-nowrap min-w-[90px]">
-                        Prov.
-                      </th>
-                      <th className="text-center px-2 py-1.5 font-semibold min-w-[70px] leading-tight">
-                        <span className="text-orange-400">Ações</span><br />
-                        <span className="text-orange-400">Atras.</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredGrupos.map((grupo) => {
-                      const isExpanded = expandedGerentes.has(grupo.gerente);
-                      return (
-                        <React.Fragment key={`m2-${grupo.gerente}`}>
-                          <tr className="bg-amber-500/5 border-b border-amber-500/20">
-                            <td colSpan={5} className="px-2 py-1 text-[10px] font-semibold text-amber-400/80 uppercase tracking-wide">
-                              {grupo.gerente}
-                            </td>
-                          </tr>
-                          {isExpanded && grupo.clientes.map((c, idx) => (
-                            <tr key={`m2-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
-                              <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                                {c.rede}
-                              </td>
-                              <td className="text-right px-2 py-1.5 whitespace-nowrap">
-                                {c.expectativaInvest > 0 ? <span className="font-medium">{fmtCur(c.expectativaInvest)}</span> : <span className="text-muted">-</span>}
-                              </td>
-                              <td className="text-right px-2 py-1.5 whitespace-nowrap">
-                                <CellAmber v={c.naoProvisionado} />
-                              </td>
-                              <td className="text-right px-2 py-1.5 whitespace-nowrap">
-                                <CellPos v={c.provisionado} />
-                              </td>
-                              <td className="text-center px-2 py-1.5 whitespace-nowrap">
-                                {c.acoesAtrasadas > 0 ? (
-                                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/20 border border-orange-500/30 text-orange-400 font-bold text-[11px]">
-                                    {c.acoesAtrasadas}
-                                  </span>
-                                ) : <span className="text-muted">-</span>}
-                              </td>
-                            </tr>
-                          ))}
-                          <tr
-                            onClick={() => toggleGerente(grupo.gerente)}
-                            className="cursor-pointer border-b-2 border-border bg-amber-500/10 hover:bg-amber-500/15"
-                          >
-                            <td className="sticky left-0 z-10 px-2 py-1.5 font-bold text-amber-400 w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(245,158,11,0.12)]">
-                              <div className="flex items-center gap-1.5">
-                                {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
-                                <span className="text-[11px]">{grupo.gerente} Total</span>
-                              </div>
-                            </td>
-                            <td className="text-right px-2 py-1.5 font-bold text-foreground whitespace-nowrap">
-                              {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                            <td className="text-right px-2 py-1.5 font-bold text-amber-400 whitespace-nowrap">
-                              {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                            <td className="text-right px-2 py-1.5 font-bold text-emerald-400 whitespace-nowrap">
-                              {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                            <td className="text-center px-2 py-1.5 whitespace-nowrap">
-                              {grupo.totals.acoesAtrasadas > 0 ? (
-                                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/25 border border-orange-500/40 text-orange-400 font-bold text-[11px]">
-                                  {grupo.totals.acoesAtrasadas}
-                                </span>
-                              ) : <span className="text-muted font-normal">-</span>}
-                            </td>
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })}
-                    <tr className="bg-foreground/5 border-t-2 border-foreground/20">
-                      <td className="sticky left-0 z-10 bg-background px-2 py-1.5 font-bold text-foreground text-[11px] uppercase tracking-wide w-[88px] min-w-[88px] max-w-[88px] truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(0,0,0,0.04)]">
-                        Total Geral
-                      </td>
-                      <td className="text-right px-3 py-3 font-bold text-foreground whitespace-nowrap text-[11px]">
-                        {grandTotals.expectativaInvest > 0 ? fmtCur(grandTotals.expectativaInvest) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                      <td className="text-right px-3 py-3 font-bold text-amber-400 whitespace-nowrap text-[11px]">
-                        {grandTotals.naoProvisionado > 0 ? fmtCur(grandTotals.naoProvisionado) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                      <td className="text-right px-3 py-3 font-bold text-emerald-400 whitespace-nowrap text-[11px]">
-                        {grandTotals.provisionado > 0 ? fmtCur(grandTotals.provisionado) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                      <td className="text-center px-3 py-3 whitespace-nowrap text-[11px]">
-                        {grandTotals.acoesAtrasadas > 0 ? (
-                          <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full bg-orange-500/25 border border-orange-500/40 text-orange-400 font-bold text-[11px]">
-                            {grandTotals.acoesAtrasadas}
-                          </span>
-                        ) : <span className="text-muted font-normal">-</span>}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ── BLOCO 3: Provisionado por mês ───────────────────────── */}
-            <div className="rounded-xl border border-border overflow-hidden shadow-sm">
-              <div className="bg-elevated px-2 py-1.5 border-b border-border">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">
-                    Provisionado por Mês
+            {/* ── CARD EXECUTIVO DO TOTAL GERAL (ELEGANTE & LEVE) ── */}
+            <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs p-4 sm:p-5 mb-6 print:mb-4 break-inside-avoid">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-800" />
+                  <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
+                    TOTAL GERAL CONSOLIDADO
+                  </h2>
+                  <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
+                    Ref: {mesLabel(selectedMes)}
                   </span>
-                  <button
-                    onClick={() => setShowPastMonths((p) => !p)}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all ${
-                      showPastMonths
-                        ? "bg-sky-500/20 border-sky-500/40 text-sky-400"
-                        : "bg-foreground/8 border-border text-muted"
-                    }`}
-                  >
-                    {showPastMonths ? "›" : "‹"}
-                    <span className="text-[10px] font-normal">
-                      {showPastMonths ? "Futuros" : "Anteriores"}
+                </div>
+                <span className="text-xs text-slate-400 font-medium">
+                  Visão Geral da Carteira
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+                {/* 1. Faturamento */}
+                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Faturamento</span>
+                  <div className="mt-1">
+                    <span className="text-lg sm:text-xl font-extrabold text-slate-900 tabular-nums leading-tight block">
+                      {grandTotals.faturamento > 0 ? fmtCur(grandTotals.faturamento) : "—"}
                     </span>
-                  </button>
+                  </div>
+                </div>
+
+                {/* 2. Expectativa Invest. */}
+                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expectativa Invest.</span>
+                  <div className="mt-1">
+                    <span className="text-lg sm:text-xl font-extrabold text-slate-900 tabular-nums leading-tight block">
+                      {grandTotals.expectativaInvest > 0 ? fmtCur(grandTotals.expectativaInvest) : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 3. % Invest. */}
+                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">% Invest. Médio</span>
+                  <div className="mt-1">
+                    <span className={`text-lg sm:text-xl font-extrabold tabular-nums leading-tight block ${
+                      grandTotals.percInvest != null ? percColor(grandTotals.percInvest) : "text-slate-400"
+                    }`}>
+                      {grandTotals.percInvest != null ? `${grandTotals.percInvest.toFixed(1)}%` : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 4. Não Provisionado */}
+                <div className="bg-amber-50/40 border border-amber-100 rounded-xl p-3 flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Não Provisionado</span>
+                  <div className="mt-1">
+                    <span className="text-lg sm:text-xl font-extrabold text-amber-900 tabular-nums leading-tight block">
+                      {grandTotals.naoProvisionado > 0 ? fmtCur(grandTotals.naoProvisionado) : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 5. Provisionado */}
+                <div className="bg-emerald-50/40 border border-emerald-100 rounded-xl p-3 flex flex-col justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Provisionado</span>
+                  <div className="mt-1">
+                    <span className="text-lg sm:text-xl font-extrabold text-emerald-900 tabular-nums leading-tight block">
+                      {grandTotals.provisionado > 0 ? fmtCur(grandTotals.provisionado) : "—"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 6. Ações Atrasadas (SOFISTICADO & ELEGANTE) */}
+                <div className={`border rounded-xl p-3 flex flex-col justify-between ${
+                  grandTotals.acoesAtrasadas > 0
+                    ? "bg-rose-50/60 border-rose-200"
+                    : "bg-slate-50/60 border-slate-100"
+                }`}>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                    grandTotals.acoesAtrasadas > 0 ? "text-rose-700" : "text-slate-400"
+                  }`}>
+                    Ações Atrasadas
+                  </span>
+                  <div className="mt-1 flex items-center justify-between">
+                    {grandTotals.acoesAtrasadas > 0 ? (
+                      <>
+                        <span className="text-lg sm:text-xl font-black text-rose-600 tabular-nums leading-tight">
+                          ● {grandTotals.acoesAtrasadas}
+                        </span>
+                        <span className="text-[10px] font-semibold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md">
+                          Atrasadas
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-medium text-slate-400 leading-tight">
+                        0 ok
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-elevated border-b-2 border-border">
-                      <th className="sticky left-0 z-10 bg-elevated text-left px-2 py-1.5 font-semibold text-foreground whitespace-nowrap w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.08)]">
-                        Rede
-                      </th>
-                      {MONTHS.map((m) => (
-                        <th key={m.key} className="text-right px-2 py-1.5 font-semibold text-foreground whitespace-nowrap min-w-[90px]">
-                          {m.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredGrupos.map((grupo) => {
-                      const isExpanded = expandedGerentes.has(grupo.gerente);
-                      return (
-                        <React.Fragment key={`m3-${grupo.gerente}`}>
-                          <tr className="bg-amber-500/5 border-b border-amber-500/20">
-                            <td colSpan={1 + MONTHS.length} className="px-2 py-1 text-[10px] font-semibold text-amber-400/80 uppercase tracking-wide">
-                              {grupo.gerente}
-                            </td>
-                          </tr>
-                          {isExpanded && grupo.clientes.map((c, idx) => (
-                            <tr key={`m3-${grupo.gerente}-${c.rede}-${idx}`} className="border-b border-border hover:bg-foreground/3">
-                              <td className="sticky left-0 z-10 bg-background px-2 py-1.5 text-foreground font-medium w-[88px] min-w-[88px] max-w-[88px] overflow-hidden truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06)]">
-                                {c.rede}
-                              </td>
-                              {MONTHS.map((m) => (
-                                <td key={m.key} className="text-right px-2 py-1.5 whitespace-nowrap">
-                                  <CellSky v={c.meses[m.key] || 0} />
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                          <tr
-                            onClick={() => toggleGerente(grupo.gerente)}
-                            className="cursor-pointer border-b-2 border-border bg-amber-500/10 hover:bg-amber-500/15"
-                          >
-                            <td className="sticky left-0 z-10 px-2 py-1.5 font-bold text-amber-400 w-[88px] min-w-[88px] max-w-[88px] shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(245,158,11,0.12)]">
-                              <div className="flex items-center gap-1.5">
-                                {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
-                                <span className="text-[11px]">{grupo.gerente} Total</span>
-                              </div>
-                            </td>
-                            {MONTHS.map((m) => (
-                              <td key={m.key} className="text-right px-2 py-1.5 font-bold whitespace-nowrap">
-                                {grupo.totals.meses[m.key] ? (
-                                  <span className="text-sky-400">{fmtCur(grupo.totals.meses[m.key])}</span>
-                                ) : <span className="text-muted font-normal">-</span>}
-                              </td>
-                            ))}
-                          </tr>
-                        </React.Fragment>
-                      );
-                    })}
-                    <tr className="bg-foreground/5 border-t-2 border-foreground/20">
-                      <td className="sticky left-0 z-10 bg-background px-2 py-1.5 font-bold text-foreground text-[11px] uppercase tracking-wide w-[88px] min-w-[88px] max-w-[88px] truncate shadow-[2px_0_4px_-1px_rgba(0,0,0,0.06),inset_0_0_0_9999px_rgba(0,0,0,0.04)]">
-                        Total Geral
-                      </td>
-                      {MONTHS.map((m) => (
-                        <td key={m.key} className="text-right px-3 py-3 font-bold whitespace-nowrap text-[11px]">
-                          {grandTotals.meses[m.key] ? (
-                            <span className="text-sky-400">{fmtCur(grandTotals.meses[m.key])}</span>
-                          ) : <span className="text-muted font-normal">-</span>}
-                        </td>
-                      ))}
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
             </div>
 
-          </div>{/* end mobile */}
+            {/* ── LISTAGEM DE CARDS POR GERENTE (SUTIL & SOFISTICADO) ── */}
+            <div className="space-y-5 print:space-y-4">
+              {filteredGrupos.map((grupo) => {
+                const isExpanded = expandedGerentes.has(grupo.gerente);
+                return (
+                  <div
+                    key={grupo.gerente}
+                    className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden break-inside-avoid print:border-slate-300"
+                  >
+                    {/* Header do Gerente (Claro, Elegante, Sem Blocos Pretos) */}
+                    <div
+                      onClick={() => toggleGerente(grupo.gerente)}
+                      className="bg-slate-50/80 hover:bg-slate-100/70 border-b border-slate-200/80 px-4 sm:px-5 py-3.5 cursor-pointer transition-colors flex flex-wrap items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <div className="text-slate-400 shrink-0">
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRightIcon className="w-4 h-4" />
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-wide uppercase">
+                              {grupo.gerente}
+                            </h3>
+                            <span className="text-xs font-normal text-slate-400">
+                              ({grupo.clientes.length} {grupo.clientes.length === 1 ? "cliente" : "clientes"})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* KPIs limpos no cabeçalho do Gerente */}
+                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-slate-600 ml-auto">
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Faturamento</span>
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                            {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : "—"}
+                          </span>
+                        </div>
+
+                        <div className="hidden md:flex flex-col items-end">
+                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Expectativa</span>
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                            {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : "—"}
+                          </span>
+                        </div>
+
+                        <div className="hidden lg:flex flex-col items-end">
+                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">% Invest.</span>
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                            {grupo.totals.percInvest != null ? `${grupo.totals.percInvest.toFixed(1)}%` : "—"}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Não Prov.</span>
+                          <span className="font-bold text-amber-800 text-xs sm:text-sm tabular-nums">
+                            {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : "—"}
+                          </span>
+                        </div>
+
+                        <div className="flex flex-col items-end">
+                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Provisionado</span>
+                          <span className="font-bold text-emerald-700 text-xs sm:text-sm tabular-nums">
+                            {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : "—"}
+                          </span>
+                        </div>
+
+                        {/* Tratamento Sofisticado de Ações Atrasadas no Gerente */}
+                        <div className="flex items-center">
+                          {grupo.totals.acoesAtrasadas > 0 ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs">
+                              <span>●</span>
+                              <span>{grupo.totals.acoesAtrasadas} atrasadas</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-normal text-xs">
+                              0 atrasos
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tabela de Redes do Gerente */}
+                    {isExpanded && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/50 border-b border-slate-200/80 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
+                              <th className="py-2.5 px-4 font-bold text-slate-700">Rede / Cliente</th>
+                              <th className="py-2.5 px-4 text-right">Fat. ({mesLabel(selectedMes)})</th>
+                              <th className="py-2.5 px-4 text-right">% Invest.</th>
+                              <th className="py-2.5 px-4 text-right">Expect. Invest.</th>
+                              <th className="py-2.5 px-4 text-right">Não Provisionado</th>
+                              <th className="py-2.5 px-4 text-right">Provisionado</th>
+                              <th className="py-2.5 px-4 text-center">Ações Atrasadas</th>
+                              <th className="py-2.5 px-4 text-right text-sky-800 bg-sky-50/40">
+                                Prov. Próximos Meses ({MONTHS.map((m) => m.label).join(" | ")})
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 bg-white">
+                            {grupo.clientes.map((c, idx) => (
+                              <tr
+                                key={`${grupo.gerente}__${c.rede}__${idx}`}
+                                className="hover:bg-slate-50/60 transition-colors"
+                              >
+                                {/* Rede */}
+                                <td className="py-2.5 px-4 font-semibold text-slate-900 text-xs whitespace-nowrap">
+                                  {c.rede}
+                                </td>
+                                {/* Faturamento */}
+                                <td className="py-2.5 px-4 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">
+                                  {c.faturamento > 0 ? fmtCur(c.faturamento) : <span className="text-slate-300 font-normal">—</span>}
+                                </td>
+                                {/* % Invest */}
+                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums whitespace-nowrap">
+                                  {c.percInvest != null ? (
+                                    <span className={percColor(c.percInvest)}>
+                                      {c.percInvest.toFixed(1)}%
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 font-normal">—</span>
+                                  )}
+                                </td>
+                                {/* Expectativa */}
+                                <td className="py-2.5 px-4 text-right font-semibold text-slate-800 tabular-nums whitespace-nowrap">
+                                  {c.expectativaInvest > 0 ? fmtCur(c.expectativaInvest) : <span className="text-slate-300 font-normal">—</span>}
+                                </td>
+                                {/* Não Provisionado */}
+                                <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                                  <CellAmber v={c.naoProvisionado} />
+                                </td>
+                                {/* Provisionado */}
+                                <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                                  <CellPos v={c.provisionado} />
+                                </td>
+                                {/* Ações Atrasadas (Sofisticado) */}
+                                <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                                  {c.acoesAtrasadas > 0 ? (
+                                    <span className="text-rose-600 font-bold tabular-nums">
+                                      ● {c.acoesAtrasadas}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300 font-normal">—</span>
+                                  )}
+                                </td>
+                                {/* Provisionamento Próximos Meses */}
+                                <td className="py-2.5 px-4 text-right whitespace-nowrap bg-sky-50/20">
+                                  <div className="flex items-center justify-end gap-3 font-medium text-sky-800 tabular-nums">
+                                    {MONTHS.map((m) => {
+                                      const val = c.meses[m.key] || 0;
+                                      return (
+                                        <div key={m.key} className="text-right">
+                                          <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-normal">{m.label}</span>
+                                          {val > 0 ? (
+                                            <span className="text-sky-700 font-semibold">{fmtCur(val)}</span>
+                                          ) : (
+                                            <span className="text-slate-300 font-normal">—</span>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+
+                            {/* Subtotal do Gerente */}
+                            <tr className="bg-slate-50/80 font-bold text-slate-900 border-t border-slate-200">
+                              <td className="py-2.5 px-4 text-slate-900 font-extrabold uppercase text-[11px]">
+                                TOTAL — {grupo.gerente}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-extrabold text-slate-900 tabular-nums text-xs">
+                                {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : <span className="text-slate-300 font-normal">—</span>}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-extrabold tabular-nums text-xs">
+                                {grupo.totals.percInvest != null ? (
+                                  <span className={percColor(grupo.totals.percInvest)}>
+                                    {grupo.totals.percInvest.toFixed(1)}%
+                                  </span>
+                                ) : <span className="text-slate-300 font-normal">—</span>}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-extrabold text-slate-900 tabular-nums text-xs">
+                                {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : <span className="text-slate-300 font-normal">—</span>}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-extrabold text-amber-900 tabular-nums text-xs">
+                                {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : <span className="text-slate-300 font-normal">—</span>}
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-extrabold text-emerald-800 tabular-nums text-xs">
+                                {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : <span className="text-slate-300 font-normal">—</span>}
+                              </td>
+                              <td className="py-2.5 px-4 text-center text-xs">
+                                {grupo.totals.acoesAtrasadas > 0 ? (
+                                  <span className="text-rose-600 font-extrabold tabular-nums">
+                                    ● {grupo.totals.acoesAtrasadas}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 font-normal">—</span>
+                                )}
+                              </td>
+                              <td className="py-2.5 px-4 text-right bg-sky-100/30">
+                                <div className="flex items-center justify-end gap-3 font-extrabold text-sky-900 tabular-nums text-xs">
+                                  {MONTHS.map((m) => {
+                                    const val = grupo.totals.meses[m.key] || 0;
+                                    return (
+                                      <div key={m.key} className="text-right">
+                                        <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-medium">{m.label}</span>
+                                        {val > 0 ? fmtCur(val) : <span className="text-slate-300 font-normal">—</span>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
 
-        {/* Legend */}
-        <div className="flex flex-wrap items-center gap-4 mt-4 text-[10px] text-muted">
+        {/* Rodapé Executivo / Legenda */}
+        <div className="flex flex-wrap items-center gap-4 mt-6 text-[11px] text-slate-500 bg-white border border-slate-200/80 rounded-xl p-4 shadow-2xs print:hidden">
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-foreground/20 border border-foreground/30" />
-            <span>Expect. Investimento = valor × volume · mes_referencia = mês selecionado</span>
+            <span className="inline-block w-2.5 h-2.5 rounded bg-slate-200 border border-slate-300" />
+            <span>Expect. Investimento = valor × volume · mes_referencia</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-amber-500/30 border border-amber-500/40" />
-            <span>Não provisionado = ação sem boleto no mês selecionado (qualquer fase)</span>
+            <span className="inline-block w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300" />
+            <span>Não provisionado = sem boleto no mês selecionado</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-emerald-500/30 border border-emerald-500/40" />
-            <span>Provisionado = ação com boleto vinculado no mês selecionado (independe do vencimento)</span>
+            <span className="inline-block w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300" />
+            <span>Provisionado = com boleto vinculado</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-sky-500/30 border border-sky-500/40" />
-            <span>Colunas de mês = provisionado por vencimento (‹/› para alternar passado/futuro)</span>
+            <span className="inline-block w-2.5 h-2.5 rounded bg-sky-100 border border-sky-300" />
+            <span>Colunas de mês = vencimento futuro/passado</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded bg-orange-500/30 border border-orange-500/40" />
-            <span>Ações Atrasadas = fase 3 (Apur. GRV) com data_fim ≤ hoje - 7 dias</span>
+            <span className="text-rose-600 font-bold">●</span>
+            <span>Ações Atrasadas = fase 3 com data_fim ≤ hoje - 7 dias</span>
           </div>
-          <span className="ml-auto">Fonte: cm_acoes_investimento · Ações não pagas</span>
+          <span className="ml-auto font-medium text-slate-400">Coffee++ Relatório Executivo</span>
         </div>
       </div>
     </div>
   );
 }
+
