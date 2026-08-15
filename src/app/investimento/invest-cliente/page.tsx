@@ -24,6 +24,16 @@ import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
+const normalizeGerenteNome = (nome?: string | null): string => {
+  if (!nome) return "Sem Gerente";
+  const trimmed = nome.trim();
+  if (!trimmed) return "Sem Gerente";
+  const lower = trimmed.toLowerCase();
+  if (lower === "john guedes" || lower === "john") return "John";
+  if (lower === "leandro saffi" || lower === "leandro") return "Leandro";
+  return trimmed;
+};
+
 const fmtCur = (v: number) =>
   new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -276,7 +286,8 @@ export default function InvestClientePage() {
 
       const redeName = (a.rede || "SEM REDE").trim();
       const redeKey = redeName.toUpperCase();
-      const gerenteAcao = (a.gerente_responsavel || a.gerente || gerenteMap[redeKey] || "Sem Gerente").trim() || "Sem Gerente";
+      const gerenteRaw = (a.gerente_responsavel || a.gerente || gerenteMap[redeKey] || "Sem Gerente").trim() || "Sem Gerente";
+      const gerenteAcao = normalizeGerenteNome(gerenteRaw);
       const compositeKey = `${gerenteAcao}___${redeKey}`;
       const valor =
         (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
@@ -423,13 +434,16 @@ export default function InvestClientePage() {
 
   // ─── derived ─────────────────────────────────────────────────────────────
   const gerentesDisponiveis = useMemo(
-    () => grupos.map((g) => g.gerente),
+    () => Array.from(new Set([...grupos.map((g) => normalizeGerenteNome(g.gerente)), "John"])).sort((a, b) => a.localeCompare(b, "pt-BR")),
     [grupos]
   );
 
   const filteredGrupos = useMemo(() => {
     let g = grupos;
-    if (filterGerente) g = g.filter((gr) => gr.gerente === filterGerente);
+    if (filterGerente) {
+      const normG = normalizeGerenteNome(filterGerente);
+      g = g.filter((gr) => normalizeGerenteNome(gr.gerente) === normG);
+    }
     if (searchTerm) {
       const s = searchTerm.toLowerCase();
       g = g

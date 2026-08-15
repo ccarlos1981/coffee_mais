@@ -3675,16 +3675,17 @@ export async function obterHistoricoConsultorComercial(params: {
   itemNome: string;
   tipo_pagamento?: string;
   tipo_acao_detalhe?: string;
+  mes_referencia_anterior?: string;
 }): Promise<ResultadoConsultorComercial> {
   try {
     const supabase = await createClient();
 
     let query = supabase
       .from("cm_acoes_investimento")
-      .select("id, created_at, data_inicio, abrangencia, familia_produto, familias_detalhes, skus_detalhes, valor_investimento, expectativa_volume, preco_flat, preco_acao, tipo_pagamento, tipo_acao, tipo_acao_detalhe, fase_atual, is_planejamento")
+      .select("id, created_at, data_inicio, mes_referencia, abrangencia, familia_produto, familias_detalhes, skus_detalhes, valor_investimento, expectativa_volume, preco_flat, preco_acao, tipo_pagamento, tipo_acao, tipo_acao_detalhe, fase_atual, is_planejamento")
       .gte("fase_atual", 1)
       .order("created_at", { ascending: false })
-      .limit(50);
+      .limit(100);
 
     if (params.codigo_matriz) {
       query = query.eq("codigo_matriz", params.codigo_matriz);
@@ -3708,6 +3709,13 @@ export async function obterHistoricoConsultorComercial(params: {
 
     for (const pa of rawActions) {
       if (pa.is_planejamento) continue;
+
+      if (params.mes_referencia_anterior) {
+        const actionMonth = pa.mes_referencia || (pa.data_inicio ? pa.data_inicio.slice(0, 7) : null);
+        if (actionMonth !== params.mes_referencia_anterior) {
+          continue;
+        }
+      }
 
       if (params.tipo_pagamento && pa.tipo_pagamento && pa.tipo_pagamento.toLowerCase() !== params.tipo_pagamento.toLowerCase()) {
         continue;

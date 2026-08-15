@@ -58,6 +58,16 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
 
 
+const normalizeGerenteNome = (nome?: string | null): string => {
+  if (!nome) return "Sem Gerente";
+  const trimmed = nome.trim();
+  if (!trimmed) return "Sem Gerente";
+  const lower = trimmed.toLowerCase();
+  if (lower === "john guedes" || lower === "john") return "John";
+  if (lower === "leandro saffi" || lower === "leandro") return "Leandro";
+  return trimmed;
+};
+
 const formatCompactCurrency = (value: number) => {
   if (value === 0) return "-";
   if (value >= 1_000_000) {
@@ -1583,7 +1593,7 @@ export default function InvestimentoPage() {
       if (filterMes && r.mes_referencia !== filterMes) return false;
       
       // Filtros adicionados para a Auditoria e UX
-      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterGerente && normalizeGerenteNome(r.gerente_responsavel) !== normalizeGerenteNome(filterGerente)) return false;
       if (filterStatus) {
         const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
         if (status !== filterStatus) return false;
@@ -1797,15 +1807,15 @@ export default function InvestimentoPage() {
   }, [filteredData, globalSearch, filterFamilia]);
 
   const gerentesDisponiveis = useMemo(() => {
-    const fromMatrizes = matrizes.map(m => m.gerente).filter(Boolean);
-    const fromActions = data.map(r => r.gerente_responsavel).filter(Boolean);
-    return Array.from(new Set([...fromMatrizes, ...fromActions])).sort();
+    const fromMatrizes = matrizes.map(m => normalizeGerenteNome(m.gerente)).filter(Boolean);
+    const fromActions = data.map(r => normalizeGerenteNome(r.gerente_responsavel)).filter(Boolean);
+    return Array.from(new Set([...fromMatrizes, ...fromActions, "John"])).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [matrizes, data]);
 
   const coverageMetrics = useMemo(() => {
     const baseActions = managerFilteredAcoes;
     const actionsForMetrics = baseActions.filter(r => {
-      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterGerente && normalizeGerenteNome(r.gerente_responsavel) !== normalizeGerenteNome(filterGerente)) return false;
       if (filterMes && r.mes_referencia !== filterMes) return false;
       if (filterStatus) {
         const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
@@ -1816,11 +1826,10 @@ export default function InvestimentoPage() {
 
     let baseMatrizes = myMatrizes;
     if (filterGerente) {
-      const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normFilterG = normalizeGerenteNome(filterGerente);
       baseMatrizes = matrizes.filter(m => {
         if (!m.gerente) return false;
-        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
-        return cleanFilterG === cleanGerente;
+        return normalizeGerenteNome(m.gerente) === normFilterG;
       });
     }
 
@@ -1931,7 +1940,7 @@ export default function InvestimentoPage() {
     const visibleActions = actionsList.filter((r: any) => {
       if (viewMode !== 'matrix' && viewMode !== 'calendar' && filterFase !== null && (r.fase_atual || 1) !== filterFase) return false;
       if (filterMes && r.mes_referencia !== filterMes) return false;
-      if (filterGerente && r.gerente_responsavel !== filterGerente) return false;
+      if (filterGerente && normalizeGerenteNome(r.gerente_responsavel) !== normalizeGerenteNome(filterGerente)) return false;
       if (filterStatus) {
         const status = calcularStatusItemInvestimento(r, r.fase_atual || 1, r.apuracao_preenchida_em);
         if (status !== filterStatus) return false;
@@ -1961,36 +1970,28 @@ export default function InvestimentoPage() {
 
   const acoesPorGerente = useMemo(() => {
     const counts: Record<string, number> = {};
-    const mainManagers = CommercialDomainService.getFieldManagerList();
-    mainManagers.forEach(mgr => {
+    gerentesDisponiveis.forEach(mgr => {
       counts[mgr] = 0;
     });
 
     filteredData.forEach(action => {
-      const rawG = action.gerente_responsavel;
-      if (rawG) {
-        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
-        if (matched) {
-          counts[matched]++;
-        } else {
-          counts[rawG] = (counts[rawG] || 0) + 1;
-        }
+      const mgr = normalizeGerenteNome(action.gerente_responsavel);
+      if (counts[mgr] !== undefined) {
+        counts[mgr]++;
       } else {
-        counts["Sem Gerente"] = (counts["Sem Gerente"] || 0) + 1;
+        counts[mgr] = (counts[mgr] || 0) + 1;
       }
     });
 
     return Object.entries(counts)
       .map(([manager, count]) => ({ manager, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [filteredData]);
+      .sort((a, b) => b.count - a.count || a.manager.localeCompare(b.manager, "pt-BR"));
+  }, [filteredData, gerentesDisponiveis]);
 
   const consolidadoGerenteMes = useMemo(() => {
-    const mainManagers = CommercialDomainService.getFieldManagerList();
     const counts: Record<string, Record<string, { networks: Set<string>; actionsCount: number }>> = {};
 
-    // Initialize counts for main managers
-    mainManagers.forEach(mgr => {
+    gerentesDisponiveis.forEach(mgr => {
       counts[mgr] = {};
       MATRIX_MONTHS.forEach(m => {
         counts[mgr][m.value] = { networks: new Set<string>(), actionsCount: 0 };
@@ -1998,12 +1999,7 @@ export default function InvestimentoPage() {
     });
 
     filteredData.forEach(action => {
-      let mgr = "Sem Gerente";
-      const rawG = action.gerente_responsavel;
-      if (rawG) {
-        const matched = mainManagers.find(m => m.toLowerCase() === rawG.toLowerCase());
-        mgr = matched || rawG;
-      }
+      const mgr = normalizeGerenteNome(action.gerente_responsavel);
 
       if (!counts[mgr]) {
         counts[mgr] = {};
@@ -2034,7 +2030,7 @@ export default function InvestimentoPage() {
         totalActions: Object.values(formattedMonths).reduce((acc, curr) => acc + curr.actionsCount, 0)
       };
     }).sort((a, b) => b.totalActions - a.totalActions);
-  }, [filteredData]);
+  }, [filteredData, gerentesDisponiveis]);
 
   const acoesNoMesCount = useCallback((m: any, mes: string) => {
     return managerFilteredAcoes.filter(action => {
@@ -2044,10 +2040,9 @@ export default function InvestimentoPage() {
       if (action.mes_referencia !== mes) return false;
 
       if (filterGerente) {
-        const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const normFilterG = normalizeGerenteNome(filterGerente);
         if (!action.gerente_responsavel) return false;
-        const cleanGerente = action.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
-        if (cleanFilterG !== cleanGerente) return false;
+        if (normalizeGerenteNome(action.gerente_responsavel) !== normFilterG) return false;
       }
 
       if (filterStatus) {
@@ -2074,10 +2069,9 @@ export default function InvestimentoPage() {
         if (!matchesNetwork) return false;
 
         if (filterGerente) {
-          const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+          const normFilterG = normalizeGerenteNome(filterGerente);
           if (!action.gerente_responsavel) return false;
-          const cleanGerente = action.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
-          if (cleanFilterG !== cleanGerente) return false;
+          if (normalizeGerenteNome(action.gerente_responsavel) !== normFilterG) return false;
         }
 
         if (filterStatus) {
@@ -2113,11 +2107,10 @@ export default function InvestimentoPage() {
     let result = sortedMatrizesWithInvestimento;
     
     if (filterGerente) {
-      const cleanFilterG = filterGerente.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normFilterG = normalizeGerenteNome(filterGerente);
       result = result.filter(m => {
         if (!m.gerente) return false;
-        const cleanGerente = m.gerente.toLowerCase().replace(/[^a-z0-9]/g, "");
-        return cleanFilterG === cleanGerente;
+        return normalizeGerenteNome(m.gerente) === normFilterG;
       });
     }
 
@@ -4205,7 +4198,7 @@ export default function InvestimentoPage() {
                           {filterMes ? `Ações por Gerente em ${formatMesReferencia(filterMes)}:` : "Ações do ano por gerente:"}
                         </span>
                         <div className="flex flex-wrap gap-2.5">
-                          {acoesPorGerente.slice(0, 3).map((item) => (
+                          {acoesPorGerente.map((item) => (
                             <div key={item.manager} className="flex items-center gap-2 bg-elevated/40 border border-border/60 px-3 py-1 rounded-lg shadow-sm">
                               <span className="font-semibold text-foreground">{item.manager}:</span>
                               <span className="font-bold text-gold text-sm">{item.count}</span>

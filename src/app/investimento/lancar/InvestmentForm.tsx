@@ -61,6 +61,9 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   const [globalStart, setGlobalStart] = useState<string>(initialData?.data_inicio || "");
   const [globalEnd, setGlobalEnd] = useState<string>(initialData?.data_fim || "");
   const [dateMode, setDateMode] = useState<"single" | "multiple">(initialData?.date_mode || "single");
+  const [mesReferencia, setMesReferencia] = useState<string>(
+    initialData?.mes_referencia || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`
+  );
 
   useEffect(() => {
     if (!selectedRede) {
@@ -782,7 +785,8 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                 type="month"
                 name="mes_referencia"
                 required
-                defaultValue={initialData?.mes_referencia || ""}
+                value={mesReferencia}
+                onChange={(e) => setMesReferencia(e.target.value)}
                 onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
                 className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
               />
@@ -1232,6 +1236,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
           familiaDetails={familiaDetails}
           selectedSkus={selectedSkus}
           skuDetails={skuDetails}
+          mesReferencia={mesReferencia}
         />
 
         {/* Submit */}
