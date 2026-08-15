@@ -26,7 +26,43 @@ interface LaunchInvestmentAdvisorProps {
   familiaDetails: Record<string, any>;
   selectedSkus: string[];
   skuDetails: Record<string, any>;
+  mesReferencia?: string;
 }
+
+const formatMonthHeader = (ym?: string): string => {
+  if (!ym || !ym.includes("-")) {
+    const now = new Date();
+    const months = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
+    return `${months[now.getMonth()]} / ${now.getFullYear()}`;
+  }
+  const [yStr, mStr] = ym.split("-");
+  const y = parseInt(yStr, 10);
+  const m = parseInt(mStr, 10);
+  const months = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
+  const monthName = months[m - 1] || "MÊS";
+  return `${monthName} / ${y}`;
+};
+
+const getPreviousMonthKey = (ym?: string): string => {
+  if (!ym || !ym.includes("-")) {
+    const now = new Date();
+    let prevY = now.getFullYear();
+    let prevM = now.getMonth();
+    if (prevM === 0) {
+      prevM = 12;
+      prevY = prevY - 1;
+    }
+    return `${prevY}-${String(prevM).padStart(2, "0")}`;
+  }
+  const [yStr, mStr] = ym.split("-");
+  let y = parseInt(yStr, 10);
+  let m = parseInt(mStr, 10) - 1;
+  if (m === 0) {
+    m = 12;
+    y = y - 1;
+  }
+  return `${y}-${String(m).padStart(2, "0")}`;
+};
 
 export function LaunchInvestmentAdvisor({
   rede,
@@ -36,7 +72,8 @@ export function LaunchInvestmentAdvisor({
   selectedFamilias,
   familiaDetails,
   selectedSkus,
-  skuDetails
+  skuDetails,
+  mesReferencia
 }: LaunchInvestmentAdvisorProps) {
   const [activeItemIndex, setActiveItemIndex] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -61,12 +98,15 @@ export function LaunchInvestmentAdvisor({
     return n.toLocaleString("pt-BR", { maximumFractionDigits: 0 });
   };
 
-  // Current real month/year string for proposal column header (e.g. AGOSTO / 2026)
+  // Deterministic previous month key (e.g. "2026-08" -> "2026-07")
+  const previousMonthKey = useMemo(() => {
+    return getPreviousMonthKey(mesReferencia);
+  }, [mesReferencia]);
+
+  // Current proposal month/year header derived exclusively from form input (e.g. AGOSTO / 2026)
   const currentMonthHeader = useMemo(() => {
-    const now = new Date();
-    const months = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"];
-    return `${months[now.getMonth()]} / ${now.getFullYear()}`;
-  }, []);
+    return formatMonthHeader(mesReferencia);
+  }, [mesReferencia]);
 
   // Extract candidate items based on Abrangencia
   const candidateItems = useMemo(() => {
@@ -141,7 +181,8 @@ export function LaunchInvestmentAdvisor({
       abrangencia: activeItem.abrangencia,
       itemNome: activeItem.name,
       tipo_pagamento: tipoPagamento,
-      tipo_acao_detalhe: tipoAcaoDetalhe
+      tipo_acao_detalhe: tipoAcaoDetalhe,
+      mes_referencia_anterior: previousMonthKey
     }).then(res => {
       if (isMounted) {
         setData(res);
@@ -158,7 +199,7 @@ export function LaunchInvestmentAdvisor({
     return () => {
       isMounted = false;
     };
-  }, [rede?.codigo, rede?.nome, rede?.uf, rede?.gerente, tipoPagamento, tipoAcaoDetalhe, activeItem?.name, activeItem?.abrangencia, activeItem?.isComplete]);
+  }, [rede?.codigo, rede?.nome, rede?.uf, rede?.gerente, tipoPagamento, tipoAcaoDetalhe, activeItem?.name, activeItem?.abrangencia, activeItem?.isComplete, previousMonthKey]);
 
   // Identify Best Result Action among history actions (highest ROI or Efficiency)
   const bestResultAction = useMemo(() => {
@@ -185,7 +226,7 @@ export function LaunchInvestmentAdvisor({
   const propRoi = (propAcao > 0 && propInv > 0) ? (propAcao * propVol) / propInv : 0;
   const propDesconto = propFlat > 0 ? ((propFlat - propAcao) / propFlat) * 100 : 0;
 
-  // Real Last Action metrics (Priority 1: Most Recent Real Launch)
+  // Real Last Action metrics (Priority 1: Most Recent Real Launch in Previous Month)
   const last = data?.lastAction;
   const lastInv = last?.investimento || 0;
   const lastVol = last?.expectativa_volume || 0;
@@ -196,8 +237,8 @@ export function LaunchInvestmentAdvisor({
   const lastRoi = last?.roi_estimado || 0;
   const lastDesconto = lastFlat > 0 ? ((lastFlat - lastAcao) / lastFlat) * 100 : 0;
 
-  // Real month label for last action (e.g. JULHO / 2026)
-  const lastMonthHeader = last?.data ? last.data.replace("/", " / ") : "ÚLTIMO LANÇAMENTO";
+  // Exact previous calendar month label (e.g. JULHO / 2026 for AGOSTO / 2026 proposal)
+  const lastMonthHeader = formatMonthHeader(previousMonthKey);
 
   // Direct percentage variations vs Last Action
   const varInv = lastInv > 0 ? ((propInv - lastInv) / lastInv) * 100 : 0;
