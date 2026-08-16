@@ -3009,6 +3009,140 @@ Toda apuração do Canal KA respeita rigorosamente a precedência da combinaçã
 
 Status Arquitetural: `GOVERNANCA_KA_MATRIZ_UF = LOCKED` & `BASELINE = CONFIRMED` & `PARIDADE_FINANCEIRA = R$ 0,0000`.
 
+---
+
+## 119. Baseline Oficial — DRE Gerencial + RDM (Baseline Permanente)
+
+A partir de 16/08/2026, a arquitetura, fontes de dados, fórmulas financeiras, regras de split, modelo de importação e suíte de telas dos módulos **DRE Gerencial** e **RDM (Resultado do Mês)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`BASELINE_OFICIAL = HOMOLOGADO` | `DRE_GERENCIAL_RDM = LOCKED` | `DESVIO_RESIDUAL = 0,0000%`
+
+---
+
+### 1. Fontes Oficiais de Dados
+
+| Indicador | Fonte Oficial | Observações / Transformações |
+|---|---|---|
+| **Volume** | `mv_vendas_mensal.qty` | Quantidade física oficial de unidades faturadas |
+| **Faturamento Bruto** | `mv_vendas_mensal.fat` | Origem oficial em `cm_faturamento` |
+| **ICMS** | `cm_dre_gerencial_rede.icms_pct` | Coluna `ICMS` da planilha `DRE_KA.xlsm` (guia `Análise`) |
+| **CPV** | `cm_dre_gerencial_rede.cpv_valor` | Coluna `CPV Custo` da planilha × 1.000 (valor absoluto em R$) |
+| **Abatimento** | `cm_dre_gerencial_rede.investimento_valor` | Coluna `Investimento` da planilha × 1.000 (R$) |
+| **Contrato** | `cm_dre_gerencial_rede.contrato_valor` | Coluna `Valor Contrato` da planilha × 1.000 (R$) |
+| **Bonificação** | `cm_dre_gerencial_rede.bonificacao_valor` | Fixado em 0 |
+| **Desafio (Metas)** | `public.targets` | Metas comerciais corporativas (`target_revenue` e `target_tons`) |
+| **Frete** | Cálculo oficial em memória | 3% sobre o Faturamento Bruto |
+
+---
+
+### 2. Fórmulas Oficiais de Cálculo
+
+* **Impostos** = `Faturamento × ICMS%`
+* **Invest. Comercial** = `Abatimento + Contrato + Bonificação`
+* **Receita Líquida** = `Faturamento − Impostos − Invest. Comercial`
+* **Frete** = `Faturamento × 3%`
+* **Margem de Contribuição (MC)** = `Receita Líquida − CPV − Frete`
+* **CPV / Unidade** = `CPV ÷ Volume` (exibe `N/A` quando Volume = 0)
+* **Frete / Unidade** = `Frete ÷ Volume` (exibe `N/A` quando Volume = 0)
+* **% Impostos** = `Impostos ÷ Faturamento × 100` (exibe `N/A` quando Fat = 0)
+* **% Investimento** = `Invest. Comercial ÷ Faturamento × 100` (exibe `N/A` quando Fat = 0)
+
+---
+
+### 3. Gerentes Oficiais e Canal KA
+
+* **Gerentes Homologados**:
+  - `Leandro` (`Leandro Saffi`)
+  - `Luiz` (`Luiz`)
+  - `Julliano` (`Julliano`)
+  - `John` (`John Guedes`)
+* **Canal KA**: Representa estritamente a consolidação aritmética dos quatro gerentes acima, sem adições ou duplicações.
+
+---
+
+### 4. Regra Oficial de Resolução de Gerente
+
+1. **Fonte Primária**: `mv_vendas_mensal.manager`.
+2. **Fallback Controlado**: Aplicado **exclusivamente** quando o gerente primário for `NULL`, string vazia `""` ou `"SEM RESPONSÁVEL"`.
+   - **Origem do Fallback**: `cm_clientes.responsavel` correspondente à matriz/rede.
+3. **Imutabilidade em Divergências Reais**: Havendo valor válido em `mv_vendas_mensal.manager`, prevalece estritamente a fonte primária, sendo proibida sobreposição manual.
+
+---
+
+### 5. Regra de Histórico
+
+* **Acompanhamento Dinâmico**: O histórico mensal de vendas e custos acompanha sempre o gerente atualmente responsável pela Rede.
+* **Não-Congelamento**: Uma alteração de titularidade de gerente transfere a visualização da série histórica completa da rede para o novo responsável, não permanecendo congelada no gerente anterior.
+
+---
+
+### 6. Regras de Splits e Aliases de Redes
+
+* **Tabela de Aliases**: `public.cm_dre_rede_aliases`.
+* **Caso Determinístico — ZAFFARI**:
+  - `SP ZAFFARI` $\longrightarrow$ `ZAFFARI` (Gerente: `Julliano`)
+  - `RS ZAFFARI` $\longrightarrow$ `ZAFFARI (CESTO)` (Gerente: `Leandro`)
+  - O match é determinístico via campo `Rede_UF` da planilha.
+  - Proibido qualquer rateio arbitrário ou unificação em registro único.
+* **Caso SUPERNOSSO**:
+  - `SUPERNOSSO` e `SUPERNOSSO - PRIVATE` são redes formalmente independentes na planilha e no sistema.
+  - Não possuem e não devem receber alias entre si.
+* **Falsos Positivos Auditados**: `DONA`, `BH`, `FORT`, `PANELÃO` e `BOM GOSTO` não possuem aliases criados, mantendo-se como redes isoladas.
+
+---
+
+### 7. Regra de Integridade Analítica — Vendas sem Rede Cadastrada
+
+* Vendas registradas em `mv_vendas_mensal` com `rede = NULL` ou `rede = ""` **não são incluídas na agregação oficial por Rede** do DRE Gerencial / RDM.
+* **Justificativa Técnica**: Sem identificação da Rede Comercial, é impossível efetuar o cruzamento unívoco com a planilha de custos e investimentos.
+* **Evidência de Auditoria (Competência 2026-07)**:
+  - 9 lançamentos avulsos sob gestão de Luiz (Cápsula, Drip, Grão e Moído).
+  - Total: **R$ 16.416,52** e **660 unidades**.
+  - Estes valores permanecem expurgados da visão por rede por regra estrita de integridade analítica e reconciliação financeira, não configurando perda ou erro de processamento.
+
+---
+
+### 8. Diretrizes de Importação de Planilha
+
+* **Arquivo Oficial**: `DRE_KA.xlsm`.
+* **Aba Homologada**: `Análise` (ou `Analise`).
+* **Regra de Escala**: Valores monetários em R$ mil são multiplicados por 1.000 no staging/persistência; alíquotas e percentuais permanecem em escala decimal natural.
+* **Idempotência e UPSERT**: Toda reimportação substitui com exatidão os registros da competência correspondente (`onConflict: 'competencia,rede'`), garantindo zero duplicação de dados.
+* **Preservação de Competências**: A importação de um novo mês preserva integralmente as competências anteriores no banco de dados.
+
+---
+
+### 9. Termo de Homologação Final (Fim de Ciclo)
+
+A homologação técnica, numérica, visual e funcional dos módulos **DRE Gerencial** (`/dre-gerencial`) e **RDM** (`/rdm-gerencial`) foi concluída com aprovação em 100% dos testes:
+
+1. **TypeScript**: `npx tsc --noEmit` aprovado com **0 erros**.
+2. **Build de Produção**: `npm run build` aprovado com **exit code 0**.
+3. **Idempotência**: 56 registros antes = 56 registros depois da reimportação (0 duplicações).
+4. **Tratamento de Nulos**: Exibição uniforme de `N/A` em divisões por zero, sem ocorrência de `NaN`, `Infinity` ou `undefined`.
+5. **Destaque Visual**: Linhas *Faturamento*, *Receita Líquida* e *Margem de Contribuição* destacadas com fundo cinza oficial (`rgba(100, 116, 139, 0.14)`).
+6. **RDM Slide 1**: Cabeçalhos auditados (`KPI`, `Actual`, `Desafio`, `Δ`, `%Δ`, `Mês Anterior`, `Δ`, `%Δ`, `Ano Anterior`).
+7. **RDM Slide 2**: Colunas enxutas (`Redes`, `Volume`, `Fat`, `% Imp`, `% Investimento`, `Frete/Unidade`, `CPV/Unidade`, `MC`), com grupos por gerente e sem colunas legadas.
+8. **Reconciliação Fechada (Julho/2026)**:
+   - **Volume KA**: `211.129 un`
+   - **Faturamento KA**: `R$ 5.655.845,19`
+   - **Receita Líquida KA**: `R$ 4.117.741,20`
+   - **CPV KA**: `R$ 2.554.414,40`
+   - **Margem de Contribuição KA**: `R$ 1.393.652,38`
+   - **Desvio Residual nas Redes Cadastradas**: **0,0000%**
+
+---
+
+### 10. Preservação de Módulos Legados
+
+Os módulos legados do sistema permanecem 100% preservados, operacionais e intactos:
+* `/inovacoes/dre`
+* `/processo-comercial/rdm`
+
+Status de Governança: `DRE_GERENCIAL_RDM = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
+
 
 
 
