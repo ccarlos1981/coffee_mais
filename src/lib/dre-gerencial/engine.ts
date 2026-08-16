@@ -270,21 +270,29 @@ function buildKpisForComp(
     totalBonif += bonif;
   }
 
-  const investComercial = totalInvest + totalContrato + totalBonif;
-  const receitaLiquida = totalFat - totalImpostos - investComercial;
+  // Se não houver dados de DRE cadastrados para a competência (como no Mês Anterior / Ano Anterior),
+  // aplica as regras oficiais padronizadas sobre o Faturamento:
+  // Impostos: 3,5% | CPV: 46% | Investimento Comercial: 10%
+  const impostosFinal = (totalImpostos === 0 && totalFat > 0) ? totalFat * 0.035 : totalImpostos;
+  const cpvFinal = (totalCpv === 0 && totalFat > 0) ? totalFat * 0.46 : totalCpv;
+  const investComercial = (totalInvest + totalContrato + totalBonif === 0 && totalFat > 0)
+    ? totalFat * 0.10
+    : totalInvest + totalContrato + totalBonif;
+
+  const receitaLiquida = totalFat - impostosFinal - investComercial;
   const frete = totalFat * 0.03;
-  const mc = receitaLiquida - totalCpv - frete;
+  const mc = receitaLiquida - cpvFinal - frete;
 
   return {
     volume: totalQty,
     faturamento: totalFat,
-    impostos: totalImpostos,
+    impostos: impostosFinal,
     investComercial,
     abatimento: totalInvest,
     contrato: totalContrato,
     bonificacao: totalBonif,
     receitaLiquida,
-    cpv: totalCpv,
+    cpv: cpvFinal,
     frete,
     margemContribuicao: mc,
   };
@@ -342,20 +350,30 @@ function buildSlide1(
     };
   }
 
-  const desafioImpostos = desafio.revenue !== null ? desafio.revenue * 0.035 : null;
+  const desafioFat = desafio.revenue;
+  const desafioImpostos = desafioFat !== null ? desafioFat * 0.035 : null;
+  const desafioFrete = desafioFat !== null ? desafioFat * 0.03 : null;
+  const desafioInvest = desafioFat !== null ? desafioFat * 0.10 : null;
+  const desafioCPV = desafioFat !== null ? desafioFat * 0.46 : null;
+  const desafioRecLiq = (desafioFat !== null && desafioImpostos !== null && desafioInvest !== null)
+    ? desafioFat - desafioImpostos - desafioInvest
+    : null;
+  const desafioMargem = (desafioRecLiq !== null && desafioCPV !== null && desafioFrete !== null)
+    ? desafioRecLiq - desafioCPV - desafioFrete
+    : null;
 
   const linhas: RdmSlide1Linha[] = [
     linha('Volume', actual.volume, desafio.volume, mesAnterior.volume, anoAnterior.volume, false),
-    linha('Faturamento', actual.faturamento, desafio.revenue, mesAnterior.faturamento, anoAnterior.faturamento, true),
+    linha('Faturamento', actual.faturamento, desafioFat, mesAnterior.faturamento, anoAnterior.faturamento, true),
     linha('Impostos', actual.impostos, desafioImpostos, mesAnterior.impostos, anoAnterior.impostos, false),
-    linha('Invest. Comercial', actual.investComercial, null, mesAnterior.investComercial, anoAnterior.investComercial, false),
+    linha('Invest. Comercial', actual.investComercial, desafioInvest, mesAnterior.investComercial, anoAnterior.investComercial, false),
     linha('  Abatimento', actual.abatimento, null, mesAnterior.abatimento, anoAnterior.abatimento, false, true),
     linha('  Contrato', actual.contrato, null, mesAnterior.contrato, anoAnterior.contrato, false, true),
     linha('  Bonificação', actual.bonificacao, null, mesAnterior.bonificacao, anoAnterior.bonificacao, false, true),
-    linha('Receita Líquida', actual.receitaLiquida, null, mesAnterior.receitaLiquida, anoAnterior.receitaLiquida, true),
-    linha('CPV', actual.cpv, null, mesAnterior.cpv, anoAnterior.cpv, false),
-    linha('Frete', actual.frete, null, mesAnterior.frete, anoAnterior.frete, false),
-    linha('Margem de Contribuição', actual.margemContribuicao, null, mesAnterior.margemContribuicao, anoAnterior.margemContribuicao, true),
+    linha('Receita Líquida', actual.receitaLiquida, desafioRecLiq, mesAnterior.receitaLiquida, anoAnterior.receitaLiquida, true),
+    linha('CPV', actual.cpv, desafioCPV, mesAnterior.cpv, anoAnterior.cpv, false),
+    linha('Frete', actual.frete, desafioFrete, mesAnterior.frete, anoAnterior.frete, false),
+    linha('Margem de Contribuição', actual.margemContribuicao, desafioMargem, mesAnterior.margemContribuicao, anoAnterior.margemContribuicao, true),
   ];
 
   return { titulo: `RDM — ${mesLabel}/${ano}`, competenciaLabel: `${mesLabel}/${ano}`, linhas };

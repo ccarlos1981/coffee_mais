@@ -130,11 +130,16 @@ export function buildProductFilter(product?: string | null, familia?: string | n
 export function buildChannelFilter(channel?: string | null, tableAlias?: string): string | null {
   const prefix = tableAlias ? `${tableAlias}.` : '';
   if (channel && channel !== 'all') {
-    const channels = channel.split(',').map(c => escapeSqlValue(c.trim())).join(',');
+    const channelsArray = channel.split(',').map(c => c.trim());
+    const channelsSql = channelsArray.map(c => escapeSqlValue(c)).join(',');
     if (tableAlias === 'c') {
-      return `${prefix}tipo_parceiro IN (${channels})`;
+      const isKaSelected = channelsArray.some(c => c.toUpperCase() === 'KA' || c.toUpperCase().includes('KEY ACCOUNT'));
+      if (isKaSelected) {
+        return `(${prefix}tipo_parceiro IN (${channelsSql}) OR ${prefix}tipo_parceiro ILIKE '%KA%' OR ${prefix}ka = 'Sim' OR ${prefix}ka = 'S')`;
+      }
+      return `${prefix}tipo_parceiro IN (${channelsSql})`;
     }
-    return `${prefix}channel IN (${channels})`;
+    return `${prefix}channel IN (${channelsSql})`;
   }
   return null;
 }

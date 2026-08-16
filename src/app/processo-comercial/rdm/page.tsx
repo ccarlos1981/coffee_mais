@@ -860,8 +860,11 @@ function fmtDreDelta(v: number | null | undefined, prefix = ''): string {
   return sign + prefix + formatCompact(Math.abs(v));
 }
 
-function deltaDreColor(v: number | null | undefined): string {
+function deltaDreColor(v: number | null | undefined, isCost = false): string {
   if (v === null || v === undefined) return '#6b7280';
+  if (isCost) {
+    return v <= 0 ? '#16a34a' : '#dc2626';
+  }
   return v >= 0 ? '#16a34a' : '#dc2626';
 }
 
@@ -1025,6 +1028,7 @@ function SlideDreResumo({
                 const kpiName = l.kpi.trim();
                 const isHighlighted = kpiName === 'Faturamento' || kpiName === 'Receita Líquida' || kpiName === 'Margem de Contribuição';
                 const isVolume = kpiName.includes('Volume');
+                const isCost = ['Impostos', 'Invest. Comercial', 'Abatimento', 'Contrato', 'Bonificação', 'CPV', 'Frete'].some(c => kpiName.includes(c));
                 const prefix = isVolume ? '' : 'R$ ';
 
                 // Cálculo de deltas do Ano Anterior
@@ -1055,10 +1059,10 @@ function SlideDreResumo({
                     <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreVal(l.actual, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaDesafio), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaDesafio, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreDelta(l.deltaDesafio, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaDesafio), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaDesafio, isCost), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
                       {fmtDrePct(l.pctDeltaDesafio)}
                     </td>
 
@@ -1066,10 +1070,10 @@ function SlideDreResumo({
                     <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreVal(l.mesAnterior, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaMesAnterior), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaMesAnterior, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreDelta(l.deltaMesAnterior, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaMesAnterior), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaMesAnterior, isCost), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
                       {fmtDrePct(l.pctDeltaMesAnterior)}
                     </td>
 
@@ -1077,10 +1081,10 @@ function SlideDreResumo({
                     <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreVal(l.anoAnterior, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(deltaAnoAnt), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(deltaAnoAnt, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDreDelta(deltaAnoAnt, prefix)}
                     </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(pctDeltaAnoAnt), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(pctDeltaAnoAnt, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
                       {fmtDrePct(pctDeltaAnoAnt)}
                     </td>
                   </tr>
@@ -1098,10 +1102,6 @@ function SlideDreResumo({
 function SlideDreRede({
   monthName,
   adapter,
-  comment,
-  onCommentChange,
-  onCommentSave,
-  saving,
 }: {
   monthName: string;
   adapter: RdmDataAdapter;
@@ -1113,14 +1113,14 @@ function SlideDreRede({
   const dreData = adapter.getDreData();
   const rawDimensionais = dreData?.dimensionais || [];
   
-  // REGRA ABSOLUTA DE RANKING: Ordenar por Receita Líquida (faturamentoLiquido) DESC
+  // REGRA ABSOLUTA DE RANKING: Ordenar por Faturamento Bruto / Receita Líquida DESC
   const dimensionais = useMemo(() => {
-    return [...rawDimensionais].sort((a: any, b: any) => (b.faturamentoLiquido || 0) - (a.faturamentoLiquido || 0));
+    return [...rawDimensionais].sort((a: any, b: any) => (b.faturamentoBruto || b.faturamentoLiquido || 0) - (a.faturamentoBruto || a.faturamentoLiquido || 0));
   }, [rawDimensionais]);
 
-  // Paginação inteligente para redes no Slide 2 (10 redes por página)
+  // Paginação inteligente para redes no Slide 2 (11 redes por página após remoção do input)
   const [page, setPage] = useState(1);
-  const pageSize = 10;
+  const pageSize = 11;
   const totalPages = Math.max(1, Math.ceil(dimensionais.length / pageSize));
   
   useEffect(() => {
@@ -1130,11 +1130,11 @@ function SlideDreRede({
   const currentPageItems = useMemo(() => {
     const start = (page - 1) * pageSize;
     return dimensionais.slice(start, start + pageSize);
-  }, [dimensionais, page]);
+  }, [dimensionais, page, pageSize]);
 
   return (
     <SlideShell title="Resultado DRE por Rede" monthName={monthName}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', padding: '4px 0' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%', padding: '2px 0' }}>
         {/* Subtitle & Discrete Pagination Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1142,7 +1142,7 @@ function SlideDreRede({
               DRE POR REDE / MATRIZ
             </span>
             <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
-              · Ranking por Receita Líquida ({dimensionais.length} {dimensionais.length === 1 ? 'rede' : 'redes'})
+              · Ranking por Faturamento ({dimensionais.length} {dimensionais.length === 1 ? 'rede' : 'redes'})
             </span>
           </div>
 
@@ -1185,18 +1185,35 @@ function SlideDreRede({
             </div>
           ) : (
             <div style={{ flex: 1, overflowY: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.70rem' }}>
                 <thead>
                   <tr style={{ background: '#111827', color: '#ffffff' }}>
-                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem', width: '36px' }}>#</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'left', fontWeight: 700, fontSize: '0.62rem' }}>REDE / MATRIZ</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>REC. BRUTA</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>REC. LÍQUIDA</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>CPV</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>FRETE</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>INVESTIMENTO</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>MACO</th>
-                    <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>MACO %</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', width: '32px' }}>#</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', borderRight: '2px solid #334155' }}>REDE / MATRIZ</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>VOLUME</th>
+                    
+                    {/* DESTAQUE 1: FAT */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '1px solid #475569', borderRight: '1px solid #475569', color: '#f8fafc' }}>
+                      FAT
+                    </th>
+                    
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>IMPOSTOS</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>INVEST.</th>
+                    
+                    {/* DESTAQUE 2: RECEITA LÍQUIDA */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '2px solid #64748b', borderRight: '2px solid #64748b', color: '#f8fafc', lineHeight: '1.15' }}>
+                      RECEITA<br />LÍQUIDA
+                    </th>
+                    
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>CPV</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>FRETE</th>
+                    
+                    {/* DESTAQUE 3: MACO */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '2px solid #64748b', borderRight: '2px solid #64748b', color: '#f8fafc' }}>
+                      MACO
+                    </th>
+                    
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>% MACO</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1206,18 +1223,28 @@ function SlideDreRede({
                     const isTop2 = globalRank === 2;
                     const isTop3 = globalRank === 3;
 
-                    const macoValue = dim.maco || 0;
-                    const macoPct = dim.margemMacoPercentual || 0;
+                    // Fórmulas Oficiais Homologadas:
+                    // 1. Receita Líquida = Faturamento - Impostos - Invest. Comercial
+                    // 2. Margem de Contribuição = Receita Líquida - CPV - Frete
+                    const fat = dim.faturamentoBruto || dim.faturamento || 0;
+                    const impostos = dim.impostos || 0;
+                    const invest = dim.investimentoComercial || 0;
+                    const recLiquida = fat - impostos - invest;
 
-                    // Semáforo Oficial MACO %
-                    const semaforoBg = macoPct >= 10 ? '#dcfce7' : macoPct >= 0 ? '#fef9c3' : '#fee2e2';
-                    const semaforoColor = macoPct >= 10 ? '#15803d' : macoPct >= 0 ? '#a16207' : '#b91c1c';
+                    const cpv = dim.cpv || 0;
+                    const frete = dim.frete || 0;
+                    const mc = recLiquida - cpv - frete;
+                    const mcPct = fat > 0 ? (mc / fat) * 100 : 0;
+
+                    // Semáforo Oficial Margem %
+                    const semaforoBg = mcPct >= 10 ? '#dcfce7' : mcPct >= 0 ? '#fef9c3' : '#fee2e2';
+                    const semaforoColor = mcPct >= 10 ? '#15803d' : mcPct >= 0 ? '#a16207' : '#b91c1c';
 
                     return (
                       <tr
                         key={dim.id || idx}
                         style={{
-                          borderBottom: '1px solid #f3f4f6',
+                          borderBottom: '1px solid #e2e8f0',
                           background: isTop1
                             ? '#fffbeb'
                             : isTop2
@@ -1226,61 +1253,98 @@ function SlideDreRede({
                             ? '#fff7ed'
                             : idx % 2 === 0
                             ? '#ffffff'
-                            : '#fbfcfd',
+                            : '#f8fafc',
                         }}
                       >
                         {/* Ranking # */}
                         <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 800 }}>
                           {isTop1 ? (
-                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#f59e0b', color: '#ffffff', fontSize: '0.6rem' }}>🥇 1º</span>
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#f59e0b', color: '#ffffff', fontSize: '0.58rem' }}>🥇 1º</span>
                           ) : isTop2 ? (
-                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#64748b', color: '#ffffff', fontSize: '0.6rem' }}>🥈 2º</span>
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#64748b', color: '#ffffff', fontSize: '0.58rem' }}>🥈 2º</span>
                           ) : isTop3 ? (
-                            <span style={{ padding: '1px 5px', borderRadius: '4px', background: '#c2410c', color: '#ffffff', fontSize: '0.6rem' }}>🥉 3º</span>
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#c2410c', color: '#ffffff', fontSize: '0.58rem' }}>🥉 3º</span>
                           ) : (
-                            <span style={{ color: '#6b7280', fontSize: '0.65rem' }}>{globalRank}º</span>
+                            <span style={{ color: '#6b7280', fontSize: '0.62rem' }}>{globalRank}º</span>
                           )}
                         </td>
 
                         {/* Rede */}
-                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600 }}>
+                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '2px solid #cbd5e1' }}>
                           {dim.nome}
                         </td>
 
-                        {/* Receita Bruta */}
+                        {/* Volume */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.faturamentoBruto || 0)}
+                          {formatNumber(dim.volume || 0)}
                         </td>
 
-                        {/* Receita Líquida (Destaque Top 1) */}
-                        <td style={{ padding: '5px 6px', textAlign: 'right', color: isTop1 ? '#b91c1c' : '#111827', fontWeight: isTop1 ? 800 : 700, fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.faturamentoLiquido || 0)}
+                        {/* DESTAQUE 1: Faturamento */}
+                        <td style={{
+                          padding: '5px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 700,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.09)',
+                          borderLeft: '1px solid #cbd5e1',
+                          borderRight: '1px solid #cbd5e1',
+                        }}>
+                          {formatCurrency(fat)}
+                        </td>
+
+                        {/* Impostos */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(impostos)}
+                        </td>
+
+                        {/* Investimento Comercial */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(invest)}
+                        </td>
+
+                        {/* DESTAQUE 2: Receita Líquida */}
+                        <td style={{
+                          padding: '5px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 800,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.14)',
+                          borderLeft: '2px solid #94a3b8',
+                          borderRight: '2px solid #94a3b8',
+                        }}>
+                          {formatCurrency(recLiquida)}
                         </td>
 
                         {/* CPV */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.cpv || 0)}
+                          {formatCurrency(cpv)}
                         </td>
 
                         {/* Frete */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.frete || 0)}
+                          {formatCurrency(frete)}
                         </td>
 
-                        {/* Investimento */}
-                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.investimentoComercial || 0)}
+                        {/* DESTAQUE 3: Margem de Contribuição */}
+                        <td style={{
+                          padding: '5px 6px',
+                          textAlign: 'right',
+                          color: mc >= 0 ? '#15803d' : '#b91c1c',
+                          fontWeight: 800,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.14)',
+                          borderLeft: '2px solid #94a3b8',
+                          borderRight: '2px solid #94a3b8',
+                        }}>
+                          {formatCurrency(mc)}
                         </td>
 
-                        {/* MACO */}
-                        <td style={{ padding: '5px 6px', textAlign: 'right', color: macoValue >= 0 ? '#15803d' : '#b91c1c', fontWeight: 700, fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(macoValue)}
-                        </td>
-
-                        {/* MACO % com Semáforo Oficial */}
+                        {/* % Margem com Semáforo Oficial */}
                         <td style={{ padding: '5px 6px', textAlign: 'right' }}>
-                          <span style={{ padding: '2px 6px', borderRadius: '4px', background: semaforoBg, color: semaforoColor, fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.68rem' }}>
-                            {macoPct.toFixed(2)}%
+                          <span style={{ padding: '1px 5px', borderRadius: '4px', background: semaforoBg, color: semaforoColor, fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.65rem' }}>
+                            {mcPct.toFixed(2)}%
                           </span>
                         </td>
                       </tr>
@@ -1289,28 +1353,6 @@ function SlideDreRede({
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
-
-        {/* Comment area */}
-        <div className="rdm-comment-wrap" style={{ margin: 0 }}>
-          <label className="rdm-comment-label">Comentários DRE por Rede</label>
-          <textarea
-            className="rdm-comment-input"
-            placeholder="Inserir considerações sobre as redes..."
-            value={comment || ''}
-            onChange={e => onCommentChange && onCommentChange(e.target.value)}
-            rows={2}
-          />
-          {onCommentSave && (
-            <button
-              className="rdm-comment-save"
-              onClick={onCommentSave}
-              disabled={saving}
-              title="Salvar nota"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            </button>
           )}
         </div>
       </div>

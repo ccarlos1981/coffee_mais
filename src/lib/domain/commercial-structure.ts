@@ -355,6 +355,8 @@ export function isDistributorClient(
   return def.redes.some(r => redeUpper.includes(r.toUpperCase()));
 }
 
+import { resolveCanonicalManager } from './canonical';
+
 /**
  * Constrói o predicado SQL para o filtro de gerente com suporte transparente a CommercialRole.
  * Esta função garante que a Analytics Engine permaneça 100% genérica.
@@ -369,6 +371,7 @@ export function buildCommercialRoleSqlFilter(
   const prefix = tableAlias ? `${tableAlias}.` : '';
 
   const isMensalSummaryTable = targetTable && (targetTable.includes(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL) || targetTable.includes('faturamento_mensal'));
+  const isClientesTable = targetTable === 'cm_clientes' || tableAlias === 'c';
 
   const clauses: string[] = [];
 
@@ -377,12 +380,26 @@ export function buildCommercialRoleSqlFilter(
     if (!trimmed || trimmed === 'all') continue;
 
     const roleDef = resolveCommercialRole(trimmed);
+    const canonical = resolveCanonicalManager(trimmed);
+    const mgrId = roleDef?.managerId || canonical?.managerId || trimmed;
+    const mgrName = roleDef?.managerName || canonical?.managerName || trimmed;
+
+    // Condição padrão de correspondência do gerente
+    const mgrMatchConditions: string[] = [
+      `${prefix}manager_id = '${mgrId}'`,
+      isClientesTable ? `${prefix}responsavel = '${mgrName}'` : `${prefix}manager = '${mgrName}'`,
+      isClientesTable ? `${prefix}manager_name = '${mgrName}'` : `${prefix}manager = '${mgrName}'`,
+      isClientesTable ? `${prefix}responsavel ILIKE '%${mgrName}%'` : `${prefix}manager ILIKE '%${mgrName}%'`,
+      isClientesTable ? `${prefix}manager_name ILIKE '%${mgrName}%'` : `${prefix}manager ILIKE '%${mgrName}%'`,
+    ];
+    const mgrMatchSql = `(${Array.from(new Set(mgrMatchConditions)).join(' OR ')})`;
+
     if (roleDef) {
       const match = roleDef.match || { partnerCodes: [], matrizCodes: [], cnpjs: [], aliases: [] };
-      const channelCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}tipo_parceiro` : `${prefix}channel`;
-      const redeCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}matriz` : `${prefix}rede`;
-      const codParceiroCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `CAST(${prefix}codigo AS TEXT)` : `${prefix}cod_parceiro`;
-      const nomeParceiroCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}razao_social` : `${prefix}nome_parceiro`;
+      const channelCol = isClientesTable ? `${prefix}tipo_parceiro` : `${prefix}channel`;
+      const redeCol = isClientesTable ? `${prefix}matriz` : `${prefix}rede`;
+      const codParceiroCol = isClientesTable ? `CAST(${prefix}codigo AS TEXT)` : `${prefix}cod_parceiro`;
+      const nomeParceiroCol = isClientesTable ? `${prefix}razao_social` : `${prefix}nome_parceiro`;
 
       if (roleDef.role === 'DIST') {
         // Apenas Distribuidores do Gerente
@@ -400,7 +417,7 @@ export function buildCommercialRoleSqlFilter(
           }
         }
 
-        clauses.push(`(${prefix}manager_id = '${roleDef.managerId}' AND (${distConditions.join(' OR ')}))`);
+        clauses.push(`(${mgrMatchSql} AND (${distConditions.join(' OR ')}))`);
       } else if (roleDef.role === 'KA') {
         // Apenas Carteira KA (exclui Distribuidores do Gerente)
         const distRole = OFFICIAL_COMMERCIAL_ROLES.find(r => r.managerId === roleDef.managerId && r.role === 'DIST');
@@ -417,15 +434,14 @@ export function buildCommercialRoleSqlFilter(
           excludeConditions.push(`UPPER(${redeCol}) NOT IN (${redesSql})`);
         }
 
-        clauses.push(`(${prefix}manager_id = '${roleDef.managerId}' AND ${excludeConditions.join(' AND ')})`);
+        clauses.push(`(${mgrMatchSql} AND ${excludeConditions.join(' AND ')})`);
       } else {
         // Outros roles genéricos futuros (EXPORT, FOOD, ATACADO, etc.)
-        clauses.push(`${prefix}manager_id = '${roleDef.managerId}'`);
+        clauses.push(mgrMatchSql);
       }
     } else {
-      // Se for manager_id puro (ex: "1002" ou "1001") ou nome (ex: "Luiz")
-      const mgrNameCol = (targetTable === 'cm_clientes' || tableAlias === 'c') ? `${prefix}responsavel` : `${prefix}manager`;
-      clauses.push(`(${prefix}manager_id = '${trimmed}' OR ${mgrNameCol} = '${trimmed.replace(/'/g, "''")}')`);
+      // Se for manager_id puro (ex: "1002" ou "1001") ou nome (ex: "Luiz", "Leandro")
+      clauses.push(mgrMatchSql);
     }
   }
 
