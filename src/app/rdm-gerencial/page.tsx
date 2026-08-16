@@ -26,8 +26,11 @@ function fmtDelta(v: number | null | undefined): string {
   return sign + formatCompact(v);
 }
 
-function deltaColor(v: number | null | undefined): string {
+function deltaColor(v: number | null | undefined, isCost = false): string {
   if (v === null || v === undefined) return '';
+  if (isCost) {
+    return v <= 0 ? 'var(--color-positive, #22c55e)' : 'var(--color-negative, #ef4444)';
+  }
   return v >= 0 ? 'var(--color-positive, #22c55e)' : 'var(--color-negative, #ef4444)';
 }
 
@@ -209,6 +212,8 @@ export default function RdmGerencialPage() {
                     const deltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? actualVal - anoAntVal : null;
                     const pctDeltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? ((actualVal / anoAntVal) - 1) * 100 : null;
 
+                    const isCost = ['Impostos', 'Invest. Comercial', 'Abatimento', 'Contrato', 'Bonificação', 'CPV', 'Frete'].some(c => l.kpi.includes(c));
+
                     return (
                       <tr key={i} style={{
                         background: l.isHighlighted ? 'rgba(100, 116, 139, 0.14)' : 'transparent',
@@ -219,14 +224,14 @@ export default function RdmGerencialPage() {
                         <td style={{ ...tdStyle, paddingLeft: l.indent ? '2rem' : '0.75rem', fontStyle: l.indent ? 'italic' : 'normal', color: l.indent ? 'var(--muted-foreground)' : 'var(--foreground)', borderRight: '2px solid var(--border)', fontWeight: l.isHighlighted ? 800 : 500 }}>{l.kpi}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.desafio, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.actual, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaDesafio) }}>{fmtDelta(l.deltaDesafio)}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaDesafio), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaDesafio)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaDesafio, isCost) }}>{fmtDelta(l.deltaDesafio)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaDesafio, isCost), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaDesafio)}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.mesAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaMesAnterior) }}>{fmtDelta(l.deltaMesAnterior)}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaMesAnterior), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaMesAnterior)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaMesAnterior, isCost) }}>{fmtDelta(l.deltaMesAnterior)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaMesAnterior, isCost), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaMesAnterior)}</td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.anoAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(deltaAnoAnt) }}>{fmtDelta(deltaAnoAnt)}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(pctDeltaAnoAnt) }}>{fmtPct(pctDeltaAnoAnt)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(deltaAnoAnt, isCost) }}>{fmtDelta(deltaAnoAnt)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(pctDeltaAnoAnt, isCost) }}>{fmtPct(pctDeltaAnoAnt)}</td>
                       </tr>
                     );
                   })}

@@ -9,6 +9,7 @@ import { getRdmData } from "@/lib/dre-gerencial/engine";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 function getPrevMonthKey(y: number, m: number): string {
   let pm = m - 1;
