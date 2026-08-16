@@ -342,10 +342,12 @@ function buildSlide1(
     };
   }
 
+  const desafioImpostos = desafio.revenue !== null ? desafio.revenue * 0.035 : null;
+
   const linhas: RdmSlide1Linha[] = [
     linha('Volume', actual.volume, desafio.volume, mesAnterior.volume, anoAnterior.volume, false),
     linha('Faturamento', actual.faturamento, desafio.revenue, mesAnterior.faturamento, anoAnterior.faturamento, true),
-    linha('Impostos', actual.impostos, null, mesAnterior.impostos, anoAnterior.impostos, false),
+    linha('Impostos', actual.impostos, desafioImpostos, mesAnterior.impostos, anoAnterior.impostos, false),
     linha('Invest. Comercial', actual.investComercial, null, mesAnterior.investComercial, anoAnterior.investComercial, false),
     linha('  Abatimento', actual.abatimento, null, mesAnterior.abatimento, anoAnterior.abatimento, false, true),
     linha('  Contrato', actual.contrato, null, mesAnterior.contrato, anoAnterior.contrato, false, true),
@@ -478,22 +480,11 @@ export async function getDreData(filters: DreGerencialFilters): Promise<{
 
   const supabase = createAdminClient();
 
-  // Competências com DRE importado
-  const { data: compDre } = await supabase
-    .from('cm_dre_gerencial_rede')
-    .select('competencia')
-    .eq('ano', ano);
-  const compsDre = [...new Set((compDre || []).map(r => r.competencia))];
-
-  // Competências com vendas
-  const { data: compSales } = await supabase
-    .from('mv_vendas_mensal')
-    .select('mes')
-    .like('mes', `${ano}-%`);
-  const compsSales = [...new Set((compSales || []).map(r => r.mes))];
-
-  const todasComp = [...new Set([...compsDre, ...compsSales])].sort();
-  if (todasComp.length === 0) return { consolidado: [], porGerente: [], porRede: [] };
+  // Competências do ano
+  const todasComp: string[] = [];
+  for (let m = 1; m <= 12; m++) {
+    todasComp.push(`${ano}-${String(m).padStart(2, '0')}`);
+  }
 
   const gerenteSistema = resolveGerenteSistema(filters.gerente);
   const [sales, dreRede] = await Promise.all([

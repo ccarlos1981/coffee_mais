@@ -5,6 +5,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
+import { getRdmData } from "@/lib/dre-gerencial/engine";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -119,7 +120,7 @@ export async function GET(request: Request) {
       dimension: 'rede',
     };
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData] = await Promise.all([
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -179,6 +180,17 @@ export async function GET(request: Request) {
       // 7. DRE Comercial Oficial (AnalyticsEngine)
       AnalyticsEngine.getDreComercial(dreFilters).catch((err) => {
         console.error('[RDM API] Erro ao carregar DRE Comercial:', err);
+        return null;
+      }),
+
+      // 8. DRE Gerencial Oficial Homologado (Slide 1)
+      getRdmData({
+        ano: year,
+        competencia: monthKey,
+        gerente: manager === CRISTIANO ? 'KA' : manager,
+        canal: 'KA',
+      }).catch((err) => {
+        console.error('[RDM API] Erro ao carregar DRE Gerencial:', err);
         return null;
       }),
     ]);
@@ -490,6 +502,7 @@ export async function GET(request: Request) {
       farol:     farolData,
       comments:  commentsMap,
       dre:       dreData,
+      dreGerencialSlide1: (dreGerencialData as any)?.slide1 || null,
       monthlyFat,
       acum: { fatCur: acumCur, fatUltTrim: acumUltTrim },
       recordFat,

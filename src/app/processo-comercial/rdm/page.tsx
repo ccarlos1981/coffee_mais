@@ -11,7 +11,7 @@ import {
   Save, Loader2, Download, CheckSquare, Square, X
 } from "lucide-react";
 import { exportRdmToPptx } from "./exportPptx";
-import { formatNumber, formatCurrency } from "@/lib/formatters";
+import { formatNumber, formatCurrency, formatCompact } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { normalizeAnalyticsPayload } from "@/lib/governance/analytics";
 import {
@@ -50,6 +50,8 @@ interface RdmApiResponse {
   managers: string[];
   farol: FarolData;
   comments: Record<string, string>;
+  dre?: any;
+  dreGerencialSlide1?: any;
   monthlyFat: { label: string; m: number; fatCur: number; fatUltTrim: number }[];
   acum: { fatCur: number; fatUltTrim: number };
   recordFat: number;
@@ -840,202 +842,252 @@ function SlideFollowUp({
   );
 }
 
-// ─── Slide DRE 1: Resultado DRE — Resumo Executivo ───────────────────────────
+// ─── Helpers de Formatação para o Slide 1 ───
+function fmtDreVal(v: number | null | undefined, prefix = ''): string {
+  if (v === null || v === undefined) return 'N/A';
+  return prefix + formatCompact(v);
+}
+
+function fmtDrePct(v: number | null | undefined): string {
+  if (v === null || v === undefined) return 'N/A';
+  const sign = v >= 0 ? '+' : '';
+  return `${sign}${v.toFixed(1)}%`;
+}
+
+function fmtDreDelta(v: number | null | undefined, prefix = ''): string {
+  if (v === null || v === undefined) return 'N/A';
+  const sign = v >= 0 ? '+' : '';
+  return sign + prefix + formatCompact(Math.abs(v));
+}
+
+function deltaDreColor(v: number | null | undefined): string {
+  if (v === null || v === undefined) return '#6b7280';
+  return v >= 0 ? '#16a34a' : '#dc2626';
+}
+
+// ─── Slide DRE 1: Resultado DRE ─────────────────────────────────────────────
 function SlideDreResumo({
   monthName,
-  adapter,
-  comment,
-  onCommentChange,
-  onCommentSave,
-  saving,
+  year,
+  month,
+  slide1Data,
 }: {
   monthName: string;
-  adapter: RdmDataAdapter;
-  comment?: string;
-  onCommentChange?: (v: string) => void;
-  onCommentSave?: () => void;
-  saving?: boolean;
+  year?: number;
+  month?: number;
+  slide1Data?: any;
 }) {
-  const dreData = adapter.getDreData();
-  const totais = dreData?.totais || {
-    faturamentoBruto: 0,
-    faturamentoLiquido: 0,
-    impostos: 0,
-    cpv: 0,
-    margemBruta: 0,
-    frete: 0,
-    investimentoComercial: 0,
-    macoTotal: 0,
-    margemMacoMedia: 0,
-  };
-  const sintetica = dreData?.sintetica || [];
+  const MONTHS_UPPER = [
+    '', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
+    'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
+  ];
 
-  const macoPositive = (totais.macoTotal || 0) >= 0;
-  const macoPct = totais.margemMacoMedia || 0;
+  const m = month || 7;
+  const y = year || 2026;
+
+  // Títulos dinâmicos dos 3 blocos
+  const tituloBloco1 = MONTHS_UPPER[m] || (monthName ? monthName.toUpperCase() : 'JULHO');
+  const prevMonthName = m === 1 ? 'DEZEMBRO' : MONTHS_UPPER[m - 1];
+  const tituloBloco2 = m === 1
+    ? `MÊS ANTERIOR (${prevMonthName}/${y - 1})`
+    : `MÊS ANTERIOR (${prevMonthName})`;
+  const tituloBloco3 = `ANO ANTERIOR (${tituloBloco1}/${y - 1})`;
+
+  const LINHAS_PERMITIDAS = [
+    'Volume',
+    'Faturamento',
+    'Impostos',
+    'Invest. Comercial',
+    'Receita Líquida',
+    'CPV',
+    'Frete',
+    'Margem de Contribuição',
+  ];
+
+  const todasLinhas = slide1Data?.linhas || [];
+  const linhas = todasLinhas.filter((l: any) => LINHAS_PERMITIDAS.includes(l.kpi.trim()));
 
   return (
     <SlideShell title="Resultado DRE" monthName={monthName}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: '100%', padding: '4px 0' }}>
-        {/* Subtitle Eyebrow */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
-              RESUMO EXECUTIVO
-            </span>
-            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
-              · Formação do Resultado Comercial (MACO Oficial)
-            </span>
-          </div>
-          <span style={{ fontSize: '0.62rem', padding: '2px 8px', borderRadius: '4px', background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 700 }}>
-            AnalyticsEngine V1 · Baseline
-          </span>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', boxSizing: 'border-box' }}>
+        <div style={{
+          flex: 1,
+          background: '#ffffff',
+          borderRadius: '8px',
+          border: '1px solid #cbd5e1',
+          overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+        }}>
+          <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', fontSize: '0.80rem' }}>
+            <thead>
+              {/* Linha 1: Agrupadores dos 3 Blocos de Comparação */}
+              <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
+                <th rowSpan={2} style={{
+                  padding: '8px 10px',
+                  textAlign: 'left',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.06em',
+                  color: '#1e293b',
+                  borderRight: '2px solid #cbd5e1',
+                  verticalAlign: 'middle',
+                  width: '15%',
+                }}>
+                  KPI
+                </th>
+                <th colSpan={4} style={{
+                  padding: '6px 8px',
+                  textAlign: 'center',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  borderRight: '3px solid #94a3b8',
+                  borderBottom: '1px solid #cbd5e1',
+                }}>
+                  {tituloBloco1}
+                </th>
+                <th colSpan={3} style={{
+                  padding: '6px 8px',
+                  textAlign: 'center',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#0f172a',
+                  background: '#f1f5f9',
+                  borderRight: '3px solid #94a3b8',
+                  borderBottom: '1px solid #cbd5e1',
+                }}>
+                  {tituloBloco2}
+                </th>
+                <th colSpan={3} style={{
+                  padding: '6px 8px',
+                  textAlign: 'center',
+                  fontWeight: 800,
+                  fontSize: '0.72rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  color: '#0f172a',
+                  background: '#f8fafc',
+                  borderBottom: '1px solid #cbd5e1',
+                }}>
+                  {tituloBloco3}
+                </th>
+              </tr>
 
-        {/* 4 Executive KPI Cards Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
-          {/* Card 1: Receita Comercial Líquida */}
-          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #e53935', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-              1. RECEITA COMERCIAL LÍQUIDA
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
-              {formatCurrency(totais.faturamentoLiquido || 0)}
-            </div>
-            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
-              Bruto: {formatCurrency(totais.faturamentoBruto || 0)}
-            </div>
-          </div>
+              {/* Linha 2: Nomes das Colunas Individuais */}
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #94a3b8' }}>
+                {/* Bloco 1: Desafio / Actual */}
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  Desafio
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  Actual
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  Δ
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', borderRight: '3px solid #94a3b8' }}>
+                  %Δ
+                </th>
 
-          {/* Card 2: Margem Bruta Contábil */}
-          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #4b5563', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-              2. MARGEM BRUTA CONTÁBIL
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
-              {formatCurrency(totais.margemBruta || 0)}
-            </div>
-            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
-              CPV: {formatCurrency(totais.cpv || 0)}
-            </div>
-          </div>
+                {/* Bloco 2: Mês Anterior */}
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9' }}>
+                  Mês Anterior
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9' }}>
+                  Δ
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9', borderRight: '3px solid #94a3b8' }}>
+                  %Δ
+                </th>
 
-          {/* Card 3: Frete (3%) & Trade */}
-          <div style={{ background: '#ffffff', border: '1px solid #e5e7eb', borderTop: '3px solid #d97706', borderRadius: '6px', padding: '8px 12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-            <div style={{ fontSize: '0.62rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-              3. FRETE (3%) & TRADE
-            </div>
-            <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#111827', fontFamily: 'Georgia, serif', marginTop: '2px' }}>
-              {formatCurrency((totais.frete || 0) + (totais.investimentoComercial || 0))}
-            </div>
-            <div style={{ fontSize: '0.62rem', color: '#9ca3af', marginTop: '2px' }}>
-              Frete: {formatCurrency(totais.frete || 0)} | Trade: {formatCurrency(totais.investimentoComercial || 0)}
-            </div>
-          </div>
+                {/* Bloco 3: Ano Anterior */}
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  Ano Anterior
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  Δ
+                </th>
+                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
+                  %Δ
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {linhas.map((l: any, i: number) => {
+                const kpiName = l.kpi.trim();
+                const isHighlighted = kpiName === 'Faturamento' || kpiName === 'Receita Líquida' || kpiName === 'Margem de Contribuição';
+                const isVolume = kpiName.includes('Volume');
+                const prefix = isVolume ? '' : 'R$ ';
 
-          {/* Card 4: MACO Final */}
-          <div style={{
-            background: macoPositive ? '#f0fdf4' : '#fef2f2',
-            border: `1px solid ${macoPositive ? '#bbf7d0' : '#fecaca'}`,
-            borderTop: `3px solid ${macoPositive ? '#16a34a' : '#dc2626'}`,
-            borderRadius: '6px',
-            padding: '8px 12px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-          }}>
-            <div style={{ fontSize: '0.62rem', color: macoPositive ? '#15803d' : '#b91c1c', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700 }}>
-              4. MARGEM DE CONTRIBUIÇÃO (MACO)
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', marginTop: '2px' }}>
-              <span style={{ fontSize: '1.25rem', fontWeight: 800, color: macoPositive ? '#15803d' : '#b91c1c', fontFamily: 'Georgia, serif' }}>
-                {formatCurrency(totais.macoTotal || 0)}
-              </span>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: macoPositive ? '#15803d' : '#b91c1c' }}>
-                ({macoPct.toFixed(2)}%)
-              </span>
-            </div>
-            <div style={{ fontSize: '0.62rem', color: '#6b7280', marginTop: '2px' }}>
-              Resultado final homologado
-            </div>
-          </div>
-        </div>
+                // Cálculo de deltas do Ano Anterior
+                const anoAntVal = l.anoAnterior !== null && l.anoAnterior !== undefined ? l.anoAnterior : null;
+                const actualVal = l.actual !== null && l.actual !== undefined ? l.actual : 0;
+                const deltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? actualVal - anoAntVal : null;
+                const pctDeltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? ((actualVal / anoAntVal) - 1) * 100 : null;
 
-        {/* P&L Cascata / Sintética Table */}
-        <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '6px 12px', fontSize: '0.65rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Formação Sequencial do Resultado (P&L Vertical Executivo)
-          </div>
-          
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
-              <thead>
-                <tr style={{ background: '#111827', color: '#ffffff' }}>
-                  <th style={{ padding: '6px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>MÉTRICA / LINHA P&L</th>
-                  <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>VALOR (R$)</th>
-                  <th style={{ padding: '6px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.05em' }}>% RECEITA LÍQUIDA (% NS)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sintetica.map((row: any, idx: number) => {
-                  const isResult = row.tipo === 'RESULTADO' || row.tipo === 'SUBTOTAL';
-                  const isMaco = row.label.includes('MACO');
-                  const isNetRev = row.label.includes('RECEITA COMERCIAL LÍQUIDA');
-                  
-                  const bg = isMaco
-                    ? '#dcfce7'
-                    : isNetRev
-                    ? '#f3f4f6'
-                    : isResult
-                    ? '#f9fafb'
-                    : idx % 2 === 0
-                    ? '#ffffff'
-                    : '#fbfcfd';
+                return (
+                  <tr
+                    key={i}
+                    style={{
+                      background: isHighlighted ? 'rgba(100, 116, 139, 0.14)' : i % 2 === 0 ? '#ffffff' : '#fafafa',
+                      fontWeight: isHighlighted ? 700 : 400,
+                      borderTop: isHighlighted ? '1px solid rgba(100, 116, 139, 0.3)' : undefined,
+                      borderBottom: isHighlighted ? '1px solid rgba(100, 116, 139, 0.3)' : '1px solid #f1f5f9',
+                    }}
+                  >
+                    {/* KPI */}
+                    <td style={{ padding: '7px 10px', color: '#0f172a', whiteSpace: 'nowrap', borderRight: '2px solid #cbd5e1', fontWeight: isHighlighted ? 800 : 500 }}>
+                      {kpiName}
+                    </td>
 
-                  const textColor = isMaco
-                    ? '#15803d'
-                    : isNetRev
-                    ? '#111827'
-                    : isResult
-                    ? '#1f2937'
-                    : '#374151';
+                    {/* Bloco 1: Desafio / Actual */}
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)', color: l.desafio === null ? '#94a3b8' : '#0f172a' }}>
+                      {fmtDreVal(l.desafio, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreVal(l.actual, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaDesafio), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreDelta(l.deltaDesafio, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaDesafio), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
+                      {fmtDrePct(l.pctDeltaDesafio)}
+                    </td>
 
-                  return (
-                    <tr key={idx} style={{ borderBottom: isMaco ? '2px solid #16a34a' : '1px solid #f3f4f6', background: bg }}>
-                      <td style={{ padding: '6px 12px', color: textColor, fontWeight: isResult ? 700 : 500 }}>
-                        {row.label}
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', color: textColor, fontWeight: isResult ? 700 : 400, fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                        {formatCurrency(row.valor || 0)}
-                      </td>
-                      <td style={{ padding: '6px 12px', textAlign: 'right', color: textColor, fontWeight: isResult ? 700 : 400, fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                        {row.percentual !== undefined ? `${row.percentual.toFixed(2)}%` : '—'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                    {/* Bloco 2: Mês Anterior */}
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreVal(l.mesAnterior, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaMesAnterior), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreDelta(l.deltaMesAnterior, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaMesAnterior), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
+                      {fmtDrePct(l.pctDeltaMesAnterior)}
+                    </td>
 
-        {/* Comment area */}
-        <div className="rdm-comment-wrap" style={{ margin: 0 }}>
-          <label className="rdm-comment-label">Comentários DRE Executiva</label>
-          <textarea
-            className="rdm-comment-input"
-            placeholder="Inserir considerações executivas sobre a DRE..."
-            value={comment || ''}
-            onChange={e => onCommentChange && onCommentChange(e.target.value)}
-            rows={2}
-          />
-          {onCommentSave && (
-            <button
-              className="rdm-comment-save"
-              onClick={onCommentSave}
-              disabled={saving}
-              title="Salvar nota"
-            >
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            </button>
-          )}
+                    {/* Bloco 3: Ano Anterior */}
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreVal(l.anoAnterior, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(deltaAnoAnt), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDreDelta(deltaAnoAnt, prefix)}
+                    </td>
+                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(pctDeltaAnoAnt), fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                      {fmtDrePct(pctDeltaAnoAnt)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
     </SlideShell>
@@ -5435,11 +5487,9 @@ export default function RdmPage() {
       return (
         <SlideDreResumo
           monthName={monthName}
-          adapter={rdmDataAdapter}
-          comment={comments['dre'] ?? ''}
-          onCommentChange={v => setComments(prev => ({ ...prev, dre: v }))}
-          onCommentSave={() => saveComment('dre')}
-          saving={savingKey === 'dre'}
+          year={year}
+          month={month}
+          slide1Data={data?.dreGerencialSlide1}
         />
       );
     }

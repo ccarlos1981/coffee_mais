@@ -170,37 +170,66 @@ export default function RdmGerencialPage() {
             <div style={{ overflowX: 'auto', borderRadius: '8px', border: '1px solid var(--border)' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                 <thead>
-                  <tr style={{ background: 'var(--muted, #f4f4f5)' }}>
-                    <th style={thStyle}>KPI</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Actual</th>
+                  {/* Linha 1: Agrupadores dos 3 Blocos */}
+                  {(() => {
+                    const MONTHS_UPPER = ['', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+                    const [, m] = competencia.split('-').map(Number);
+                    const t1 = MONTHS_UPPER[m] || 'JULHO';
+                    const pm = m === 1 ? 'DEZEMBRO' : MONTHS_UPPER[m - 1];
+                    const t2 = m === 1 ? `MÊS ANTERIOR (${pm}/${ano - 1})` : `MÊS ANTERIOR (${pm})`;
+                    const t3 = `ANO ANTERIOR (${t1}/${ano - 1})`;
+
+                    return (
+                      <tr style={{ background: 'var(--muted, #f1f5f9)', borderBottom: '1px solid var(--border)' }}>
+                        <th rowSpan={2} style={{ ...thStyle, verticalAlign: 'middle', borderRight: '2px solid var(--border)' }}>KPI</th>
+                        <th colSpan={4} style={{ ...thStyle, textAlign: 'center', fontWeight: 800, borderRight: '3px solid #94a3b8' }}>{t1}</th>
+                        <th colSpan={3} style={{ ...thStyle, textAlign: 'center', fontWeight: 800, borderRight: '3px solid #94a3b8' }}>{t2}</th>
+                        <th colSpan={3} style={{ ...thStyle, textAlign: 'center', fontWeight: 800 }}>{t3}</th>
+                      </tr>
+                    );
+                  })()}
+                  {/* Linha 2: Colunas */}
+                  <tr style={{ background: 'var(--muted, #f8fafc)', borderBottom: '2px solid #94a3b8' }}>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Desafio</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Actual</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Δ</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>%Δ</th>
+                    <th style={{ ...thStyle, textAlign: 'right', borderRight: '3px solid #94a3b8' }}>%Δ</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Mês Anterior</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Δ</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>%Δ</th>
+                    <th style={{ ...thStyle, textAlign: 'right', borderRight: '3px solid #94a3b8' }}>%Δ</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Ano Anterior</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Δ</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>%Δ</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {slide1.linhas.map((l, i) => (
-                    <tr key={i} style={{
-                      background: l.isHighlighted ? 'rgba(100, 116, 139, 0.14)' : 'transparent',
-                      fontWeight: l.isHighlighted ? 700 : 400,
-                      borderTop: l.isHighlighted ? '1px solid rgba(100, 116, 139, 0.25)' : undefined,
-                      borderBottom: l.isHighlighted ? '1px solid rgba(100, 116, 139, 0.25)' : undefined,
-                    }}>
-                      <td style={{ ...tdStyle, paddingLeft: l.indent ? '2rem' : '0.75rem', fontStyle: l.indent ? 'italic' : 'normal', color: l.indent ? 'var(--muted-foreground)' : 'var(--foreground)' }}>{l.kpi}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.actual, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.desafio, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaDesafio) }}>{fmtDelta(l.deltaDesafio)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaDesafio) }}>{fmtPct(l.pctDeltaDesafio)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.mesAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaMesAnterior) }}>{fmtDelta(l.deltaMesAnterior)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaMesAnterior) }}>{fmtPct(l.pctDeltaMesAnterior)}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.anoAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
-                    </tr>
-                  ))}
+                  {slide1.linhas.map((l, i) => {
+                    const anoAntVal = l.anoAnterior !== null && l.anoAnterior !== undefined ? l.anoAnterior : null;
+                    const actualVal = l.actual !== null && l.actual !== undefined ? l.actual : 0;
+                    const deltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? actualVal - anoAntVal : null;
+                    const pctDeltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? ((actualVal / anoAntVal) - 1) * 100 : null;
+
+                    return (
+                      <tr key={i} style={{
+                        background: l.isHighlighted ? 'rgba(100, 116, 139, 0.14)' : 'transparent',
+                        fontWeight: l.isHighlighted ? 700 : 400,
+                        borderTop: l.isHighlighted ? '1px solid rgba(100, 116, 139, 0.25)' : undefined,
+                        borderBottom: l.isHighlighted ? '1px solid rgba(100, 116, 139, 0.25)' : undefined,
+                      }}>
+                        <td style={{ ...tdStyle, paddingLeft: l.indent ? '2rem' : '0.75rem', fontStyle: l.indent ? 'italic' : 'normal', color: l.indent ? 'var(--muted-foreground)' : 'var(--foreground)', borderRight: '2px solid var(--border)', fontWeight: l.isHighlighted ? 800 : 500 }}>{l.kpi}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.desafio, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.actual, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaDesafio) }}>{fmtDelta(l.deltaDesafio)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaDesafio), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaDesafio)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.mesAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.deltaMesAnterior) }}>{fmtDelta(l.deltaMesAnterior)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(l.pctDeltaMesAnterior), borderRight: '3px solid #94a3b8' }}>{fmtPct(l.pctDeltaMesAnterior)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>{fmtVal(l.anoAnterior, l.kpi.includes('Volume') ? '' : 'R$ ')}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(deltaAnoAnt) }}>{fmtDelta(deltaAnoAnt)}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', color: deltaColor(pctDeltaAnoAnt) }}>{fmtPct(pctDeltaAnoAnt)}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

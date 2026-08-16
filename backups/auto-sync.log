@@ -1533,3 +1533,18 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    32d1afa..02aa359  main -> main
 [16/08/2026 06:39] ✅ Alterações enviadas com sucesso para o GitHub.
+[main a2371a4] auto-save: 16/08/2026 10:57
+ 11 files changed, 2331 insertions(+)
+ create mode 100644 src/app/api/dre-gerencial/importar/route.ts
+ create mode 100644 src/app/api/dre-gerencial/route.ts
+ create mode 100644 src/app/api/rdm-gerencial/route.ts
+ create mode 100644 src/app/dre-gerencial/page.tsx
+ create mode 100644 src/app/rdm-gerencial/page.tsx
+ create mode 100644 src/lib/dre-gerencial/engine.ts
+ create mode 100644 src/lib/dre-gerencial/import-service.ts
+ create mode 100644 src/lib/dre-gerencial/types.ts
+ create mode 100644 supabase/migrations/20260816_dre_gerencial_v2.sql
+ create mode 100644 supabase/migrations/20260816_dre_rede_aliases.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   02aa359..a2371a4  main -> main
+[16/08/2026 10:57] ✅ Alterações enviadas com sucesso para o GitHub.
