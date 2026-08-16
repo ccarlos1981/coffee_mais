@@ -542,116 +542,137 @@ export default function InvestClientePage() {
   // ─── cell helpers ─────────────────────────────────────────────────────────
   const CellPos = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-slate-300 font-normal">—</span>
+      <span className="text-gray-300 font-normal">—</span>
     ) : (
       <span className="text-emerald-700 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const CellAmber = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-slate-300 font-normal">—</span>
+      <span className="text-gray-300 font-normal">—</span>
     ) : (
-      <span className="text-amber-800 font-bold tabular-nums">{fmtCur(v)}</span>
+      <span className="text-amber-700 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const CellSky = ({ v }: { v: number }) =>
     v === 0 ? (
-      <span className="text-slate-300 font-normal">—</span>
+      <span className="text-gray-300 font-normal">—</span>
     ) : (
-      <span className="text-sky-700 font-bold tabular-nums">{fmtCur(v)}</span>
+      <span className="text-blue-700 font-bold tabular-nums">{fmtCur(v)}</span>
     );
 
   const percColor = (p: number) =>
     p > 10
-      ? "text-rose-600 font-extrabold"
+      ? "text-red-600 font-extrabold"
       : p > 8
       ? "text-amber-700 font-bold"
       : "text-emerald-700 font-bold";
 
   // ─── render ───────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-50/60 text-slate-800 overflow-x-hidden font-sans print:bg-white print:p-0">
-      {/* Print CSS override */}
+    <div className="min-h-screen bg-white text-gray-900 overflow-x-hidden font-sans">
+      {/* Print CSS — comprehensive rules for screenshot & PDF */}
       <style jsx global>{`
         @media print {
-          body {
+          html, body {
             background-color: #ffffff !important;
-            color: #0f172a !important;
+            color: #111827 !important;
+            font-size: 11pt !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          .print\\:hidden {
+          .print-hide {
             display: none !important;
           }
           .break-inside-avoid {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
+          .print-border {
+            border-color: #d1d5db !important;
+          }
+          @page {
+            margin: 1cm;
+            size: landscape;
+          }
+          /* Force red on overdue badges */
+          .print-red { color: #dc2626 !important; }
+          .print-green { color: #047857 !important; }
+          .print-blue { color: #1d4ed8 !important; }
+          /* Remove hover backgrounds */
+          tr:hover { background: transparent !important; }
         }
       `}</style>
 
-      {/* Top Bar / Navigation */}
-      <header className="border-b border-slate-200/80 px-4 lg:px-6 py-3 sticky top-0 left-0 z-30 bg-white/90 backdrop-blur w-full shadow-2xs print:hidden">
-        <div className="max-w-[1800px] mx-auto flex items-center gap-1.5 lg:gap-3">
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* TOP BAR — solid white, no blur, high contrast                      */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <header className="border-b border-gray-200 px-4 lg:px-6 py-3 sticky top-0 left-0 z-30 bg-white w-full shadow-sm print-hide">
+        <div className="max-w-[1600px] mx-auto flex items-center gap-2 lg:gap-3">
           <Link
             href="/"
-            className="flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors shrink-0"
+            className="flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors shrink-0"
           >
             <Home className="w-4 h-4" />
           </Link>
-          <span className="text-slate-300">/</span>
-          <Link href="/investimento" className="hidden sm:block text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors truncate">
+          <span className="text-gray-300">/</span>
+          <Link href="/investimento" className="hidden sm:block text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors truncate">
             Investimento
           </Link>
-          <span className="hidden sm:block text-slate-300">/</span>
-          <span className="text-xs font-bold text-slate-900 truncate">Invest. Cliente (Dash Resumido)</span>
+          <span className="hidden sm:block text-gray-300">/</span>
+          <span className="text-sm font-bold text-gray-900 truncate">Invest. Cliente</span>
 
-          <div className="ml-auto flex items-center gap-1.5 lg:gap-2 shrink-0">
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <ThemeToggle />
             <button
               onClick={loadData}
               disabled={loading}
               title="Atualizar"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg shadow-sm transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Atualizar</span>
             </button>
             <button
               onClick={() => window.print()}
               title="Imprimir ou Salvar PDF"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg shadow-sm transition-all"
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <Download className="w-4 h-4 text-gray-500" />
               <span className="hidden sm:inline">Print / PDF</span>
             </button>
             <button
               onClick={exportCSV}
               disabled={loading || filteredGrupos.length === 0}
               title="Exportar CSV"
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg shadow-2xs transition-all disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-gray-900 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg shadow-sm transition-all disabled:opacity-50"
             >
-              <Download className="w-3.5 h-3.5 text-slate-600" />
-              <span className="hidden sm:inline">Exportar CSV</span>
+              <Download className="w-4 h-4 text-gray-600" />
+              <span className="hidden sm:inline">CSV</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <div className="max-w-[1800px] mx-auto px-3 sm:px-6 pt-5 pb-12">
-        {/* Title & Control Panel */}
-        <div className="mb-5 bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs print:hidden">
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      {/* MAIN CONTENT                                                       */}
+      {/* ════════════════════════════════════════════════════════════════════ */}
+      <div className="max-w-[1600px] mx-auto px-3 sm:px-6 pt-5 pb-12">
+
+        {/* ── TITLE & FILTERS PANEL ── */}
+        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-4 sm:p-5 shadow-sm print-hide">
           {/* Header Row */}
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-gray-100">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs shrink-0">
-                <TrendingDown className="w-4 h-4 text-slate-700" />
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gray-900 text-white shrink-0">
+                <TrendingDown className="w-5 h-5" />
               </div>
               <div>
-                <h1 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight tracking-tight">
-                  Relatório Executivo — Investimento por Cliente
+                <h1 className="text-xl sm:text-2xl font-black text-gray-900 leading-tight tracking-tight">
+                  Relatório Executivo — Invest. Cliente
                 </h1>
-                <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                  Mês de Referência: <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">{mesLabel(selectedMes)}</span>
+                <p className="text-sm text-gray-500 font-medium mt-0.5">
+                  Referência: <span className="font-bold text-gray-900 bg-gray-100 px-2.5 py-0.5 rounded-md border border-gray-200">{mesLabel(selectedMes)}</span>
                 </p>
               </div>
             </div>
@@ -659,16 +680,16 @@ export default function InvestClientePage() {
             {/* Mobile Filter Toggle */}
             <button
               onClick={() => setShowFilters((s) => !s)}
-              className={`lg:hidden flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-xl border transition-all ${
+              className={`lg:hidden flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
                 showFilters || searchTerm || filterGerente || selectedMes !== currentMonthKey()
-                  ? "bg-slate-800 border-slate-800 text-white"
-                  : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                  ? "bg-gray-900 border-gray-900 text-white"
+                  : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
               }`}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <SlidersHorizontal className="w-4 h-4" />
               Filtros
               {(searchTerm || filterGerente) && (
-                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-bold">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold">
                   {(searchTerm ? 1 : 0) + (filterGerente ? 1 : 0)}
                 </span>
               )}
@@ -678,31 +699,31 @@ export default function InvestClientePage() {
           {/* Filters Bar */}
           <div className={`${
             showFilters ? "flex" : "hidden lg:flex"
-          } flex-col lg:flex-row flex-wrap items-stretch lg:items-center gap-2.5 pt-4`}>
+          } flex-col lg:flex-row flex-wrap items-stretch lg:items-center gap-3 pt-4`}>
             {/* Search */}
-            <div className="relative flex-1 min-w-0 lg:min-w-[200px] lg:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <div className="relative flex-1 min-w-0 lg:min-w-[220px] lg:max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
                 type="text"
                 placeholder="Buscar rede ou cliente..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 font-medium focus:outline-none focus:border-slate-400 transition-colors"
+                className="w-full pl-10 pr-9 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 font-medium focus:outline-none focus:ring-2 focus:ring-gray-300 transition-colors"
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700">
-                  <X className="w-3.5 h-3.5" />
+                <button onClick={() => setSearchTerm("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700">
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
             {/* Gerente Filter */}
             <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <select
                 value={filterGerente}
                 onChange={(e) => setFilterGerente(e.target.value)}
-                className="w-full lg:w-auto pl-9 pr-8 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 font-medium focus:outline-none focus:border-slate-400 appearance-none cursor-pointer"
+                className="w-full lg:w-auto pl-10 pr-8 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-900 font-medium focus:outline-none focus:ring-2 focus:ring-gray-300 appearance-none cursor-pointer"
               >
                 <option value="">Todos os responsáveis</option>
                 {gerentesDisponiveis.map((g) => (
@@ -713,11 +734,11 @@ export default function InvestClientePage() {
 
             {/* Month Selector */}
             <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 pointer-events-none" />
               <select
                 value={selectedMes}
                 onChange={(e) => setSelectedMes(e.target.value)}
-                className="w-full lg:w-auto pl-9 pr-8 py-1.5 text-xs bg-slate-800 border border-slate-800 text-white rounded-xl font-bold focus:outline-none appearance-none cursor-pointer"
+                className="w-full lg:w-auto pl-10 pr-8 py-2 text-sm bg-gray-900 border border-gray-900 text-white rounded-lg font-bold focus:outline-none appearance-none cursor-pointer"
               >
                 {[currentMonthKey(), ...availableMeses]
                   .filter((v, i, a) => a.indexOf(v) === i)
@@ -737,301 +758,306 @@ export default function InvestClientePage() {
                   setExpandedGerentes(new Set(filteredGrupos.map((g) => g.gerente)));
                 }
               }}
-              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-xl transition-all"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-all"
             >
-              <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+              <ChevronDown className="w-4 h-4 text-gray-500" />
               {expandedGerentes.size === filteredGrupos.length ? "Recolher Todos" : "Expandir Todos"}
             </button>
 
             {/* Month Toggle indicator */}
             <button
               onClick={() => setShowPastMonths((p) => !p)}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-sky-50/70 border border-sky-200/80 text-sky-800 hover:bg-sky-100/70 font-medium rounded-xl text-xs transition-all"
+              className="ml-auto flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-800 hover:bg-blue-100 font-medium rounded-lg text-sm transition-all"
             >
-              <Calendar className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+              <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
               <span>
-                Meses: {showPastMonths ? "Anteriores ‹" : "Futuros ›"} ({MONTHS.map((m) => m.label).join(", ")})
+                {showPastMonths ? "◂ Anteriores" : "Futuros ▸"} ({MONTHS.map((m) => m.label).join(", ")})
               </span>
             </button>
           </div>
         </div>
 
-        {/* Content Body */}
+        {/* ── CONTENT BODY ── */}
         {loading ? (
-          <div className="flex items-center justify-center py-20 bg-white border border-slate-200/80 rounded-2xl shadow-2xs">
-            <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
-            <span className="ml-3 text-xs font-semibold text-slate-600">Carregando relatório executivo...</span>
+          <div className="flex items-center justify-center py-24 bg-white border border-gray-200 rounded-xl shadow-sm">
+            <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
+            <span className="ml-3 text-base font-semibold text-gray-500">Carregando relatório executivo...</span>
           </div>
         ) : filteredGrupos.length === 0 ? (
-          <div className="text-center py-20 bg-white border border-slate-200/80 rounded-2xl text-slate-500 text-xs font-medium shadow-2xs">
-            Nenhum registro encontrado para <strong className="text-slate-800">{mesLabel(selectedMes)}</strong>.
+          <div className="text-center py-24 bg-white border border-gray-200 rounded-xl text-gray-500 text-base font-medium shadow-sm">
+            Nenhum registro encontrado para <strong className="text-gray-900">{mesLabel(selectedMes)}</strong>.
           </div>
         ) : (
           <>
-            {/* ── CARD EXECUTIVO DO TOTAL GERAL (ELEGANTE & LEVE) ── */}
-            <div className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs p-4 sm:p-5 mb-6 print:mb-4 break-inside-avoid">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-slate-800" />
-                  <h2 className="text-xs sm:text-sm font-bold text-slate-900 uppercase tracking-wider">
-                    TOTAL GERAL CONSOLIDADO
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {/* CARD TOTAL GERAL — Executive KPIs with large typography      */}
+            {/* ══════════════════════════════════════════════════════════════ */}
+            <div className="bg-white border-2 border-gray-900 rounded-xl p-5 sm:p-6 mb-8 break-inside-avoid print-border">
+              {/* Header */}
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-gray-200 pb-4 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-gray-900" />
+                  <h2 className="text-base sm:text-lg font-black text-gray-900 uppercase tracking-wider">
+                    Total Geral Consolidado
                   </h2>
-                  <span className="text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-md">
-                    Ref: {mesLabel(selectedMes)}
-                  </span>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">
-                  Visão Geral da Carteira
+                <span className="text-sm font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-md">
+                  {mesLabel(selectedMes)}
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+              {/* KPI Grid — large values */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
                 {/* 1. Faturamento */}
-                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Faturamento</span>
-                  <div className="mt-1">
-                    <span className="text-lg sm:text-xl font-extrabold text-slate-900 tabular-nums leading-tight block">
-                      {grandTotals.faturamento > 0 ? fmtCur(grandTotals.faturamento) : "—"}
-                    </span>
-                  </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 block mb-2">Faturamento</span>
+                  <span className="text-xl sm:text-2xl font-black text-gray-900 tabular-nums leading-none block">
+                    {grandTotals.faturamento > 0 ? fmtCur(grandTotals.faturamento) : "—"}
+                  </span>
                 </div>
 
                 {/* 2. Expectativa Invest. */}
-                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expectativa Invest.</span>
-                  <div className="mt-1">
-                    <span className="text-lg sm:text-xl font-extrabold text-slate-900 tabular-nums leading-tight block">
-                      {grandTotals.expectativaInvest > 0 ? fmtCur(grandTotals.expectativaInvest) : "—"}
-                    </span>
-                  </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 block mb-2">Expectativa Invest.</span>
+                  <span className="text-xl sm:text-2xl font-black text-gray-900 tabular-nums leading-none block">
+                    {grandTotals.expectativaInvest > 0 ? fmtCur(grandTotals.expectativaInvest) : "—"}
+                  </span>
                 </div>
 
                 {/* 3. % Invest. */}
-                <div className="bg-slate-50/60 border border-slate-100 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">% Invest. Médio</span>
-                  <div className="mt-1">
-                    <span className={`text-lg sm:text-xl font-extrabold tabular-nums leading-tight block ${
-                      grandTotals.percInvest != null ? percColor(grandTotals.percInvest) : "text-slate-400"
-                    }`}>
-                      {grandTotals.percInvest != null ? `${grandTotals.percInvest.toFixed(1)}%` : "—"}
-                    </span>
-                  </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500 block mb-2">% Invest.</span>
+                  <span className={`text-xl sm:text-2xl font-black tabular-nums leading-none block ${
+                    grandTotals.percInvest != null ? percColor(grandTotals.percInvest) : "text-gray-400"
+                  }`}>
+                    {grandTotals.percInvest != null ? `${grandTotals.percInvest.toFixed(1)}%` : "—"}
+                  </span>
                 </div>
 
                 {/* 4. Não Provisionado */}
-                <div className="bg-amber-50/40 border border-amber-100 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Não Provisionado</span>
-                  <div className="mt-1">
-                    <span className="text-lg sm:text-xl font-extrabold text-amber-900 tabular-nums leading-tight block">
-                      {grandTotals.naoProvisionado > 0 ? fmtCur(grandTotals.naoProvisionado) : "—"}
-                    </span>
-                  </div>
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-700 block mb-2">Não Provisionado</span>
+                  <span className="text-xl sm:text-2xl font-black text-amber-800 tabular-nums leading-none block">
+                    {grandTotals.naoProvisionado > 0 ? fmtCur(grandTotals.naoProvisionado) : "—"}
+                  </span>
                 </div>
 
                 {/* 5. Provisionado */}
-                <div className="bg-emerald-50/40 border border-emerald-100 rounded-xl p-3 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Provisionado</span>
-                  <div className="mt-1">
-                    <span className="text-lg sm:text-xl font-extrabold text-emerald-900 tabular-nums leading-tight block">
-                      {grandTotals.provisionado > 0 ? fmtCur(grandTotals.provisionado) : "—"}
-                    </span>
-                  </div>
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 block mb-2">Provisionado</span>
+                  <span className="text-xl sm:text-2xl font-black text-emerald-800 tabular-nums leading-none block print-green">
+                    {grandTotals.provisionado > 0 ? fmtCur(grandTotals.provisionado) : "—"}
+                  </span>
                 </div>
 
-                {/* 6. Ações Atrasadas (SOFISTICADO & ELEGANTE) */}
-                <div className={`border rounded-xl p-3 flex flex-col justify-between ${
+                {/* 6. Ações Atrasadas — HIGH VISIBILITY */}
+                <div className={`border-2 rounded-lg p-4 ${
                   grandTotals.acoesAtrasadas > 0
-                    ? "bg-rose-50/60 border-rose-200"
-                    : "bg-slate-50/60 border-slate-100"
+                    ? "bg-red-50 border-red-300"
+                    : "bg-gray-50 border-gray-200"
                 }`}>
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                    grandTotals.acoesAtrasadas > 0 ? "text-rose-700" : "text-slate-400"
+                  <span className={`text-xs font-bold uppercase tracking-wider block mb-2 ${
+                    grandTotals.acoesAtrasadas > 0 ? "text-red-700" : "text-gray-500"
                   }`}>
                     Ações Atrasadas
                   </span>
-                  <div className="mt-1 flex items-center justify-between">
-                    {grandTotals.acoesAtrasadas > 0 ? (
-                      <>
-                        <span className="text-lg sm:text-xl font-black text-rose-600 tabular-nums leading-tight">
-                          ● {grandTotals.acoesAtrasadas}
-                        </span>
-                        <span className="text-[10px] font-semibold text-rose-700 bg-rose-100/80 px-2 py-0.5 rounded-md">
-                          Atrasadas
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-sm font-medium text-slate-400 leading-tight">
-                        0 ok
+                  {grandTotals.acoesAtrasadas > 0 ? (
+                    <div className="flex items-end justify-between gap-2">
+                      <span className="text-2xl sm:text-3xl font-black text-red-600 tabular-nums leading-none print-red">
+                        {grandTotals.acoesAtrasadas}
                       </span>
-                    )}
-                  </div>
+                      <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-1 rounded-md border border-red-200">
+                        🔴 ATRASADAS
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-lg font-semibold text-gray-400 leading-none block">
+                      0
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {/* Provisionamento Futuro — secondary sub-section */}
+              {MONTHS.some((m) => (grandTotals.meses[m.key] || 0) > 0) && (
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <div className="flex flex-wrap items-center gap-6">
+                    <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                      Prov. Próximos Meses
+                    </span>
+                    {MONTHS.map((m) => {
+                      const val = grandTotals.meses[m.key] || 0;
+                      return (
+                        <div key={m.key} className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-gray-500">{m.label}:</span>
+                          {val > 0 ? (
+                            <span className="text-sm font-bold text-blue-700 tabular-nums print-blue">{fmtCur(val)}</span>
+                          ) : (
+                            <span className="text-sm text-gray-300">—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ── LISTAGEM DE CARDS POR GERENTE (SUTIL & SOFISTICADO) ── */}
-            <div className="space-y-5 print:space-y-4">
+            {/* ══════════════════════════════════════════════════════════════ */}
+            {/* GERENTE BLOCKS — each with prominent header + table          */}
+            {/* ══════════════════════════════════════════════════════════════ */}
+            <div className="space-y-6">
               {filteredGrupos.map((grupo) => {
                 const isExpanded = expandedGerentes.has(grupo.gerente);
                 return (
                   <div
                     key={grupo.gerente}
-                    className="bg-white border border-slate-200/90 rounded-2xl shadow-2xs overflow-hidden break-inside-avoid print:border-slate-300"
+                    className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden break-inside-avoid print-border"
                   >
-                    {/* Header do Gerente (Claro, Elegante, Sem Blocos Pretos) */}
+                    {/* ── Gerente Header — large name, KPIs in grid ── */}
                     <div
                       onClick={() => toggleGerente(grupo.gerente)}
-                      className="bg-slate-50/80 hover:bg-slate-100/70 border-b border-slate-200/80 px-4 sm:px-5 py-3.5 cursor-pointer transition-colors flex flex-wrap items-center justify-between gap-3"
+                      className="bg-gray-50 hover:bg-gray-100 border-b-2 border-gray-200 px-5 py-4 cursor-pointer transition-colors"
                     >
-                      <div className="flex items-center gap-2.5">
-                        <div className="text-slate-400 shrink-0">
-                          {isExpanded ? (
-                            <ChevronDown className="w-4 h-4" />
-                          ) : (
-                            <ChevronRightIcon className="w-4 h-4" />
-                          )}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-wide uppercase">
-                              {grupo.gerente}
-                            </h3>
-                            <span className="text-xs font-normal text-slate-400">
-                              ({grupo.clientes.length} {grupo.clientes.length === 1 ? "cliente" : "clientes"})
-                            </span>
+                      {/* Top Row: Name + Expand */}
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="text-gray-400 shrink-0">
+                            {isExpanded ? (
+                              <ChevronDown className="w-5 h-5" />
+                            ) : (
+                              <ChevronRightIcon className="w-5 h-5" />
+                            )}
                           </div>
+                          <h3 className="text-lg sm:text-xl font-black text-gray-900 tracking-wide uppercase">
+                            {grupo.gerente}
+                          </h3>
+                          <span className="text-sm font-medium text-gray-500 bg-white px-2.5 py-0.5 rounded-md border border-gray-200">
+                            {grupo.clientes.length} {grupo.clientes.length === 1 ? "cliente" : "clientes"}
+                          </span>
                         </div>
+
+                        {/* Overdue badge — always visible */}
+                        {grupo.totals.acoesAtrasadas > 0 && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-red-100 border border-red-300 text-red-700 font-black text-sm print-red">
+                            🔴 {grupo.totals.acoesAtrasadas} atrasadas
+                          </span>
+                        )}
                       </div>
 
-                      {/* KPIs limpos no cabeçalho do Gerente */}
-                      <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-slate-600 ml-auto">
-                        <div className="flex flex-col items-end">
-                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Faturamento</span>
-                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                      {/* KPI Row — compact grid for screenshot readability */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 pl-8">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold block">Faturamento</span>
+                          <span className="text-base sm:text-lg font-black text-gray-900 tabular-nums">
                             {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : "—"}
                           </span>
                         </div>
-
-                        <div className="hidden md:flex flex-col items-end">
-                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Expectativa</span>
-                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold block">Expectativa</span>
+                          <span className="text-base sm:text-lg font-black text-gray-900 tabular-nums">
                             {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : "—"}
                           </span>
                         </div>
-
-                        <div className="hidden lg:flex flex-col items-end">
-                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">% Invest.</span>
-                          <span className="font-bold text-slate-900 text-xs sm:text-sm tabular-nums">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-gray-400 font-bold block">% Invest.</span>
+                          <span className={`text-base sm:text-lg font-black tabular-nums ${
+                            grupo.totals.percInvest != null ? percColor(grupo.totals.percInvest) : "text-gray-400"
+                          }`}>
                             {grupo.totals.percInvest != null ? `${grupo.totals.percInvest.toFixed(1)}%` : "—"}
                           </span>
                         </div>
-
-                        <div className="flex flex-col items-end">
-                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Não Prov.</span>
-                          <span className="font-bold text-amber-800 text-xs sm:text-sm tabular-nums">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-amber-600 font-bold block">Não Prov.</span>
+                          <span className="text-base sm:text-lg font-black text-amber-700 tabular-nums">
                             {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : "—"}
                           </span>
                         </div>
-
-                        <div className="flex flex-col items-end">
-                          <span className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">Provisionado</span>
-                          <span className="font-bold text-emerald-700 text-xs sm:text-sm tabular-nums">
+                        <div>
+                          <span className="text-[10px] uppercase tracking-wider text-emerald-600 font-bold block">Provisionado</span>
+                          <span className="text-base sm:text-lg font-black text-emerald-700 tabular-nums print-green">
                             {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : "—"}
                           </span>
-                        </div>
-
-                        {/* Tratamento Sofisticado de Ações Atrasadas no Gerente */}
-                        <div className="flex items-center">
-                          {grupo.totals.acoesAtrasadas > 0 ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-rose-50 border border-rose-200 text-rose-700 font-bold text-xs">
-                              <span>●</span>
-                              <span>{grupo.totals.acoesAtrasadas} atrasadas</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 font-normal text-xs">
-                              0 atrasos
-                            </span>
-                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Tabela de Redes do Gerente */}
+                    {/* ── Table of Networks (Redes) ── */}
                     {isExpanded && (
                       <div className="overflow-x-auto">
-                        <table className="w-full text-xs text-left border-collapse">
+                        <table className="w-full text-left border-collapse">
                           <thead>
-                            <tr className="bg-slate-50/50 border-b border-slate-200/80 text-slate-500 font-bold text-[10px] uppercase tracking-wider">
-                              <th className="py-2.5 px-4 font-bold text-slate-700">Rede / Cliente</th>
-                              <th className="py-2.5 px-4 text-right">Fat. ({mesLabel(selectedMes)})</th>
-                              <th className="py-2.5 px-4 text-right">% Invest.</th>
-                              <th className="py-2.5 px-4 text-right">Expect. Invest.</th>
-                              <th className="py-2.5 px-4 text-right">Não Provisionado</th>
-                              <th className="py-2.5 px-4 text-right">Provisionado</th>
-                              <th className="py-2.5 px-4 text-center">Ações Atrasadas</th>
-                              <th className="py-2.5 px-4 text-right text-sky-800 bg-sky-50/40">
-                                Prov. Próximos Meses ({MONTHS.map((m) => m.label).join(" | ")})
+                            <tr className="bg-gray-50 border-b-2 border-gray-200">
+                              <th className="py-3 px-5 text-xs font-black text-gray-700 uppercase tracking-wider">Rede</th>
+                              <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Fat. {mesLabel(selectedMes)}</th>
+                              <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">% Inv.</th>
+                              <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Expect.</th>
+                              <th className="py-3 px-4 text-xs font-bold text-amber-700 uppercase tracking-wider text-right">Não Prov.</th>
+                              <th className="py-3 px-4 text-xs font-bold text-emerald-700 uppercase tracking-wider text-right">Prov.</th>
+                              <th className="py-3 px-3 text-xs font-bold text-red-700 uppercase tracking-wider text-center">Atrasadas</th>
+                              <th className="py-3 px-4 text-xs font-bold text-blue-700 uppercase tracking-wider text-right bg-blue-50/50">
+                                {MONTHS.map((m) => m.label).join(" · ")}
                               </th>
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-slate-100 bg-white">
+                          <tbody className="divide-y divide-gray-100 bg-white">
                             {grupo.clientes.map((c, idx) => (
                               <tr
                                 key={`${grupo.gerente}__${c.rede}__${idx}`}
-                                className="hover:bg-slate-50/60 transition-colors"
+                                className="hover:bg-gray-50 transition-colors"
                               >
                                 {/* Rede */}
-                                <td className="py-2.5 px-4 font-semibold text-slate-900 text-xs whitespace-nowrap">
+                                <td className="py-3 px-5 font-bold text-gray-900 text-sm whitespace-nowrap">
                                   {c.rede}
                                 </td>
                                 {/* Faturamento */}
-                                <td className="py-2.5 px-4 text-right font-medium text-slate-800 tabular-nums whitespace-nowrap">
-                                  {c.faturamento > 0 ? fmtCur(c.faturamento) : <span className="text-slate-300 font-normal">—</span>}
+                                <td className="py-3 px-4 text-right font-semibold text-gray-800 tabular-nums text-sm whitespace-nowrap">
+                                  {c.faturamento > 0 ? fmtCur(c.faturamento) : <span className="text-gray-300">—</span>}
                                 </td>
                                 {/* % Invest */}
-                                <td className="py-2.5 px-4 text-right font-semibold tabular-nums whitespace-nowrap">
+                                <td className="py-3 px-4 text-right font-bold tabular-nums text-sm whitespace-nowrap">
                                   {c.percInvest != null ? (
                                     <span className={percColor(c.percInvest)}>
                                       {c.percInvest.toFixed(1)}%
                                     </span>
                                   ) : (
-                                    <span className="text-slate-300 font-normal">—</span>
+                                    <span className="text-gray-300">—</span>
                                   )}
                                 </td>
                                 {/* Expectativa */}
-                                <td className="py-2.5 px-4 text-right font-semibold text-slate-800 tabular-nums whitespace-nowrap">
-                                  {c.expectativaInvest > 0 ? fmtCur(c.expectativaInvest) : <span className="text-slate-300 font-normal">—</span>}
+                                <td className="py-3 px-4 text-right font-semibold text-gray-800 tabular-nums text-sm whitespace-nowrap">
+                                  {c.expectativaInvest > 0 ? fmtCur(c.expectativaInvest) : <span className="text-gray-300">—</span>}
                                 </td>
                                 {/* Não Provisionado */}
-                                <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                                <td className="py-3 px-4 text-right text-sm whitespace-nowrap">
                                   <CellAmber v={c.naoProvisionado} />
                                 </td>
                                 {/* Provisionado */}
-                                <td className="py-2.5 px-4 text-right whitespace-nowrap">
+                                <td className="py-3 px-4 text-right text-sm whitespace-nowrap">
                                   <CellPos v={c.provisionado} />
                                 </td>
-                                {/* Ações Atrasadas (Sofisticado) */}
-                                <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                                {/* Ações Atrasadas — BOLD RED */}
+                                <td className="py-3 px-3 text-center whitespace-nowrap">
                                   {c.acoesAtrasadas > 0 ? (
-                                    <span className="text-rose-600 font-bold tabular-nums">
-                                      ● {c.acoesAtrasadas}
+                                    <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-md bg-red-100 border border-red-200 text-red-700 font-black text-sm tabular-nums print-red">
+                                      {c.acoesAtrasadas}
                                     </span>
                                   ) : (
-                                    <span className="text-slate-300 font-normal">—</span>
+                                    <span className="text-gray-300">—</span>
                                   )}
                                 </td>
                                 {/* Provisionamento Próximos Meses */}
-                                <td className="py-2.5 px-4 text-right whitespace-nowrap bg-sky-50/20">
-                                  <div className="flex items-center justify-end gap-3 font-medium text-sky-800 tabular-nums">
+                                <td className="py-3 px-4 text-right whitespace-nowrap bg-blue-50/30">
+                                  <div className="flex items-center justify-end gap-4 tabular-nums">
                                     {MONTHS.map((m) => {
                                       const val = c.meses[m.key] || 0;
                                       return (
-                                        <div key={m.key} className="text-right">
-                                          <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-normal">{m.label}</span>
+                                        <div key={m.key} className="text-right min-w-[4.5rem]">
+                                          <span className="text-[10px] uppercase tracking-wider text-gray-400 block font-semibold">{m.label}</span>
                                           {val > 0 ? (
-                                            <span className="text-sky-700 font-semibold">{fmtCur(val)}</span>
+                                            <span className="text-blue-700 font-bold text-sm print-blue">{fmtCur(val)}</span>
                                           ) : (
-                                            <span className="text-slate-300 font-normal">—</span>
+                                            <span className="text-gray-300">—</span>
                                           )}
                                         </div>
                                       );
@@ -1041,47 +1067,47 @@ export default function InvestClientePage() {
                               </tr>
                             ))}
 
-                            {/* Subtotal do Gerente */}
-                            <tr className="bg-slate-50/80 font-bold text-slate-900 border-t border-slate-200">
-                              <td className="py-2.5 px-4 text-slate-900 font-extrabold uppercase text-[11px]">
-                                TOTAL — {grupo.gerente}
+                            {/* ── Subtotal do Gerente ── */}
+                            <tr className="bg-gray-100 border-t-2 border-gray-300">
+                              <td className="py-3 px-5 text-gray-900 font-black uppercase text-xs tracking-wide">
+                                Total — {grupo.gerente}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-extrabold text-slate-900 tabular-nums text-xs">
-                                {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : <span className="text-slate-300 font-normal">—</span>}
+                              <td className="py-3 px-4 text-right font-black text-gray-900 tabular-nums text-sm">
+                                {grupo.totals.faturamento > 0 ? fmtCur(grupo.totals.faturamento) : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-extrabold tabular-nums text-xs">
+                              <td className="py-3 px-4 text-right font-black tabular-nums text-sm">
                                 {grupo.totals.percInvest != null ? (
                                   <span className={percColor(grupo.totals.percInvest)}>
                                     {grupo.totals.percInvest.toFixed(1)}%
                                   </span>
-                                ) : <span className="text-slate-300 font-normal">—</span>}
+                                ) : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-extrabold text-slate-900 tabular-nums text-xs">
-                                {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : <span className="text-slate-300 font-normal">—</span>}
+                              <td className="py-3 px-4 text-right font-black text-gray-900 tabular-nums text-sm">
+                                {grupo.totals.expectativaInvest > 0 ? fmtCur(grupo.totals.expectativaInvest) : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-extrabold text-amber-900 tabular-nums text-xs">
-                                {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : <span className="text-slate-300 font-normal">—</span>}
+                              <td className="py-3 px-4 text-right font-black text-amber-800 tabular-nums text-sm">
+                                {grupo.totals.naoProvisionado > 0 ? fmtCur(grupo.totals.naoProvisionado) : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="py-2.5 px-4 text-right font-extrabold text-emerald-800 tabular-nums text-xs">
-                                {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : <span className="text-slate-300 font-normal">—</span>}
+                              <td className="py-3 px-4 text-right font-black text-emerald-700 tabular-nums text-sm print-green">
+                                {grupo.totals.provisionado > 0 ? fmtCur(grupo.totals.provisionado) : <span className="text-gray-300">—</span>}
                               </td>
-                              <td className="py-2.5 px-4 text-center text-xs">
+                              <td className="py-3 px-3 text-center">
                                 {grupo.totals.acoesAtrasadas > 0 ? (
-                                  <span className="text-rose-600 font-extrabold tabular-nums">
-                                    ● {grupo.totals.acoesAtrasadas}
+                                  <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-md bg-red-100 border border-red-200 text-red-700 font-black text-sm tabular-nums print-red">
+                                    {grupo.totals.acoesAtrasadas}
                                   </span>
                                 ) : (
-                                  <span className="text-slate-300 font-normal">—</span>
+                                  <span className="text-gray-300">—</span>
                                 )}
                               </td>
-                              <td className="py-2.5 px-4 text-right bg-sky-100/30">
-                                <div className="flex items-center justify-end gap-3 font-extrabold text-sky-900 tabular-nums text-xs">
+                              <td className="py-3 px-4 text-right bg-blue-50/40">
+                                <div className="flex items-center justify-end gap-4 font-black text-blue-800 tabular-nums text-sm">
                                   {MONTHS.map((m) => {
                                     const val = grupo.totals.meses[m.key] || 0;
                                     return (
-                                      <div key={m.key} className="text-right">
-                                        <span className="text-[9px] uppercase tracking-wider text-slate-400 block font-medium">{m.label}</span>
-                                        {val > 0 ? fmtCur(val) : <span className="text-slate-300 font-normal">—</span>}
+                                      <div key={m.key} className="text-right min-w-[4.5rem]">
+                                        <span className="text-[10px] uppercase tracking-wider text-gray-400 block font-bold">{m.label}</span>
+                                        {val > 0 ? <span className="print-blue">{fmtCur(val)}</span> : <span className="text-gray-300">—</span>}
                                       </div>
                                     );
                                   })}
@@ -1099,29 +1125,29 @@ export default function InvestClientePage() {
           </>
         )}
 
-        {/* Rodapé Executivo / Legenda */}
-        <div className="flex flex-wrap items-center gap-4 mt-6 text-[11px] text-slate-500 bg-white border border-slate-200/80 rounded-xl p-4 shadow-2xs print:hidden">
-          <div className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded bg-slate-200 border border-slate-300" />
-            <span>Expect. Investimento = valor × volume · mes_referencia</span>
+        {/* ── Rodapé / Legenda ── */}
+        <div className="flex flex-wrap items-center gap-5 mt-8 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg p-4 print-hide">
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded bg-gray-200 border border-gray-300" />
+            <span className="font-medium">Expectativa = valor × volume</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded bg-amber-100 border border-amber-300" />
-            <span>Não provisionado = sem boleto no mês selecionado</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded bg-amber-100 border border-amber-300" />
+            <span className="font-medium">Não prov. = sem boleto</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-300" />
-            <span>Provisionado = com boleto vinculado</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded bg-emerald-100 border border-emerald-300" />
+            <span className="font-medium">Provisionado = com boleto</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="inline-block w-2.5 h-2.5 rounded bg-sky-100 border border-sky-300" />
-            <span>Colunas de mês = vencimento futuro/passado</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded bg-blue-100 border border-blue-300" />
+            <span className="font-medium">Meses = vencimento futuro/passado</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-rose-600 font-bold">●</span>
-            <span>Ações Atrasadas = fase 3 com data_fim ≤ hoje - 7 dias</span>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center justify-center w-3 h-3 rounded bg-red-100 border border-red-300 text-red-600 text-[8px] font-black">!</span>
+            <span className="font-medium">Atrasadas = fase ≤ 3 + data_fim ≤ hoje − 7d</span>
           </div>
-          <span className="ml-auto font-medium text-slate-400">Coffee++ Relatório Executivo</span>
+          <span className="ml-auto font-bold text-gray-400 tracking-wide">Coffee++ Relatório Executivo</span>
         </div>
       </div>
     </div>
