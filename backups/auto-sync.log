@@ -1566,3 +1566,12 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    0a0a1db..c660dbd  main -> main
 [17/08/2026 08:41] ✅ Alterações enviadas com sucesso para o GitHub.
+[main f09511a] auto-save: 17/08/2026 11:41
+ 9 files changed, 1437 insertions(+), 16 deletions(-)
+ create mode 100644 src/app/api/processo-comercial/rdm/config/route.ts
+ create mode 100644 src/app/processo-comercial/rdm/components/ModalConfigDesafioPct.tsx
+ create mode 100644 src/app/processo-comercial/rdm/components/SlideDreAcumulado.tsx
+ create mode 100644 supabase/migrations/20260817_cm_rdm_desafio_config.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   c660dbd..f09511a  main -> main
+[17/08/2026 11:41] ✅ Alterações enviadas com sucesso para o GitHub.

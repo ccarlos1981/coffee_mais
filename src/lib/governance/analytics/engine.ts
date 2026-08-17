@@ -1897,6 +1897,7 @@ export class AnalyticsEngine {
 
     // Apuração de Investimentos por Dimensão (Sem rateio proporcional e sem duplicação)
     const investMap = new Map<string, number>();
+    const contratoMap = new Map<string, number>();
 
     if (dim === 'rede') {
       const sqlRedeInvest = `
@@ -1911,6 +1912,18 @@ export class AnalyticsEngine {
       `;
       const invRows = await this.executeSql<{ key_name: string; invest: number }>(sqlRedeInvest);
       invRows.forEach(r => investMap.set(r.key_name, Number(r.invest) || 0));
+
+      const sqlRedeContrato = `
+        SELECT 
+          UPPER(TRIM(rede)) as key_name,
+          COALESCE(SUM(COALESCE(contrato_valor, 0)), 0) as contrato
+        FROM public.cm_dre_gerencial_rede
+        WHERE competencia >= ${escapeSqlValue(mesStart)}
+          AND competencia <= ${escapeSqlValue(mesEnd)}
+        GROUP BY UPPER(TRIM(rede))
+      `;
+      const contratoRows = await this.executeSql<{ key_name: string; contrato: number }>(sqlRedeContrato);
+      contratoRows.forEach(r => contratoMap.set(r.key_name, Number(r.contrato) || 0));
     } else if (dim === 'gerente') {
       const sqlGerenteInvest = `
         WITH matrix_invest AS (
@@ -1958,6 +1971,8 @@ export class AnalyticsEngine {
       const fr = fLiq * DRE_FRETE_PERCENTUAL;
 
       const invCom = investMap.get(r.nome.toUpperCase()) ?? 0;
+      const contratoVal = contratoMap.get(r.nome.toUpperCase()) ?? 0;
+      const pctContrato = fLiq > 0 ? Number(((contratoVal / fLiq) * 100).toFixed(2)) : null;
       const maco = recAposImp - c - fr - invCom;
       const pctMacoOficial = fLiq > 0 ? (maco / fLiq) * 100 : 0;
       const pctMacoGerencial = fBrut > 0 ? (maco / fBrut) * 100 : 0;
@@ -1977,6 +1992,9 @@ export class AnalyticsEngine {
         margemBruta: Number(mBruta.toFixed(2)),
         frete: Number(fr.toFixed(2)),
         investimentoComercial: Number(invCom.toFixed(2)),
+        contratoValor: Number(contratoVal.toFixed(2)),
+        contrato_valor: Number(contratoVal.toFixed(2)),
+        percentualContrato: pctContrato,
         maco: Number(maco.toFixed(2)),
         margemMacoPercentual: Number(pctMacoOficial.toFixed(2)),
         margemMacoGerencialPercentual: Number(pctMacoGerencial.toFixed(2)),
@@ -3296,6 +3314,9 @@ export interface DreComercialDimensional {
   margemBruta: number;
   frete: number;
   investimentoComercial: number;
+  contratoValor?: number;
+  contrato_valor?: number;
+  percentualContrato?: number | null;
   maco: number;
   margemMacoPercentual: number;
   margemMacoGerencialPercentual: number;
