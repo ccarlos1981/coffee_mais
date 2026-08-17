@@ -361,7 +361,7 @@ function getDesafio(targets: TargetRow[], gerente?: string, redeFiltro?: string)
   };
 }
 
-async function fetchDesafioConfig(gerente?: string): Promise<{ impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number }> {
+async function fetchDesafioConfig(gerente?: string, competencia?: string): Promise<{ impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number }> {
   const defaults = { impostos_pct: 0.035, investimento_pct: 0.100, cpv_pct: 0.460, frete_pct: 0.030 };
   try {
     let canonicalId = 'CRISTIANO';
@@ -370,19 +370,26 @@ async function fetchDesafioConfig(gerente?: string): Promise<{ impostos_pct: num
       if (canonicalId === '9999') canonicalId = 'CRISTIANO';
     }
     const supabase = createAdminClient();
-    const { data } = await supabase
+    const compsToQuery = competencia ? [competencia, 'GLOBAL'] : ['GLOBAL'];
+    const { data: rows } = await supabase
       .from('cm_rdm_desafio_config')
-      .select('impostos_pct, investimento_pct, cpv_pct, frete_pct')
+      .select('competencia, impostos_pct, investimento_pct, cpv_pct, frete_pct')
       .eq('manager_id', canonicalId)
-      .maybeSingle();
+      .in('competencia', compsToQuery);
 
-    if (data) {
-      return {
-        impostos_pct: Number(data.impostos_pct ?? defaults.impostos_pct),
-        investimento_pct: Number(data.investimento_pct ?? defaults.investimento_pct),
-        cpv_pct: Number(data.cpv_pct ?? defaults.cpv_pct),
-        frete_pct: Number(data.frete_pct ?? defaults.frete_pct),
-      };
+    if (rows && rows.length > 0) {
+      const matchMonth = competencia ? rows.find(r => r.competencia === competencia) : undefined;
+      const matchGlobal = rows.find(r => r.competencia === 'GLOBAL');
+      const targetRow = matchMonth || matchGlobal;
+
+      if (targetRow) {
+        return {
+          impostos_pct: Number(targetRow.impostos_pct ?? defaults.impostos_pct),
+          investimento_pct: Number(targetRow.investimento_pct ?? defaults.investimento_pct),
+          cpv_pct: Number(targetRow.cpv_pct ?? defaults.cpv_pct),
+          frete_pct: Number(targetRow.frete_pct ?? defaults.frete_pct),
+        };
+      }
     }
   } catch (err) {
     console.error('[Engine] Erro ao carregar cm_rdm_desafio_config:', err);
@@ -468,7 +475,7 @@ export async function getRdmData(filters: DreGerencialFilters): Promise<{ slide1
     fetchSales(competencias),
     fetchDreRede(competencias),
     fetchTargets(anoComp, mesComp),
-    fetchDesafioConfig(filters.gerente),
+    fetchDesafioConfig(filters.gerente, competencia),
   ]);
 
   const kpisActual = buildKpisForComp(sales, dreRede, compActual, gerenteSistema, filters.rede);
@@ -708,12 +715,17 @@ export async function getRdmDreAcumuladoData(year: number, gerente?: string): Pr
   const competencias = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
   const gerenteSistema = resolveGerenteSistema(gerente);
 
-  const [sales, dreRede, yearTargets, customPcts] = await Promise.all([
+  const [sales, dreRede, yearTargets] = await Promise.all([
     fetchSales(competencias),
     fetchDreRede(competencias),
     fetchYearTargets(year),
-    fetchDesafioConfig(gerente),
   ]);
+
+  const monthConfigMap = new Map<string, { impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number }>();
+  await Promise.all(competencias.map(async (c) => {
+    const cfg = await fetchDesafioConfig(gerente, c);
+    monthConfigMap.set(c, cfg);
+  }));
 
   const salesCompSet = new Set(sales.map(s => s.mes));
 
@@ -746,10 +758,12 @@ export async function getRdmDreAcumuladoData(year: number, gerente?: string): Pr
     const fatDesafio = mDesafio.revenue;
     const volDesafio = mDesafio.volume;
 
-    const impDesafio = fatDesafio !== null ? fatDesafio * customPcts.impostos_pct : null;
-    const invDesafio = fatDesafio !== null ? fatDesafio * customPcts.investimento_pct : null;
-    const cpvDesafio = fatDesafio !== null ? fatDesafio * customPcts.cpv_pct : null;
-    const freDesafio = fatDesafio !== null ? fatDesafio * customPcts.frete_pct : null;
+    const mPcts = monthConfigMap.get(comp) ?? { impostos_pct: 0.035, investimento_pct: 0.100, cpv_pct: 0.460, frete_pct: 0.030 };
+
+    const impDesafio = fatDesafio !== null ? fatDesafio * mPcts.impostos_pct : null;
+    const invDesafio = fatDesafio !== null ? fatDesafio * mPcts.investimento_pct : null;
+    const cpvDesafio = fatDesafio !== null ? fatDesafio * mPcts.cpv_pct : null;
+    const freDesafio = fatDesafio !== null ? fatDesafio * mPcts.frete_pct : null;
     const recLiqDesafio = (fatDesafio !== null && impDesafio !== null && invDesafio !== null)
       ? fatDesafio - impDesafio - invDesafio
       : null;
