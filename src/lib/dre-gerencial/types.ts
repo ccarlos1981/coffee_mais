@@ -191,3 +191,39 @@ export const UF_PREFIXES = [
   'BA', 'CE', 'MT', 'AM', 'PE', 'PA', 'MA', 'PI', 'RN',
   'SE', 'AL', 'PB', 'MS', 'RO', 'TO', 'AC', 'AP', 'RR',
 ];
+
+// ─── RDM Slide DRE Acumulado por Período (Novo) ───
+
+export interface RdmAcumuladoColuna {
+  key: string;      // e.g. 'JAN', 'FEV', 'MAR', 'ACUM_Q1'
+  label: string;    // e.g. 'JAN', 'FEV', 'MAR', 'ACUM'
+  isAcum: boolean;
+  hasData: boolean; // false para meses futuros sem dados reais
+}
+
+export interface RdmAcumuladoValor {
+  desafio: number | null;
+  actual: number | null;
+  delta: number | null;
+  pctDelta: number | null;
+}
+
+export interface RdmAcumuladoLinha {
+  kpi: string;
+  isHighlighted?: boolean;
+  indent?: boolean;
+  valores: Record<string, RdmAcumuladoValor>;
+}
+
+export interface RdmTrimestreData {
+  trimestre: number; // 1, 2, 3, 4
+  label: string;     // '1º TRIMESTRE', etc.
+  colunas: RdmAcumuladoColuna[];
+  linhas: RdmAcumuladoLinha[];
+}
+
+export interface RdmSlideAcumuladoData {
+  titulo: string;
+  year: number;
+  trimestres: RdmTrimestreData[];
+}

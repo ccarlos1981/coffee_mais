@@ -22,6 +22,9 @@ import { CustomSlideConfig } from "@/lib/presentation-framework/core";
 import { CustomSlideRenderer, SlideBuilderWizard } from "@/lib/presentation-framework/react";
 import { RdmDataAdapter } from "./providers/RdmDataAdapter";
 import { RdmStorageAdapter } from "./providers/RdmStorageAdapter";
+import { ModalConfigDesafioPct } from "./components/ModalConfigDesafioPct";
+import { SlideDreAcumulado } from "./components/SlideDreAcumulado";
+import { RdmSlideAcumuladoData } from "@/lib/dre-gerencial/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricBlock {
@@ -52,6 +55,7 @@ interface RdmApiResponse {
   comments: Record<string, string>;
   dre?: any;
   dreGerencialSlide1?: any;
+  dreGerencialSlideAcumulado?: RdmSlideAcumuladoData;
   monthlyFat: { label: string; m: number; fatCur: number; fatUltTrim: number }[];
   acum: { fatCur: number; fatUltTrim: number };
   recordFat: number;
@@ -5195,6 +5199,19 @@ export default function RdmPage() {
   // Export Modal & Config
   const [showExportModal,     setShowExportModal]     = useState(false);
   const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
+  const [showConfigModal,      setShowConfigModal]      = useState(false);
+  const [isAdmin,               setIsAdmin]               = useState(false);
+
+  useEffect(() => {
+    fetch('/api/processo-comercial/rdm/config')
+      .then(res => res.json())
+      .then(resData => {
+        if (resData && resData.success) {
+          setIsAdmin(Boolean(resData.isAdmin));
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
   const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
     'capa', 'agenda', 'follow_up', 'farol_metas', 'dre', 'dre_rede',
@@ -5279,6 +5296,7 @@ export default function RdmPage() {
       { key: 'farol_metas',      label: 'Farol de Metas' },
       { key: 'cover_dre',        label: '§ Resultado DRE' },
       { key: 'dre',              label: 'Resultado DRE' },
+      { key: 'dre_acumulado',    label: 'Resultado DRE | Acumulado por Período' },
       { key: 'dre_rede',         label: 'Resultado DRE por Rede' },
       { key: 'cover_invest',     label: '§ Investimentos' },
       { key: 'invest_fases',     label: 'Resumo das Fases' },
@@ -5540,6 +5558,16 @@ export default function RdmPage() {
           year={year}
           month={month}
           slide1Data={data?.dreGerencialSlide1}
+        />
+      );
+    }
+
+    if (slideKey === 'dre_acumulado') {
+      return (
+        <SlideDreAcumulado
+          year={year}
+          month={month}
+          data={data?.dreGerencialSlideAcumulado}
         />
       );
     }
@@ -5886,6 +5914,26 @@ export default function RdmPage() {
             <span>PowerPoint</span>
           </button>
           <ThemeToggle />
+          {isAdmin && (
+            <button
+              onClick={() => setShowConfigModal(true)}
+              title="Configurar percentuais do Desafio DRE por regional"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px',
+                borderRadius: 6,
+                border: '1px solid rgba(201, 169, 110, 0.4)',
+                background: 'rgba(201, 169, 110, 0.12)',
+                color: '#c9a96e',
+                fontSize: '0.78rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <span>⚙ Configurar % Desafio</span>
+            </button>
+          )}
           <button onClick={startPresenting} className="rdm-present-btn" title="Modo Apresentação">
             ▶ Apresentar
           </button>
@@ -6293,6 +6341,16 @@ export default function RdmPage() {
         storageProvider={new RdmStorageAdapter(manager, month, year)}
         currentSlideIndex={slideIdx}
         monthName={monthName}
+      />
+
+      {/* ── Modal de Configuração dos Percentuais do Desafio DRE ── */}
+      <ModalConfigDesafioPct
+        isOpen={showConfigModal}
+        onClose={() => setShowConfigModal(false)}
+        onSuccess={() => {
+          loadData();
+        }}
+        currentManagerKey={manager}
       />
     </div>
   );
