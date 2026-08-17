@@ -115,6 +115,26 @@ export function resolveCanonicalManager(identifier: string | null | undefined): 
     return MANAGERS_MAP[rawKey];
   }
 
+  // Resolução inteligente por correspondência de prefixo/nome do gerente
+  if (rawKey.startsWith("LEANDRO") || rawKey.includes("LEANDRO")) {
+    return MANAGERS_MAP["LEANDRO"];
+  }
+  if (rawKey.startsWith("JULLIANO") || rawKey.startsWith("JULIANO") || rawKey.includes("JULLIANO") || rawKey.includes("JULIANO")) {
+    return MANAGERS_MAP["JULLIANO"];
+  }
+  if (rawKey.startsWith("LUIZ") || rawKey.includes("LUIZ")) {
+    return MANAGERS_MAP["LUIZ"];
+  }
+  if (rawKey.startsWith("JOHN") || rawKey.includes("JOHN")) {
+    return MANAGERS_MAP["JOHN"];
+  }
+  if (rawKey.includes("INSIDE")) {
+    return MANAGERS_MAP["INSIDE SALES"];
+  }
+  if (rawKey.includes("AMAZON")) {
+    return MANAGERS_MAP["AMAZON 1P"];
+  }
+
   return {
     managerId: "9999",
     managerName: identifier.trim(),

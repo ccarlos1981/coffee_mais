@@ -1189,7 +1189,8 @@ function SlideDreRede({
                 <thead>
                   <tr style={{ background: '#111827', color: '#ffffff' }}>
                     <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', width: '32px' }}>#</th>
-                    <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', borderRight: '2px solid #334155' }}>REDE / MATRIZ</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', borderRight: '1px solid #334155' }}>REDE / MATRIZ</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', width: '36px', borderRight: '2px solid #334155' }}>UF</th>
                     <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>VOLUME</th>
                     
                     {/* DESTAQUE 1: FAT */}
@@ -1270,8 +1271,15 @@ function SlideDreRede({
                         </td>
 
                         {/* Rede */}
-                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '2px solid #cbd5e1' }}>
+                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0' }}>
                           {dim.nome}
+                        </td>
+
+                        {/* UF */}
+                        <td style={{ padding: '5px 4px', textAlign: 'center', fontWeight: 800, borderRight: '2px solid #cbd5e1' }}>
+                          <span style={{ padding: '1px 4px', borderRadius: '3px', background: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: '0.58rem', fontWeight: 800, color: '#334155', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                            {dim.uf && dim.uf !== 'ND' && dim.uf !== 'BR' && dim.uf !== 'Outros' ? dim.uf : '—'}
+                          </span>
                         </td>
 
                         {/* Volume */}

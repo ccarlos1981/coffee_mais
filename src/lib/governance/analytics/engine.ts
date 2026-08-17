@@ -14,6 +14,7 @@ import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
 import { getCommercialManagerRoleOptions } from '@/lib/domain/commercial-structure';
 import { CommercialDomainService } from '@/lib/domain';
+import { resolveCanonicalManager } from '@/lib/domain/canonical';
 
 function getSupabaseClient() {
   return createAdminClient();
@@ -1700,20 +1701,21 @@ export class AnalyticsEngine {
       WHERE ${vWhereClauses.join(' AND ')}
     `;
 
-    // 2. Apuração dos Investimentos Comerciais Aprovados (cm_acoes_investimento)
+    // 2. Apuração dos Investimentos Comerciais Aprovados (v_acoes_investimento_com_gerente)
     let sqlInvestimentos = `
       SELECT COALESCE(SUM(COALESCE(valor_investimento, 0)), 0) as total_investimento
-      FROM public.cm_acoes_investimento
-      WHERE COALESCE(verba_aprovada, true) = true
-        AND mes_referencia >= ${escapeSqlValue(mesStart)}
+      FROM public.v_acoes_investimento_com_gerente
+      WHERE mes_referencia >= ${escapeSqlValue(mesStart)}
         AND mes_referencia <= ${escapeSqlValue(mesEnd)}
     `;
     if (filters.matriz && filters.matriz !== 'all') {
       const redesEscaped = filters.matriz.split(',').map(r => escapeSqlValue(r.trim())).join(',');
       sqlInvestimentos += ` AND codigo_matriz IN (${redesEscaped})`;
     }
-    if (filters.manager_id && filters.manager_id !== 'all') {
-      sqlInvestimentos += ` AND manager_id = ${escapeSqlValue(filters.manager_id)}`;
+    if (filters.manager && filters.manager !== 'all') {
+      const canonical = resolveCanonicalManager(filters.manager);
+      const mgrName = canonical?.managerName || filters.manager;
+      sqlInvestimentos += ` AND (gerente_responsavel = ${escapeSqlValue(mgrName)} OR gerente_responsavel ILIKE ${escapeSqlValue(`%${mgrName}%`)})`;
     }
 
     const [rowsSintetica, rowsInvest] = await Promise.all([
@@ -1808,7 +1810,7 @@ export class AnalyticsEngine {
 
     switch (dim) {
       case "rede":
-        selectExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros') as nome";
+        selectExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros') as nome, MAX(COALESCE(c.uf, 'ND')) as uf";
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
         groupByExpr = "COALESCE(c.matriz, v.nome_parceiro, 'Outros')";
         break;
@@ -1824,7 +1826,7 @@ export class AnalyticsEngine {
           WHEN v.nome_vendedor = 'BRUNA' THEN 'A Classificar'
           ELSE 'Sem Gerente Comercial'
         END`;
-        selectExpr = `${gerenteClassExpr} as nome`;
+        selectExpr = `${gerenteClassExpr} as nome, 'BR' as uf`;
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
         groupByExpr = gerenteClassExpr;
         break;
@@ -1838,7 +1840,7 @@ export class AnalyticsEngine {
           WHEN UPPER(c.uf) IN ('BA', 'PE', 'CE', 'RN', 'PB', 'AL', 'SE', 'MA', 'PI') THEN 'Nordeste'
           WHEN UPPER(c.uf) IN ('AM', 'PA', 'AP', 'TO', 'AC', 'RO', 'RR') THEN 'Norte'
           ELSE 'Outras Regiões'
-        END as nome`;
+        END as nome, 'BR' as uf`;
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
         groupByExpr = `CASE 
           WHEN UPPER(c.uf) IN ('SP', 'RJ', 'MG', 'ES') THEN 'Sudeste'
@@ -1851,26 +1853,26 @@ export class AnalyticsEngine {
         break;
 
       case "uf":
-        selectExpr = "COALESCE(c.uf, 'Outros') as nome";
+        selectExpr = "COALESCE(c.uf, 'Outros') as nome, COALESCE(c.uf, 'ND') as uf";
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
         groupByExpr = "COALESCE(c.uf, 'Outros')";
         break;
 
       case "canal":
-        selectExpr = "COALESCE(c.tipo_parceiro, 'Outros') as nome";
+        selectExpr = "COALESCE(c.tipo_parceiro, 'Outros') as nome, 'BR' as uf";
         joinClause = "LEFT JOIN public.cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(v.cod_parceiro AS TEXT)";
         groupByExpr = "COALESCE(c.tipo_parceiro, 'Outros')";
         break;
 
       case "sku":
-        selectExpr = "COALESCE(v.desc_produto, 'Outros') as nome";
+        selectExpr = "COALESCE(v.desc_produto, 'Outros') as nome, 'BR' as uf";
         joinClause = "";
         groupByExpr = "COALESCE(v.desc_produto, 'Outros')";
         break;
 
       case "cliente":
       default:
-        selectExpr = "COALESCE(v.nome_parceiro, 'Outros') as nome";
+        selectExpr = "COALESCE(v.nome_parceiro, 'Outros') as nome, 'ND' as uf";
         joinClause = "";
         groupByExpr = "COALESCE(v.nome_parceiro, 'Outros')";
         break;
@@ -1891,7 +1893,7 @@ export class AnalyticsEngine {
       GROUP BY ${groupByExpr} ORDER BY fat_liquido DESC LIMIT 50
     `;
 
-    const rowsDim = await this.executeSql<{ nome: string; volume: number; fat_bruto: number; descontos: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
+    const rowsDim = await this.executeSql<{ nome: string; uf?: string; volume: number; fat_bruto: number; descontos: number; fat_liquido: number; impostos: number; cpv: number }>(sqlDimensional);
 
     // Apuração de Investimentos por Dimensão (Sem rateio proporcional e sem duplicação)
     const investMap = new Map<string, number>();
@@ -1964,6 +1966,7 @@ export class AnalyticsEngine {
       return {
         id: `dim-${idx}-${r.nome}`,
         nome: r.nome,
+        uf: r.uf || 'ND',
         volume: vol,
         precoMedio: Number(pmPonderado.toFixed(2)),
         faturamentoBruto: Number(fBrut.toFixed(2)),
@@ -3282,6 +3285,7 @@ export interface DreComercialLinha {
 export interface DreComercialDimensional {
   id: string;
   nome: string;
+  uf?: string;
   volume: number;
   precoMedio: number;
   faturamentoBruto: number;

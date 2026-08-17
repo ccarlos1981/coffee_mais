@@ -118,6 +118,8 @@ export async function GET(request: Request) {
       startMonth: monthKey,
       endMonth: monthKey,
       manager: dreManagerFilter,
+      manager_id: resolvedMgr.managerId !== "9999" ? resolvedMgr.managerId : undefined,
+      channel: 'KA',
       dimension: 'rede',
     };
 
