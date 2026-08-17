@@ -34,11 +34,20 @@ function normalizePct(val: any, defaultVal: number): number {
   return Math.min(num, 1.0);
 }
 
-// ─── GET: Retorna as configurações das regionais ──────────────────────────────
+// ─── GET: Retorna as configurações das regionais por mês e global ─────────────
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
+
+    const { searchParams } = request.nextUrl;
+    const yearStr = searchParams.get('year');
+    const monthStr = searchParams.get('month');
+
+    let targetCompetencia: string | undefined;
+    if (yearStr && monthStr) {
+      targetCompetencia = `${yearStr}-${String(monthStr).padStart(2, '0')}`;
+    }
 
     const supabase = createAdminClient();
     const { data: rows, error } = await supabase
@@ -47,25 +56,39 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const configMap = new Map<string, any>();
+    const mgrMap = new Map<string, Map<string, any>>();
     (rows || []).forEach(r => {
       if (r.manager_id) {
-        configMap.set(r.manager_id, r);
+        if (!mgrMap.has(r.manager_id)) {
+          mgrMap.set(r.manager_id, new Map());
+        }
+        const compKey = r.competencia || 'GLOBAL';
+        mgrMap.get(r.manager_id)!.set(compKey, r);
       }
     });
 
     const result = MANAGERS_CONFIG_LIST.map(m => {
-      const saved = configMap.get(m.managerId);
+      const compEntries = mgrMap.get(m.managerId);
+      const monthRow = targetCompetencia && compEntries ? compEntries.get(targetCompetencia) : undefined;
+      const globalRow = compEntries ? compEntries.get('GLOBAL') : undefined;
+
+      const activeRow = monthRow || globalRow;
+      const scope = monthRow ? 'MONTH' : (globalRow ? 'GLOBAL' : 'DEFAULT');
+
       return {
         manager_id: m.managerId,
         manager_name: m.managerName,
-        is_custom: !!saved,
-        impostos_pct: saved ? Number(saved.impostos_pct) : DEFAULT_PCTS.impostos_pct,
-        investimento_pct: saved ? Number(saved.investimento_pct) : DEFAULT_PCTS.investimento_pct,
-        cpv_pct: saved ? Number(saved.cpv_pct) : DEFAULT_PCTS.cpv_pct,
-        frete_pct: saved ? Number(saved.frete_pct) : DEFAULT_PCTS.frete_pct,
-        updated_at: saved?.updated_at || null,
-        updated_by: saved?.updated_by || null,
+        scope,
+        is_custom: !!(monthRow || globalRow),
+        is_month_custom: !!monthRow,
+        is_global_custom: !!globalRow,
+        competencia: activeRow?.competencia || 'GLOBAL',
+        impostos_pct: activeRow ? Number(activeRow.impostos_pct) : DEFAULT_PCTS.impostos_pct,
+        investimento_pct: activeRow ? Number(activeRow.investimento_pct) : DEFAULT_PCTS.investimento_pct,
+        cpv_pct: activeRow ? Number(activeRow.cpv_pct) : DEFAULT_PCTS.cpv_pct,
+        frete_pct: activeRow ? Number(activeRow.frete_pct) : DEFAULT_PCTS.frete_pct,
+        updated_at: activeRow?.updated_at || null,
+        updated_by: activeRow?.updated_by || null,
       };
     });
 
@@ -76,6 +99,7 @@ export async function GET(request: NextRequest) {
       success: true,
       isAdmin,
       defaults: DEFAULT_PCTS,
+      competencia: targetCompetencia || 'GLOBAL',
       configs: result,
     });
   } catch (error: any) {
@@ -83,7 +107,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── POST: Cria/Atualiza ou Restaura Padrão de Regional (Admin Only) ──────────
+// ─── POST: Cria/Atualiza ou Restaura Padrão de Regional/Mês (Admin Only) ──────
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -92,7 +116,6 @@ export async function POST(request: NextRequest) {
     const userRole = profile?.role || '';
     const isAdmin = ['Admin', 'Admin Master'].includes(userRole);
 
-    // Trava de segurança no backend (HTTP 403)
     if (!isAdmin) {
       return NextResponse.json(
         { success: false, error: 'Acesso negado (403 Forbidden): Apenas Administradores podem alterar a configuração dos percentuais do Desafio DRE.' },
@@ -101,7 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { manager_id, manager, isReset, impostos_pct, investimento_pct, cpv_pct, frete_pct } = body;
+    const { manager_id, manager, year, month, scope, isReset, impostos_pct, investimento_pct, cpv_pct, frete_pct } = body;
 
     const rawMgr = manager_id || manager;
     if (!rawMgr) {
@@ -119,14 +142,19 @@ export async function POST(request: NextRequest) {
       displayName = 'Cristiano (Total)';
     }
 
+    const isMonthScope = scope === 'MONTH' || (!!year && !!month);
+    const targetCompetencia = isMonthScope ? `${year}-${String(month).padStart(2, '0')}` : 'GLOBAL';
+    const anoNum = isMonthScope ? Number(year) : null;
+    const mesNum = isMonthScope ? Number(month) : null;
+
     const supabase = createAdminClient();
 
     if (isReset) {
-      // Restaurar Padrão: remove configuração customizada da regional
       const { error: delErr } = await supabase
         .from('cm_rdm_desafio_config')
         .delete()
-        .eq('manager_id', canonicalId);
+        .eq('manager_id', canonicalId)
+        .eq('competencia', targetCompetencia);
 
       if (delErr) throw delErr;
 
@@ -134,22 +162,22 @@ export async function POST(request: NextRequest) {
         user.id,
         'RESTORE_RDM_DESAFIO_CONFIG',
         'cm_rdm_desafio_config',
-        { manager_id: canonicalId, displayName }
+        { manager_id: canonicalId, displayName, competencia: targetCompetencia }
       );
 
       return NextResponse.json({
         success: true,
-        message: `Configuração padrão restaurada com sucesso para ${displayName}.`,
+        message: `Configuração para ${targetCompetencia === 'GLOBAL' ? 'Padrão Geral' : targetCompetencia} restaurada com sucesso para ${displayName}.`,
         config: {
           manager_id: canonicalId,
           manager_name: displayName,
+          competencia: targetCompetencia,
           is_custom: false,
           ...DEFAULT_PCTS,
         },
       });
     }
 
-    // Normalização e validação dos percentuais
     const impFinal = normalizePct(impostos_pct, DEFAULT_PCTS.impostos_pct);
     const invFinal = normalizePct(investimento_pct, DEFAULT_PCTS.investimento_pct);
     const cpvFinal = normalizePct(cpv_pct, DEFAULT_PCTS.cpv_pct);
@@ -158,6 +186,9 @@ export async function POST(request: NextRequest) {
     const rowToUpsert = {
       manager_id: canonicalId,
       manager_name: displayName,
+      competencia: targetCompetencia,
+      ano: anoNum,
+      mes: mesNum,
       impostos_pct: impFinal,
       investimento_pct: invFinal,
       cpv_pct: cpvFinal,
@@ -168,7 +199,7 @@ export async function POST(request: NextRequest) {
 
     const { data: saved, error: upsertErr } = await supabase
       .from('cm_rdm_desafio_config')
-      .upsert(rowToUpsert, { onConflict: 'manager_id' })
+      .upsert(rowToUpsert, { onConflict: 'manager_id,competencia' })
       .select()
       .single();
 
@@ -183,10 +214,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Configuração salva com sucesso para ${displayName}.`,
+      message: `Configuração do mês ${targetCompetencia} salva com sucesso no banco de dados para ${displayName}!`,
       config: {
         manager_id: saved.manager_id,
         manager_name: saved.manager_name,
+        competencia: saved.competencia,
         is_custom: true,
         impostos_pct: Number(saved.impostos_pct),
         investimento_pct: Number(saved.investimento_pct),

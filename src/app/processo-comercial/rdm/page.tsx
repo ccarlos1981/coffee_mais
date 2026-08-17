@@ -6357,6 +6357,8 @@ export default function RdmPage() {
           loadData();
         }}
         currentManagerKey={manager}
+        currentYear={year}
+        currentMonth={month}
       />
     </div>
   );
