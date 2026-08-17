@@ -1204,6 +1204,7 @@ function SlideDreRede({
                     
                     <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>IMPOSTOS</th>
                     <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>INVEST.</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>CONTRATO</th>
                     
                     {/* DESTAQUE 2: RECEITA LÍQUIDA */}
                     <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '2px solid #64748b', borderRight: '2px solid #64748b', color: '#f8fafc', lineHeight: '1.15' }}>
@@ -1313,6 +1314,11 @@ function SlideDreRede({
                         {/* Investimento Comercial */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
                           {formatCurrency(invest)}
+                        </td>
+
+                        {/* CONTRATO (R$) */}
+                        <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(dim.contratoValor ?? dim.contrato_valor ?? dim.contrato ?? 0)}
                         </td>
 
                         {/* DESTAQUE 2: Receita Líquida */}

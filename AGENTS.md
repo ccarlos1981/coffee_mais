@@ -3142,6 +3142,58 @@ Os módulos legados do sistema permanecem 100% preservados, operacionais e intac
 
 Status de Governança: `DRE_GERENCIAL_RDM = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
 
+---
+
+## 71. Baseline Oficial — Governança do Indicador CONTRATO (R$) no Slide 10 (RDM)
+
+A partir de 17/08/2026, a arquitetura, esteira de dados, regras semânticas e o registro do indicador **CONTRATO (R$)** no Slide 10 ("Resultado DRE por Rede") do módulo RDM tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status e Classificação
+`RDM_SLIDE10_CONTRATO_VALOR = LOCKED` & `REGRA OFICIAL DIRETA DA DRE`
+
+### Diretrizes Mandatórias:
+
+1. **Origem Oficial do Dado**:
+   - **Tabela Física**: `public.cm_dre_gerencial_rede` (coluna `contrato_valor`).
+   - **Planilha de Origem**: `DRE_KA.xlsm` → guia `Análise` → coluna `Valor Contrato` (convertido para R$ absolutos no banco).
+   - **Definição**: Exibe diretamente o valor em reais (R$) da verba contratual negociada para a rede na competência correspondente, respondendo à pergunta de negócio: *"Quanto de contrato temos / investimos em cada rede?"*.
+
+2. **Granularidade e Chave Canônica**:
+   - **Granularidade**: `REDE + COMPETÊNCIA` (com `competencia` no formato `YYYY-MM`).
+   - **Chave de Relacionamento**: `UPPER(TRIM(rede))`. É expressamente proibido relacionar por posição no ranking, índice de array ou rótulo visual.
+   - **Idempotência**: Cada rede possui exatamente 1 registro único por competência em `cm_dre_gerencial_rede` (0 duplicidades).
+
+3. **Exibição Direta em Reais (Sem Percentual)**:
+   - O indicador exibe **exclusivamente o valor bruto em R$** (`contrato_valor`) transportado diretamente da DRE.
+   - É **proibida** a conversão do valor em percentual (`contrato_valor / faturamentoLiquido`), divisão ou multiplicação por faturamento, ou aplicação de estimativas/metas.
+
+4. **Independência entre Investimento Comercial e Contrato**:
+   - A coluna `INVEST.` (Investimento Comercial) e a coluna `CONTRATO` (Verba Contratual) são dois indicadores independentes no Slide 10.
+   - É proibido somar os dois campos em uma única coluna ou substituir um pelo outro na exibição da tabela.
+
+5. **Posição e Ordem Oficial das Colunas no Slide 10**:
+   - **Posição**: `INVEST. | CONTRATO | RECEITA LÍQUIDA`.
+   - **Ordem de Colunas Homologada (13 colunas)**:
+     `# | REDE / MATRIZ | UF | VOLUME | FAT | IMPOSTOS | INVEST. | CONTRATO | RECEITA LÍQUIDA | CPV | FRETE | MACO | % MACO`
+
+6. **Arquivos Envolvidos na Esteira Homologada**:
+   - `src/lib/governance/analytics/engine.ts`
+   - `src/app/processo-comercial/rdm/page.tsx`
+
+7. **Evidência de Homologação em Runtime (Julho/2026 — Julliano SPC)**:
+   - **MAMBO**: Contrato = `R$ 14.146,83` \| Investimento Comercial = `R$ 32,00`
+   - **REDE OBA**: Contrato = `R$ 2.778,68` \| Investimento Comercial = `R$ 84,00`
+   - **ZAFFARI**: Contrato = `R$ 7.109,60` \| Investimento Comercial = `R$ 85,25`
+   - **BOA**: Contrato = `R$ 3.262,56` \| Investimento Comercial = `R$ 54,80`
+   - **FORT**: Contrato = `R$ 16.944,10` \| Investimento Comercial = `R$ 125,00`
+   - **SuperVille**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 33,38`
+   - **CASA SANTA LUZIA**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 0,00`
+   - **CONFIANÇA**: Contrato = `R$ 610,38` \| Investimento Comercial = `R$ 17,00`
+   - **ARMAZEM DA MARIA**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 21,00`
+   - **INVESTIMENTOS SEM FATURAMENTO**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 585,45`
+
+Status Arquitetural: `RDM_SLIDE10_CONTRATO_VALOR = LOCKED` & `BASELINE = PERMANENTE`.
+
 
 
 
