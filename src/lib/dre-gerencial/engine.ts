@@ -10,6 +10,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveCanonicalManager } from '@/lib/domain/canonical';
 import {
   type DreKpis,
   type DreRedeRow,
@@ -19,11 +20,24 @@ import {
   type RdmSlide2Grupo,
   type DreMensalColuna,
   type DreGerencialFilters,
+  type RdmAcumuladoColuna,
+  type RdmAcumuladoValor,
+  type RdmAcumuladoLinha,
+  type RdmTrimestreData,
+  type RdmSlideAcumuladoData,
   GERENTES_KA,
   GERENTE_DISPLAY_MAP,
   GERENTE_TARGET_MAP,
   MESES_LABEL,
 } from './types';
+
+// ─── Helper de Comparação Canônica de Gerentes ───
+function isSameManagerCanonical(m1?: string, m2?: string): boolean {
+  if (!m1 || !m2) return false;
+  const c1 = resolveCanonicalManager(m1).managerId;
+  const c2 = resolveCanonicalManager(m2).managerId;
+  return c1 === c2 && c1 !== '9999';
+}
 
 // ─── Internal Types ───
 
@@ -195,21 +209,34 @@ async function fetchGerenteMap(competencia: string): Promise<Map<string, string>
 // ─── Helpers ───
 
 function resolveGerenteSistema(gerente?: string): string | undefined {
-  if (!gerente || gerente === 'KA') return undefined;
-  const map: Record<string, string> = {
+  if (!gerente || gerente === 'KA' || gerente === 'CRISTIANO' || gerente === 'CRISTIANO (Total)' || gerente === 'Total') return undefined;
+
+  const mapById: Record<string, string> = {
+    '1001': 'Leandro Saffi',
+    '1002': 'Luiz',
+    '1000': 'Julliano',
+    '1003': 'John Guedes',
+  };
+  if (mapById[gerente]) return mapById[gerente];
+
+  const canonical = resolveCanonicalManager(gerente);
+  if (canonical.managerId === '9999' || canonical.managerId === 'CRISTIANO') return undefined;
+  if (mapById[canonical.managerId]) return mapById[canonical.managerId];
+
+  const mapText: Record<string, string> = {
     'Leandro': 'Leandro Saffi',
     'John': 'John Guedes',
     'Luiz': 'Luiz',
     'Julliano': 'Julliano',
   };
-  return map[gerente] || gerente;
+  return mapText[gerente] || gerente;
 }
 
 function filterByGerente(sales: SalesRow[], gerenteSistema?: string): SalesRow[] {
   if (!gerenteSistema) {
-    return sales.filter(s => GERENTES_KA.includes(s.manager));
+    return sales.filter(s => GERENTES_KA.some(g => isSameManagerCanonical(s.manager, g)));
   }
-  return sales.filter(s => s.manager === gerenteSistema);
+  return sales.filter(s => s.manager === gerenteSistema || isSameManagerCanonical(s.manager, gerenteSistema));
 }
 
 // ─── Cálculo de KPIs para um período ───
@@ -225,9 +252,6 @@ function buildKpisForComp(
   let salesComp = sales.filter(s => s.mes === comp);
   salesComp = filterByGerente(salesComp, gerenteSistema);
 
-  // DRE data da competência
-  const dreComp = dreRede.filter(d => d.competencia === comp);
-
   // Agregar vendas por rede
   const salesByRede = new Map<string, { fat: number; qty: number }>();
   for (const s of salesComp) {
@@ -235,6 +259,18 @@ function buildKpisForComp(
     const ex = salesByRede.get(s.rede);
     if (ex) { ex.fat += s.fat; ex.qty += s.qty; }
     else salesByRede.set(s.rede, { fat: s.fat, qty: s.qty });
+  }
+
+  // DRE data da competência (filtrado por gerente canônico)
+  let dreComp = dreRede.filter(d => d.competencia === comp);
+  if (gerenteSistema) {
+    dreComp = dreComp.filter(d =>
+      salesByRede.has(d.rede) || isSameManagerCanonical(d.gerente_atual, gerenteSistema)
+    );
+  } else {
+    dreComp = dreComp.filter(d =>
+      salesByRede.has(d.rede) || GERENTES_KA.some(g => isSameManagerCanonical(d.gerente_atual, g))
+    );
   }
 
   // DRE por rede
@@ -303,7 +339,8 @@ function buildKpisForComp(
 function getDesafio(targets: TargetRow[], gerente?: string, redeFiltro?: string): { revenue: number | null; volume: number | null } {
   if (redeFiltro) return { revenue: null, volume: null };
 
-  if (!gerente || gerente === 'KA') {
+  const isConsolidado = !gerente || gerente === 'KA' || gerente === 'CRISTIANO' || gerente === 'CRISTIANO (Total)';
+  if (isConsolidado) {
     let rev = 0, vol = 0;
     for (const g of GERENTES_KA) {
       const targetName = GERENTE_TARGET_MAP[g];
@@ -324,6 +361,35 @@ function getDesafio(targets: TargetRow[], gerente?: string, redeFiltro?: string)
   };
 }
 
+async function fetchDesafioConfig(gerente?: string): Promise<{ impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number }> {
+  const defaults = { impostos_pct: 0.035, investimento_pct: 0.100, cpv_pct: 0.460, frete_pct: 0.030 };
+  try {
+    let canonicalId = 'CRISTIANO';
+    if (gerente && gerente !== 'CRISTIANO' && gerente !== 'CRISTIANO (Total)' && gerente !== 'KA') {
+      canonicalId = resolveCanonicalManager(gerente).managerId;
+      if (canonicalId === '9999') canonicalId = 'CRISTIANO';
+    }
+    const supabase = createAdminClient();
+    const { data } = await supabase
+      .from('cm_rdm_desafio_config')
+      .select('impostos_pct, investimento_pct, cpv_pct, frete_pct')
+      .eq('manager_id', canonicalId)
+      .maybeSingle();
+
+    if (data) {
+      return {
+        impostos_pct: Number(data.impostos_pct ?? defaults.impostos_pct),
+        investimento_pct: Number(data.investimento_pct ?? defaults.investimento_pct),
+        cpv_pct: Number(data.cpv_pct ?? defaults.cpv_pct),
+        frete_pct: Number(data.frete_pct ?? defaults.frete_pct),
+      };
+    }
+  } catch (err) {
+    console.error('[Engine] Erro ao carregar cm_rdm_desafio_config:', err);
+  }
+  return defaults;
+}
+
 // ─── Slide 1 Builder ───
 
 function buildSlide1(
@@ -332,6 +398,7 @@ function buildSlide1(
   mesAnterior: DreKpis,
   anoAnterior: DreKpis,
   competencia: string,
+  customPcts?: { impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number },
 ): RdmSlide1Data {
   const [ano, mes] = competencia.split('-').map(Number);
   const mesLabel = MESES_LABEL[mes] || '';
@@ -350,11 +417,13 @@ function buildSlide1(
     };
   }
 
+  const pcts = customPcts || { impostos_pct: 0.035, investimento_pct: 0.100, cpv_pct: 0.460, frete_pct: 0.030 };
+
   const desafioFat = desafio.revenue;
-  const desafioImpostos = desafioFat !== null ? desafioFat * 0.035 : null;
-  const desafioFrete = desafioFat !== null ? desafioFat * 0.03 : null;
-  const desafioInvest = desafioFat !== null ? desafioFat * 0.10 : null;
-  const desafioCPV = desafioFat !== null ? desafioFat * 0.46 : null;
+  const desafioImpostos = desafioFat !== null ? desafioFat * pcts.impostos_pct : null;
+  const desafioFrete = desafioFat !== null ? desafioFat * pcts.frete_pct : null;
+  const desafioInvest = desafioFat !== null ? desafioFat * pcts.investimento_pct : null;
+  const desafioCPV = desafioFat !== null ? desafioFat * pcts.cpv_pct : null;
   const desafioRecLiq = (desafioFat !== null && desafioImpostos !== null && desafioInvest !== null)
     ? desafioFat - desafioImpostos - desafioInvest
     : null;
@@ -395,10 +464,11 @@ export async function getRdmData(filters: DreGerencialFilters): Promise<{ slide1
 
   const gerenteSistema = resolveGerenteSistema(filters.gerente);
 
-  const [sales, dreRede, targets] = await Promise.all([
+  const [sales, dreRede, targets, customPcts] = await Promise.all([
     fetchSales(competencias),
     fetchDreRede(competencias),
     fetchTargets(anoComp, mesComp),
+    fetchDesafioConfig(filters.gerente),
   ]);
 
   const kpisActual = buildKpisForComp(sales, dreRede, compActual, gerenteSistema, filters.rede);
@@ -406,7 +476,7 @@ export async function getRdmData(filters: DreGerencialFilters): Promise<{ slide1
   const kpisAnoAnt = buildKpisForComp(sales, dreRede, compAnoAnt, gerenteSistema, filters.rede);
 
   const desafio = getDesafio(targets, filters.gerente, filters.rede);
-  const slide1 = buildSlide1(kpisActual, desafio, kpisPrev, kpisAnoAnt, competencia);
+  const slide1 = buildSlide1(kpisActual, desafio, kpisPrev, kpisAnoAnt, competencia, customPcts);
   const slide2 = await buildSlide2(compActual, dreRede, sales, gerenteSistema, filters.rede);
 
   return { slide1, slide2 };
@@ -614,4 +684,231 @@ export async function getCompetenciasDisponiveis(ano: number): Promise<string[]>
     .like('mes', `${ano}-%`);
 
   return [...new Set((data || []).map(r => r.mes))].sort();
+}
+
+// ─── API: RDM Slide DRE Acumulado por Período ───
+
+async function fetchYearTargets(ano: number): Promise<{ month: number; manager: string; target_revenue: number; target_tons: number }[]> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from('targets')
+    .select('month, manager, target_revenue, target_tons')
+    .eq('year', ano);
+
+  if (error) throw new Error(`Erro ao buscar targets do ano: ${error.message}`);
+  return (data || []).map(t => ({
+    month: Number(t.month || 0),
+    manager: String(t.manager || ''),
+    target_revenue: Number(t.target_revenue || 0),
+    target_tons: Number(t.target_tons || 0),
+  }));
+}
+
+export async function getRdmDreAcumuladoData(year: number, gerente?: string): Promise<RdmSlideAcumuladoData> {
+  const competencias = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`);
+  const gerenteSistema = resolveGerenteSistema(gerente);
+
+  const [sales, dreRede, yearTargets, customPcts] = await Promise.all([
+    fetchSales(competencias),
+    fetchDreRede(competencias),
+    fetchYearTargets(year),
+    fetchDesafioConfig(gerente),
+  ]);
+
+  const salesCompSet = new Set(sales.map(s => s.mes));
+
+  const monthlyData: {
+    month: number;
+    comp: string;
+    hasActualData: boolean;
+    actual: DreKpis;
+    desafio: { revenue: number | null; volume: number | null };
+    desafioImpostos: number | null;
+    desafioInvest: number | null;
+    desafioCPV: number | null;
+    desafioFrete: number | null;
+    desafioRecLiq: number | null;
+    desafioMargem: number | null;
+  }[] = [];
+
+  for (let m = 1; m <= 12; m++) {
+    const comp = `${year}-${String(m).padStart(2, '0')}`;
+    const actualKpis = buildKpisForComp(sales, dreRede, comp, gerenteSistema);
+    const hasActualData = actualKpis.faturamento > 0 || actualKpis.volume > 0 || actualKpis.cpv > 0 || actualKpis.investComercial > 0;
+
+    const mTargets: TargetRow[] = yearTargets.filter(t => t.month === m).map(t => ({
+      manager: t.manager,
+      target_revenue: t.target_revenue,
+      target_tons: t.target_tons,
+    }));
+
+    const mDesafio = getDesafio(mTargets, gerente);
+    const fatDesafio = mDesafio.revenue;
+    const volDesafio = mDesafio.volume;
+
+    const impDesafio = fatDesafio !== null ? fatDesafio * customPcts.impostos_pct : null;
+    const invDesafio = fatDesafio !== null ? fatDesafio * customPcts.investimento_pct : null;
+    const cpvDesafio = fatDesafio !== null ? fatDesafio * customPcts.cpv_pct : null;
+    const freDesafio = fatDesafio !== null ? fatDesafio * customPcts.frete_pct : null;
+    const recLiqDesafio = (fatDesafio !== null && impDesafio !== null && invDesafio !== null)
+      ? fatDesafio - impDesafio - invDesafio
+      : null;
+    const mcDesafio = (recLiqDesafio !== null && cpvDesafio !== null && freDesafio !== null)
+      ? recLiqDesafio - cpvDesafio - freDesafio
+      : null;
+
+    monthlyData.push({
+      month: m,
+      comp,
+      hasActualData,
+      actual: actualKpis,
+      desafio: { revenue: fatDesafio, volume: volDesafio },
+      desafioImpostos: impDesafio,
+      desafioInvest: invDesafio,
+      desafioCPV: cpvDesafio,
+      desafioFrete: freDesafio,
+      desafioRecLiq: recLiqDesafio,
+      desafioMargem: mcDesafio,
+    });
+  }
+
+  const trimestresDef = [
+    { trimestre: 1, label: '1º TRIMESTRE', months: [1, 2, 3], labels: ['JAN', 'FEV', 'MAR'] },
+    { trimestre: 2, label: '2º TRIMESTRE', months: [4, 5, 6], labels: ['ABR', 'MAI', 'JUN'] },
+    { trimestre: 3, label: '3º TRIMESTRE', months: [7, 8, 9], labels: ['JUL', 'AGO', 'SET'] },
+    { trimestre: 4, label: '4º TRIMESTRE', months: [10, 11, 12], labels: ['OUT', 'NOV', 'DEZ'] },
+  ];
+
+  const trimestresData: RdmTrimestreData[] = trimestresDef.map(tDef => {
+    const colunas: RdmAcumuladoColuna[] = tDef.months.map((m, idx) => ({
+      key: `M_${m}`,
+      label: tDef.labels[idx],
+      isAcum: false,
+      hasData: monthlyData[m - 1].hasActualData,
+    }));
+    colunas.push({
+      key: `ACUM_Q${tDef.trimestre}`,
+      label: 'ACUM',
+      isAcum: true,
+      hasData: tDef.months.some(m => monthlyData[m - 1].hasActualData),
+    });
+
+    const kpiDefs: { kpi: string; getKey: (m: typeof monthlyData[0]) => { actual: number; desafio: number | null }; isHighlighted?: boolean }[] = [
+      {
+        kpi: 'Volume',
+        getKey: (m) => ({ actual: m.actual.volume, desafio: m.desafio.volume }),
+      },
+      {
+        kpi: 'Faturamento',
+        getKey: (m) => ({ actual: m.actual.faturamento, desafio: m.desafio.revenue }),
+        isHighlighted: true,
+      },
+      {
+        kpi: 'Impostos',
+        getKey: (m) => ({ actual: m.actual.impostos, desafio: m.desafioImpostos }),
+      },
+      {
+        kpi: 'Invest. Comercial',
+        getKey: (m) => ({ actual: m.actual.investComercial, desafio: m.desafioInvest }),
+      },
+      {
+        kpi: 'Receita Líquida',
+        getKey: (m) => ({ actual: m.actual.receitaLiquida, desafio: m.desafioRecLiq }),
+        isHighlighted: true,
+      },
+      {
+        kpi: 'CPV',
+        getKey: (m) => ({ actual: m.actual.cpv, desafio: m.desafioCPV }),
+      },
+      {
+        kpi: 'Frete',
+        getKey: (m) => ({ actual: m.actual.frete, desafio: m.desafioFrete }),
+      },
+      {
+        kpi: 'Margem de Contribuição',
+        getKey: (m) => ({ actual: m.actual.margemContribuicao, desafio: m.desafioMargem }),
+        isHighlighted: true,
+      },
+    ];
+
+    const linhas: RdmAcumuladoLinha[] = kpiDefs.map(kDef => {
+      const valores: Record<string, RdmAcumuladoValor> = {};
+
+      let qDesafioSum = 0;
+      let hasQDesafio = false;
+      let qActualSum = 0;
+      let hasQActual = false;
+
+      tDef.months.forEach(m => {
+        const mData = monthlyData[m - 1];
+        const { actual, desafio } = kDef.getKey(mData);
+
+        const colKey = `M_${m}`;
+        const actualVal = mData.hasActualData ? actual : null;
+
+        let delta: number | null = null;
+        let pctDelta: number | null = null;
+
+        if (actualVal !== null && desafio !== null) {
+          delta = actualVal - desafio;
+          pctDelta = desafio !== 0 ? (actualVal / desafio - 1) * 100 : null;
+        }
+
+        valores[colKey] = {
+          desafio,
+          actual: actualVal,
+          delta,
+          pctDelta,
+        };
+
+        if (desafio !== null) {
+          qDesafioSum += desafio;
+          hasQDesafio = true;
+        }
+
+        if (actualVal !== null) {
+          qActualSum += actualVal;
+          hasQActual = true;
+        }
+      });
+
+      const acumKey = `ACUM_Q${tDef.trimestre}`;
+      const acumDesafio = hasQDesafio ? qDesafioSum : null;
+      const acumActual = hasQActual ? qActualSum : null;
+
+      let acumDelta: number | null = null;
+      let acumPctDelta: number | null = null;
+
+      if (acumActual !== null && acumDesafio !== null) {
+        acumDelta = acumActual - acumDesafio;
+        acumPctDelta = acumDesafio !== 0 ? (acumActual / acumDesafio - 1) * 100 : null;
+      }
+
+      valores[acumKey] = {
+        desafio: acumDesafio,
+        actual: acumActual,
+        delta: acumDelta,
+        pctDelta: acumPctDelta,
+      };
+
+      return {
+        kpi: kDef.kpi,
+        isHighlighted: kDef.isHighlighted,
+        valores,
+      };
+    });
+
+    return {
+      trimestre: tDef.trimestre,
+      label: tDef.label,
+      colunas,
+      linhas,
+    };
+  });
+
+  return {
+    titulo: `Resultado DRE | Acumulado por Período — ${year}`,
+    year,
+    trimestres: trimestresData,
+  };
 }

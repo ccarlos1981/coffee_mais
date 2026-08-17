@@ -5,7 +5,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
-import { getRdmData } from "@/lib/dre-gerencial/engine";
+import { getRdmData, getRdmDreAcumuladoData } from "@/lib/dre-gerencial/engine";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -587,6 +587,11 @@ export async function GET(request: Request) {
           curYear: year,
         };
       })(),
+
+      dreGerencialSlideAcumulado: await getRdmDreAcumuladoData(
+        year,
+        manager === CRISTIANO || manager === "CRISTIANO (Total)" ? 'KA' : manager
+      ),
 
       prevYear,
     });
