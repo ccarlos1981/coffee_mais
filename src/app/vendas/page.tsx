@@ -92,6 +92,11 @@ interface ClientRow {
   fat: number;
   qty: number;
   maco: number;
+  channel?: string;
+  cod_parceiro?: string;
+  manager?: string;
+  manager_id?: string;
+  valor_venda_futura?: number;
 }
 
 interface ManagerData {

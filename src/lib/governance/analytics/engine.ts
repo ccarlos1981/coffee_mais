@@ -57,47 +57,146 @@ export class AnalyticsEngine {
     const pmFilters = { ...filters, startMonth: pmStartMonth, endMonth: pmEndMonth };
     const pyFilters = { ...filters, startMonth: pyStartMonth, endMonth: pyEndMonth };
 
-    const whereCur = buildWhereClause(curFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
-    const whereCurClient = buildWhereClause(curFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
-    const wherePm = buildWhereClause(pmFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
-    const wherePmClient = buildWhereClause(pmFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
-    const wherePy = buildWhereClause(pyFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL);
-    const wherePyClient = buildWhereClause(pyFilters, OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL);
+    const sourceTable = OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME;
 
-    const sqlCur = `SELECT * FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${whereCur}`;
-    const sqlCurClient = `
-      SELECT mes, COALESCE(manager, 'Outros') as manager, COALESCE(manager_id, '9999') as manager_id,
-             COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
-             SUM(fat) as fat, SUM(qty) as qty, SUM(maco) as maco, SUM(valor_venda_futura) as valor_venda_futura
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${whereCurClient}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+    // Unificação de consulta para eliminar overhead e timeouts
+    const baseFilters = { ...filters, startMonth: null, endMonth: null, startDate: null, endDate: null };
+    const whereBase = buildWhereClause(baseFilters, sourceTable);
+
+    const curFormatted = curStartMonth.replace('-', '_');
+    const pmFormatted = pmStartMonth.replace('-', '_');
+    const pyFormatted = pyStartMonth.replace('-', '_');
+
+    const monthsClause = `ano_mes IN ('${curFormatted}', '${pmFormatted}', '${pyFormatted}')`;
+    const fullWhere = whereBase.includes('WHERE 1=1 AND') 
+      ? whereBase.replace('WHERE 1=1 AND', `WHERE 1=1 AND ${monthsClause} AND`)
+      : whereBase.replace('WHERE 1=1', `WHERE 1=1 AND ${monthsClause}`);
+
+    const sqlUnified = `
+      SELECT 
+        ano || '-' || lpad(mes::text, 2, '0') as mes,
+        ano::text as ano,
+        COALESCE(manager, 'SEM RESPONSÁVEL') as manager,
+        COALESCE(manager_id, '9999') as manager_id,
+        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as rede,
+        COALESCE(tipo_produto, 'Outros') as tipo_produto,
+        COALESCE(uf, 'SP') as uf,
+        COALESCE(channel, 'Outros') as channel,
+        SUM(net_value) as fat,
+        SUM(quantity) as qty,
+        SUM(imposto) as imposto,
+        SUM(custo_total) as cpv,
+        SUM(net_value) * ${DRE_FRETE_PERCENTUAL} as frete,
+        SUM(maco) as maco_raw,
+        0 as valor_venda_futura,
+        COUNT(*) as num_vendas
+      FROM ${sourceTable}
+      ${fullWhere}
+      GROUP BY ano, mes, COALESCE(manager, 'SEM RESPONSÁVEL'), COALESCE(manager_id, '9999'),
+               COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado'), COALESCE(tipo_produto, 'Outros'),
+               COALESCE(uf, 'SP'), COALESCE(channel, 'Outros')
     `;
 
-    const sqlPm = `SELECT mes, manager, manager_id, fat, qty, maco FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${wherePm}`;
-    const sqlPmClient = `
-      SELECT mes, COALESCE(manager, 'Outros') as manager, COALESCE(manager_id, '9999') as manager_id,
-             COALESCE(rede, nome_parceiro, 'Não Mapeado') as client, SUM(fat) as fat, SUM(qty) as qty, SUM(maco) as maco
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${wherePmClient}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
+    const sqlInvestimentos = `
+      SELECT 
+        mes_referencia,
+        COALESCE(gerente_responsavel, 'Outros') as gerente,
+        UPPER(TRIM(COALESCE(codigo_matriz, rede, ''))) as rede_key,
+        SUM(valor_investimento) as valor_investimento
+      FROM public.v_acoes_investimento_com_gerente
+      WHERE mes_referencia IN ('${curStartMonth}', '${pmStartMonth}', '${pyStartMonth}')
+      GROUP BY mes_referencia, COALESCE(gerente_responsavel, 'Outros'), UPPER(TRIM(COALESCE(codigo_matriz, rede, '')))
     `;
 
-    const sqlPy = `SELECT mes, manager, manager_id, fat, qty, maco FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL} ${wherePy}`;
-    const sqlPyClient = `
-      SELECT mes, COALESCE(manager, 'Outros') as manager, COALESCE(manager_id, '9999') as manager_id,
-             COALESCE(rede, nome_parceiro, 'Não Mapeado') as client, SUM(fat) as fat, SUM(qty) as qty, SUM(maco) as maco
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL} ${wherePyClient}
-      GROUP BY mes, COALESCE(manager, 'Outros'), COALESCE(manager_id, '9999'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
-    `;
-
-    const [rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient, paceResult] = await Promise.all([
-      this.executeSql(sqlCur),
-      this.executeSql(sqlCurClient),
-      this.executeSql(sqlPm),
-      this.executeSql(sqlPmClient),
-      this.executeSql(sqlPy),
-      this.executeSql(sqlPyClient),
+    const [allRows, investRows, paceResult] = await Promise.all([
+      this.executeSql<any>(sqlUnified),
+      this.executeSql<any>(sqlInvestimentos),
       this.calculatePace(filters),
     ]);
+
+    const investMapByRede = new Map<string, number>();
+    const investMapByMgr = new Map<string, number>();
+
+    for (const inv of investRows || []) {
+      const mesRef = inv.mes_referencia || '';
+      const redeK = `${mesRef}|${inv.rede_key}`;
+      const mgrK = `${mesRef}|${inv.gerente}`;
+      const val = Number(inv.valor_investimento || 0);
+
+      investMapByRede.set(redeK, (investMapByRede.get(redeK) || 0) + val);
+      investMapByMgr.set(mgrK, (investMapByMgr.get(mgrK) || 0) + val);
+    }
+
+    // Processar cálculo oficial de Margem de Contribuição para cada linha
+    const processedRows = (allRows || []).map((r: any) => {
+      const fat = Number(r.fat || 0);
+      const imp = Number(r.imposto || 0);
+      const cpv = Number(r.cpv || 0);
+      const frete = Number(r.frete || 0);
+      const invMgr = investMapByMgr.get(`${r.mes}|${r.manager}`) || 0;
+      const invManual = filters.investmentPct && filters.investmentPct > 0 ? fat * filters.investmentPct : 0;
+      const invest = invManual > 0 ? invManual : invMgr;
+      const macoOficial = fat - imp - frete - invest - cpv;
+
+      return {
+        ...r,
+        fat,
+        qty: Number(r.qty || 0),
+        imposto: imp,
+        cpv,
+        frete,
+        investimento: invest,
+        maco: Number(macoOficial.toFixed(2)),
+      };
+    });
+
+    const rowsCur = processedRows.filter((r: any) => r.mes === curStartMonth);
+    const rowsPm = processedRows.filter((r: any) => r.mes === pmStartMonth);
+    const rowsPy = processedRows.filter((r: any) => r.mes === pyStartMonth);
+
+    const deriveClientRows = (baseRows: any[]) => {
+      const clientMap = new Map<string, any>();
+      for (const r of baseRows) {
+        const key = `${r.mes}|${r.manager_id}|${r.rede}`;
+        const existing = clientMap.get(key);
+        const invRede = investMapByRede.get(`${r.mes}|${String(r.rede).toUpperCase().trim()}`) || 0;
+        const invManual = filters.investmentPct && filters.investmentPct > 0 ? r.fat * filters.investmentPct : 0;
+        const invest = invManual > 0 ? invManual : invRede;
+        const macoClient = r.fat - r.imposto - r.frete - invest - r.cpv;
+
+        if (!existing) {
+          clientMap.set(key, {
+            mes: r.mes,
+            manager: r.manager,
+            manager_id: r.manager_id,
+            client: r.rede,
+            channel: r.channel,
+            fat: Number(r.fat || 0),
+            qty: Number(r.qty || 0),
+            imposto: Number(r.imposto || 0),
+            cpv: Number(r.cpv || 0),
+            frete: Number(r.frete || 0),
+            investimento: invest,
+            maco: Number(macoClient.toFixed(2)),
+            valor_venda_futura: 0
+          });
+        } else {
+          existing.fat += Number(r.fat || 0);
+          existing.qty += Number(r.qty || 0);
+          existing.imposto += Number(r.imposto || 0);
+          existing.cpv += Number(r.cpv || 0);
+          existing.frete += Number(r.frete || 0);
+          existing.investimento += invest;
+          const updatedMaco = existing.fat - existing.imposto - existing.frete - existing.investimento - existing.cpv;
+          existing.maco = Number(updatedMaco.toFixed(2));
+        }
+      }
+      return Array.from(clientMap.values());
+    };
+
+    const rowsCurClient = deriveClientRows(rowsCur);
+    const rowsPmClient = deriveClientRows(rowsPm);
+    const rowsPyClient = deriveClientRows(rowsPy);
 
     return {
       rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient,

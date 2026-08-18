@@ -18,30 +18,40 @@ export interface RuleEvaluationResult {
 
 /**
  * Camada 2 – Motor de Regras Comerciais
- * Avalia as regras comerciais em ordem de prioridade sobre os dados do cliente correspondido.
+ * Avalia as regras comerciais respeitando estritamente a SSOT (base_atendimento).
  */
 export function avaliarRegrasComerciais(
   matchedRecord: any,
   origem: 'base_atendimento' | 'cm_faturamento',
   regras: ResponsavelRegra[]
 ): RuleEvaluationResult | null {
-  // If matched from base_atendimento and base_atendimento has a manager defined,
-  // that is the official manager! We should prioritize this and bypass further rules,
-  // unless there is a specific rule mapping it.
-  // Wait, let's verify if there is an official manager from base_atendimento.
+  // PRIORIDADE 1 ABSOLUTA (SSOT): Se veio de base_atendimento e tem gerente, ele é soberano!
   if (origem === 'base_atendimento' && matchedRecord.manager) {
-    // Check if there is an active rule that matches first, but if not, we return this manager.
-    // Let's first search rules.
+    const ssotRegra: ResponsavelRegra = {
+      id: 'ssot_base_atendimento',
+      prioridade: 1,
+      tipo_regra: 'GERENTE_SSOT',
+      campo_origem: 'manager',
+      operador: 'EQUALS',
+      valor_origem: matchedRecord.manager,
+      responsavel_resultado: matchedRecord.manager,
+      ativo: true,
+      observacao: 'Gerente oficial cadastrado na base de atendimento (SSOT)'
+    };
+    return {
+      responsavelSugerido: matchedRecord.manager,
+      regraAplicada: ssotRegra,
+      motivo: `Gerente comercial oficial "${matchedRecord.manager}" homologado na base de atendimento (SSOT)`
+    };
   }
 
-  // Filter and sort active rules by priority
+  // Apenas para registros que NÃO possuem gerente definido em base_atendimento:
   const activeRegras = regras
     .filter(r => r.ativo)
     .sort((a, b) => a.prioridade - b.prioridade);
 
   for (const regra of activeRegras) {
     const campo = regra.campo_origem;
-    // Get value from matchedRecord (could be f.nome_vendedor or b.canal or b.manager)
     const valorCampoRaw = matchedRecord[campo];
     if (valorCampoRaw === undefined || valorCampoRaw === null) {
       continue;
@@ -81,26 +91,6 @@ export function avaliarRegrasComerciais(
         motivo
       };
     }
-  }
-
-  // Fallback: If no rule matched, but base_atendimento had a manager, use that!
-  if (origem === 'base_atendimento' && matchedRecord.manager) {
-    const dummyRegra: ResponsavelRegra = {
-      id: 'fallback_manager',
-      prioridade: 9999,
-      tipo_regra: 'GERENTE',
-      campo_origem: 'manager',
-      operador: 'EQUALS',
-      valor_origem: matchedRecord.manager,
-      responsavel_resultado: matchedRecord.manager,
-      ativo: true,
-      observacao: 'Fallback para gerente da base de atendimento'
-    };
-    return {
-      responsavelSugerido: matchedRecord.manager,
-      regraAplicada: dummyRegra,
-      motivo: `Gerente comercial oficial "${matchedRecord.manager}" encontrado na base de atendimento`
-    };
   }
 
   return null;

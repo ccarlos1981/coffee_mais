@@ -21,16 +21,24 @@ export interface ImportPreviewResult {
   batchId: string;
   filename: string;
   fileSize: number;
+  templateName: string;
+  templateRecognized: boolean;
   period: string;
   periodStart: string;
   periodEnd: string;
+  periodFormatted: string;
   totalRows: number;
   uniquePartners: number;
   uniqueProducts: number;
+  unmappedPartnersCount: number;
   totalGross: number;
+  totalApproved: number;
+  totalCancelled: number;
   totalDevolution: number;
   totalNet: number;
   totalVendaFutura: number;
+  topsFound: string[];
+  cfopsFound: string[];
   warningsCount: number;
   errorsCount: number;
   qualityScore: number;
@@ -226,26 +234,39 @@ export class ImportService {
     const batchId = logEntry.id;
 
     try {
-      await this.updateLogProgress(batchId, 10, "Lendo Arquivo");
-
-      // 4. Parse Excel Workbook
+      // 4. Parse Excel Workbook & Template Recognition
       const workbook = XLSX.read(fileBuffer, { type: "array" });
       let sheet: XLSX.WorkSheet | null = null;
       let sheetName = "";
+      let headerIndex = 0;
+      let detectedHeaders: string[] = [];
 
-      // Find the first sheet that matches the faturamento columns
-      const expectedKeys = ["Cód. CFOP", "Dt. Neg", "Produto"];
+      // Colunas obrigatórias do Template Oficial CFOP
+      const CFOP_REQUIRED_COLUMNS = [
+        "Cód. Parceiro",
+        "Parceiro",
+        "Status NFe",
+        "Vlr. Total Líq.",
+        "Vendedor",
+        "Cód. TOP",
+        "Cód. CFOP",
+        "Nro. Nota",
+      ];
+
+      // Procura a primeira aba que contenha o cabeçalho CFOP
       for (const name of workbook.SheetNames) {
         const s = workbook.Sheets[name];
         const rawRows = XLSX.utils.sheet_to_json(s, { header: 1 }) as any[][];
-        // Scan first 20 rows for headers
-        for (let i = 0; i < Math.min(20, rawRows.length); i++) {
+        for (let i = 0; i < Math.min(25, rawRows.length); i++) {
           const row = rawRows[i];
           if (row && Array.isArray(row)) {
-            const matchCount = expectedKeys.filter((k) => row.includes(k)).length;
-            if (matchCount >= 2) {
+            const rowStr = row.map((c) => String(c || "").trim());
+            const matchCount = CFOP_REQUIRED_COLUMNS.filter((k) => rowStr.includes(k)).length;
+            if (matchCount >= 4) {
               sheet = s;
               sheetName = name;
+              headerIndex = i;
+              detectedHeaders = rowStr;
               break;
             }
           }
@@ -255,23 +276,14 @@ export class ImportService {
 
       if (!sheet) {
         throw new Error(
-          "Não foi encontrada nenhuma aba de faturamento válida no arquivo. Certifique-se de que a planilha contenha as colunas obrigatórias: 'Cód. CFOP', 'Dt. Neg' e 'Produto'."
+          "Não foi encontrada nenhuma aba de faturamento com o layout oficial CFOP. Certifique-se de que a planilha contenha as colunas obrigatórias: 'Cód. Parceiro', 'Parceiro', 'Status NFe', 'Vlr. Total Líq.', 'Vendedor', 'Cód. TOP', 'Cód. CFOP', 'Nro. Nota'."
         );
       }
 
-      await this.updateLogProgress(batchId, 30, "Validando registros");
+      await this.updateLogProgress(batchId, 30, "Validando estrutura e colunas");
 
-      // 5. Parse rows and execute validation
-      // Find header range row index
-      let headerIndex = 0;
-      const rawRows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
-      for (let i = 0; i < Math.min(20, rawRows.length); i++) {
-        const row = rawRows[i];
-        if (row && expectedKeys.filter((k) => row.includes(k)).length >= 2) {
-          headerIndex = i;
-          break;
-        }
-      }
+      const missingRequiredCols = CFOP_REQUIRED_COLUMNS.filter((k) => !detectedHeaders.includes(k));
+      const templateRecognized = missingRequiredCols.length === 0;
 
       const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, {
         defval: null,
@@ -282,14 +294,30 @@ export class ImportService {
       const stagingRows: any[] = [];
       const partnersSet = new Set<string>();
       const productsSet = new Set<string>();
+      const topsSet = new Set<string>();
+      const cfopsSet = new Set<string>();
       const datesList: string[] = [];
 
       let totalGross = 0;
+      let totalApproved = 0;
+      let totalCancelled = 0;
       let totalDevolution = 0;
       let totalNet = 0;
       let totalVendaFutura = 0;
       let errorsCount = 0;
       let warningsCount = 0;
+
+      if (missingRequiredCols.length > 0) {
+        errorsCount++;
+        inconsistencies.push({
+          line: headerIndex + 1,
+          field: missingRequiredCols.join(", "),
+          value: "Ausente",
+          message: `Colunas obrigatórias do template CFOP ausentes: ${missingRequiredCols.join(", ")}.`,
+          severity: "ERROR",
+          action: "Utilize a planilha padrão de exportação CFOP contendo todas as colunas obrigatórias.",
+        });
+      }
 
       // Check if header contains Venda Entrega Futura
       const sampleRow = jsonData[0] || {};
@@ -365,13 +393,15 @@ export class ImportService {
 
       for (let index = 0; index < jsonData.length; index++) {
         const row = jsonData[index];
-        const lineNum = index + headerIndex + 2; // Excel row numbering is 1-indexed, and header offset is applied
+        const lineNum = index + headerIndex + 2;
 
         const rawDate = row["Dt. Neg"] || row["Data Faturamento"];
         const parsedDate = parseRowDate(rawDate);
         const codCfop = row["Cód. CFOP"] ? String(row["Cód. CFOP"]).trim() : null;
         const codProduto = row["Cód. Produto"] ? String(row["Cód. Produto"]).trim() : null;
         const codParceiro = row["Cód. Parceiro"] ? String(row["Cód. Parceiro"]).trim() : null;
+        const rawStatusNFe = row["Status NFe"] ? String(row["Status NFe"]).trim().toUpperCase() : null;
+        const isCancelada = rawStatusNFe === "CANCELADA" || rawStatusNFe === "CANCELADO";
 
         // Skip completely empty rows
         const isAllNull = Object.values(row).every((v) => v === null || v === "");
@@ -445,28 +475,31 @@ export class ImportService {
         const unitPrice = parseNumber(row["Vlr. Unitário"]);
         const discount = parseNumber(row["Vlr. Desconto"]);
         
-        // Faturamento Líquido calculation rule:
-        let netVal = row["Vlr. Total Líq."] !== undefined && row["Vlr. Total Líq."] !== null 
-          ? parseNumber(row["Vlr. Total Líq."]) 
-          : null;
-
         const bruto = parseNumber(row["Vlr. Bruto"] || row["Faturamento Bruto"] || (qty * unitPrice));
         const dev = parseNumber(row["Vlr. Devolução"] || row["Devolução"]);
         const valVendaFutura = parseNumber(row["Venda Entrega Futura"] || row["Venda Futura"] || row["valor_venda_futura"]);
 
-        if (netVal === null) {
-          netVal = bruto - dev;
-        }
+        let netVal = row["Vlr. Total Líq."] !== undefined && row["Vlr. Total Líq."] !== null 
+          ? parseNumber(row["Vlr. Total Líq."]) 
+          : (bruto - dev);
 
         // Metrics aggregation
         if (parsedDate) datesList.push(parsedDate);
         if (codParceiro) partnersSet.add(codParceiro);
         if (codProduto) productsSet.add(codProduto);
+        if (row["Cód. TOP"]) topsSet.add(String(row["Cód. TOP"]).trim());
+        if (row["Cód. CFOP"]) cfopsSet.add(String(row["Cód. CFOP"]).trim());
 
         totalGross += bruto;
         totalDevolution += dev;
-        totalNet += netVal;
         totalVendaFutura += valVendaFutura;
+
+        if (isCancelada) {
+          totalCancelled += (bruto || netVal);
+        } else {
+          totalApproved += netVal;
+          totalNet += netVal;
+        }
 
         stagingRows.push({
           batch_id: batchId,
@@ -494,7 +527,7 @@ export class ImportService {
           custo_total: parseNumber(row["Custo Total"]),
           cod_natureza: row["Cód. Natureza"] ? String(row["Cód. Natureza"]).trim() : null,
           desc_natureza: row["Natureza"] ? String(row["Natureza"]).trim() : null,
-          status_nfe: row["Status NFe"] ? String(row["Status NFe"]).trim() : null,
+          status_nfe: rawStatusNFe,
           vlr_frete: parseNumber(row["Vlr. Frete"]),
           vlr_substituicao: parseNumber(row["Vlr. Substituição"]),
           vlr_total_st: parseNumber(row["Vlr. Total ST"]),
@@ -525,7 +558,31 @@ export class ImportService {
       ];
       const periodStr = `${monthsPt[minDateObj.getUTCMonth()]}/${minDateObj.getUTCFullYear()}`;
 
-      // 6. Write parsed rows into the staging table in chunks
+      const formatPtDate = (dStr: string) => {
+        if (!dStr) return "";
+        const [y, m, d] = dStr.split("-");
+        return `${d}/${m}/${y}`;
+      };
+      const periodFormatted = `${formatPtDate(periodStart)} → ${formatPtDate(periodEnd)}`;
+
+      // 6. Check unmapped partners in batch
+      let unmappedPartnersCount = 0;
+      const partnersList = Array.from(partnersSet);
+      if (partnersList.length > 0) {
+        try {
+          const { data: validPartners } = await supabase
+            .from("cm_clientes")
+            .select("codigo")
+            .in("codigo", partnersList.slice(0, 5000));
+          const validSet = new Set((validPartners || []).map((p) => String(p.codigo)));
+          const unmapped = partnersList.filter((p) => !validSet.has(p));
+          unmappedPartnersCount = unmapped.length;
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      // Write parsed rows into staging in chunks
       const chunkSize = 2500;
       for (let i = 0; i < stagingRows.length; i += chunkSize) {
         const chunk = stagingRows.slice(i, i + chunkSize);
@@ -565,8 +622,8 @@ export class ImportService {
       const qualityScore = Math.max(0, parseFloat((100 - (errorsCount * 100 / totalRowsCount) - (warningsCount * 15 / totalRowsCount)).toFixed(1)));
 
       const validationChecklist = {
-        layoutRecognized: true,
-        headersValid: true,
+        layoutRecognized: templateRecognized,
+        headersValid: missingRequiredCols.length === 0,
         datesValid: !inconsistencies.some(err => err.field === "Dt. Neg"),
         productsValid: !inconsistencies.some(err => err.field === "Cód. Produto"),
         partnersValid: !inconsistencies.some(err => err.field === "Cód. Parceiro"),
@@ -581,20 +638,28 @@ export class ImportService {
         batchId,
         filename: fileName,
         fileSize,
+        templateName: "CFOP OFICIAL",
+        templateRecognized,
         period: periodStr,
         periodStart,
         periodEnd,
+        periodFormatted,
         totalRows: stagingRows.length,
         uniquePartners: partnersSet.size,
         uniqueProducts: productsSet.size,
+        unmappedPartnersCount,
         totalGross,
+        totalApproved,
+        totalCancelled,
         totalDevolution,
         totalNet,
         totalVendaFutura,
+        topsFound: Array.from(topsSet),
+        cfopsFound: Array.from(cfopsSet),
         warningsCount,
         errorsCount,
         qualityScore,
-        inconsistencies: inconsistencies.slice(0, 100), // Cap output size for safety
+        inconsistencies: inconsistencies.slice(0, 100),
         needsConfirmation,
         currentBaseStats,
         validationChecklist,
@@ -606,16 +671,23 @@ export class ImportService {
         "Aguardando Confirmação",
         {
           file_hash: fileHash,
+          template_name: "CFOP OFICIAL",
           period_start: periodStart,
           period_end: periodEnd,
+          period_formatted: periodFormatted,
           period: periodStr,
           total_rows: stagingRows.length,
           unique_partners: partnersSet.size,
           unique_products: productsSet.size,
+          unmapped_partners_count: unmappedPartnersCount,
           total_gross: totalGross,
+          total_approved: totalApproved,
+          total_cancelled: totalCancelled,
           total_devolution: totalDevolution,
           total_net: totalNet,
           total_venda_futura: totalVendaFutura,
+          tops_found: Array.from(topsSet),
+          cfops_found: Array.from(cfopsSet),
           warnings_count: warningsCount,
           errors_count: errorsCount,
           duration_ms: durationMs,
@@ -683,7 +755,29 @@ export class ImportService {
       role?: string;
       email?: string;
     }
-  ): Promise<{ success: boolean; rowsPromoted: number }> {
+  ): Promise<{
+    success: boolean;
+    rowsPromoted: number;
+    reconciliation?: {
+      excelTotal: number;
+      cmFaturamentoTotal: number;
+      salesTotal: number;
+      delta: number;
+      isReconciled: boolean;
+      periodStart: string | null;
+      periodEnd: string | null;
+      periodFormatted: string;
+    } | null;
+    autoCadastro?: {
+      eligible_found: number;
+      created: number;
+      already_exists: number;
+      ignored_non_commercial: number;
+      errors: number;
+      parceiros_criados: string[];
+      total_criados?: number;
+    } | null;
+  }> {
     const startTime = Date.now();
 
     // Recálculo 100% Server-Side do período a partir dos dados em cm_faturamento_staging
@@ -750,7 +844,9 @@ export class ImportService {
       promotion_calls?: any[];
       pre_finalization_validation?: any;
       audit_result?: any;
+      reconciliation?: any;
       mv_refresh_enqueued?: boolean;
+      auto_cadastro?: any;
       total_duration_ms?: number;
     } = {
       batch_id: batchId,
@@ -994,6 +1090,166 @@ export class ImportService {
         }
       });
 
+      // 5c. Auto-cadastro mínimo de PDVs comerciais elegíveis ausentes em base_atendimento (Demanda 021/024)
+      let autoCadastroResult: {
+        eligible_found: number;
+        created: number;
+        already_exists: number;
+        ignored_non_commercial: number;
+        errors: number;
+        parceiros_criados: string[];
+        total_criados?: number;
+      } = {
+        eligible_found: 0,
+        created: 0,
+        already_exists: 0,
+        ignored_non_commercial: 0,
+        errors: 0,
+        parceiros_criados: [],
+        total_criados: 0,
+      };
+
+      await trackStep("auto_cadastro_pdvs", async () => {
+        try {
+          telemetry.rpcs_executed.push("auto_cadastro_pdvs");
+
+          // 1. Contagem total de parceiros distintos no lote
+          const { data: batchStats } = await supabase.rpc("execute_readonly_query", {
+            query_text: `
+              SELECT 
+                COUNT(DISTINCT s.cod_parceiro) as total_distinct_partners
+              FROM public.cm_faturamento_staging s
+              WHERE s.batch_id = '${batchId}'
+                AND s.cod_parceiro IS NOT NULL
+                AND s.cod_parceiro != ''
+            `,
+          });
+
+          const totalDistinctInBatch = Number(batchStats?.[0]?.total_distinct_partners || 0);
+
+          // 2. Identificar parceiros comerciais ELEGÍVEIS no lote (Regra Oficial Demanda 024)
+          // Regra Primária: centro_resultado B2B ('KEY ACCOUNT', 'DISTRIBUIDOR', 'INSIDE SALES')
+          // Regra Secundária: Exclusão de canais digitais/brindes/exportação
+          // Regra de Operação: TOPs oficiais de venda/bonificação comercial ('1100', '1117', '1713', '1723')
+          const { data: eligiblePartners, error: eligibleErr } = await supabase.rpc("execute_readonly_query", {
+            query_text: `
+              SELECT DISTINCT 
+                s.cod_parceiro,
+                s.nome_parceiro,
+                s.uf,
+                EXISTS (
+                  SELECT 1 FROM public.base_atendimento b 
+                  WHERE b.cod_parceiro = s.cod_parceiro
+                ) as already_in_atendimento
+              FROM public.cm_faturamento_staging s
+              WHERE s.batch_id = '${batchId}'
+                AND s.cod_parceiro IS NOT NULL
+                AND s.cod_parceiro != ''
+                AND UPPER(TRIM(COALESCE(s.centro_resultado, ''))) IN ('KEY ACCOUNT', 'DISTRIBUIDOR', 'INSIDE SALES')
+                AND UPPER(TRIM(COALESCE(s.nome_vendedor, ''))) NOT IN (
+                  'SHOPIFY', 'LIVELO', 'AMAZONFBA', 'AMAZONBR', 'MELI FULL', 'MELI', 
+                  'SHOPEE', 'ANYMARKET', 'MAGALU', 'BRINDES', 'EXPORTAÇÃO'
+                )
+                AND s.cod_top IN ('1100', '1117', '1713', '1723')
+            `,
+          });
+
+          if (eligibleErr) {
+            console.warn("[AUTO_CADASTRO] Erro ao buscar parceiros elegíveis:", eligibleErr);
+            autoCadastroResult.errors = 1;
+            telemetry.auto_cadastro = autoCadastroResult;
+            return;
+          }
+
+          const eligibleList = eligiblePartners || [];
+          const eligibleCount = eligibleList.length;
+          const alreadyExistsCount = eligibleList.filter((p: any) => p.already_in_atendimento === true).length;
+          const missingEligible = eligibleList.filter((p: any) => !p.already_in_atendimento);
+          const ignoredCount = Math.max(0, totalDistinctInBatch - eligibleCount);
+
+          autoCadastroResult.eligible_found = eligibleCount;
+          autoCadastroResult.already_exists = alreadyExistsCount;
+          autoCadastroResult.ignored_non_commercial = ignoredCount;
+
+          if (missingEligible.length > 0) {
+            const toInsert = missingEligible.map((p: any) => ({
+              cod_parceiro: String(p.cod_parceiro).trim(),
+              nome_parceiro: String(p.nome_parceiro || '').trim(),
+              uf: p.uf ? String(p.uf).trim().toUpperCase() : null,
+              rede: null,
+              canal: null,
+              manager: null,
+              status: "pendente",
+            }));
+
+            for (let i = 0; i < toInsert.length; i += 500) {
+              const chunk = toInsert.slice(i, i + 500);
+              const { error: insertErr } = await supabase
+                .from("base_atendimento")
+                .upsert(chunk, { onConflict: "cod_parceiro", ignoreDuplicates: true });
+              if (insertErr) {
+                console.warn("[AUTO_CADASTRO] Erro ao inserir chunk no base_atendimento:", insertErr);
+                autoCadastroResult.errors += 1;
+              }
+            }
+
+            autoCadastroResult.created = toInsert.length;
+            autoCadastroResult.total_criados = toInsert.length;
+            autoCadastroResult.parceiros_criados = toInsert.map((p: any) => p.cod_parceiro);
+          }
+
+          telemetry.auto_cadastro = autoCadastroResult;
+        } catch (autoErr) {
+          console.warn("[AUTO_CADASTRO] Falha não-bloqueante no auto-cadastro:", autoErr);
+          autoCadastroResult.errors += 1;
+          telemetry.auto_cadastro = autoCadastroResult;
+        }
+      });
+
+      // 5d. Reconciliação Financeira Automática Pós-Promoção (Excel vs cm_faturamento vs public.sales)
+      let reconciliationResult: {
+        excelTotal: number;
+        cmFaturamentoTotal: number;
+        salesTotal: number;
+        delta: number;
+        isReconciled: boolean;
+        periodStart: string | null;
+        periodEnd: string | null;
+        periodFormatted: string;
+      } | null = null;
+
+      await trackStep("reconciliacao_financeira", async () => {
+        telemetry.rpcs_executed.push("reconciliacao_financeira");
+        const pStartAnoMes = serverPeriodStart ? serverPeriodStart.substring(0, 7).replace("-", "_") : null;
+        const pEndAnoMes = serverPeriodEnd ? serverPeriodEnd.substring(0, 7).replace("-", "_") : null;
+
+        let salesNet = 0;
+        if (pStartAnoMes && pEndAnoMes) {
+          const { data: salesSum } = await supabase.rpc("execute_readonly_query", {
+            query_text: `
+              SELECT SUM(net_value) as total_sales
+              FROM public.sales
+              WHERE ano_mes >= '${pStartAnoMes}' AND ano_mes <= '${pEndAnoMes}'
+            `,
+          });
+          salesNet = Number(salesSum?.[0]?.total_sales || 0);
+        }
+
+        const delta = Math.abs(actualPromotedNet - salesNet);
+        reconciliationResult = {
+          excelTotal: expectedNet,
+          cmFaturamentoTotal: actualPromotedNet,
+          salesTotal: salesNet,
+          delta: delta,
+          isReconciled: delta < 0.05,
+          periodStart: serverPeriodStart,
+          periodEnd: serverPeriodEnd,
+          periodFormatted: `${serverPeriodStart} → ${serverPeriodEnd}`,
+        };
+
+        telemetry.reconciliation = reconciliationResult;
+      });
+
       const totalDuration = Date.now() - startTime;
       telemetry.total_duration_ms = totalDuration;
 
@@ -1045,7 +1301,12 @@ export class ImportService {
       // Disparar evento de invalidação de cache desacoplado
       await CacheInvalidationService.onImportSuccess(batchId);
 
-      return { success: true, rowsPromoted };
+      return {
+        success: true,
+        rowsPromoted,
+        reconciliation: reconciliationResult,
+        autoCadastro: autoCadastroResult,
+      };
     } catch (error: any) {
       console.error("[ImportService] Error during confirmImport, executing rollback:", error);
       

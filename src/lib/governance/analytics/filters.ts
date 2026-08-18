@@ -82,13 +82,24 @@ import { OFFICIAL_ANALYTICS_SOURCES } from './sources';
 export function buildDateFilter(startMonth?: string | null, endMonth?: string | null, tableAlias?: string, targetTable?: string): string[] {
   const prefix = tableAlias ? `${tableAlias}.` : '';
   const clauses: string[] = [];
-  const monthCol = targetTable === OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME ? `${prefix}ano_mes` : `${prefix}mes`;
 
-  if (startMonth) {
-    clauses.push(`${monthCol} >= ${escapeSqlValue(startMonth)}`);
-  }
-  if (endMonth) {
-    clauses.push(`${monthCol} <= ${escapeSqlValue(endMonth)}`);
+  if (targetTable === OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME) {
+    if (startMonth) {
+      const formatted = startMonth.includes('-') ? startMonth.replace('-', '_') : startMonth;
+      clauses.push(`${prefix}ano_mes >= ${escapeSqlValue(formatted)}`);
+    }
+    if (endMonth) {
+      const formatted = endMonth.includes('-') ? endMonth.replace('-', '_') : endMonth;
+      clauses.push(`${prefix}ano_mes <= ${escapeSqlValue(formatted)}`);
+    }
+  } else {
+    const monthCol = `${prefix}mes`;
+    if (startMonth) {
+      clauses.push(`${monthCol} >= ${escapeSqlValue(startMonth)}`);
+    }
+    if (endMonth) {
+      clauses.push(`${monthCol} <= ${escapeSqlValue(endMonth)}`);
+    }
   }
   return clauses;
 }
