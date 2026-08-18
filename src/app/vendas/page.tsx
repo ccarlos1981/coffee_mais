@@ -327,14 +327,21 @@ export default function VendasDashboard() {
               const kaKey = `${mId}-KA`;
               if (filterManager.length === 0 || filterManager.includes(kaKey) || filterManager.includes(kaLabel) || filterManager.includes(mId) || filterManager.includes(mName)) {
                 if (filterChannel.length === 0 || filterChannel.includes("KA")) {
-                  const kaFat = kaClients.reduce((acc, c) => acc + (c.fat || 0), 0);
-                  const kaQty = kaClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+                  const distFat = distClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                  const distQty = distClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+
+                  const officialManagerFat = sales?.fat || 0;
+                  const officialManagerQty = sales?.qty || 0;
+
+                  const kaOfficialFat = Math.max(0, officialManagerFat - distFat);
+                  const kaOfficialQty = Math.max(0, officialManagerQty - distQty);
+
                   rows.push({
                     manager: kaLabel,
                     manager_id: kaKey,
                     role: "KA",
-                    fat: kaClients.length > 0 ? kaFat : (distClients.length === 0 ? (sales?.fat || 0) : 0),
-                    qty: kaClients.length > 0 ? kaQty : (distClients.length === 0 ? (sales?.qty || 0) : 0),
+                    fat: kaOfficialFat,
+                    qty: kaOfficialQty,
                     maco: 0,
                     vendaFutura: sales?.vendaFutura || 0,
                     paceFat: sales?.paceFat || 0,
