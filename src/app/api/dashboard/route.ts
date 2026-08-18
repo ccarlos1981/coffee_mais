@@ -159,7 +159,7 @@ function aggregateFromMV(
   const byManager = Object.entries(byManagerMap).map(([managerId, data]) => {
     const clients = Object.values(data.byClient)
       .sort((a, b) => b.fat - a.fat)
-      .slice(0, 20)
+      .slice(0, 50)
       .map(c => {
         const remC = pmRemainderClientMap.get(c.client) || { fat: 0, qty: 0, maco: 0 };
         const paceFat = isPastMonth ? c.fat : (isFutureMonth ? remC.fat : c.fat + remC.fat);
