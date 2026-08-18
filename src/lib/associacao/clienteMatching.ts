@@ -72,17 +72,23 @@ export function encontrarCorrespondenciaCliente(
   const normNome = normalizarNome(cliente.nome_parceiro);
   const normRazao = cliente.razao_social ? normalizarNome(cliente.razao_social) : "";
 
-  // 1. Código do parceiro (Prioridade 1)
-  const atCodeMatch = baseAtendimento.find(item => item.cod_parceiro === codeStr);
-  if (atCodeMatch) {
-    return { matchedRecord: atCodeMatch, origem: 'base_atendimento', matchingStrategy: 'codigo', matchingScore: 1.0 };
-  }
-  const fatCodeMatch = faturamentoConsolidado.find(item => item.cod_parceiro === codeStr);
-  if (fatCodeMatch) {
-    return { matchedRecord: fatCodeMatch, origem: 'cm_faturamento', matchingStrategy: 'codigo', matchingScore: 1.0 };
+  // 1. Código do parceiro (Prioridade 1 - Chave Determinística SSOT)
+  if (cliente.codigo && cliente.codigo > 0) {
+    const atCodeMatch = baseAtendimento.find(item => item.cod_parceiro === codeStr);
+    if (atCodeMatch) {
+      return { matchedRecord: atCodeMatch, origem: 'base_atendimento', matchingStrategy: 'codigo', matchingScore: 1.0 };
+    }
+    const fatCodeMatch = faturamentoConsolidado.find(item => item.cod_parceiro === codeStr);
+    if (fatCodeMatch) {
+      return { matchedRecord: fatCodeMatch, origem: 'cm_faturamento', matchingStrategy: 'codigo', matchingScore: 1.0 };
+    }
+
+    // REGRA DE GOVERNANÇA: Se o cliente possui código formal mas não existe nas bases,
+    // É PROIBIDO usar fuzzy matching para atribuir o cadastro a outro cliente!
+    return null;
   }
 
-  // 2. CNPJ (Prioridade 2)
+  // 2. CNPJ (Prioridade 2 - Apenas para registros sem código numérico)
   if (cleanCnpj) {
     const atCnpjMatch = baseAtendimento.find(item => item.cnpj && item.cnpj.replace(/\D/g, "") === cleanCnpj);
     if (atCnpjMatch) {
@@ -90,7 +96,7 @@ export function encontrarCorrespondenciaCliente(
     }
   }
 
-  // 3. Nome Normalizado (Prioridade 3)
+  // 3. Nome Normalizado (Prioridade 3 - Apenas para registros sem código e sem CNPJ)
   if (normNome) {
     const atNameMatch = baseAtendimento.find(item => normalizarNome(item.nome_parceiro) === normNome);
     if (atNameMatch) {
@@ -102,7 +108,7 @@ export function encontrarCorrespondenciaCliente(
     }
   }
 
-  // 4. Similaridade Textual (Prioridade 4)
+  // 4. Similaridade Textual (Prioridade 4 - Apenas para registros não estruturados)
   let bestMatch: MatchingResult | null = null;
 
   // Busca em base_atendimento

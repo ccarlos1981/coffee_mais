@@ -334,16 +334,22 @@ export function getDrilldownLabel(role?: CommercialRole | null, managerName?: st
 }
 
 /**
- * Verifica se um registro (rede/parceiro/código) é um distribuidor registrado para o gerente
+ * Verifica se um registro (rede/parceiro/código) é um distribuidor registrado para o gerente.
+ * REGRA SOBERANA (SSOT): Se o objeto possuir `channel` definido, o canal oficial da SSOT é a autoridade máxima.
  */
 export function isDistributorClient(
   clientObj: { rede?: string | null; nome_parceiro?: string | null; client?: string | null; cod_parceiro?: string | null; channel?: string | null },
   managerId: string
 ): boolean {
+  // PRIORIDADE 1 ABSOLUTA (SSOT): Se o canal oficial estiver presente, ele é soberano!
+  if (clientObj.channel) {
+    const normChannel = clientObj.channel.trim().toUpperCase();
+    return normChannel === 'DISTRIBUIDOR' || normChannel.startsWith('DIST');
+  }
+
+  // PRIORIDADE 2 (LEGADO / FALLBACK): Apenas para registros históricos sem canal estruturado
   const def = DISTRIBUTORS_REGISTRY[managerId];
   if (!def) return false;
-
-  if (clientObj.channel === 'Distribuidor') return true;
 
   if (clientObj.cod_parceiro && def.partnerCodes.includes(String(clientObj.cod_parceiro))) {
     return true;

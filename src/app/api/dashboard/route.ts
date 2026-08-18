@@ -27,7 +27,16 @@ function aggregateFromMV(
     managerName: string;
     fat: number; qty: number; maco: number; vendaFutura: number;
     paceFat: number; paceQty: number; paceMaco: number;
-    byClient: Record<string, { client: string; fat: number; qty: number; maco: number }>;
+    byClient: Record<string, {
+      client: string;
+      channel: string;
+      manager: string;
+      manager_id: string;
+      fat: number;
+      qty: number;
+      maco: number;
+      valor_venda_futura: number;
+    }>;
   }> = {};
 
   const byFamiliaMap: Record<string, { fat: number; qty: number }> = {};
@@ -69,6 +78,7 @@ function aggregateFromMV(
       const mId = row.manager_id || '9999';
       const mName = row.manager || 'Outros';
       const client = row.client || 'Não Mapeado';
+      const channel = row.channel || 'Outros';
       const fat = Number(row.fat || 0);
       const qty = Number(row.qty || 0);
       const maco = investmentPct > 0
@@ -80,7 +90,16 @@ function aggregateFromMV(
       }
 
       if (!byManagerMap[mId].byClient[client]) {
-        byManagerMap[mId].byClient[client] = { client, fat: 0, qty: 0, maco: 0 };
+        byManagerMap[mId].byClient[client] = {
+          client,
+          channel,
+          manager: mName,
+          manager_id: mId,
+          fat: 0,
+          qty: 0,
+          maco: 0,
+          valor_venda_futura: 0
+        };
       }
       byManagerMap[mId].byClient[client].fat += fat;
       byManagerMap[mId].byClient[client].qty += qty;
