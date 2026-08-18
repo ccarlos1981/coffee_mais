@@ -3192,7 +3192,42 @@ A partir de 17/08/2026, a arquitetura, esteira de dados, regras semânticas e o 
    - **ARMAZEM DA MARIA**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 21,00`
    - **INVESTIMENTOS SEM FATURAMENTO**: Contrato = `R$ 0,00` \| Investimento Comercial = `R$ 585,45`
 
-Status Arquitetural: `RDM_SLIDE10_CONTRATO_VALOR = LOCKED` & `BASELINE = PERMANENTE`.
+
+
+---
+
+## 72. Baseline Oficial — Configuração de Percentuais do Desafio DRE por Competência (RDM)
+
+A partir de 18/08/2026, a arquitetura de **Configuração de Percentuais do Desafio DRE por Competência** no módulo RDM torna-se o baseline permanente e oficial do Coffee++.
+
+### Status e Classificação
+`RDM_DESAFIO_CONFIG_COMPETENCIA = LOCKED` & `BASELINE = PERMANENTE`
+
+### Diretrizes Mandatórias:
+
+1. **Estrutura de Persistência no Banco de Dados**:
+   - **Tabela Física**: `public.cm_rdm_desafio_config`.
+   - **Colunas**: `id`, `manager_id`, `manager_name`, `competencia`, `ano`, `mes`, `impostos_pct`, `investimento_pct`, `cpv_pct`, `frete_pct`, `updated_at`, `updated_by`.
+   - **Constraint Única**: `UNIQUE (manager_id, competencia)`.
+
+2. **Hierarquia de Prioridade da Configuração**:
+   - **1º Nível (Mês Específico)**: Registro em `cm_rdm_desafio_config` onde `manager_id = canonicalId AND competencia = 'YYYY-MM'`.
+   - **2º Nível (Fallback Regional)**: Registro em `cm_rdm_desafio_config` onde `manager_id = canonicalId AND competencia = 'GLOBAL'`.
+   - **3º Nível (Padrão Sistema)**: Impostos 3,5%, Investimento 10,0%, CPV 46,0%, Frete 3,0%.
+
+3. **Processamento Mês a Mês no Slide 9**:
+   - Cada mês da apuração acumulada no Slide 9 (ex: Q3 = Julho, Agosto, Setembro) consome sua própria configuração de percentuais de forma isolada.
+   - O Desafio Acumulado é a soma exata dos Desafios mensais apurados.
+
+4. **Isolamento por Gerente e Aliases Canônicos**:
+   - Todos os aliases de gerentes (`Cristiano`, `Leandro`, `Luiz`, `Julliano`, `John Guedes`) são resolvidos para seus respectivos IDs canônicos (`CRISTIANO`, `1001`, `1002`, `1000`, `1003`).
+
+5. **Segurança e Proteção de Dados Reais (`ACTUAL`)**:
+   - As alterações em `cm_rdm_desafio_config` afetam **exclusivamente** os cálculos da coluna `DESAFIO`. Os dados reais (`ACTUAL`) permanecem 100% imutáveis.
+   - Alterações no banco exigem autenticação e perfil `Admin` / `Admin Master` (HTTP 403 para acessos não autorizados).
+
+Status Arquitetural: `RDM_DESAFIO_CONFIG_COMPETENCIA = LOCKED` & `BASELINE = CONFIRMED`.
+
 
 
 

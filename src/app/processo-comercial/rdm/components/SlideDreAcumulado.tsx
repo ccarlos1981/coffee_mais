@@ -64,6 +64,18 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
 
   const currentTrim = data.trimestres.find((t) => t.trimestre === trimestre) || data.trimestres[0];
 
+  // Regra de Ocultação: Filtra apenas os meses que possuem apuração real (actual != null), preservando sempre a coluna ACUMULADO
+  const activeColunas = useMemo(() => {
+    if (!currentTrim || !currentTrim.colunas) return [];
+    return currentTrim.colunas.filter((col) => {
+      if (col.isAcum) return true;
+      return currentTrim.linhas.some((linha) => {
+        const val = linha.valores[col.key];
+        return val && val.actual !== null && val.actual !== undefined;
+      });
+    });
+  }, [currentTrim]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "2px 0", boxSizing: "border-box" }}>
       {/* Container Principal Claro — idêntico ao Slide 8 */}
@@ -125,7 +137,7 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
         <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden" }}>
           <table style={{ width: "100%", height: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
             <thead>
-              {/* Linha 1 do Cabeçalho: KPI + Períodos (Mês 1, Mês 2, Mês 3, ACUMULADO) */}
+              {/* Linha 1 do Cabeçalho: KPI + Períodos */}
               <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #cbd5e1" }}>
                 <th
                   rowSpan={2}
@@ -144,32 +156,46 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                 >
                   KPI
                 </th>
-                {currentTrim.colunas.map((col) => (
-                  <th
-                    key={col.key}
-                    colSpan={4}
-                    style={{
-                      padding: "5px 6px",
-                      textAlign: "center",
-                      fontWeight: 800,
-                      fontSize: "0.70rem",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.06em",
-                      color: col.isAcum ? "#0f172a" : "#0f172a",
-                      background: col.isAcum ? "#e2e8f0" : "#f8fafc",
-                      borderRight: col.isAcum ? "none" : "2px solid #cbd5e1",
-                      borderLeft: col.isAcum ? "3px solid #64748b" : "none",
-                      borderBottom: "1px solid #cbd5e1",
-                    }}
-                  >
-                    {col.isAcum ? `ACUMULADO (${currentTrim.label})` : col.label}
-                  </th>
+                {activeColunas.map((col) => (
+                  <React.Fragment key={col.key}>
+                    {col.isAcum && (
+                      <th
+                        rowSpan={2}
+                        style={{
+                          width: "12px",
+                          minWidth: "12px",
+                          background: "#ffffff",
+                          border: "none",
+                          borderBottom: "1px solid #cbd5e1",
+                          padding: 0,
+                        }}
+                      />
+                    )}
+                    <th
+                      colSpan={4}
+                      style={{
+                        padding: "5px 6px",
+                        textAlign: "center",
+                        fontWeight: 800,
+                        fontSize: "0.70rem",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.06em",
+                        color: "#0f172a",
+                        background: col.isAcum ? "#e2e8f0" : "#f8fafc",
+                        borderRight: col.isAcum ? "none" : "2px solid #cbd5e1",
+                        borderLeft: col.isAcum ? "3px solid #64748b" : "none",
+                        borderBottom: "1px solid #cbd5e1",
+                      }}
+                    >
+                      {col.isAcum ? `ACUMULADO (${currentTrim.label})` : col.label}
+                    </th>
+                  </React.Fragment>
                 ))}
               </tr>
 
               {/* Linha 2 do Cabeçalho: Nomes das Subcolunas (Desafio, Actual, Δ, %Δ) */}
               <tr style={{ background: "#f8fafc", borderBottom: "2px solid #94a3b8" }}>
-                {currentTrim.colunas.map((col) => (
+                {activeColunas.map((col) => (
                   <React.Fragment key={`sub_${col.key}`}>
                     <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderLeft: col.isAcum ? "3px solid #64748b" : "none", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Desafio</th>
                     <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Actual</th>
@@ -211,81 +237,90 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                     </td>
 
                     {/* Subcolunas dos Períodos */}
-                    {currentTrim.colunas.map((col) => {
+                    {activeColunas.map((col) => {
                       const val: RdmAcumuladoValor | undefined = linha.valores[col.key];
-
-                      if (!val) {
-                        return (
-                          <React.Fragment key={col.key}>
-                            <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                            <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                            <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                            <td style={{ textAlign: "right", color: "#94a3b8", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1" }}>—</td>
-                          </React.Fragment>
-                        );
-                      }
-
-                      const hasActual = val.actual !== null;
-                      const deltaColor = getDeltaColor(val.delta, isCost);
 
                       return (
                         <React.Fragment key={col.key}>
-                          {/* Desafio */}
-                          <td
-                            style={{
-                              padding: "4px 4px",
-                              textAlign: "right",
-                              color: "#64748b",
-                              fontSize: "0.70rem",
-                              borderLeft: col.isAcum ? "3px solid #64748b" : "none",
-                              background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
-                            }}
-                          >
-                            {fmtVal(val.desafio, isVolume)}
-                          </td>
+                          {col.isAcum && (
+                            <td
+                              style={{
+                                width: "12px",
+                                minWidth: "12px",
+                                background: "#ffffff",
+                                border: "none",
+                                padding: 0,
+                              }}
+                            />
+                          )}
 
-                          {/* Actual */}
-                          <td
-                            style={{
-                              padding: "4px 4px",
-                              textAlign: "right",
-                              color: hasActual ? "#0f172a" : "#94a3b8",
-                              fontWeight: hasActual ? 700 : 400,
-                              fontSize: "0.70rem",
-                              background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
-                            }}
-                          >
-                            {hasActual ? fmtVal(val.actual, isVolume) : "N/A"}
-                          </td>
+                          {!val ? (
+                            <>
+                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1" }}>—</td>
+                            </>
+                          ) : (
+                            <>
+                              {/* Desafio */}
+                              <td
+                                style={{
+                                  padding: "4px 4px",
+                                  textAlign: "right",
+                                  color: "#64748b",
+                                  fontSize: "0.70rem",
+                                  borderLeft: col.isAcum ? "3px solid #64748b" : "none",
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                }}
+                              >
+                                {fmtVal(val.desafio, isVolume)}
+                              </td>
 
-                          {/* Δ */}
-                          <td
-                            style={{
-                              padding: "4px 4px",
-                              textAlign: "right",
-                              color: hasActual ? deltaColor : "#94a3b8",
-                              fontWeight: 600,
-                              fontSize: "0.70rem",
-                              background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
-                            }}
-                          >
-                            {hasActual ? fmtDelta(val.delta, isVolume) : "N/A"}
-                          </td>
+                              {/* Actual */}
+                              <td
+                                style={{
+                                  padding: "4px 4px",
+                                  textAlign: "right",
+                                  color: val.actual !== null ? "#0f172a" : "#94a3b8",
+                                  fontWeight: val.actual !== null ? 700 : 400,
+                                  fontSize: "0.70rem",
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                }}
+                              >
+                                {val.actual !== null ? fmtVal(val.actual, isVolume) : "N/A"}
+                              </td>
 
-                          {/* %Δ */}
-                          <td
-                            style={{
-                              padding: "4px 4px",
-                              textAlign: "right",
-                              color: hasActual ? deltaColor : "#94a3b8",
-                              fontWeight: 600,
-                              fontSize: "0.70rem",
-                              borderRight: col.isAcum ? "none" : "2px solid #cbd5e1",
-                              background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
-                            }}
-                          >
-                            {hasActual ? fmtPct(val.pctDelta) : "N/A"}
-                          </td>
+                              {/* Δ */}
+                              <td
+                                style={{
+                                  padding: "4px 4px",
+                                  textAlign: "right",
+                                  color: val.actual !== null ? getDeltaColor(val.delta, isCost) : "#94a3b8",
+                                  fontWeight: 600,
+                                  fontSize: "0.70rem",
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                }}
+                              >
+                                {val.actual !== null ? fmtDelta(val.delta, isVolume) : "N/A"}
+                              </td>
+
+                              {/* %Δ */}
+                              <td
+                                style={{
+                                  padding: "4px 4px",
+                                  textAlign: "right",
+                                  color: val.actual !== null ? getDeltaColor(val.delta, isCost) : "#94a3b8",
+                                  fontWeight: 600,
+                                  fontSize: "0.70rem",
+                                  borderRight: col.isAcum ? "none" : "2px solid #cbd5e1",
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                }}
+                              >
+                                {val.actual !== null ? fmtPct(val.pctDelta) : "N/A"}
+                              </td>
+                            </>
+                          )}
                         </React.Fragment>
                       );
                     })}
