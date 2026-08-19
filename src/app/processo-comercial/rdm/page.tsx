@@ -32,9 +32,27 @@ interface MetricBlock {
 }
 interface FarolData {
   managerLabel: string;
-  weights: { VOL: number; FAT: number; INVEST: number };
-  month: { vol: MetricBlock; fat: MetricBlock; invest: MetricBlock; score: number };
-  ytd:   { label: string; vol: MetricBlock; fat: MetricBlock; invest: MetricBlock; score: number };
+  isAgosto2026?: boolean;
+  weights: { VOL?: number; FAT?: number; INVEST?: number; MACO?: number; DESP_COMERCIAIS?: number; DEFLATOR?: number };
+  month: {
+    vol: MetricBlock;
+    fat: MetricBlock;
+    invest: MetricBlock;
+    maco?: MetricBlock;
+    despComerciais?: MetricBlock;
+    deflator?: MetricBlock;
+    score: number;
+  };
+  ytd: {
+    label: string;
+    vol: MetricBlock;
+    fat: MetricBlock;
+    invest: MetricBlock;
+    maco?: MetricBlock;
+    despComerciais?: MetricBlock;
+    deflator?: MetricBlock;
+    score: number;
+  };
 }
 interface VolPrecoEntry {
   mesKey: string;
@@ -5007,8 +5025,8 @@ function SlideVolumeMatriz({
 
 // ─── Sub-components de SlideFarol (fora do componente para evitar recriação) ──
 function MetricRow({
-  label, weight, block
-}: { label: string; weight: number; block?: MetricBlock; isYtd?: boolean }) {
+  label, weight, block, isDeflator, isDespesa
+}: { label: string; weight: number; block?: MetricBlock; isYtd?: boolean; isDeflator?: boolean; isDespesa?: boolean }) {
   const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
   const b = block ?? emptyBlock;
   const light = trafficLight(b.pct ?? 0);
@@ -5017,12 +5035,14 @@ function MetricRow({
   const mAntVal = b.mAnt ?? b.fct ?? 0;
 
   const fmtVal = (val: number) => {
+    if (isDeflator) return "—";
     if (isVol) return formatNumber(val, 0);
     if (isInvest) return `${formatNumber(val, 1)}%`;
     return formatCurrency(val / 1000, 0);
   };
 
   const fmtDelta = (val: number) => {
+    if (isDeflator) return "—";
     if (isVol) return formatNumber(val, 0);
     if (isInvest) {
       const sign = val > 0 ? "+" : "";
@@ -5031,12 +5051,18 @@ function MetricRow({
     return formatCurrency(val / 1000, 0);
   };
 
-  const isGood = isInvest ? (b.delta ?? 0) <= 0 : (b.delta ?? 0) >= 0;
+  const isGood = isDespesa
+    ? ((b.desafio && b.desafio > 0) ? (b.real ?? 0) <= b.desafio : (b.delta ?? 0) <= 0)
+    : isInvest
+    ? (b.delta ?? 0) <= 0
+    : (b.delta ?? 0) >= 0;
+
+  const weightDisplay = isDeflator ? "-0%" : `${weight}%`;
 
   return (
     <tr className="rdm-farol-row">
       <td className="rdm-farol-label">{label}</td>
-      <td className="rdm-farol-weight">{weight}%</td>
+      <td className="rdm-farol-weight">{weightDisplay}</td>
       <td className="rdm-farol-cell">{fmtVal(b.aa ?? 0)}</td>
       <td className="rdm-farol-cell">{fmtVal(mAntVal)}</td>
       <td className="rdm-farol-cell rdm-farol-desafio">{fmtVal(b.desafio ?? 0)}</td>
@@ -5045,12 +5071,18 @@ function MetricRow({
       </td>
       <td className="rdm-farol-pct" style={isInvest
         ? { color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
+        : isDespesa
+        ? { color: (b.desafio && b.desafio > 0 && (b.real ?? 0) <= b.desafio) ? '#2e7d32' : '#c62828', fontWeight: 700 }
+        : isDeflator
+        ? { background: 'transparent', color: 'inherit' }
         : { background: light.bg, color: light.color }}>
-        {isInvest
+        {isDeflator
+          ? "0,0%"
+          : isInvest
           ? `${(b.pct ?? 0) > 0 ? '+' : ''}${formatNumber(b.pct ?? 0, 1)}%`
           : `${formatNumber(b.pct ?? 0, 1)}%`}
       </td>
-      <td className="rdm-farol-delta" style={{ color: isGood ? "#2e7d32" : "#c62828" }}>
+      <td className="rdm-farol-delta" style={{ color: isDeflator ? 'inherit' : (isGood ? "#2e7d32" : "#c62828") }}>
         {fmtDelta(b.delta ?? 0)}
       </td>
     </tr>
@@ -5071,17 +5103,30 @@ function ScoreRow({ score }: { score: number }) {
   );
 }
 
-function FarolTable({ title, block, managerLabel, weights }: {
+function FarolTable({ title, block, managerLabel, weights, isAgosto2026 }: {
   title: string;
-  block?: { vol?: MetricBlock; fat?: MetricBlock; invest?: MetricBlock; score?: number };
+  block?: {
+    vol?: MetricBlock;
+    fat?: MetricBlock;
+    invest?: MetricBlock;
+    maco?: MetricBlock;
+    despComerciais?: MetricBlock;
+    deflator?: MetricBlock;
+    score?: number;
+  };
   managerLabel?: string;
-  weights?: { VOL: number; FAT: number; INVEST: number };
+  weights?: { VOL?: number; FAT?: number; INVEST?: number; MACO?: number; DESP_COMERCIAIS?: number; DEFLATOR?: number };
+  isAgosto2026?: boolean;
 }) {
   const w = weights ?? { VOL: 0, FAT: 100, INVEST: 0 };
+  const isAgosto = Boolean(isAgosto2026 || (w.FAT === 50 && (w.MACO === 30 || (w.DESP_COMERCIAIS ?? 0) === 20)) || block?.maco !== undefined);
   const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
   const volBlock = block?.vol ?? emptyBlock;
   const fatBlock = block?.fat ?? emptyBlock;
   const investBlock = block?.invest ?? emptyBlock;
+  const macoBlock = block?.maco ?? emptyBlock;
+  const despBlock = block?.despComerciais ?? emptyBlock;
+  const deflatorBlock = block?.deflator ?? emptyBlock;
   const scoreVal = block?.score ?? 0;
 
   return (
@@ -5110,10 +5155,22 @@ function FarolTable({ title, block, managerLabel, weights }: {
           </tr>
         </thead>
         <tbody>
-          <MetricRow label="VOLUME"       weight={w.VOL}    block={volBlock} />
-          <MetricRow label="FATURAMENTO"  weight={w.FAT}    block={fatBlock} isYtd />
-          <MetricRow label="INVESTIMENTO" weight={w.INVEST} block={investBlock} />
-          <ScoreRow score={scoreVal} />
+          {isAgosto ? (
+            <>
+              <MetricRow label="FATURAMENTO"      weight={w.FAT ?? 50}             block={fatBlock} />
+              <MetricRow label="MACO"             weight={w.MACO ?? 30}            block={macoBlock} />
+              <MetricRow label="DESP. COMERCIAIS" weight={w.DESP_COMERCIAIS ?? 20} block={despBlock} isDespesa />
+              <MetricRow label="DEFLATOR"         weight={w.DEFLATOR ?? 0}         block={deflatorBlock} isDeflator />
+              <ScoreRow score={scoreVal} />
+            </>
+          ) : (
+            <>
+              <MetricRow label="VOLUME"       weight={w.VOL ?? 0}    block={volBlock} />
+              <MetricRow label="FATURAMENTO"  weight={w.FAT ?? 100}  block={fatBlock} isYtd />
+              <MetricRow label="INVESTIMENTO" weight={w.INVEST ?? 0} block={investBlock} />
+              <ScoreRow score={scoreVal} />
+            </>
+          )}
         </tbody>
       </table>
     </div>
@@ -5144,8 +5201,20 @@ function SlideFarol({
     <SlideShell title="Farol de Metas" monthName={monthName}>
       <div className="rdm-farol-content">
         <div className="rdm-farol-tables-row">
-          <FarolTable title={monthName.toUpperCase()} block={m} managerLabel={farol?.managerLabel ?? ''} weights={farol?.weights} />
-          <FarolTable title={y.label} block={y} managerLabel={farol?.managerLabel ?? ''} weights={farol?.weights} />
+          <FarolTable
+            title={monthName.toUpperCase()}
+            block={m}
+            managerLabel={farol?.managerLabel ?? ''}
+            weights={farol?.weights}
+            isAgosto2026={farol?.isAgosto2026}
+          />
+          <FarolTable
+            title={y.label}
+            block={y}
+            managerLabel={farol?.managerLabel ?? ''}
+            weights={farol?.weights}
+            isAgosto2026={farol?.isAgosto2026}
+          />
         </div>
 
         {/* Comment area */}

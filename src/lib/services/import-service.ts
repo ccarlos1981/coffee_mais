@@ -1357,13 +1357,19 @@ export class ImportService {
    */
   static async rollbackImport(batchId: string): Promise<{ success: boolean; deletedCount: number }> {
     try {
-      // 1. Delete rows from official table
+      // 1. Delete rows from official table and staging table
       const { error: deleteError, count } = await supabase
         .from("cm_faturamento")
         .delete({ count: "exact" })
         .eq("batch_id", batchId);
 
       if (deleteError) throw deleteError;
+
+      // Clean staging table if batch was still in staging
+      await supabase
+        .from("cm_faturamento_staging")
+        .delete()
+        .eq("batch_id", batchId);
 
       // 2. Fetch current metadata to preserve it
       const { data: current } = await supabase
