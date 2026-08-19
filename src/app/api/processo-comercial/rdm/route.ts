@@ -28,6 +28,23 @@ function getAdminClient() {
   );
 }
 
+import { requireApprovedProfile } from "@/lib/supabase/auth-helpers";
+import { isSameManager } from "@/lib/domain/canonical";
+
+// Roles com acesso total ao RDM (enxergam todos os gerentes e configuram % desafio)
+const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Gerente Nacional", "Diretor"];
+const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+
+export function checkIsGerenteNacionalAdmin(role?: string | null, email?: string | null): boolean {
+  if (role && FULL_ACCESS_ROLES.includes(role)) {
+    return true;
+  }
+  if (email && GERENTE_NACIONAL_EMAILS.includes(email.toLowerCase().trim())) {
+    return true;
+  }
+  return false;
+}
+
 // Lista oficial de gerentes KA do Domínio Comercial
 const KA_MANAGERS = CommercialDomainService.getFieldManagerList();
 
@@ -40,13 +57,39 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const year  = parseInt(searchParams.get('year')  ?? String(new Date().getFullYear()));
     const month = parseInt(searchParams.get('month') ?? String(new Date().getMonth() + 1));
-    const manager = searchParams.get('manager') ?? CRISTIANO; // ex: "Leandro" ou "CRISTIANO"
+    const requestedManager = searchParams.get('manager');
 
-    // Autenticação
+    // Autenticação e Perfil
     const supabaseServer = await createClient();
     const { data: { user }, error: authErr } = await supabaseServer.auth.getUser();
     if (authErr || !user) {
       return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
+    }
+
+    const profile = await requireApprovedProfile(user.id);
+    const isFullAccess = checkIsGerenteNacionalAdmin(profile.role, user.email);
+
+    let manager: string;
+    let allowedManagers: string[];
+
+    if (isFullAccess) {
+      manager = requestedManager ?? CRISTIANO;
+      allowedManagers = KA_MANAGERS;
+    } else {
+      // Perfil restrito (ex: Gerente Regional)
+      const userCanonical = resolveCanonicalManager(profile.manager_name || profile.name);
+      const userManagerName = userCanonical.managerName;
+      
+      // Se tentou requisitar outro gerente explicitamente, bloquear no backend com 403 Forbidden
+      if (requestedManager && !isSameManager(requestedManager, userManagerName)) {
+        return NextResponse.json({
+          success: false,
+          error: `Acesso negado (403 Forbidden): Você só possui permissão para visualizar os dados da sua própria regional (${userManagerName}).`,
+        }, { status: 403 });
+      }
+
+      manager = userManagerName;
+      allowedManagers = [userManagerName];
     }
 
     const supabase = getAdminClient();
@@ -501,7 +544,11 @@ export async function GET(request: Request) {
       year,
       month,
       manager,
-      managers:  KA_MANAGERS,
+      managers:  allowedManagers,
+      isRestrictedManager: !isFullAccess,
+      canConfigureDesafio: isFullAccess,
+      userRole:  profile.role,
+      userManager: !isFullAccess ? manager : null,
       farol:     farolData,
       comments:  commentsMap,
       dre:       dreData,
@@ -618,11 +665,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
     }
 
+    const profile = await requireApprovedProfile(user.id);
+    const isFullAccess = checkIsGerenteNacionalAdmin(profile.role, user.email);
+
     const body = await request.json() as { year: number; month: number; manager: string; slide_key: string; comment: string };
     const { year, month, manager, slide_key, comment } = body;
 
     if (!year || !month || !manager || !slide_key) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos." }, { status: 400 });
+    }
+
+    if (!isFullAccess) {
+      const userCanonical = resolveCanonicalManager(profile.manager_name || profile.name);
+      if (!isSameManager(manager, userCanonical.managerName)) {
+        return NextResponse.json({
+          success: false,
+          error: "Acesso negado (403 Forbidden): Você só pode salvar anotações na apresentação da sua própria regional."
+        }, { status: 403 });
+      }
     }
 
     const { error } = await supabaseServer

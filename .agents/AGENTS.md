@@ -3702,6 +3702,53 @@ RPS_READY_FOR_USE = YES
 
 Status Arquitetural: `RPS_GOVERNANCE = LOCKED` & `RPS_BASELINE = PERMANENT`.
 
+---
+
+## 118. Baseline Oficial — Controle de Acesso e Governança de Visibilidade do Módulo RDM (Baseline Permanente)
+
+A partir de 19/08/2026, as diretrizes de controle de acesso, matriz de autorização e governança de visibilidade do módulo **RDM (Reunião de Desempenho Mensal)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`RDM_ACCESS_CONTROL = LOCKED` & `RDM_VISIBILITY_GOVERNANCE = CONFIRMED` & `BASELINE = PERMANENTE`
+
+### Diretrizes Mandatórias:
+
+1. **Autorização da Configuração de % Desafio**:
+   - O recurso "Configurar % Desafio" (leitura e gravação de percentuais em `cm_rdm_desafio_config`) é restrito exclusivamente aos perfis com visão executiva/corporativa:
+     - `CEO`
+     - `Admin`
+     - `Admin Master`
+     - `Gerente Nacional` (e e-mails oficiais de Gerente Nacional homologados).
+   - Perfis não autorizados (incluindo `Gerente Regional`, `Trade`, `Financeiro`, `Vendedor`) permanecem **100% READ-ONLY** em relação aos percentuais do Desafio.
+
+2. **Escopo Obrigatório e Isolado do Gerente Regional**:
+   - O perfil `Gerente Regional` possui escopo obrigatório e estrito exclusivamente sobre o seu próprio `manager_id` / RDM.
+   - O Gerente Regional **não pode**:
+     - Visualizar a apresentação ou dados de outros gerentes regionais;
+     - Acessar a visão consolidada Brasil (`CRISTIANO` / Total);
+     - Acessar ou alterar percentuais de `% Desafio`;
+     - Alterar dados de outros gerentes;
+     - Salvar anotações ou comentários em RDM de outras regionais;
+     - Exportar apresentação (PowerPoint) de outro gerente.
+
+3. **Dupla Camada de Segurança (Backend e Frontend)**:
+   - A restrição e isolamento de dados são aplicados de forma mandatória tanto no **BACKEND** quanto no **FRONTEND**.
+   - A simples ocultação visual de botões ou campos na interface **NÃO constitui controle de segurança suficiente**.
+   - No Frontend: o seletor de gerentes é substituído por identificação fixa da regional do usuário e o botão "Configurar % Desafio" é totalmente suprimido.
+   - No Backend: as rotas (`GET/POST /api/processo-comercial/rdm`, `GET/POST /api/processo-comercial/rdm/config`, `GET /api/rdm-gerencial`) validam a sessão e forçam a regional associada ao usuário autenticado.
+
+4. **Derivação da Identidade no Servidor (Anti-Bypass)**:
+   - O `manager_id` / regional permitido para o `Gerente Regional` é derivado exclusivamente da identidade autenticada (`cm_user_profiles.manager_name` / `cm_user_profiles.name`) e resolvido canonicamente via `resolveCanonicalManager(...)`.
+   - O backend **nunca confia** exclusivamente em parâmetros de URL ou corpo de requisição enviados pelo frontend.
+
+5. **Bloqueio Ativo contra Bypass (HTTP 403 Forbidden)**:
+   - Qualquer tentativa de burlar filtros, trocar `manager_id` na URL, chamar APIs diretamente ou gravar dados de outra regional resulta em bloqueio estrito com **`HTTP 403 Forbidden`**.
+
+6. **Preservação Financeira Absoluta**:
+   - As regras de controle de acesso não alteram nenhuma regra financeira, fórmula ou base analítica existente: `AnalyticsEngine`, `DRE`, `Meta MACO`, `Real MACO`, faturamento, CPV, impostos, frete, investimentos e demais baselines financeiras permanecem 100% intactas e congeladas.
+
+Status de Governança: `RDM_ACCESS_CONTROL = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
 
 
 

@@ -138,7 +138,7 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
           <table style={{ width: "100%", height: "100%", borderCollapse: "collapse", fontSize: "0.75rem" }}>
             <thead>
               {/* Linha 1 do Cabeçalho: KPI + Períodos */}
-              <tr style={{ background: "#f1f5f9", borderBottom: "1px solid #cbd5e1" }}>
+              <tr style={{ background: "#f1f5f9" }}>
                 <th
                   rowSpan={2}
                   style={{
@@ -150,6 +150,7 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                     letterSpacing: "0.06em",
                     color: "#1e293b",
                     borderRight: "2px solid #cbd5e1",
+                    borderBottom: "2px solid #94a3b8",
                     verticalAlign: "middle",
                     width: "15%",
                   }}
@@ -166,7 +167,6 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                           minWidth: "12px",
                           background: "#ffffff",
                           border: "none",
-                          borderBottom: "1px solid #cbd5e1",
                           padding: 0,
                         }}
                       />
@@ -194,13 +194,13 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
               </tr>
 
               {/* Linha 2 do Cabeçalho: Nomes das Subcolunas (Desafio, Actual, Δ, %Δ) */}
-              <tr style={{ background: "#f8fafc", borderBottom: "2px solid #94a3b8" }}>
+              <tr style={{ background: "#f8fafc" }}>
                 {activeColunas.map((col) => (
                   <React.Fragment key={`sub_${col.key}`}>
-                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderLeft: col.isAcum ? "3px solid #64748b" : "none", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Desafio</th>
-                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Actual</th>
-                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Δ</th>
-                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1", background: col.isAcum ? "#f1f5f9" : "transparent" }}>%Δ</th>
+                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderLeft: col.isAcum ? "3px solid #64748b" : "none", borderBottom: "2px solid #94a3b8", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Desafio</th>
+                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderBottom: "2px solid #94a3b8", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Actual</th>
+                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderBottom: "2px solid #94a3b8", background: col.isAcum ? "#f1f5f9" : "transparent" }}>Δ</th>
+                    <th style={{ padding: "4px 4px", textAlign: "right", fontWeight: 700, fontSize: "0.64rem", textTransform: "uppercase", color: "#475569", whiteSpace: "nowrap", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1", borderBottom: "2px solid #94a3b8", background: col.isAcum ? "#f1f5f9" : "transparent" }}>%Δ</th>
                   </React.Fragment>
                 ))}
               </tr>
@@ -213,14 +213,15 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                 const isVolume = kpiName.includes("Volume");
                 const isCost = ["Impostos", "Invest. Comercial", "CPV", "Frete"].some((c) => kpiName.includes(c));
 
+                const rowBg = isHighlighted ? "rgba(100, 116, 139, 0.14)" : i % 2 === 0 ? "#ffffff" : "#fafafa";
+                const rowBorderTop = isHighlighted ? "1px solid rgba(100, 116, 139, 0.3)" : undefined;
+                const rowBorderBottom = isHighlighted ? "1px solid rgba(100, 116, 139, 0.3)" : "1px solid #f1f5f9";
+
                 return (
                   <tr
                     key={i}
                     style={{
-                      background: isHighlighted ? "rgba(100, 116, 139, 0.14)" : i % 2 === 0 ? "#ffffff" : "#fafafa",
                       fontWeight: isHighlighted ? 700 : 400,
-                      borderTop: isHighlighted ? "1px solid rgba(100, 116, 139, 0.3)" : undefined,
-                      borderBottom: isHighlighted ? "1px solid rgba(100, 116, 139, 0.3)" : "1px solid #f1f5f9",
                     }}
                   >
                     {/* Nome do KPI */}
@@ -231,6 +232,9 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                         whiteSpace: "nowrap",
                         borderRight: "2px solid #cbd5e1",
                         fontWeight: isHighlighted ? 800 : 500,
+                        background: rowBg,
+                        borderTop: rowBorderTop,
+                        borderBottom: rowBorderBottom,
                       }}
                     >
                       {linha.kpi}
@@ -256,10 +260,10 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
 
                           {!val ? (
                             <>
-                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                              <td style={{ textAlign: "right", color: "#94a3b8" }}>—</td>
-                              <td style={{ textAlign: "right", color: "#94a3b8", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1" }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8", background: rowBg, borderTop: rowBorderTop, borderBottom: rowBorderBottom }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8", background: rowBg, borderTop: rowBorderTop, borderBottom: rowBorderBottom }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8", background: rowBg, borderTop: rowBorderTop, borderBottom: rowBorderBottom }}>—</td>
+                              <td style={{ textAlign: "right", color: "#94a3b8", borderRight: col.isAcum ? "none" : "2px solid #cbd5e1", background: rowBg, borderTop: rowBorderTop, borderBottom: rowBorderBottom }}>—</td>
                             </>
                           ) : (
                             <>
@@ -271,7 +275,9 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                                   color: "#64748b",
                                   fontSize: "0.70rem",
                                   borderLeft: col.isAcum ? "3px solid #64748b" : "none",
-                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                  borderTop: rowBorderTop,
+                                  borderBottom: rowBorderBottom,
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : rowBg,
                                 }}
                               >
                                 {fmtVal(val.desafio, isVolume)}
@@ -285,7 +291,9 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                                   color: val.actual !== null ? "#0f172a" : "#94a3b8",
                                   fontWeight: val.actual !== null ? 700 : 400,
                                   fontSize: "0.70rem",
-                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                  borderTop: rowBorderTop,
+                                  borderBottom: rowBorderBottom,
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : rowBg,
                                 }}
                               >
                                 {val.actual !== null ? fmtVal(val.actual, isVolume) : "N/A"}
@@ -299,7 +307,9 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                                   color: val.actual !== null ? getDeltaColor(val.delta, isCost) : "#94a3b8",
                                   fontWeight: 600,
                                   fontSize: "0.70rem",
-                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                  borderTop: rowBorderTop,
+                                  borderBottom: rowBorderBottom,
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : rowBg,
                                 }}
                               >
                                 {val.actual !== null ? fmtDelta(val.delta, isVolume) : "N/A"}
@@ -314,7 +324,9 @@ export function SlideDreAcumulado({ data, year, month }: SlideDreAcumuladoProps)
                                   fontWeight: 600,
                                   fontSize: "0.70rem",
                                   borderRight: col.isAcum ? "none" : "2px solid #cbd5e1",
-                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : "transparent",
+                                  borderTop: rowBorderTop,
+                                  borderBottom: rowBorderBottom,
+                                  background: col.isAcum ? "rgba(226, 232, 240, 0.4)" : rowBg,
                                 }}
                               >
                                 {val.actual !== null ? fmtPct(val.pctDelta) : "N/A"}

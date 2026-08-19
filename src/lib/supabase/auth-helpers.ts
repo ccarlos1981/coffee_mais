@@ -14,7 +14,7 @@ export async function requireApprovedProfile(userId: string) {
   const supabase = await createClient();
   const { data: profile } = await supabase
     .from("cm_user_profiles")
-    .select("role, approved, manager_name, company_id")
+    .select("role, approved, manager_name, name, company_id")
     .eq("id", userId)
     .single();
 

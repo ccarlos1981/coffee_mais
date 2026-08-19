@@ -51,6 +51,10 @@ interface RdmApiResponse {
   success: boolean;
   year: number; month: number; manager: string;
   managers: string[];
+  isRestrictedManager?: boolean;
+  canConfigureDesafio?: boolean;
+  userRole?: string;
+  userManager?: string | null;
   farol: FarolData;
   comments: Record<string, string>;
   dre?: any;
@@ -5206,14 +5210,22 @@ export default function RdmPage() {
   const [showExportModal,     setShowExportModal]     = useState(false);
   const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
   const [showConfigModal,      setShowConfigModal]      = useState(false);
-  const [isAdmin,               setIsAdmin]               = useState(false);
+  const [canConfigureDesafio,  setCanConfigureDesafio]  = useState(false);
+  const [isRestrictedManager,  setIsRestrictedManager]  = useState(false);
+  const [userRestrictedManager, setUserRestrictedManager] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/processo-comercial/rdm/config')
       .then(res => res.json())
       .then(resData => {
         if (resData && resData.success) {
-          setIsAdmin(Boolean(resData.isAdmin));
+          const canConfig = Boolean(resData.canConfigureDesafio ?? resData.isAdmin);
+          setCanConfigureDesafio(canConfig);
+          if (resData.managerName && !canConfig) {
+            setIsRestrictedManager(true);
+            setUserRestrictedManager(resData.managerName);
+            setManager(resData.managerName);
+          }
         }
       })
       .catch(() => {});
@@ -5247,6 +5259,16 @@ export default function RdmPage() {
       if (!json.success) throw new Error((json as unknown as { error: string }).error);
       setData(json);
       setComments(json.comments ?? {});
+      if (json.canConfigureDesafio !== undefined) {
+        setCanConfigureDesafio(Boolean(json.canConfigureDesafio));
+      }
+      if (json.isRestrictedManager) {
+        setIsRestrictedManager(true);
+        if (json.userManager && json.userManager !== manager) {
+          setUserRestrictedManager(json.userManager);
+          setManager(json.userManager);
+        }
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao carregar dados");
     } finally {
@@ -5815,9 +5837,26 @@ export default function RdmPage() {
         {/* Floating control bar */}
         <div className={`rdm-present-bar${barVisible ? " rdm-bar-visible" : ""}`}>
           <label className="rdm-filter-label">GERENTE</label>
-          <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
-            {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          {isRestrictedManager ? (
+            <span style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '4px 10px',
+              borderRadius: '4px',
+              background: 'rgba(201, 169, 110, 0.15)',
+              border: '1px solid rgba(201, 169, 110, 0.4)',
+              color: '#c9a96e',
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+            }}>
+              {(MANAGER_OPTIONS.find(o => isSameManager(o.value, manager)) || { label: manager }).label}
+            </span>
+          ) : (
+            <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
+              {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
           <div className="rdm-present-sep" />
           <label className="rdm-filter-label">MÊS</label>
           <select className="rdm-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
@@ -5920,7 +5959,7 @@ export default function RdmPage() {
             <span>PowerPoint</span>
           </button>
           <ThemeToggle />
-          {isAdmin && (
+          {canConfigureDesafio && (
             <button
               onClick={() => setShowConfigModal(true)}
               title="Configurar percentuais do Desafio DRE por regional"
@@ -5952,9 +5991,26 @@ export default function RdmPage() {
       {/* ── Filters ── */}
       <div className="rdm-filters">
         <label className="rdm-filter-label">Gerente</label>
-        <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
-          {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        {isRestrictedManager ? (
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            padding: '5px 12px',
+            borderRadius: '6px',
+            background: 'rgba(201, 169, 110, 0.12)',
+            border: '1px solid rgba(201, 169, 110, 0.35)',
+            color: '#c9a96e',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            fontFamily: 'var(--font-geist-sans, system-ui)',
+          }}>
+            {(MANAGER_OPTIONS.find(o => isSameManager(o.value, manager)) || { label: manager }).label}
+          </span>
+        ) : (
+          <select className="rdm-select" value={manager} onChange={e => setManager(e.target.value)}>
+            {MANAGER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
 
         <label className="rdm-filter-label">Mês</label>
         <select className="rdm-select" value={month} onChange={e => setMonth(Number(e.target.value))}>
