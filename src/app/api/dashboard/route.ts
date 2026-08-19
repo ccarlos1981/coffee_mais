@@ -245,7 +245,18 @@ export async function GET(request: Request) {
       return NextResponse.json(cachedData);
     }
 
-    const data = await AnalyticsEngine.getVendasSummary(filters);
+    const startMonth = filters.startMonth || (filters.startDate ? filters.startDate.substring(0, 7) : null);
+    const [year, month] = startMonth ? startMonth.split('-').map(Number) : [new Date().getFullYear(), new Date().getMonth() + 1];
+
+    const [data, desafioConfigsMap] = await Promise.all([
+      AnalyticsEngine.getVendasSummary(filters),
+      AnalyticsEngine.getAllDesafioDreConfigs(year, month),
+    ]);
+
+    const desafioConfigs: Record<string, any> = {};
+    for (const [k, v] of desafioConfigsMap.entries()) {
+      desafioConfigs[k] = v;
+    }
 
     const pmClientMap = new Map<string, { fat: number; qty: number; maco: number }>();
     for (const r of data.rowsPmClient) {
@@ -276,6 +287,7 @@ export async function GET(request: Request) {
       current: curAgg,
       prevMonth: pmAgg,
       prevYear: pyAgg,
+      desafioConfigs,
     };
 
     DashboardCache.set(cacheKey, payload);

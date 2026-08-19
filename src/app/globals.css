@@ -114,7 +114,7 @@
 }
 
 /* ── Table Light ── */
-[data-theme="light"] .data-table tr:hover td {
+[data-theme="light"] .data-table tr:hover td:not(.pct-cell) {
   background: rgba(0, 0, 0, 0.015);
 }
 
@@ -809,7 +809,7 @@ body {
   transition: background 0.15s ease;
 }
 
-.data-table tbody tr:hover td {
+.data-table tbody tr:hover td:not(.pct-cell) {
   background: rgba(200, 169, 110, 0.04) !important;
   background-clip: padding-box !important;
 }
@@ -818,7 +818,7 @@ body {
   box-shadow: inset 3px 0 0 var(--accent-gold);
 }
 
-.data-table tr.row-total td {
+.data-table tr.row-total td:not(.pct-cell) {
   background: var(--table-total-bg) !important;
   background-clip: padding-box !important;
   font-weight: 700;
@@ -828,8 +828,10 @@ body {
   font-size: 0.76rem;
 }
 
-.data-table td.pct-cell {
+.data-table tr.row-total td.pct-cell {
   font-weight: 700;
+  border-top: 1px solid var(--accent-gold);
+  border-bottom: 1px solid var(--accent-gold);
   font-size: 0.68rem;
 }
 

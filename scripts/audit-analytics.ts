@@ -34,6 +34,8 @@ const ALLOWED_PHYSICAL_TABLE_EXCEPTIONS = [
   'scoreConfianca.ts', // Engine de score
   'route-engine.ts', // IA de rotas
   'get_actual_sales_v2', // RPC homologada da Fase 3
+  'upload/page.tsx', // Hub de Importação UI
+  'ownership', // Domínio de ownership
 ];
 
 // Arquivos autorizados no Registry de Views
@@ -44,6 +46,7 @@ const ALLOWED_VIEW_REGISTRY_FILES = [
   'verify-parity.ts',
   'route-engine.ts',
   'daily/route.ts', // Exceção homologada da Seção 10 para faturamento diário
+  'import-service.ts', // Motor de importação DRE
   'OFFICIAL_ANALYTICS_SOURCES', // Uso via constante exportada da AnalyticsEngine
 ];
 

@@ -252,16 +252,23 @@ export default function VendasDashboard() {
         if (!active) return;
 
         const payload = normalizeAnalyticsPayload<ManagerData, FamiliaData>(rawJson);
+        const desafioConfigs = rawJson?.desafioConfigs || {};
+
+        const getMargemDesafio = (mId: string): number => {
+          const cleanId = mId.replace('-KA', '').replace('-DIST', '');
+          const cfg = desafioConfigs[cleanId] || desafioConfigs[mId] || desafioConfigs['CRISTIANO'] || { margem_maco_pct: 0.31 };
+          return typeof cfg.margem_maco_pct === 'number' ? cfg.margem_maco_pct : 0.31;
+        };
 
         if (payload.success) {
           const byManager: ManagerData[] = payload.byManager;
           setFamiliaData(payload.byFamilia);
           
           const pm = payload.previousMonth;
-          setPreviousMonth({ fat: Number(pm.fat || 0), qty: Number(pm.qty || 0), maco: 0 });
+          setPreviousMonth({ fat: Number(pm.fat || 0), qty: Number(pm.qty || 0), maco: Number(pm.maco || 0) });
           
           const py = payload.previousYear;
-          setPreviousYear({ fat: Number(py.fat || 0), qty: Number(py.qty || 0), maco: 0 });
+          setPreviousYear({ fat: Number(py.fat || 0), qty: Number(py.qty || 0), maco: Number(py.maco || 0) });
 
           const getManagerId = (t: { manager: string; manager_id?: string | null }) => {
             if (t.manager_id) return t.manager_id;
@@ -287,7 +294,11 @@ export default function VendasDashboard() {
             const distDef = DISTRIBUTORS_REGISTRY[mId];
             if (distDef) {
               // Gerente possui cadastro no domínio de Commercial Roles (Luiz, John Guedes, Leandro, Julliano)
-              const allClients = (sales?.topClients || []).map(c => ({ ...c, maco: 0 }));
+              const allClients = (sales?.topClients || []).map(c => ({
+                ...c,
+                maco: Number(c.maco || 0),
+                paceMaco: Number((c as any).paceMaco || 0),
+              }));
               const distClients = allClients.filter(c => isDistributorClient(c, mId));
               const kaClients = allClients.filter(c => !isDistributorClient(c, mId));
 
@@ -340,6 +351,11 @@ export default function VendasDashboard() {
 
                   const kaOfficialFat = Math.max(0, officialManagerFat - distFat);
                   const kaOfficialQty = Math.max(0, officialManagerQty - distQty);
+                  const kaOfficialMaco = kaClients.reduce((acc, c) => acc + (c.maco || 0), 0);
+                  const kaOfficialPaceMaco = kaClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0);
+                  const kaMetaFat = kaTarget?.target_revenue || 0;
+                  const kaMetaUnd = kaTarget?.target_tons || 0;
+                  const kaMetaMaco = kaMetaFat > 0 ? Number((kaMetaFat * getMargemDesafio(mId)).toFixed(2)) : 0;
 
                   rows.push({
                     manager: kaLabel,
@@ -347,15 +363,15 @@ export default function VendasDashboard() {
                     role: "KA",
                     fat: kaOfficialFat,
                     qty: kaOfficialQty,
-                    maco: 0,
+                    maco: kaOfficialMaco,
                     vendaFutura: sales?.vendaFutura || 0,
                     paceFat: sales?.paceFat || 0,
                     paceQty: sales?.paceQty || 0,
-                    paceMaco: 0,
+                    paceMaco: kaOfficialPaceMaco,
                     topClients: kaClients,
-                    metaFat: kaTarget?.target_revenue || 0,
-                    metaUnd: kaTarget?.target_tons || 0,
-                    metaMaco: 0,
+                    metaFat: kaMetaFat,
+                    metaUnd: kaMetaUnd,
+                    metaMaco: kaMetaMaco,
                   });
                 }
               }
@@ -368,21 +384,27 @@ export default function VendasDashboard() {
                   if (filterChannel.length === 0 || filterChannel.includes("Distribuidor")) {
                     const distFat = distClients.reduce((acc, c) => acc + (c.fat || 0), 0);
                     const distQty = distClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+                    const distMaco = distClients.reduce((acc, c) => acc + (c.maco || 0), 0);
+                    const distPaceMaco = distClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0);
+                    const distMetaFat = distTarget?.target_revenue || 0;
+                    const distMetaUnd = distTarget?.target_tons || 0;
+                    const distMetaMaco = distMetaFat > 0 ? Number((distMetaFat * getMargemDesafio(mId)).toFixed(2)) : 0;
+
                     rows.push({
                       manager: distLabel,
                       manager_id: distKey,
                       role: "DIST",
                       fat: distFat,
                       qty: distQty,
-                      maco: 0,
+                      maco: distMaco,
                       vendaFutura: 0,
                       paceFat: 0,
                       paceQty: 0,
-                      paceMaco: 0,
+                      paceMaco: distPaceMaco,
                       topClients: distClients,
-                      metaFat: distTarget?.target_revenue || 0,
-                      metaUnd: distTarget?.target_tons || 0,
-                      metaMaco: 0,
+                      metaFat: distMetaFat,
+                      metaUnd: distMetaUnd,
+                      metaMaco: distMetaMaco,
                     });
                   }
                 }
@@ -395,21 +417,30 @@ export default function VendasDashboard() {
                 if (CommercialDomainService.isStandaloneChannelManager(mName) && !filterChannel.includes(mName)) return;
               }
 
+              const genMetaFat = target?.target_revenue || 0;
+              const genMetaUnd = target?.target_tons || 0;
+              const genMetaMaco = genMetaFat > 0 ? Number((genMetaFat * getMargemDesafio(mId)).toFixed(2)) : 0;
+              const genClients = (sales?.topClients || []).map(c => ({
+                ...c,
+                maco: Number(c.maco || 0),
+                paceMaco: Number((c as any).paceMaco || 0),
+              }));
+
               rows.push({
                 manager: mName,
                 manager_id: mId,
                 role: "KA",
                 fat: sales?.fat || 0,
                 qty: sales?.qty || 0,
-                maco: 0,
+                maco: Number(sales?.maco || 0),
                 vendaFutura: sales?.vendaFutura || 0,
                 paceFat: sales?.paceFat || 0,
                 paceQty: sales?.paceQty || 0,
-                paceMaco: 0,
-                topClients: (sales?.topClients || []).map(c => ({ ...c, maco: 0 })),
-                metaFat: target?.target_revenue || 0,
-                metaUnd: target?.target_tons || 0,
-                metaMaco: 0,
+                paceMaco: Number(sales?.paceMaco || 0),
+                topClients: genClients,
+                metaFat: genMetaFat,
+                metaUnd: genMetaUnd,
+                metaMaco: genMetaMaco,
               });
             }
           });
@@ -910,8 +941,8 @@ export default function VendasDashboard() {
                             </td>
                             <td className="col-divider">{formatCurrency(row.metaFat / 1000)}</td>
                             <td>{formatCurrency(row.fat / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
-                              {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(pct(row.fat, row.metaFat), row.metaFat)}>
+                              {row.metaFat > 0 ? formatPercent(pct(row.fat, row.metaFat)) : "-"}
                             </td>
                             <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
                               {row.metaFat > 0 ? formatPercent(pFat) : "-"}
@@ -990,8 +1021,8 @@ export default function VendasDashboard() {
                           <td>TOTAL</td>
                           <td className="col-divider">{formatCurrency(totals.metaFat / 1000)}</td>
                           <td>{formatCurrency(totals.fat / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
-                            {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
+                            {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
                           </td>
                           <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
                             {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}
@@ -1065,8 +1096,8 @@ export default function VendasDashboard() {
                               </td>
                               <td>{formatCurrency(row.metaFat / 1000)}</td>
                               <td>{formatCurrency(row.fat / 1000)}</td>
-                              <td className="pct-cell" style={getPctStyle(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat), row.metaFat)}>
-                                {row.metaFat > 0 ? formatPercent(pct((row.paceFat || 0) + (row.vendaFutura || 0), row.metaFat)) : "-"}
+                              <td className="pct-cell" style={getPctStyle(pct(row.fat, row.metaFat), row.metaFat)}>
+                                {row.metaFat > 0 ? formatPercent(pct(row.fat, row.metaFat)) : "-"}
                               </td>
                               <td className="pct-cell" style={getPctStyle(pFat, row.metaFat)}>
                                 {row.metaFat > 0 ? formatPercent(pFat) : "-"}
@@ -1130,8 +1161,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatCurrency(totals.metaFat / 1000)}</td>
                             <td>{formatCurrency(totals.fat / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat), totals.metaFat)}>
-                              {totals.metaFat > 0 ? formatPercent(pct((totals.paceFat || 0) + (totals.vendaFutura || 0), totals.metaFat)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(pct(totals.fat, totals.metaFat), totals.metaFat)}>
+                              {totals.metaFat > 0 ? formatPercent(pct(totals.fat, totals.metaFat)) : "-"}
                             </td>
                             <td className="pct-cell" style={getPctStyle(calcTendPct(totals.fat, totals.metaFat), totals.metaFat)}>
                               {totals.metaFat > 0 ? formatPercent(calcTendPct(totals.fat, totals.metaFat)) : "-"}

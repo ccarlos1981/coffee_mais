@@ -20,7 +20,135 @@ function getSupabaseClient() {
   return createAdminClient();
 }
 
+export interface DesafioDreConfig {
+  manager_id: string;
+  competencia: string;
+  impostos_pct: number;
+  investimento_pct: number;
+  cpv_pct: number;
+  frete_pct: number;
+  margem_maco_pct: number;
+  source: 'MONTH' | 'GLOBAL_MANAGER' | 'GLOBAL_CRISTIANO' | 'SYSTEM_DEFAULT';
+}
+
 export class AnalyticsEngine {
+  /**
+   * Obtém a configuração oficial dos percentuais do Desafio DRE para um gerente e período.
+   * Aplica estritamente a hierarquia de 4 níveis homologada:
+   * 1. Específico do gerente + Mês (manager_id + YYYY-MM)
+   * 2. Padrão Global do gerente (manager_id + GLOBAL)
+   * 3. Padrão Global CRISTIANO (CRISTIANO + GLOBAL)
+   * 4. Defaults do Sistema (3,5% Impostos, 10,0% Investimento, 46,0% CPV, 3,0% Frete)
+   */
+  public static async getDesafioDreConfig(
+    managerId?: string,
+    year?: number,
+    month?: number
+  ): Promise<DesafioDreConfig> {
+    const allConfigs = await this.getAllDesafioDreConfigs(year, month);
+    let canonicalId = 'CRISTIANO';
+    if (managerId && managerId !== 'CRISTIANO' && managerId !== 'CRISTIANO (Total)' && managerId !== 'KA') {
+      canonicalId = resolveCanonicalManager(managerId).managerId;
+      if (canonicalId === '9999') canonicalId = managerId;
+    }
+    return allConfigs.get(canonicalId) || allConfigs.get('CRISTIANO') || {
+      manager_id: canonicalId,
+      competencia: 'SYSTEM_DEFAULT',
+      impostos_pct: 0.035,
+      investimento_pct: 0.100,
+      cpv_pct: 0.460,
+      frete_pct: 0.030,
+      margem_maco_pct: 0.375,
+      source: 'SYSTEM_DEFAULT',
+    };
+  }
+
+  /**
+   * Obtém o mapa completo de configurações do Desafio DRE para todos os gerentes em uma única consulta.
+   */
+  public static async getAllDesafioDreConfigs(
+    year?: number,
+    month?: number
+  ): Promise<Map<string, DesafioDreConfig>> {
+    const defaults = {
+      impostos_pct: 0.035,
+      investimento_pct: 0.100,
+      cpv_pct: 0.460,
+      frete_pct: 0.030,
+    };
+    const comp = (year && month) ? `${year}-${String(month).padStart(2, '0')}` : undefined;
+    const compsToQuery = comp ? [comp, 'GLOBAL'] : ['GLOBAL'];
+
+    const configMap = new Map<string, DesafioDreConfig>();
+    try {
+      const sql = `
+        SELECT manager_id, competencia, impostos_pct, investimento_pct, cpv_pct, frete_pct
+        FROM public.cm_rdm_desafio_config
+        WHERE competencia IN (${compsToQuery.map(c => `'${c}'`).join(',')})
+      `;
+      const rows = await this.executeSql<any>(sql);
+
+      const rowsByManager = new Map<string, any[]>();
+      for (const r of rows || []) {
+        const mId = r.manager_id || 'CRISTIANO';
+        if (!rowsByManager.has(mId)) rowsByManager.set(mId, []);
+        rowsByManager.get(mId)!.push(r);
+      }
+
+      const cristianoRows = rowsByManager.get('CRISTIANO') || [];
+      const cristianoMonth = comp ? cristianoRows.find(r => r.competencia === comp) : undefined;
+      const cristianoGlobal = cristianoRows.find(r => r.competencia === 'GLOBAL');
+      const baseRow = cristianoMonth || cristianoGlobal;
+
+      const baseImp = Number(baseRow?.impostos_pct ?? defaults.impostos_pct);
+      const baseInv = Number(baseRow?.investimento_pct ?? defaults.investimento_pct);
+      const baseCpv = Number(baseRow?.cpv_pct ?? defaults.cpv_pct);
+      const baseFre = Number(baseRow?.frete_pct ?? defaults.frete_pct);
+      const baseMaco = Number((1 - baseImp - baseInv - baseCpv - baseFre).toFixed(4));
+      const baseSource = cristianoMonth ? 'MONTH' : (cristianoGlobal ? 'GLOBAL_CRISTIANO' : 'SYSTEM_DEFAULT');
+
+      const defaultCristianoConfig: DesafioDreConfig = {
+        manager_id: 'CRISTIANO',
+        competencia: comp || 'GLOBAL',
+        impostos_pct: baseImp,
+        investimento_pct: baseInv,
+        cpv_pct: baseCpv,
+        frete_pct: baseFre,
+        margem_maco_pct: baseMaco,
+        source: baseSource as any,
+      };
+      configMap.set('CRISTIANO', defaultCristianoConfig);
+
+      for (const [mId, mRows] of rowsByManager.entries()) {
+        if (mId === 'CRISTIANO') continue;
+        const monthRow = comp ? mRows.find(r => r.competencia === comp) : undefined;
+        const globalRow = mRows.find(r => r.competencia === 'GLOBAL');
+        const active = monthRow || globalRow;
+
+        if (active) {
+          const imp = Number(active.impostos_pct ?? baseImp);
+          const inv = Number(active.investimento_pct ?? baseInv);
+          const cpv = Number(active.cpv_pct ?? baseCpv);
+          const fre = Number(active.frete_pct ?? baseFre);
+          configMap.set(mId, {
+            manager_id: mId,
+            competencia: active.competencia,
+            impostos_pct: imp,
+            investimento_pct: inv,
+            cpv_pct: cpv,
+            frete_pct: fre,
+            margem_maco_pct: Number((1 - imp - inv - cpv - fre).toFixed(4)),
+            source: monthRow ? 'MONTH' : 'GLOBAL_MANAGER',
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[AnalyticsEngine] Erro ao carregar cm_rdm_desafio_config:', err);
+    }
+
+    return configMap;
+  }
+
   /**
    * Executa uma query SQL via RPC segura `execute_readonly_query`.
    */
@@ -84,7 +212,12 @@ export class AnalyticsEngine {
         COALESCE(channel, 'Outros') as channel,
         SUM(net_value) as fat,
         SUM(quantity) as qty,
-        SUM(imposto) as imposto,
+        SUM(
+          CASE 
+            WHEN ABS(COALESCE(imposto, 0)) >= ABS(COALESCE(net_value, 0)) THEN COALESCE(net_value * 0.035, 0)
+            ELSE COALESCE(imposto, 0)
+          END
+        ) as imposto,
         SUM(custo_total) as cpv,
         SUM(net_value) * ${DRE_FRETE_PERCENTUAL} as frete,
         SUM(maco) as maco_raw,
@@ -127,15 +260,41 @@ export class AnalyticsEngine {
       investMapByMgr.set(mgrK, (investMapByMgr.get(mgrK) || 0) + val);
     }
 
+    const totalFatByRede = new Map<string, number>();
+    const totalFatByMgr = new Map<string, number>();
+    for (const r of allRows || []) {
+      const mes = r.mes || '';
+      const redeK = `${mes}|${String(r.rede || '').toUpperCase().trim()}`;
+      const mgrK = `${mes}|${r.manager}`;
+      const f = Number(r.fat || 0);
+      totalFatByRede.set(redeK, (totalFatByRede.get(redeK) || 0) + f);
+      totalFatByMgr.set(mgrK, (totalFatByMgr.get(mgrK) || 0) + f);
+    }
+
     // Processar cálculo oficial de Margem de Contribuição para cada linha
     const processedRows = (allRows || []).map((r: any) => {
       const fat = Number(r.fat || 0);
       const imp = Number(r.imposto || 0);
       const cpv = Number(r.cpv || 0);
       const frete = Number(r.frete || 0);
-      const invMgr = investMapByMgr.get(`${r.mes}|${r.manager}`) || 0;
-      const invManual = filters.investmentPct && filters.investmentPct > 0 ? fat * filters.investmentPct : 0;
-      const invest = invManual > 0 ? invManual : invMgr;
+
+      const redeK = `${r.mes}|${String(r.rede || '').toUpperCase().trim()}`;
+      const mgrK = `${r.mes}|${r.manager}`;
+      const redeTotalFat = totalFatByRede.get(redeK) || 0;
+      const mgrTotalFat = totalFatByMgr.get(mgrK) || 0;
+
+      const invRede = investMapByRede.get(redeK) || 0;
+      const invMgr = investMapByMgr.get(mgrK) || 0;
+
+      let invest = 0;
+      if (filters.investmentPct && filters.investmentPct > 0) {
+        invest = fat * filters.investmentPct;
+      } else if (invRede > 0 && redeTotalFat > 0) {
+        invest = (fat / redeTotalFat) * invRede;
+      } else if (invMgr > 0 && mgrTotalFat > 0) {
+        invest = (fat / mgrTotalFat) * invMgr;
+      }
+
       const macoOficial = fat - imp - frete - invest - cpv;
 
       return {
@@ -145,7 +304,7 @@ export class AnalyticsEngine {
         imposto: imp,
         cpv,
         frete,
-        investimento: invest,
+        investimento: Number(invest.toFixed(2)),
         maco: Number(macoOficial.toFixed(2)),
       };
     });
@@ -159,10 +318,8 @@ export class AnalyticsEngine {
       for (const r of baseRows) {
         const key = `${r.mes}|${r.manager_id}|${r.rede}`;
         const existing = clientMap.get(key);
-        const invRede = investMapByRede.get(`${r.mes}|${String(r.rede).toUpperCase().trim()}`) || 0;
-        const invManual = filters.investmentPct && filters.investmentPct > 0 ? r.fat * filters.investmentPct : 0;
-        const invest = invManual > 0 ? invManual : invRede;
-        const macoClient = r.fat - r.imposto - r.frete - invest - r.cpv;
+        const invManual = filters.investmentPct && filters.investmentPct > 0 ? Number(r.fat || 0) * filters.investmentPct : 0;
+        const invest = invManual > 0 ? invManual : Number(r.investimento || 0);
 
         if (!existing) {
           clientMap.set(key, {
@@ -177,7 +334,7 @@ export class AnalyticsEngine {
             cpv: Number(r.cpv || 0),
             frete: Number(r.frete || 0),
             investimento: invest,
-            maco: Number(macoClient.toFixed(2)),
+            maco: Number(r.maco || 0),
             valor_venda_futura: 0
           });
         } else {
@@ -187,11 +344,14 @@ export class AnalyticsEngine {
           existing.cpv += Number(r.cpv || 0);
           existing.frete += Number(r.frete || 0);
           existing.investimento += invest;
-          const updatedMaco = existing.fat - existing.imposto - existing.frete - existing.investimento - existing.cpv;
-          existing.maco = Number(updatedMaco.toFixed(2));
+          existing.maco += Number(r.maco || 0);
         }
       }
-      return Array.from(clientMap.values());
+      return Array.from(clientMap.values()).map(c => ({
+        ...c,
+        investimento: Number(c.investimento.toFixed(2)),
+        maco: Number(c.maco.toFixed(2)),
+      }));
     };
 
     const rowsCurClient = deriveClientRows(rowsCur);
@@ -314,9 +474,11 @@ export class AnalyticsEngine {
     const wherePmRemainderBase = buildWhereClause(pmRemainderFilters, OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME);
 
     const investmentPct = filters.investmentPct || 0;
+    const sanitizedImpostoSql = `CASE WHEN ABS(COALESCE(imposto, 0)) >= ABS(COALESCE(net_value, 0)) THEN COALESCE(net_value * 0.035, 0) ELSE COALESCE(imposto, 0) END`;
+    const rawMacoExpression = `(COALESCE(net_value, 0) - ${sanitizedImpostoSql} - COALESCE(custo_total, 0) - (COALESCE(net_value, 0) * ${DRE_FRETE_PERCENTUAL}))`;
     const macoSql = investmentPct > 0
-      ? `SUM(COALESCE(maco, 0) - (COALESCE(net_value, 0) * ${investmentPct}))`
-      : `SUM(COALESCE(maco, 0))`;
+      ? `SUM(${rawMacoExpression} - (COALESCE(net_value, 0) * ${investmentPct}))`
+      : `SUM(${rawMacoExpression})`;
 
     const sqlPmRemainderManager = `
       SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,

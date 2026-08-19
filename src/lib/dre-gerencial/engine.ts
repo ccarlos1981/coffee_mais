@@ -11,6 +11,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveCanonicalManager } from '@/lib/domain/canonical';
+import { AnalyticsEngine } from '@/lib/governance/analytics';
 import {
   type DreKpis,
   type DreRedeRow,
@@ -362,39 +363,20 @@ function getDesafio(targets: TargetRow[], gerente?: string, redeFiltro?: string)
 }
 
 async function fetchDesafioConfig(gerente?: string, competencia?: string): Promise<{ impostos_pct: number; investimento_pct: number; cpv_pct: number; frete_pct: number }> {
-  const defaults = { impostos_pct: 0.035, investimento_pct: 0.100, cpv_pct: 0.460, frete_pct: 0.030 };
-  try {
-    let canonicalId = 'CRISTIANO';
-    if (gerente && gerente !== 'CRISTIANO' && gerente !== 'CRISTIANO (Total)' && gerente !== 'KA') {
-      canonicalId = resolveCanonicalManager(gerente).managerId;
-      if (canonicalId === '9999') canonicalId = 'CRISTIANO';
-    }
-    const supabase = createAdminClient();
-    const compsToQuery = competencia ? [competencia, 'GLOBAL'] : ['GLOBAL'];
-    const { data: rows } = await supabase
-      .from('cm_rdm_desafio_config')
-      .select('competencia, impostos_pct, investimento_pct, cpv_pct, frete_pct')
-      .eq('manager_id', canonicalId)
-      .in('competencia', compsToQuery);
-
-    if (rows && rows.length > 0) {
-      const matchMonth = competencia ? rows.find(r => r.competencia === competencia) : undefined;
-      const matchGlobal = rows.find(r => r.competencia === 'GLOBAL');
-      const targetRow = matchMonth || matchGlobal;
-
-      if (targetRow) {
-        return {
-          impostos_pct: Number(targetRow.impostos_pct ?? defaults.impostos_pct),
-          investimento_pct: Number(targetRow.investimento_pct ?? defaults.investimento_pct),
-          cpv_pct: Number(targetRow.cpv_pct ?? defaults.cpv_pct),
-          frete_pct: Number(targetRow.frete_pct ?? defaults.frete_pct),
-        };
-      }
-    }
-  } catch (err) {
-    console.error('[Engine] Erro ao carregar cm_rdm_desafio_config:', err);
+  let y: number | undefined;
+  let m: number | undefined;
+  if (competencia && competencia.includes('-')) {
+    const [yStr, mStr] = competencia.split('-');
+    y = Number(yStr);
+    m = Number(mStr);
   }
-  return defaults;
+  const cfg = await AnalyticsEngine.getDesafioDreConfig(gerente, y, m);
+  return {
+    impostos_pct: cfg.impostos_pct,
+    investimento_pct: cfg.investimento_pct,
+    cpv_pct: cfg.cpv_pct,
+    frete_pct: cfg.frete_pct,
+  };
 }
 
 // ─── Slide 1 Builder ───
