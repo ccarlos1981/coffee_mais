@@ -223,25 +223,42 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     let clientManagerName: string | null = null;
 
     if (codigo_matriz) {
-      const { data: clientData } = await supabase
-        .from("cm_clientes")
-        .select("manager_id, manager_name, responsavel")
-        .eq("codigo_matriz", codigo_matriz)
-        .not("manager_id", "is", null)
-        .limit(1);
-
-      if (clientData && clientData.length > 0) {
-        clientManagerId = clientData[0].manager_id;
-        clientManagerName = clientData[0].manager_name || clientData[0].responsavel;
-      } else {
-        const { data: anyClient } = await supabase
+      if (rede) {
+        const { data: clientDataWithRede } = await supabase
           .from("cm_clientes")
           .select("manager_id, manager_name, responsavel")
           .eq("codigo_matriz", codigo_matriz)
+          .ilike("matriz", rede)
+          .not("manager_id", "is", null)
           .limit(1);
-        if (anyClient && anyClient.length > 0) {
-          clientManagerId = anyClient[0].manager_id;
-          clientManagerName = anyClient[0].manager_name || anyClient[0].responsavel;
+
+        if (clientDataWithRede && clientDataWithRede.length > 0) {
+          clientManagerId = clientDataWithRede[0].manager_id;
+          clientManagerName = clientDataWithRede[0].manager_name || clientDataWithRede[0].responsavel;
+        }
+      }
+
+      if (!clientManagerId) {
+        const { data: clientData } = await supabase
+          .from("cm_clientes")
+          .select("manager_id, manager_name, responsavel")
+          .eq("codigo_matriz", codigo_matriz)
+          .not("manager_id", "is", null)
+          .limit(1);
+
+        if (clientData && clientData.length > 0) {
+          clientManagerId = clientData[0].manager_id;
+          clientManagerName = clientData[0].manager_name || clientData[0].responsavel;
+        } else {
+          const { data: anyClient } = await supabase
+            .from("cm_clientes")
+            .select("manager_id, manager_name, responsavel")
+            .eq("codigo_matriz", codigo_matriz)
+            .limit(1);
+          if (anyClient && anyClient.length > 0) {
+            clientManagerId = anyClient[0].manager_id;
+            clientManagerName = anyClient[0].manager_name || anyClient[0].responsavel;
+          }
         }
       }
     }
