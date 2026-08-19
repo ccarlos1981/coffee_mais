@@ -1608,3 +1608,9 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    2b4b42e..26a28cb  main -> main
 [18/08/2026 20:56] ✅ Alterações enviadas com sucesso para o GitHub.
+[main b4e62e9] auto-save: 19/08/2026 01:11
+ 9 files changed, 335 insertions(+), 179 deletions(-)
+ delete mode 100644 src/lib/governance/analytics/audit_fallback_impact.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   26a28cb..b4e62e9  main -> main
+[19/08/2026 01:11] ✅ Alterações enviadas com sucesso para o GitHub.
