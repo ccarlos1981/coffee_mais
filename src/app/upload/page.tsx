@@ -107,8 +107,9 @@ export default function ImportHubPage() {
   });
   const [bqError, setBqError] = useState<string | null>(null);
 
-  // Unified History state
+  // Unified History & Pending Batches state
   const [history, setHistory] = useState<any[]>([]);
+  const [pendingBatches, setPendingBatches] = useState<any[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -145,6 +146,19 @@ export default function ImportHubPage() {
     loadUser();
   }, []);
 
+  // Navigation guard against closing/leaving while preview is unconfirmed
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (status === "preview" && preview) {
+        e.preventDefault();
+        e.returnValue = "Você possui um lote em Staging aguardando confirmação. Se sair agora, os dados não serão gravados na base oficial.";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [status, preview]);
+
   const loadHistory = useCallback(async () => {
     setIsLoadingHistory(true);
     try {
@@ -152,10 +166,17 @@ export default function ImportHubPage() {
         .from("cm_sync_logs")
         .select("*")
         .order("started_at", { ascending: false })
-        .limit(10);
+        .limit(20);
 
       if (error) throw error;
-      if (data) setHistory(data);
+      if (data) {
+        setHistory(data);
+        // Detect pending batches (status === 'RUNNING' or sub_status === 'PENDING_CONFIRMATION')
+        const pending = data.filter(
+          (item) => item.source === "excel" && (item.status === "RUNNING" || item.metadata?.sub_status === "PENDING_CONFIRMATION")
+        );
+        setPendingBatches(pending);
+      }
     } catch (err) {
       console.error("Erro ao carregar histórico:", err);
     } finally {
@@ -166,6 +187,60 @@ export default function ImportHubPage() {
   useEffect(() => {
     loadHistory();
   }, [status, bqStatus, loadHistory]);
+
+  // Restore an existing pending batch from Staging directly into preview without re-analyzing
+  const resumePendingBatch = (batch: any) => {
+    const meta = batch.metadata || {};
+    const previewData: ImportPreview = {
+      batchId: batch.id,
+      filename: meta.file_name || "Arquivo em Staging",
+      fileSize: meta.file_size || 0,
+      templateName: meta.template_name || "CFOP OFICIAL",
+      templateRecognized: true,
+      period: meta.period || "Agosto/2026",
+      periodStart: batch.period_start || meta.period_start || "",
+      periodEnd: batch.period_end || meta.period_end || "",
+      periodFormatted: meta.period_formatted || (batch.period_start && batch.period_end ? `${batch.period_start} → ${batch.period_end}` : meta.period || ""),
+      totalRows: meta.total_rows || 0,
+      uniquePartners: meta.unique_partners || 0,
+      uniqueProducts: meta.unique_products || 0,
+      unmappedPartnersCount: meta.unmapped_partners_count || 0,
+      totalGross: meta.total_gross || 0,
+      totalApproved: meta.total_approved || 0,
+      totalCancelled: meta.total_cancelled || 0,
+      totalDevolution: meta.total_devolution || 0,
+      totalNet: meta.total_net || 0,
+      totalVendaFutura: meta.total_venda_futura || 0,
+      topsFound: meta.tops_found || [],
+      cfopsFound: meta.cfops_found || [],
+      warningsCount: meta.warnings_count || 0,
+      errorsCount: meta.errors_count || 0,
+      qualityScore: meta.quality_score ?? 99.9,
+      inconsistencies: meta.inconsistencies || [],
+      needsConfirmation: true,
+      currentBaseStats: meta.current_base_stats || null,
+      validationChecklist: meta.validation_checklist || {
+        layoutRecognized: true,
+        headersValid: true,
+        datesValid: true,
+        productsValid: true,
+        partnersValid: true,
+        valuesValid: true,
+        periodIdentified: true,
+        fileAnalyzed: true,
+      },
+    };
+    setPreview(previewData);
+    setStatus("preview");
+  };
+
+  // Discard a pending batch explicitly
+  const discardPendingBatch = async (batchId: string) => {
+    if (!confirm("Tem certeza de que deseja descartar este lote em Staging? Os dados temporários serão removidos e o lote não será promovido para a base oficial.")) {
+      return;
+    }
+    await handleRollback(batchId);
+  };
 
   // Real-time polling for import progress & detailed steps
   const pollImportStatus = (batchId: string) => {
@@ -428,6 +503,84 @@ export default function ImportHubPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-10">
+        {/* Banner Global de Lotes em Staging Aguardando Confirmação */}
+        {pendingBatches.length > 0 && status === "idle" && (
+          <div className="mb-8 p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/50 space-y-4 animate-slide-up shadow-xl shadow-amber-500/5">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-6 h-6 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    {pendingBatches.length} {pendingBatches.length === 1 ? "LOTE EM STAGING AGUARDANDO CONFIRMAÇÃO" : "LOTES EM STAGING AGUARDANDO CONFIRMAÇÃO"}
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-amber-200 mt-1.5">
+                  Atenção: Existem dados validados em Staging que ainda NÃO FORAM PROMOVIDOS para a base oficial!
+                </h3>
+                <p className="text-xs text-zinc-300 mt-1">
+                  Estes arquivos já foram analisados com sucesso, mas o faturamento <strong>NÃO APARECE no Dashboard Comercial (/vendas)</strong> até que a confirmação manual seja concluída.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2.5 pt-1">
+              {pendingBatches.map((batch) => {
+                const meta = batch.metadata || {};
+                return (
+                  <div
+                    key={batch.id}
+                    className="p-4 rounded-xl bg-background/70 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-amber-500/50 transition-all"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <FileSpreadsheet className="w-4 h-4 text-gold" />
+                        <span className="text-xs font-bold text-zinc-100">{meta.file_name || "Planilha Excel"}</span>
+                        <span className="text-[10px] text-muted font-mono bg-elevated px-1.5 py-0.5 rounded border border-border">
+                          {batch.id.slice(0, 8)}...
+                        </span>
+                        <span className="text-[10px] text-amber-400/90 font-medium">
+                          (Staging / Aguardando Confirmação)
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-400">
+                        <span>Período: <strong className="text-gold">{meta.period_formatted || batch.period_start || meta.period}</strong></span>
+                        <span>•</span>
+                        <span>Linhas: <strong className="text-zinc-200">{(meta.total_rows || 0).toLocaleString()}</strong></span>
+                        <span>•</span>
+                        <span>Total Líquido: <strong className="text-emerald-400">{(meta.total_net || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</strong></span>
+                        <span>•</span>
+                        <span>Analisado em: {new Date(batch.started_at).toLocaleString("pt-BR")}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => resumePendingBatch(batch)}
+                        className="px-4 py-2 rounded-xl bg-gold text-background font-bold text-xs hover:bg-gold-light transition-all flex items-center gap-1.5 shadow-md shadow-gold/20 hover:scale-[1.02]"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Revisar e Confirmar Lote
+                      </button>
+                      <button
+                        onClick={() => discardPendingBatch(batch.id)}
+                        disabled={actionLoading === batch.id}
+                        className="px-3 py-2 rounded-xl border border-zinc-700 hover:border-red-500/50 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 text-xs transition-all flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {actionLoading === batch.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Source Switcher */}
         {status === "idle" && bqStatus !== "syncing" && (
           <div className="flex gap-2 p-1 bg-elevated rounded-xl w-fit mb-8 border border-border">
@@ -551,9 +704,54 @@ export default function ImportHubPage() {
               </div>
             )}
 
-            {/* Preview Sheet Card */}
+            {/* Staging Preview Mode */}
             {status === "preview" && preview && (
-              <div className="space-y-6 animate-slide-up">
+              <div className="space-y-6 animate-slide-up pb-24">
+                {/* BANNER PRINCIPAL DE ALERTA: ETAPA 1/2 STAGING PENDENTE */}
+                <div className="p-6 rounded-2xl bg-amber-500/10 border-2 border-amber-500/60 shadow-xl shadow-amber-500/5 space-y-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-7 h-7 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
+                            ETAPA 1 DE 2: ANÁLISE EM STAGING
+                          </span>
+                          <span className="text-[10px] text-muted font-mono bg-elevated px-2 py-0.5 rounded border border-border">
+                            Lote ID: {preview.batchId}
+                          </span>
+                        </div>
+                        <h2 className="text-base font-bold text-amber-200">
+                          IMPORTAÇÃO AGUARDANDO SUA CONFIRMAÇÃO MANUAL
+                        </h2>
+                        <p className="text-xs text-zinc-300">
+                          ⚠️ <strong>ATENÇÃO OPERACIONAL:</strong> Os dados desta planilha foram validados em Staging e <strong>AINDA NÃO FORAM GRAVADOS</strong> na tabela oficial (<code className="text-gold font-mono">cm_faturamento</code>).
+                        </p>
+                        <p className="text-[11px] text-amber-300/90 font-semibold">
+                          O Dashboard Comercial (<strong>/vendas</strong>) e demais relatórios NÃO exibirão este faturamento até que você confirme a importação.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2.5 flex-shrink-0 pt-2 lg:pt-0">
+                      <button
+                        onClick={confirmImport}
+                        disabled={preview.errorsCount > 0}
+                        className="px-5 py-3 rounded-xl bg-gold text-background font-bold text-xs hover:bg-gold-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-gold/20 hover:scale-[1.02]"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        Confirmar e Importar Agora
+                      </button>
+                      <button
+                        onClick={resetUpload}
+                        className="px-4 py-3 rounded-xl border border-zinc-700 hover:border-red-500/50 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 text-xs transition-all"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Card Executivo no Topo */}
                 <div className="glass-card p-6 rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/5 via-card/50 to-card/30 space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-border pb-3 gap-2">
@@ -1076,20 +1274,57 @@ export default function ImportHubPage() {
                 )}
 
                 {/* Preview Actions */}
-                <div className="flex gap-3 border-t border-border pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 border-t border-border pt-4">
                   <button
                     onClick={confirmImport}
                     disabled={preview.errorsCount > 0}
-                    className="flex-1 px-6 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-gold-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 px-6 py-3.5 rounded-xl bg-gold text-background font-bold text-sm hover:bg-gold-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-gold/20 hover:scale-[1.01]"
                   >
-                    <CheckCircle2 className="w-4 h-4" />
-                    Confirmar e Importar
+                    <CheckCircle2 className="w-5 h-5" />
+                    Confirmar e Importar na Base Oficial
                   </button>
                   <button
                     onClick={resetUpload}
-                    className="px-6 py-3 rounded-xl border border-border text-muted hover:text-foreground transition-all text-sm"
+                    className="px-6 py-3.5 rounded-xl border border-zinc-700 hover:border-red-500/50 hover:bg-red-500/10 text-muted hover:text-red-400 transition-all text-sm flex items-center justify-center gap-2"
                   >
-                    Cancelar / Descartar
+                    Cancelar / Descartar Lote
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra Flutuante Fixa de Confirmação (Sticky Bottom Bar) */}
+              <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-4xl bg-zinc-950/95 backdrop-blur-md border-2 border-gold/40 shadow-2xl shadow-gold/25 p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-slide-up">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full bg-amber-400 animate-ping flex-shrink-0" />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-extrabold tracking-wider text-amber-400 block">
+                        STAGING PENDENTE DE CONFIRMAÇÃO
+                      </span>
+                      <span className="text-[9px] text-muted font-mono bg-zinc-900 px-1.5 py-0.2 rounded border border-zinc-800">
+                        {preview.batchId.slice(0, 8)}...
+                      </span>
+                    </div>
+                    <span className="text-xs text-zinc-200 font-semibold mt-0.5 block">
+                      {preview.totalRows.toLocaleString()} linhas • {preview.totalNet.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} ({preview.periodFormatted || preview.period})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-shrink-0">
+                  <button
+                    onClick={resetUpload}
+                    className="px-3.5 py-2.5 rounded-xl border border-zinc-800 hover:border-red-500/50 hover:bg-red-500/10 text-zinc-400 hover:text-red-400 transition-all text-xs"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    onClick={confirmImport}
+                    disabled={preview.errorsCount > 0}
+                    className="px-6 py-2.5 rounded-xl bg-gold text-background font-bold text-xs hover:bg-gold-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg shadow-gold/30 hover:scale-[1.02]"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirmar e Importar
                   </button>
                 </div>
               </div>
@@ -1139,13 +1374,26 @@ export default function ImportHubPage() {
 
             {/* Done Success Card */}
             {status === "done" && preview && (
-              <div className="glass-card p-8 rounded-2xl border border-border bg-card/60 text-center space-y-6 animate-slide-up">
-                <div className="w-16 h-16 rounded-full bg-emerald-950/30 border border-emerald-800/40 text-emerald-400 flex items-center justify-center mx-auto">
+              <div className="glass-card p-8 rounded-2xl border-2 border-emerald-500/40 bg-card/60 text-center space-y-6 animate-slide-up shadow-2xl shadow-emerald-500/10">
+                <div className="w-16 h-16 rounded-full bg-emerald-950/40 border-2 border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-foreground">Importação Concluída com Sucesso!</h2>
-                  <p className="text-xs text-muted mt-1">Os faturamentos foram consolidados, auditados e indexados transacionalmente na base oficial.</p>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-center gap-2 flex-wrap">
+                    <span className="px-3 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase tracking-wider">
+                      ETAPA 2 DE 2: IMPORTAÇÃO OFICIAL CONCLUÍDA
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                      cm_faturamento (GRAVADO)
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-zinc-800 text-emerald-400 border border-zinc-700">
+                      Views & BI (ATUALIZADOS)
+                    </span>
+                  </div>
+                  <h2 className="text-2xl font-extrabold text-foreground mt-2">Faturamento Promovido e Gravado com Sucesso!</h2>
+                  <p className="text-xs text-zinc-300 max-w-xl mx-auto">
+                    Os dados foram definitivamente promovidos para a tabela oficial <code className="text-emerald-400 font-mono">cm_faturamento</code> e as views analíticas foram atualizadas. Os faturamentos estão <strong>imediatamente disponíveis no Dashboard Comercial (/vendas)</strong>.
+                  </p>
                 </div>
 
                 {/* Card de Reconciliação Financeira Automática */}
@@ -1287,17 +1535,17 @@ export default function ImportHubPage() {
                 <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto pt-2">
                   <Link
                     href="/vendas"
-                    className="flex-1 px-6 py-3 rounded-xl bg-gold text-background font-semibold text-sm hover:bg-gold-light transition-all flex items-center justify-center gap-2 shadow-lg shadow-gold/20"
+                    className="flex-1 px-6 py-3.5 rounded-xl bg-gold text-background font-bold text-sm hover:bg-gold-light transition-all flex items-center justify-center gap-2 shadow-lg shadow-gold/20 hover:scale-[1.02]"
                   >
-                    <span>Acessar Dashboard</span>
+                    <span>Ir para o Dashboard Comercial (/vendas)</span>
                     <ArrowRight className="w-4 h-4" />
                   </Link>
                   <button
                     onClick={resetUpload}
-                    className="flex-1 px-6 py-3 rounded-xl border border-border text-muted hover:text-foreground transition-all text-sm flex items-center justify-center gap-2"
+                    className="flex-1 px-6 py-3.5 rounded-xl border border-border text-muted hover:text-foreground transition-all text-sm flex items-center justify-center gap-2 hover:bg-elevated"
                   >
                     <Upload className="w-4 h-4" />
-                    Nova Importação
+                    Fazer Nova Importação
                   </button>
                 </div>
               </div>

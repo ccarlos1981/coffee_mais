@@ -166,7 +166,7 @@ export async function GET(request: Request) {
       dimension: 'rede',
     };
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData] = await Promise.all([
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -237,6 +237,15 @@ export async function GET(request: Request) {
         canal: 'KA',
       }).catch((err) => {
         console.error('[RDM API] Erro ao carregar DRE Gerencial:', err);
+        return null;
+      }),
+
+      // 9. DRE Gerencial Acumulado (Trimestres / YTD)
+      getRdmDreAcumuladoData(
+        year,
+        manager === CRISTIANO || manager === "CRISTIANO (Total)" ? 'KA' : manager
+      ).catch((err) => {
+        console.error('[RDM API] Erro ao carregar DRE Acumulado:', err);
         return null;
       }),
     ]);
@@ -340,31 +349,94 @@ export async function GET(request: Request) {
       };
     }, { revenue: 0, tons: 0, fctRev: 0, fctQty: 0 });
 
-    // Pesos dos indicadores (Farol de Metas: Faturamento = 100%, Volume = 0%, Investimento = 0%)
-    const WEIGHTS = { VOL: 0, FAT: 100, INVEST: 0 };
+    // Determinar se é a competência especial de Agosto/2026
+    const isAgosto2026 = (year === 2026 && month === 8);
 
-    // Calcular score ponderado do mês (100% Faturamento)
+    // Função oficial para cálculo de Score Inverso de Despesas Comerciais (Menor é Melhor)
+    function calcDespScore(real: number, desafio: number): number {
+      if (desafio > 0) {
+        return Math.max(0, (2 - (real / desafio)) * 100);
+      }
+      if (desafio <= 0 && real <= 0) return 100;
+      return 0;
+    }
+
+    // Pesos dos indicadores
+    // Agosto/2026: Faturamento = 50%, MACO = 30%, Despesas Comerciais = 20%, Deflator = -0%
+    // Histórico / Outros Meses: Faturamento = 100%, Volume = 0%, Investimento = 0%
+    const WEIGHTS = isAgosto2026
+      ? { FAT: 50, MACO: 30, DESP_COMERCIAIS: 20, DEFLATOR: 0, VOL: 0, INVEST: 0 }
+      : { VOL: 0, FAT: 100, INVEST: 0 };
+
+    // Calcular score ponderado do mês tradicional (100% Faturamento)
     function calcScore(volPct: number, fatPct: number) {
-      const total = WEIGHTS.VOL + WEIGHTS.FAT + WEIGHTS.INVEST;
+      const total = (WEIGHTS.VOL ?? 0) + (WEIGHTS.FAT ?? 0) + (WEIGHTS.INVEST ?? 0);
       if (total === 0) return 0;
-      return ((volPct * WEIGHTS.VOL) + (fatPct * WEIGHTS.FAT)) / total;
+      return (((volPct * (WEIGHTS.VOL ?? 0))) + (fatPct * (WEIGHTS.FAT ?? 0))) / total;
     }
 
     const volPctMonth    = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
     const fatPctMonth    = targetSum.revenue > 0 ? (realMonth.fat / targetSum.revenue) * 100 : 0;
     const investPctMonth = investDesafio > 0 ? ((realMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
     const investDeltaMonth = realMonthInvestPct - investDesafio;
-    const scoreMonth     = calcScore(volPctMonth, fatPctMonth);
 
     const volPctYtd    = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
     const fatPctYtd    = ytdTargetSum.revenue > 0 ? (realYtd.fat / ytdTargetSum.revenue) * 100 : 0;
     const investPctYtd = investDesafio > 0 ? ((realYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
     const investDeltaYtd = realYtdInvestPct - investDesafio;
-    const scoreYtd     = calcScore(volPctYtd, fatPctYtd);
+
+    // Extração dos indicadores oficiais de DRE Gerencial para Agosto/2026
+    const dreLinhas = dreGerencialData?.slide1?.linhas || [];
+    const dreFatRow = dreLinhas.find(l => l.kpi === 'Faturamento');
+    const dreMacoRow = dreLinhas.find(l => l.kpi === 'Margem de Contribuição');
+    const dreInvestRow = dreLinhas.find(l => l.kpi === 'Invest. Comercial');
+
+    // Mês - Despesas Comerciais e MACO
+    const macoDesafioMonth = dreMacoRow?.desafio ?? 0;
+    const macoRealMonth = dreMacoRow?.actual ?? 0;
+    const macoPctMonth = macoDesafioMonth > 0 ? (macoRealMonth / macoDesafioMonth) * 100 : 0;
+    const macoDeltaMonth = macoRealMonth - (dreMacoRow?.mesAnterior ?? 0);
+
+    const despDesafioMonth = dreInvestRow?.desafio ?? 0;
+    const despRealMonth = dreInvestRow?.actual ?? 0;
+    const despPctMonth = despDesafioMonth > 0 ? (despRealMonth / despDesafioMonth) * 100 : 0;
+    const despDeltaMonth = despRealMonth - (dreInvestRow?.mesAnterior ?? 0);
+    const despScoreMonth = calcDespScore(despRealMonth, despDesafioMonth);
+
+    const scoreMonth = isAgosto2026
+      ? (fatPctMonth * 0.50) + (macoPctMonth * 0.30) + (despScoreMonth * 0.20)
+      : calcScore(volPctMonth, fatPctMonth);
+
+    // YTD - Trimestre 3 (Julho + Agosto)
+    const currentQuarter = Math.ceil(month / 3);
+    const qTrimestre = dreGerencialSlideAcumulado?.trimestres?.find(t => t.trimestre === currentQuarter);
+    const qFatLine = qTrimestre?.linhas?.find(l => l.kpi === 'Faturamento');
+    const qMacoLine = qTrimestre?.linhas?.find(l => l.kpi === 'Margem de Contribuição');
+    const qInvestLine = qTrimestre?.linhas?.find(l => l.kpi === 'Invest. Comercial');
+
+    const qFatVal = qFatLine?.valores[`ACUM_Q${currentQuarter}`];
+    const qMacoVal = qMacoLine?.valores[`ACUM_Q${currentQuarter}`];
+    const qInvestVal = qInvestLine?.valores[`ACUM_Q${currentQuarter}`];
+
+    const ytdMacoDesafio = qMacoVal?.desafio ?? 0;
+    const ytdMacoReal = qMacoVal?.actual ?? 0;
+    const ytdMacoPct = ytdMacoDesafio > 0 ? (ytdMacoReal / ytdMacoDesafio) * 100 : 0;
+    const ytdMacoDelta = qMacoVal?.delta ?? (ytdMacoReal - (qMacoVal?.desafio ?? 0));
+
+    const ytdDespDesafio = qInvestVal?.desafio ?? 0;
+    const ytdDespReal = qInvestVal?.actual ?? 0;
+    const ytdDespPct = ytdDespDesafio > 0 ? (ytdDespReal / ytdDespDesafio) * 100 : 0;
+    const ytdDespDelta = qInvestVal?.delta ?? (ytdDespReal - (qInvestVal?.desafio ?? 0));
+    const ytdDespScore = calcDespScore(ytdDespReal, ytdDespDesafio);
+
+    const scoreYtd = isAgosto2026
+      ? (fatPctYtd * 0.50) + (ytdMacoPct * 0.30) + (ytdDespScore * 0.20)
+      : calcScore(volPctYtd, fatPctYtd);
 
     // ── Montar resposta ──
     const farolData = {
       managerLabel: manager === CRISTIANO ? "CRISTIANO" : manager,
+      isAgosto2026,
       weights: WEIGHTS,
 
       // Mês selecionado
@@ -395,6 +467,33 @@ export async function GET(request: Request) {
           real:    realMonthInvestPct,
           pct:     investPctMonth,
           delta:   investDeltaMonth,
+        },
+        maco: {
+          aa:      dreMacoRow?.anoAnterior ?? 0,
+          mAnt:    dreMacoRow?.mesAnterior ?? 0,
+          fct:     dreMacoRow?.mesAnterior ?? 0,
+          desafio: macoDesafioMonth,
+          real:    macoRealMonth,
+          pct:     macoPctMonth,
+          delta:   macoDeltaMonth,
+        },
+        despComerciais: {
+          aa:      dreInvestRow?.anoAnterior ?? 0,
+          mAnt:    dreInvestRow?.mesAnterior ?? 0,
+          fct:     dreInvestRow?.mesAnterior ?? 0,
+          desafio: despDesafioMonth,
+          real:    despRealMonth,
+          pct:     despPctMonth,
+          delta:   despDeltaMonth,
+        },
+        deflator: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: 0,
+          real:    0,
+          pct:     0,
+          delta:   0,
         },
         score: scoreMonth,
       },
@@ -428,6 +527,33 @@ export async function GET(request: Request) {
           real:    realYtdInvestPct,
           pct:     investPctYtd,
           delta:   investDeltaYtd,
+        },
+        maco: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: ytdMacoDesafio,
+          real:    ytdMacoReal,
+          pct:     ytdMacoPct,
+          delta:   ytdMacoDelta,
+        },
+        despComerciais: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: ytdDespDesafio,
+          real:    ytdDespReal,
+          pct:     ytdDespPct,
+          delta:   ytdDespDelta,
+        },
+        deflator: {
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: 0,
+          real:    0,
+          pct:     0,
+          delta:   0,
         },
         score: scoreYtd,
       },
@@ -635,10 +761,7 @@ export async function GET(request: Request) {
         };
       })(),
 
-      dreGerencialSlideAcumulado: await getRdmDreAcumuladoData(
-        year,
-        manager === CRISTIANO || manager === "CRISTIANO (Total)" ? 'KA' : manager
-      ),
+      dreGerencialSlideAcumulado,
 
       prevYear,
     });
