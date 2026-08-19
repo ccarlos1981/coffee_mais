@@ -3283,6 +3283,142 @@ A partir de 18/08/2026, a arquitetura de **Segregação Dinâmica de Canais e Di
 
 Status Arquitetural: `DASHBOARD_CHANNEL_SSOT = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 74. Baseline Oficial — Demanda 039: Homologação e Lock Definitivo do MACO (Agosto/2026)
+
+A partir de 19/08/2026, a arquitetura de apuração, reconciliação contábil, semântica e governança financeira de **Margem de Contribuição Oficial (MACO)** torna-se o baseline permanente, oficial e congelado do Coffee++.
+
+### Status Arquitetural
+`STATUS = HOMOLOGADO` & `STATUS_MACO = LOCKED` & `BASELINE = PERMANENTE` & `REGIME = FINANCIAL_GOVERNANCE_LOCKED`
+
+### Valores Oficiais Homologados — Agosto/2026
+
+```
++-------------------------------------------------------------------------------------------------------------------------------+
+| CANAL / MÉTRICA           | FATURAMENTO LIQ. | IMPOSTOS (3,5%)  | CPV REAL         | FRETE (3%)     | INVEST. KA   | REAL MACO OFICIAL|
++---------------------------+------------------+------------------+------------------+----------------+--------------+------------------+
+| Canal KA                  | R$ 1.485.763,56  | R$  52.001,72    | R$   678.557,24  | R$  44.572,91  | R$ 384,37    | R$   710.247,32  |
+| Canal Distribuidor        | R$   548.633,90  | R$  19.202,19    | R$   317.453,00  | R$  16.459,02  | R$   0,00    | R$   195.519,70  |
+| Inside Sales              | R$   392.073,86  | R$  13.722,59    | R$   201.136,08  | R$  11.762,22  | R$   0,00    | R$   165.452,98  |
+| Demais Canais / Outros    | R$ 1.855.603,02  | R$  64.946,10    | R$   751.653,18  | R$  55.668,08  | R$   0,00    | R$   983.335,64  |
++---------------------------+------------------+------------------+------------------+----------------+--------------+------------------+
+| MACO OPERACIONAL GLOBAL   | R$ 4.282.074,34  | R$ 149.872,60    | R$ 1.948.799,50  | R$ 128.462,23  | R$ 384,37    | R$ 2.054.555,64  |
++---------------------------+------------------+------------------+------------------+----------------+--------------+------------------+
+| Invest. Sem Faturamento   |                  |                  |                  |                | R$ 357,13    | -R$      357,13  |
++---------------------------+------------------+------------------+------------------+----------------+--------------+------------------+
+| MACO CONTÁBIL DRE GLOBAL  | R$ 4.282.074,34  | R$ 149.872,60    | R$ 1.948.799,50  | R$ 128.462,23  | R$ 741,50    | R$ 2.054.198,51  |
++-------------------------------------------------------------------------------------------------------------------------------+
+```
+
+### Diretrizes Mandatórias de Governança:
+
+1. **Fontes Soberanas**:
+   - A tabela `public.sales` (e `vw_faturamento_comercial_oficial` alinhada) permanece como a fonte factual primária do MACO Operacional transacional.
+   - A `AnalyticsEngine` (`src/lib/governance/analytics/engine.ts`) é o motor oficial e único de cálculo do ecossistema.
+   - O DRE Comercial (`AnalyticsEngine.getDreComercial()`) é a fonte oficial do MACO Contábil Gerencial.
+   - É expressamente proibida a criação de fórmulas locais ou fontes financeiras paralelas.
+
+2. **Definições Semânticas Congeladas**:
+   - **MACO Operacional** (Dashboard `/vendas`):
+     $$\text{MACO Operacional} = \text{Receita} - \text{Impostos} - \text{CPV} - \text{Frete (3\%)} - \text{Investimentos de Redes com Vendas} = \mathbf{R\$\ 2.054.555,64}$$
+   - **MACO Contábil DRE** (DRE `/inovacoes/dre`):
+     $$\text{MACO Contábil DRE} = \text{MACO Operacional} - \text{Investimentos em Redes Sem Vendas} = \mathbf{R\$\ 2.054.198,51}$$
+   - A diferença de **`R$ 357,13`** é **intencional, contábil e oficial**, refletindo ações aprovadas para redes que não faturaram no mês, apresentadas como transparência de reconciliação no DRE.
+
+3. **Regra de Arredondamento Congelada (Regra C)**:
+   - A plataforma mantém precisão `double precision` (64-bit RAW) internamente em todas as operações de agregação.
+   - O arredondamento financeiro oficial via `.toFixed(2)` ocorre exclusivamente na camada oficial de DTOs e apresentação.
+   - $\text{MACO Global RAW} = 2.054.555,637915 \longrightarrow \text{MACO Global Oficial} = \mathbf{R\$\ 2.054.555,64}$.
+
+4. **Investimentos Comerciais Congelados**:
+   - **Total Oficial no Banco**: `102 ações` em `cm_acoes_investimento` e `v_acoes_investimento_com_gerente` totalizando **`R$ 741,50`**.
+   - **Com Vendas KA**: `R$ 384,37`.
+   - **Sem Vendas no Mês**: `R$ 357,13`.
+   - **Equação Permanente**: $384,37 + 357,13 = \mathbf{741,50}$ (Delta: `R$ 0,0000`).
+
+5. **Casos Críticos Congelados**:
+   - **Manacás (`cod_parceiro: 223911`)**: Gerente `Luiz` (`1002`), Canal `Distribuidor`, Faturamento `R$ 442.913,20`, Real MACO `R$ 161.810,88`. Permanece sob `Luiz (Dist)`, sendo proibida qualquer alocação em `Luiz (KA)`.
+   - **Luiz (Dist) Total**: Faturamento `R$ 492.129,20`, Real MACO `R$ 177.165,44`.
+   - **Distribuidor Consolidado**: Real MACO `R$ 195.519,70`.
+   - **KA Consolidado**: Real MACO `R$ 710.247,32`.
+
+6. **Integridade das Fatos Financeiras (Agosto/2026)**:
+   - Faturamento Global: `R$ 4.282.074,34`
+   - Quantidade Global: `158.378` unidades
+   - CPV Real Global: `R$ 1.948.799,50`
+   - Impostos Fiscais Saneados: `R$ 149.872,60`
+   - Frete Logístico Fixo (3%): `R$ 128.462,23`
+
+7. **Proteção Contra Regressão e Correções Históricas**:
+   - O valor correto e auditado de Demais Canais é **`R$ 983.335,64`** (corrigindo a digitação preliminar de `983.335,65` da Demanda 037).
+   - O resíduo de `R$ 0,01` foi integralmente eliminado via reconciliação sub-centavo RAW.
+   - Paridade absoluta: `DRE = AnalyticsEngine = API = /vendas` ($\Delta = \text{R\$\ } 0{,}0000$).
+
+8. **Proibição de Alteração Silenciosa**:
+   - É expressamente proibida qualquer alteração futura em fórmulas, taxas de CPV, regras fiscais de ST, frete, rateio de investimentos, ownership ou definições de MACO sem abertura de nova DEMANDA formal de governança com validação financeira prévia.
+
+Status Arquitetural: `MACO_GOVERNANCE_V1 = LOCKED` & `BASELINE = PERMANENTE` & `STATUS = CONFIRMED`.
+
+---
+
+## 75. Baseline Oficial — Demanda 045: Resolução e Governança da Meta MACO no Acompanhamento /vendas
+
+A partir de 19/08/2026, a arquitetura, regras de resolução hierárquica, isolamento gerencial/temporal e governança de **Meta MACO no Acompanhamento /vendas** tornam-se o baseline permanente, oficial e congelado do Coffee++.
+
+### Status Arquitetural
+`META_MACO_GOVERNANCE = LOCKED` & `BASELINE = PERMANENTE` & `STATUS = HOMOLOGADO_E_CONGELADO`
+
+### Diretrizes Mandatórias:
+
+1. **Regra Soberana da Meta MACO**:
+   - A Meta MACO no Acompanhamento `/vendas` é sempre uma métrica derivada de planejamento calculada deterministicamente por:
+     $$\text{Meta MACO} = \text{Meta de Faturamento} \times \text{Margem MACO Resolvida}$$
+   - A Margem MACO é resolvida **exclusivamente** pela hierarquia oficial de 4 níveis da `AnalyticsEngine`:
+     - **Nível 1 (`MONTH`)**: Específico do Gerente e Competência (`manager_id + YYYY-MM`)
+     - **Nível 2 (`GLOBAL_MANAGER`)**: Padrão Global do Gerente (`manager_id + GLOBAL`)
+     - **Nível 3 (`GLOBAL_CRISTIANO`)**: Padrão Global da Diretoria (`CRISTIANO + GLOBAL`)
+     - **Nível 4 (`SYSTEM_DEFAULT`)**: Defaults de Sistema (3,5% Impostos, 10,0% Investimento, 46,0% CPV, 3,0% Frete $\rightarrow$ 37,50%)
+   - A primeira configuração válida encontrada na ordem estrita acima é soberana e definitiva.
+
+2. **Baseline Específica Homologada — Julliano (Agosto/2026)**:
+   - `manager_id`: `1000` | `gerente`: `Julliano` | `competencia`: `2026-08`
+   - Parâmetros Homologados no Banco (`cm_rdm_desafio_config`):
+     - Impostos: `3,50%` | Investimento: `10,00%` | CPV: `47,00%` | Frete: `3,00%`
+     - $\text{Margem Desafio MACO} = 100\% - 3{,}50\% - 10{,}00\% - 47{,}00\% - 3{,}00\% = \mathbf{36{,}50\%}$
+   - Metas Oficiais Homologadas (KA):
+     - $\text{Meta Faturamento} = \mathbf{R\$\ 1.000.000{,}00}$
+     - $\text{Meta MACO} = R\$\ 1.000.000{,}00 \times 36{,}50\% = \mathbf{R\$\ 365.000{,}00}$
+     - $\text{Real MACO Factual} = \mathbf{R\$\ 177.111{,}84}$ ($\% ATG = \mathbf{48{,}52\%}$)
+
+3. **Regras de Isolamento entre Gerentes e Isolamento Temporal**:
+   - É expressamente proibido o vazamento de configurações `MONTH` entre gerentes. Cada gerente possui seu próprio escopo.
+   - Gerentes sem configuração específica mensal (ex: Leandro `1001`, Luiz `1002`, John Guedes `1003`) aplicam de forma isolada o Nível 3 (`GLOBAL_CRISTIANO` = **31,00%**).
+   - É expressamente proibida qualquer heurística baseada em "última configuração encontrada" ou "configuração do gerente anterior".
+   - Uma configuração de competência específica afeta **exclusivamente** aquele mês/ano, sendo proibido o vazamento para outras competências.
+
+4. **Cadeia de Transmissão 100% Dinâmica (Sem Hardcode)**:
+   $$\text{RDM} \longrightarrow \text{public.cm\_rdm\_desafio\_config} \longrightarrow \text{AnalyticsEngine} \longrightarrow \text{GET /api/dashboard} \longrightarrow \text{desafioConfigs} \longrightarrow \text{/vendas}$$
+   - É proibido fixar valores estáticos como `R$ 365.000` ou `36,50%` no frontend ou backend.
+   - Toda alteração válida realizada e aprovada no RDM é refletida dinamicamente no painel `/vendas`.
+
+5. **Regra de Ouro — Independência Absoluta entre Meta e Real ($\text{META} \neq \text{REAL}$)**:
+   - A Meta MACO é uma métrica de planejamento/expectativa comercial.
+   - O Real MACO é um **fato financeiro contábil imutável** apurado nota a nota em `public.sales`.
+   - Alterações no RDM afetam **exclusivamente**: Meta MACO, % Atingimento MACO, Tendência MACO e Totalizador de Metas.
+   - Fatos realizados (`Real Fat`, `Real Qty`, `Real MACO`, `CPV Real`, `Impostos Reais`, `Frete Real`, `Investimentos Reais`) permanecem **100% protegidos e intocados**.
+
+6. **Valores Oficiais Homologados — Agosto/2026**:
+   - `Julliano (KA)`: Meta Fat `R$ 1.000.000,00` | Margem `36,50%` (`MONTH`) | Meta MACO `R$ 365.000,00`
+   - `Leandro (KA)`: Meta Fat `R$ 2.750.000,00` | Margem `31,00%` (`GLOBAL_CRISTIANO`) | Meta MACO `R$ 852.500,00`
+   - `Luiz (KA)`: Meta Fat `R$ 2.500.000,00` | Margem `31,00%` (`GLOBAL_CRISTIANO`) | Meta MACO `R$ 775.000,00`
+   - `John Guedes (KA)`: Meta Fat `R$ 250.000,00` | Margem `31,00%` (`GLOBAL_CRISTIANO`) | Meta MACO `R$ 77.500,00`
+   - `Total Geral de Metas MACO`: **`R$ 3.481.084,66`** (Delta: `R$ 0,0000`).
+
+Status Arquitetural: `META_MACO_GOVERNANCE = LOCKED` & `BASELINE = PERMANENTE` & `STATUS = CONFIRMED`.
+
+
+
 
 
 

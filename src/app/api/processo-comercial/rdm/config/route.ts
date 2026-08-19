@@ -34,6 +34,19 @@ function normalizePct(val: any, defaultVal: number): number {
   return Math.min(num, 1.0);
 }
 
+const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Gerente Nacional", "Diretor"];
+const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+
+export function canConfigureDesafioPct(role?: string | null, email?: string | null): boolean {
+  if (role && FULL_ACCESS_ROLES.includes(role)) {
+    return true;
+  }
+  if (email && GERENTE_NACIONAL_EMAILS.includes(email.toLowerCase().trim())) {
+    return true;
+  }
+  return false;
+}
+
 // ─── GET: Retorna as configurações das regionais por mês e global ─────────────
 export async function GET(request: NextRequest) {
   try {
@@ -93,11 +106,15 @@ export async function GET(request: NextRequest) {
     });
 
     const userRole = profile?.role || '';
-    const isAdmin = ['Admin', 'Admin Master'].includes(userRole);
+    const userEmail = user.email || '';
+    const canConfigure = canConfigureDesafioPct(userRole, userEmail);
 
     return NextResponse.json({
       success: true,
-      isAdmin,
+      isAdmin: canConfigure,
+      canConfigureDesafio: canConfigure,
+      userRole,
+      managerName: profile?.manager_name || null,
       defaults: DEFAULT_PCTS,
       competencia: targetCompetencia || 'GLOBAL',
       configs: result,
@@ -114,11 +131,12 @@ export async function POST(request: NextRequest) {
     const profile = await requireApprovedProfile(user.id);
 
     const userRole = profile?.role || '';
-    const isAdmin = ['Admin', 'Admin Master'].includes(userRole);
+    const userEmail = user.email || '';
+    const canConfigure = canConfigureDesafioPct(userRole, userEmail);
 
-    if (!isAdmin) {
+    if (!canConfigure) {
       return NextResponse.json(
-        { success: false, error: 'Acesso negado (403 Forbidden): Apenas Administradores podem alterar a configuração dos percentuais do Desafio DRE.' },
+        { success: false, error: 'Acesso negado (403 Forbidden): Apenas CEO, Administradores e Gerente Nacional podem alterar a configuração dos percentuais do Desafio DRE.' },
         { status: 403 }
       );
     }
