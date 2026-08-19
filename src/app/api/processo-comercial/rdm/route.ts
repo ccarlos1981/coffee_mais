@@ -375,63 +375,67 @@ export async function GET(request: Request) {
       return (((volPct * (WEIGHTS.VOL ?? 0))) + (fatPct * (WEIGHTS.FAT ?? 0))) / total;
     }
 
-    const volPctMonth    = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
-    const fatPctMonth    = targetSum.revenue > 0 ? (realMonth.fat / targetSum.revenue) * 100 : 0;
-    const investPctMonth = investDesafio > 0 ? ((realMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
-    const investDeltaMonth = realMonthInvestPct - investDesafio;
-
-    const volPctYtd    = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
-    const fatPctYtd    = ytdTargetSum.revenue > 0 ? (realYtd.fat / ytdTargetSum.revenue) * 100 : 0;
-    const investPctYtd = investDesafio > 0 ? ((realYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
-    const investDeltaYtd = realYtdInvestPct - investDesafio;
-
     // Extração dos indicadores oficiais de DRE Gerencial para Agosto/2026
     const dreLinhas = dreGerencialData?.slide1?.linhas || [];
     const dreFatRow = dreLinhas.find(l => l.kpi === 'Faturamento');
     const dreMacoRow = dreLinhas.find(l => l.kpi === 'Margem de Contribuição');
-    const dreInvestRow = dreLinhas.find(l => l.kpi === 'Invest. Comercial');
 
-    // Mês - Despesas Comerciais e MACO
+    // Mês - Desafio Oficial de Faturamento e MACO
+    const fatDesafioMonth = targetSum.revenue || (dreFatRow?.desafio ?? 0);
+    const fatRealMonth = realMonth.fat || (dreFatRow?.actual ?? 0);
+    const fatPctMonth = fatDesafioMonth > 0 ? (fatRealMonth / fatDesafioMonth) * 100 : 0;
+    const fatDeltaMonth = fatRealMonth - prevMonth.fat;
+
+    const volPctMonth    = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
+    const investPctMonth = investDesafio > 0 ? ((realMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
+    const investDeltaMonth = realMonthInvestPct - investDesafio;
+
     const macoDesafioMonth = dreMacoRow?.desafio ?? 0;
     const macoRealMonth = dreMacoRow?.actual ?? 0;
     const macoPctMonth = macoDesafioMonth > 0 ? (macoRealMonth / macoDesafioMonth) * 100 : 0;
     const macoDeltaMonth = macoRealMonth - (dreMacoRow?.mesAnterior ?? 0);
 
-    const despDesafioMonth = dreInvestRow?.desafio ?? 0;
-    const despRealMonth = dreInvestRow?.actual ?? 0;
-    const despPctMonth = despDesafioMonth > 0 ? (despRealMonth / despDesafioMonth) * 100 : 0;
-    const despDeltaMonth = despRealMonth - (dreInvestRow?.mesAnterior ?? 0);
-    const despScoreMonth = calcDespScore(despRealMonth, despDesafioMonth);
+    // Despesas Comerciais - Explicitamente Zeradas em Agosto/2026
+    const despDesafioMonth = 0;
+    const despRealMonth = 0;
+    const despPctMonth = 0;
+    const despDeltaMonth = 0;
 
     const scoreMonth = isAgosto2026
-      ? (fatPctMonth * 0.50) + (macoPctMonth * 0.30) + (despScoreMonth * 0.20)
+      ? (fatPctMonth * 0.50) + (macoPctMonth * 0.30) + (0 * 0.20) + (0 * 0)
       : calcScore(volPctMonth, fatPctMonth);
 
-    // YTD - Trimestre 3 (Julho + Agosto)
+    // YTD - Trimestre 3 (Julho + Agosto somados)
     const currentQuarter = Math.ceil(month / 3);
     const qTrimestre = dreGerencialSlideAcumulado?.trimestres?.find(t => t.trimestre === currentQuarter);
     const qFatLine = qTrimestre?.linhas?.find(l => l.kpi === 'Faturamento');
     const qMacoLine = qTrimestre?.linhas?.find(l => l.kpi === 'Margem de Contribuição');
-    const qInvestLine = qTrimestre?.linhas?.find(l => l.kpi === 'Invest. Comercial');
 
     const qFatVal = qFatLine?.valores[`ACUM_Q${currentQuarter}`];
     const qMacoVal = qMacoLine?.valores[`ACUM_Q${currentQuarter}`];
-    const qInvestVal = qInvestLine?.valores[`ACUM_Q${currentQuarter}`];
+
+    const ytdFatDesafio = ytdTargetSum.revenue || (qFatVal?.desafio ?? 0);
+    const ytdFatReal = realYtd.fat || (qFatVal?.actual ?? 0);
+    const ytdFatPct = ytdFatDesafio > 0 ? (ytdFatReal / ytdFatDesafio) * 100 : 0;
+    const ytdFatDelta = ytdFatReal - prevYtdMonth.fat;
+
+    const volPctYtd    = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
+    const investPctYtd = investDesafio > 0 ? ((realYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
+    const investDeltaYtd = realYtdInvestPct - investDesafio;
 
     const ytdMacoDesafio = qMacoVal?.desafio ?? 0;
     const ytdMacoReal = qMacoVal?.actual ?? 0;
     const ytdMacoPct = ytdMacoDesafio > 0 ? (ytdMacoReal / ytdMacoDesafio) * 100 : 0;
     const ytdMacoDelta = qMacoVal?.delta ?? (ytdMacoReal - (qMacoVal?.desafio ?? 0));
 
-    const ytdDespDesafio = qInvestVal?.desafio ?? 0;
-    const ytdDespReal = qInvestVal?.actual ?? 0;
-    const ytdDespPct = ytdDespDesafio > 0 ? (ytdDespReal / ytdDespDesafio) * 100 : 0;
-    const ytdDespDelta = qInvestVal?.delta ?? (ytdDespReal - (qInvestVal?.desafio ?? 0));
-    const ytdDespScore = calcDespScore(ytdDespReal, ytdDespDesafio);
+    const ytdDespDesafio = 0;
+    const ytdDespReal = 0;
+    const ytdDespPct = 0;
+    const ytdDespDelta = 0;
 
     const scoreYtd = isAgosto2026
-      ? (fatPctYtd * 0.50) + (ytdMacoPct * 0.30) + (ytdDespScore * 0.20)
-      : calcScore(volPctYtd, fatPctYtd);
+      ? (ytdFatPct * 0.50) + (ytdMacoPct * 0.30) + (0 * 0.20) + (0 * 0)
+      : calcScore(volPctYtd, ytdFatPct);
 
     // ── Montar resposta ──
     const farolData = {
@@ -478,13 +482,13 @@ export async function GET(request: Request) {
           delta:   macoDeltaMonth,
         },
         despComerciais: {
-          aa:      dreInvestRow?.anoAnterior ?? 0,
-          mAnt:    dreInvestRow?.mesAnterior ?? 0,
-          fct:     dreInvestRow?.mesAnterior ?? 0,
-          desafio: despDesafioMonth,
-          real:    despRealMonth,
-          pct:     despPctMonth,
-          delta:   despDeltaMonth,
+          aa:      0,
+          mAnt:    0,
+          fct:     0,
+          desafio: 0,
+          real:    0,
+          pct:     0,
+          delta:   0,
         },
         deflator: {
           aa:      0,
@@ -516,8 +520,8 @@ export async function GET(request: Request) {
           fct:     prevYtdMonth.fat,
           desafio: ytdTargetSum.revenue,
           real:    realYtd.fat,
-          pct:     fatPctYtd,
-          delta:   realYtd.fat - prevYtdMonth.fat,
+          pct:     ytdFatPct,
+          delta:   ytdFatDelta,
         },
         invest: {
           aa:      0,
