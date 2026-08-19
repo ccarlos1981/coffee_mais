@@ -3228,6 +3228,61 @@ A partir de 18/08/2026, a arquitetura de **Configuração de Percentuais do Desa
 
 Status Arquitetural: `RDM_DESAFIO_CONFIG_COMPETENCIA = LOCKED` & `BASELINE = CONFIRMED`.
 
+---
+
+## 73. Baseline Oficial — Demanda 027: Segregação Dinâmica de Canais e Distribuidores via SSOT (`base_atendimento`)
+
+A partir de 18/08/2026, a arquitetura de **Segregação Dinâmica de Canais e Distribuidores no Dashboard via SSOT** torna-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural
+`DASHBOARD_CHANNEL_SSOT = LOCKED` & `BASELINE = PERMANENTE` & `STATUS = HOMOLOGADO_E_CONGELADO`
+
+### Diretrizes Mandatórias:
+
+1. **Fonte Única da Verdade (SSOT) de Ownership Comercial**:
+   - A tabela `public.base_atendimento` é a única autoridade oficial para determinar `manager`, `manager_id`, `rede`, `canal`, `uf`, `regional` e `status` de todos os clientes e PDVs.
+   - O campo `channel` / `canal` é propagado de forma determinística e íntegra através de toda a esteira analítica:
+     $$\text{base\_atendimento} \longrightarrow \text{public.sales} \longrightarrow \text{AnalyticsEngine} \longrightarrow \text{API /api/dashboard} \longrightarrow \text{Frontend /vendas}$$
+
+2. **Eliminação de Listas Estáticas e Classificação Dinâmica de Distribuidores**:
+   - É expressamente proibido o uso de `DISTRIBUTORS_REGISTRY`, listas hardcoded, nomes de redes, fuzzy matching ou heurísticas textuais para determinar se um parceiro que possui `cod_parceiro` é Distribuidor.
+   - A função de domínio `isDistributorClient()` prioriza soberanamente a propriedade oficial `clientObj.channel`:
+     - Se `channel === 'Distribuidor'` $\longrightarrow$ `return true` (reconhecimento dinâmico automático).
+     - Se `channel !== 'Distribuidor'` $\longrightarrow$ `return false` (não inventa distribuidor).
+     - Listas estáticas legadas ficam rebaixadas a fallback exclusivo para registros históricos desprovidos de canal cadastrado.
+
+3. **Preservação de Propriedades no Contrato da API (`/api/dashboard`)**:
+   - O agregador da rota `/api/dashboard` preserva e expõe no array `topClients` de cada gerente:
+     `{ client, channel, manager, manager_id, fat, qty, maco, valor_venda_futura }`.
+   - Nenhuma camada intermediária poderá descartar ou omitir `channel` antes da renderização do frontend.
+
+4. **Auditoria e Aprovação do Fallback Analítico de Rede no `AnalyticsEngine`**:
+   - A cláusula `COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as rede` no método `AnalyticsEngine.getVendasSummary()` foi formalmente auditada e aprovada:
+     - **Finalidade**: Exclusivamente visual/analítica para evitar linhas com string vazia `""` no accordion de drilldown do Dashboard `/vendas`.
+     - **Isolamento**: Não altera tabelas físicas, não afeta a DRE, não afeta a RPS, não altera os filtros oficiais de Rede do banco e não afeta o CRM/Cockpit.
+     - **Preservação**: `rede = NULL` continua sendo `NULL` na SSOT; o fallback é estritamente uma representação de apresentação no drilldown.
+
+5. **Caso Homologado de Referência — Manacás (`223911`)**:
+   - `cod_parceiro`: `223911` | `DISTRIBUIDORA DE ALIMENTOS MANACAS LTDA`.
+   - `manager`: `Luiz` (`1002`) | `canal`: `Distribuidor` | `status`: `pendente`.
+   - Faturamento oficial Agosto/2026: **R$ 442.913,20** (20.756 unidades).
+   - Comportamento no Dashboard:
+     - `CANAL = 'Todos'` $\longrightarrow$ Contabilizado no total do gerente Luiz sob `Luiz (Dist)`.
+     - `CANAL = 'Distribuidor'` $\longrightarrow$ Contabilizado em `Luiz (Dist)`.
+     - `Luiz (KA)` $\longrightarrow$ **NÃO contabilizado** (R$ 0,00 de Manacás em KA).
+
+6. **Reconciliação e Preservação de Paridade Financeira**:
+   - Total consolidado do canal Distribuidor em Agosto/2026: **R$ 548.633,90** (Distra R$ 50.438,40 + Sost R$ 49.216,00 + Manacás R$ 442.913,20 + Brassol R$ 6.066,30).
+   - Paridade absoluta entre `cm_faturamento`, `public.sales` e `AnalyticsEngine`:
+     $$\Delta\text{ FATURAMENTO} = \text{R\$\ } 0{,}00 \quad\mid\quad \Delta\text{ QUANTIDADE} = 0 \quad\mid\quad \Delta\text{ CPV} = \text{R\$\ } 0{,}00 \quad\mid\quad \Delta\text{ MACO} = \text{R\$\ } 0{,}00$$
+
+7. **Evidência de Homologação e Qualidade**:
+   - **TypeScript (`npx tsc --noEmit`)**: 0 erros.
+   - **Next.js Production Build (`npm run build`)**: 139/139 rotas compiladas com sucesso.
+   - **Bateria de Testes**: Aprovada (Novo distribuidor hipotético `99999999` reconhecido dinamicamente, outros canais isolados, zero regressões downstream).
+
+Status Arquitetural: `DASHBOARD_CHANNEL_SSOT = LOCKED` & `BASELINE = CONFIRMED`.
+
 
 
 

@@ -1599,3 +1599,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    f4d550f..2b4b42e  main -> main
 [18/08/2026 17:56] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 26a28cb] auto-save: 18/08/2026 20:56
+ 14 files changed, 1137 insertions(+), 140 deletions(-)
+ create mode 100644 src/lib/governance/analytics/audit_fallback_impact.ts
+ create mode 100644 src/lib/ownership/commercial-ownership-service.ts
+ create mode 100644 src/lib/ownership/index.ts
+ create mode 100644 src/lib/ownership/types.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   2b4b42e..26a28cb  main -> main
+[18/08/2026 20:56] ✅ Alterações enviadas com sucesso para o GitHub.
