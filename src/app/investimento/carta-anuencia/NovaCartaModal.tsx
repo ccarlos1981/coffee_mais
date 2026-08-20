@@ -60,7 +60,7 @@ export function NovaCartaModal({ onClose, onSuccess, preselectedRede, preselecte
               codigo: r.codigo || r.nome,
               nome: r.nome,
               canal: r.canal,
-              uf: r.uf,
+              uf: r.uf || undefined,
             });
           }
         });

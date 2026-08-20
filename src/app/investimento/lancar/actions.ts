@@ -330,7 +330,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     }
 
     if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
     }
 
     if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
@@ -629,7 +629,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
     }
 
     if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Rede, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
     }
 
     if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
@@ -2579,26 +2579,79 @@ export async function obterRedesMatrizes() {
   const supabase = await createClient();
   
   // PostgREST/Supabase forces a max limit of 1000 rows on client/API requests.
-  // We use range queries to fetch all pages dynamically.
+  // We fetch all pages from cm_clientes directly to guarantee the single source of truth.
   const { data: page1, error: error1 } = await supabase
-    .from("v_redes_matrizes_detalhes")
-    .select("codigo, nome, canal, uf, regional, gerente")
-    .order("nome", { ascending: true })
+    .from("cm_clientes")
+    .select("codigo, codigo_matriz, matriz, tipo_parceiro, uf, regional, responsavel")
+    .not("matriz", "is", null)
+    .order("matriz", { ascending: true })
     .range(0, 999);
 
   const { data: page2, error: error2 } = await supabase
-    .from("v_redes_matrizes_detalhes")
-    .select("codigo, nome, canal, uf, regional, gerente")
-    .order("nome", { ascending: true })
+    .from("cm_clientes")
+    .select("codigo, codigo_matriz, matriz, tipo_parceiro, uf, regional, responsavel")
+    .not("matriz", "is", null)
+    .order("matriz", { ascending: true })
     .range(1000, 1999);
 
   if (error1) {
-    console.error("Erro ao carregar redes matrizes (pág 1):", error1);
+    console.error("Erro ao carregar matrizes de cm_clientes (pág 1):", error1);
     return [];
   }
   
-  const allRedes = [...(page1 || []), ...(page2 || [])];
-  return allRedes;
+  const allClients = [...(page1 || []), ...(page2 || [])];
+
+  // Deduplicação e consolidação de Matrizes a partir do cadastro único cm_clientes
+  const matrixMap = new Map<string, {
+    codigo: string;
+    nome: string;
+    canal: string;
+    uf?: string | null;
+    regional?: string | null;
+    gerente?: string | null;
+  }>();
+
+  for (const c of allClients) {
+    const nome = (c.matriz || "").trim();
+    if (!nome) continue;
+
+    const nomeUpper = nome.toUpperCase();
+    const codigoMatriz = (c.codigo_matriz || "").trim();
+    const gerente = (c.responsavel || "").trim() || null;
+    const uf = (c.uf || "").trim() || null;
+    const regional = (c.regional || "").trim() || null;
+    const canal = (c.tipo_parceiro || "").trim() || "Outros";
+
+    // Chave única de agrupamento da Matriz (Deduplica múltiplos clientes/PDVs que compartilham a mesma matriz)
+    const key = nomeUpper;
+
+    if (!matrixMap.has(key)) {
+      matrixMap.set(key, {
+        codigo: codigoMatriz || String(c.codigo || ""),
+        nome,
+        canal,
+        uf,
+        regional,
+        gerente
+      });
+    } else {
+      const existing = matrixMap.get(key)!;
+      // Priorizar codigo_matriz oficial se existing tinha apenas código do cliente
+      if (codigoMatriz && (!existing.codigo || existing.codigo === String(c.codigo || ''))) {
+        existing.codigo = codigoMatriz;
+      }
+      if (!existing.uf && uf) existing.uf = uf;
+      if (!existing.regional && regional) existing.regional = regional;
+      if (!existing.gerente && gerente) existing.gerente = gerente;
+      if ((existing.canal === "Outros" || !existing.canal) && canal) existing.canal = canal;
+    }
+  }
+
+  const result = Array.from(matrixMap.values()).sort((a, b) => 
+    a.nome.localeCompare(b.nome, 'pt-BR')
+  );
+
+  return result;
 }
 
 export async function importarInvestimentosEmLote(
