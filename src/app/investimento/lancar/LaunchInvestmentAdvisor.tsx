@@ -297,7 +297,7 @@ export function LaunchInvestmentAdvisor({
     } else if (varInv > 15 && varVol < 0) {
       recomendacaoDiretor = `Atenção: o investimento cresceu +${varInv.toFixed(0)}% sem ganho proporcional de volume. Recomenda-se ajustar a oferta.`;
     } else {
-      recomendacaoDiretor = `Proposta alinhada: mantém os parâmetros comerciais padrão em relação ao lançamento de ${lastMonthHeader} na rede ${rede?.nome}.`;
+      recomendacaoDiretor = `Proposta alinhada: mantém os parâmetros comerciais padrão em relação ao lançamento de ${lastMonthHeader} na matriz ${rede?.nome}.`;
     }
   }
 
@@ -369,7 +369,7 @@ export function LaunchInvestmentAdvisor({
               Primeiro lançamento equivalente desta combinação.
             </h4>
             <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 font-medium mt-1 leading-relaxed">
-              Esta proposta iniciará o histórico comercial desta Rede para esta Família/SKU.
+              Esta proposta iniciará o histórico comercial desta Matriz para esta Família/SKU.
             </p>
           </div>
           <div className="pt-2">

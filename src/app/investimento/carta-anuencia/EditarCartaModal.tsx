@@ -64,7 +64,7 @@ export function EditarCartaModal({ carta, onClose, onSuccess, onEmitirNovaVersao
               codigo: r.codigo || r.nome,
               nome: r.nome,
               canal: r.canal,
-              uf: r.uf,
+              uf: r.uf || undefined,
             });
           }
         });

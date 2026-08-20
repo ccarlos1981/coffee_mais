@@ -380,7 +380,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     setError(null);
     
     if (!selectedRede) {
-      setError("Por favor, selecione uma rede.");
+      setError("Por favor, selecione uma matriz.");
       return;
     }
 
@@ -603,13 +603,13 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
       <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-5">
         <fieldset disabled={isLocked} className="space-y-5 w-full">
         <div className="space-y-4">
-          {/* Rede */}
+          {/* Matriz */}
           <div className="space-y-2 relative z-50">
-            <label className="block text-sm font-medium text-muted">Rede</label>
+            <label className="block text-sm font-medium text-muted">Matriz</label>
             <div className="relative">
               <input 
                 type="text"
-                placeholder="Digite para buscar a rede..."
+                placeholder="Digite para buscar uma matriz..."
                 className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-foreground-muted focus:outline-none focus:ring-2 focus:ring-gold/50"
                 value={isRedeOpen ? searchRede : (selectedRede ? `${selectedRede.displayCode || selectedRede.codigo} - ${selectedRede.nome}` : "")}
                 onChange={(e) => {
@@ -652,7 +652,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                     </button>
                   ))
                 ) : (
-                  <div className="p-4 text-center text-muted text-sm">Nenhuma rede encontrada.</div>
+                  <div className="p-4 text-center text-muted text-sm">Nenhuma matriz encontrada.</div>
                 )}
               </div>
             )}

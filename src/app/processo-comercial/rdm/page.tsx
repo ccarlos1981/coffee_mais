@@ -5052,7 +5052,7 @@ function MetricRow({
   };
 
   const isGood = isDespesa
-    ? ((b.desafio && b.desafio > 0) ? (b.real ?? 0) <= b.desafio : (b.delta ?? 0) <= 0)
+    ? ((b.desafio && b.desafio > 0) ? (b.real ?? 0) <= b.desafio : true)
     : isInvest
     ? (b.delta ?? 0) <= 0
     : (b.delta ?? 0) >= 0;
@@ -5069,12 +5069,12 @@ function MetricRow({
       <td className="rdm-farol-cell rdm-farol-real" style={{ background: "#FF6B001A" }}>
         {fmtVal(b.real ?? 0)}
       </td>
-      <td className="rdm-farol-pct" style={isInvest
-        ? { color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
-        : isDespesa
-        ? { color: (b.desafio && b.desafio > 0 && (b.real ?? 0) <= b.desafio) ? '#2e7d32' : '#c62828', fontWeight: 700 }
-        : isDeflator
+      <td className="rdm-farol-pct" style={isDeflator
         ? { background: 'transparent', color: 'inherit' }
+        : isDespesa
+        ? { background: 'transparent', color: '#2e7d32', fontWeight: 700 }
+        : isInvest
+        ? { color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
         : { background: light.bg, color: light.color }}>
         {isDeflator
           ? "0,0%"
@@ -5119,7 +5119,7 @@ function FarolTable({ title, block, managerLabel, weights, isAgosto2026 }: {
   isAgosto2026?: boolean;
 }) {
   const w = weights ?? { VOL: 0, FAT: 100, INVEST: 0 };
-  const isAgosto = Boolean(isAgosto2026 || (w.FAT === 50 && (w.MACO === 30 || (w.DESP_COMERCIAIS ?? 0) === 20)) || block?.maco !== undefined);
+  const isAgosto = Boolean(isAgosto2026);
   const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
   const volBlock = block?.vol ?? emptyBlock;
   const fatBlock = block?.fat ?? emptyBlock;
