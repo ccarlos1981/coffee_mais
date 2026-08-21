@@ -7,6 +7,7 @@ import Link from "next/link";
 import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
 import { LaunchInvestmentAdvisor } from "./LaunchInvestmentAdvisor";
+import { cleanMatrixCode } from "@/lib/utils/excel-import";
 
 interface InvestmentFormProps {
   redes: Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
@@ -30,17 +31,17 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   const redes = useMemo<Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode: string }>>(() => {
     const baseCounts: Record<string, number> = {};
     rawRedes.forEach(r => {
-      const base = r.codigo.split(".")[0];
+      const base = cleanMatrixCode(r.codigo).split(".")[0];
       baseCounts[base] = (baseCounts[base] || 0) + 1;
     });
 
     const runningIndices: Record<string, number> = {};
     return rawRedes.map(r => {
-      const base = r.codigo.split(".")[0];
+      const base = cleanMatrixCode(r.codigo).split(".")[0];
       const total = baseCounts[base] || 0;
       const displayCode = total > 1
         ? `${base}.${runningIndices[base] = (runningIndices[base] || 0) + 1}`
-        : r.codigo;
+        : cleanMatrixCode(r.codigo);
       return {
         ...r,
         displayCode
@@ -49,14 +50,38 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   }, [rawRedes]);
 
   // Find initial network object if editing
-  const initRedeObj = initialData?.codigo_matriz
-    ? redes.find(r => r.codigo === initialData.codigo_matriz)
-    : (initialData?.rede ? redes.find(r => r.nome.toLowerCase() === initialData.rede.toLowerCase()) : null);
+  const initRedeObj = useMemo(() => {
+    if (!initialData) return null;
+    const initialCodigo = initialData.codigo_matriz ? cleanMatrixCode(initialData.codigo_matriz) : null;
+    const initialRedeName = initialData.rede ? initialData.rede.trim().toLowerCase() : null;
 
-  // Combobox state for Rede
+    if (initialCodigo && initialRedeName) {
+      const exactMatch = redes.find(r => 
+        (cleanMatrixCode(r.codigo) === initialCodigo || r.codigo === initialData.codigo_matriz) &&
+        r.nome.trim().toLowerCase() === initialRedeName
+      );
+      if (exactMatch) return exactMatch;
+    }
+
+    if (initialCodigo) {
+      const codeMatch = redes.find(r => cleanMatrixCode(r.codigo) === initialCodigo || r.codigo === initialData.codigo_matriz);
+      if (codeMatch) return codeMatch;
+    }
+
+    if (initialRedeName) {
+      const nameMatch = redes.find(r => r.nome.trim().toLowerCase() === initialRedeName);
+      if (nameMatch) return nameMatch;
+    }
+
+    return null;
+  }, [initialData, redes]);
+
+  // Combobox state for Matriz
   const [searchRede, setSearchRede] = useState("");
   const [isRedeOpen, setIsRedeOpen] = useState(false);
-  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; displayCode?: string; gerente?: string | null; uf?: string | null } | null>(initRedeObj || null);
+  const [selectedRede, setSelectedRede] = useState<{ codigo: string; nome: string; canal: string; displayCode?: string; gerente?: string | null; uf?: string | null } | null>(
+    initRedeObj || (initialData?.rede ? { codigo: initialData.codigo_matriz || "", nome: initialData.rede, canal: "Outros" } : null)
+  );
   const [paymentDisabled, setPaymentDisabled] = useState(false);
   const [globalStart, setGlobalStart] = useState<string>(initialData?.data_inicio || "");
   const [globalEnd, setGlobalEnd] = useState<string>(initialData?.data_fim || "");
@@ -76,10 +101,11 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
         const { createClient } = await import("@/lib/supabase/client");
         const supabase = createClient();
         
+        const cleanCode = cleanMatrixCode(selectedRede.codigo);
         const { data: clients } = await supabase
           .from("cm_clientes")
           .select("condicao_pagamento")
-          .or(`codigo_matriz.eq.${selectedRede.codigo},codigo.eq.${parseInt(selectedRede.codigo, 10) || 0}`)
+          .or(`codigo_matriz.eq.${cleanCode},codigo_matriz.eq.${cleanCode}.0,codigo_matriz.eq.${selectedRede.codigo},codigo.eq.${parseInt(cleanCode, 10) || 0}`)
           .not("condicao_pagamento", "is", null)
           .limit(1);
 
@@ -108,11 +134,18 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     checkPaymentCondition();
   }, [selectedRede]);
 
-  const filteredRedes = redes.filter(r => 
-    r.nome.toLowerCase().includes(searchRede.toLowerCase()) ||
-    r.codigo.toLowerCase().includes(searchRede.toLowerCase()) ||
-    r.displayCode.toLowerCase().includes(searchRede.toLowerCase())
-  );
+  const filteredRedes = useMemo(() => {
+    if (!searchRede.trim()) return redes;
+    const s = searchRede.toLowerCase().trim();
+    return redes.filter(r => 
+      r.nome.toLowerCase().includes(s) ||
+      r.codigo.toLowerCase().includes(s) ||
+      r.displayCode.toLowerCase().includes(s) ||
+      (r.uf && r.uf.toLowerCase().includes(s)) ||
+      (r.gerente && r.gerente.toLowerCase().includes(s)) ||
+      (r.regional && r.regional.toLowerCase().includes(s))
+    );
+  }, [redes, searchRede]);
 
   // Helpers
   const formatCurrencyValue = (num: number) => {

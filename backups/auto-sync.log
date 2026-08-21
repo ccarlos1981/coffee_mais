@@ -1642,3 +1642,7 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    b76c9f1..34735e8  main -> main
 [20/08/2026 08:02] ✅ Alterações enviadas com sucesso para o GitHub.
+[main b22d25d] auto-save: 20/08/2026 13:58
+ 8 files changed, 307 insertions(+), 213 deletions(-)
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[20/08/2026 13:58] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
