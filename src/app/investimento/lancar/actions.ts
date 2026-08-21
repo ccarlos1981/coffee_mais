@@ -223,11 +223,14 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     let clientManagerName: string | null = null;
 
     if (codigo_matriz) {
+      const cleanCode = cleanMatrixCode(codigo_matriz);
+      const codeOr = `codigo_matriz.eq.${cleanCode},codigo_matriz.eq.${cleanCode}.0,codigo_matriz.eq.${codigo_matriz}`;
+
       if (rede) {
         const { data: clientDataWithRede } = await supabase
           .from("cm_clientes")
           .select("manager_id, manager_name, responsavel")
-          .eq("codigo_matriz", codigo_matriz)
+          .or(codeOr)
           .ilike("matriz", rede)
           .not("manager_id", "is", null)
           .limit(1);
@@ -242,7 +245,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
         const { data: clientData } = await supabase
           .from("cm_clientes")
           .select("manager_id, manager_name, responsavel")
-          .eq("codigo_matriz", codigo_matriz)
+          .or(codeOr)
           .not("manager_id", "is", null)
           .limit(1);
 
@@ -253,7 +256,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
           const { data: anyClient } = await supabase
             .from("cm_clientes")
             .select("manager_id, manager_name, responsavel")
-            .eq("codigo_matriz", codigo_matriz)
+            .or(codeOr)
             .limit(1);
           if (anyClient && anyClient.length > 0) {
             clientManagerId = anyClient[0].manager_id;
@@ -2578,28 +2581,31 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 export async function obterRedesMatrizes() {
   const supabase = await createClient();
   
-  // PostgREST/Supabase forces a max limit of 1000 rows on client/API requests.
+  // PostgREST/Supabase limits max rows per request.
   // We fetch all pages from cm_clientes directly to guarantee the single source of truth.
-  const { data: page1, error: error1 } = await supabase
-    .from("cm_clientes")
-    .select("codigo, codigo_matriz, matriz, tipo_parceiro, uf, regional, responsavel")
-    .not("matriz", "is", null)
-    .order("matriz", { ascending: true })
-    .range(0, 999);
+  const pageSize = 1000;
+  let page = 0;
+  const allClients: any[] = [];
 
-  const { data: page2, error: error2 } = await supabase
-    .from("cm_clientes")
-    .select("codigo, codigo_matriz, matriz, tipo_parceiro, uf, regional, responsavel")
-    .not("matriz", "is", null)
-    .order("matriz", { ascending: true })
-    .range(1000, 1999);
+  while (true) {
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+    const { data, error } = await supabase
+      .from("cm_clientes")
+      .select("codigo, codigo_matriz, matriz, tipo_parceiro, uf, regional, responsavel")
+      .not("matriz", "is", null)
+      .order("matriz", { ascending: true })
+      .range(from, to);
 
-  if (error1) {
-    console.error("Erro ao carregar matrizes de cm_clientes (pág 1):", error1);
-    return [];
+    if (error) {
+      console.error(`Erro ao carregar matrizes de cm_clientes (pág ${page + 1}):`, error);
+      break;
+    }
+    if (!data || data.length === 0) break;
+    allClients.push(...data);
+    if (data.length < pageSize) break;
+    page++;
   }
-  
-  const allClients = [...(page1 || []), ...(page2 || [])];
 
   // Deduplicação e consolidação de Matrizes a partir do cadastro único cm_clientes
   const matrixMap = new Map<string, {
@@ -2616,7 +2622,8 @@ export async function obterRedesMatrizes() {
     if (!nome) continue;
 
     const nomeUpper = nome.toUpperCase();
-    const codigoMatriz = (c.codigo_matriz || "").trim();
+    const rawCodigoMatriz = (c.codigo_matriz || "").trim();
+    const codigoMatriz = cleanMatrixCode(rawCodigoMatriz) || (rawCodigoMatriz ? String(rawCodigoMatriz).trim() : "");
     const gerente = (c.responsavel || "").trim() || null;
     const uf = (c.uf || "").trim() || null;
     const regional = (c.regional || "").trim() || null;
@@ -2627,7 +2634,7 @@ export async function obterRedesMatrizes() {
 
     if (!matrixMap.has(key)) {
       matrixMap.set(key, {
-        codigo: codigoMatriz || String(c.codigo || ""),
+        codigo: codigoMatriz || cleanMatrixCode(c.codigo) || String(c.codigo || ""),
         nome,
         canal,
         uf,
@@ -2637,7 +2644,7 @@ export async function obterRedesMatrizes() {
     } else {
       const existing = matrixMap.get(key)!;
       // Priorizar codigo_matriz oficial se existing tinha apenas código do cliente
-      if (codigoMatriz && (!existing.codigo || existing.codigo === String(c.codigo || ''))) {
+      if (codigoMatriz && (!existing.codigo || existing.codigo === cleanMatrixCode(c.codigo) || existing.codigo === String(c.codigo || ''))) {
         existing.codigo = codigoMatriz;
       }
       if (!existing.uf && uf) existing.uf = uf;
@@ -3758,7 +3765,8 @@ export async function obterHistoricoConsultorComercial(params: {
       .limit(100);
 
     if (params.codigo_matriz) {
-      query = query.eq("codigo_matriz", params.codigo_matriz);
+      const cleanCode = cleanMatrixCode(params.codigo_matriz);
+      query = query.or(`codigo_matriz.eq.${cleanCode},codigo_matriz.eq.${cleanCode}.0,codigo_matriz.eq.${params.codigo_matriz}`);
     } else if (params.rede) {
       query = query.ilike("rede", `%${params.rede}%`);
     }

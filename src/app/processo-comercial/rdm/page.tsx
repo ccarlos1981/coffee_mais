@@ -5290,7 +5290,8 @@ export default function RdmPage() {
         if (resData && resData.success) {
           const canConfig = Boolean(resData.canConfigureDesafio ?? resData.isAdmin);
           setCanConfigureDesafio(canConfig);
-          if (resData.managerName && !canConfig) {
+          const isTrade = (resData.userRole || '').trim().toUpperCase() === 'TRADE';
+          if (resData.managerName && !canConfig && !isTrade) {
             setIsRestrictedManager(true);
             setUserRestrictedManager(resData.managerName);
             setManager(resData.managerName);
@@ -5337,6 +5338,8 @@ export default function RdmPage() {
           setUserRestrictedManager(json.userManager);
           setManager(json.userManager);
         }
+      } else {
+        setIsRestrictedManager(false);
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao carregar dados");

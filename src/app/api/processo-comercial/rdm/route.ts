@@ -68,11 +68,13 @@ export async function GET(request: Request) {
 
     const profile = await requireApprovedProfile(user.id);
     const isFullAccess = checkIsGerenteNacionalAdmin(profile.role, user.email);
+    const isTrade = (profile.role || '').trim().toUpperCase() === 'TRADE';
+    const canViewAllManagers = isFullAccess || isTrade;
 
     let manager: string;
     let allowedManagers: string[];
 
-    if (isFullAccess) {
+    if (canViewAllManagers) {
       manager = requestedManager ?? CRISTIANO;
       allowedManagers = KA_MANAGERS;
     } else {
@@ -711,10 +713,10 @@ export async function GET(request: Request) {
       month,
       manager,
       managers:  allowedManagers,
-      isRestrictedManager: !isFullAccess,
+      isRestrictedManager: !canViewAllManagers,
       canConfigureDesafio: isFullAccess,
       userRole:  profile.role,
-      userManager: !isFullAccess ? manager : null,
+      userManager: !canViewAllManagers ? manager : null,
       farol:     farolData,
       comments:  commentsMap,
       dre:       dreData,
