@@ -1654,3 +1654,9 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    34735e8..0731634  main -> main
 [21/08/2026 09:11] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 63f6115] auto-save: 21/08/2026 12:12
+ 6 files changed, 426 insertions(+), 116 deletions(-)
+ create mode 100644 tests/test-matriz-canonical.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   5e1676b..63f6115  main -> main
+[21/08/2026 12:12] ✅ Alterações enviadas com sucesso para o GitHub.
