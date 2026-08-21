@@ -301,8 +301,49 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   // Toggles and SKU states
   const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
+
+  // Aniversário states (somente ativo quando tipoAcaoDetalhe === "Aniversário")
+  const [tipoAniversario, setTipoAniversario] = useState<"Pagamento Único" | "Ação na Família">(() => {
+    if (initialData?.tipo_acao_detalhe === "Aniversário") {
+      if (
+        initialData?.abrangencia === "Pagamento Único" ||
+        initialData?.familia_produto === "Pagamento Único" ||
+        (initialData?.familias_detalhes && initialData.familias_detalhes.some((f: any) => f.tipo_aniversario === "Pagamento Único" || f.familia_id === "pagamento_unico"))
+      ) {
+        return "Pagamento Único";
+      }
+    }
+    return "Ação na Família";
+  });
+
+  const [valorPagamentoUnico, setValorPagamentoUnico] = useState<string>(() => {
+    if (initialData?.tipo_acao_detalhe === "Aniversário") {
+      if (
+        initialData?.abrangencia === "Pagamento Único" ||
+        initialData?.familia_produto === "Pagamento Único" ||
+        (initialData?.familias_detalhes && initialData.familias_detalhes.some((f: any) => f.tipo_aniversario === "Pagamento Único" || f.familia_id === "pagamento_unico"))
+      ) {
+        const val = initialData.valor_investimento || initialData.familias_detalhes?.[0]?.investimento || 0;
+        return val ? formatCurrencyValue(Number(val)) : "";
+      }
+    }
+    return "";
+  });
+
+  const [observacaoAniversario, setObservacaoAniversario] = useState<string>(() => {
+    if (initialData?.tipo_acao_detalhe === "Aniversário") {
+      const fObs = initialData.familias_detalhes?.[0]?.observacao;
+      if (fObs) return fObs;
+      if (initialData.post_action_notes) return initialData.post_action_notes;
+      if (initialData.financeiro_observacoes) return initialData.financeiro_observacoes;
+    }
+    return "";
+  });
+
+  const isAniversarioPagamentoUnico = tipoAcaoDetalhe === "Aniversário" && tipoAniversario === "Pagamento Único";
+
   const [abrangenciaUi, setAbrangenciaUi] = useState<"Família" | "SKU" | "Misto">(() => {
-    if (initialData?.abrangencia) {
+    if (initialData?.abrangencia && initialData.abrangencia !== "Pagamento Único") {
       return initialData.abrangencia as any;
     }
     if (initialData?.familias_detalhes && initialData.familias_detalhes.length > 0 && initialData?.skus_detalhes && initialData.skus_detalhes.length > 0) {
@@ -423,6 +464,81 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
       return;
     }
 
+    // Fluxo específico para Aniversário -> Pagamento Único
+    if (isAniversarioPagamentoUnico) {
+      const valorNum = parseNumericValue(valorPagamentoUnico);
+      if (valorNum <= 0) {
+        setError("Por favor, informe um valor válido para o Pagamento Único.");
+        return;
+      }
+      if (dateMode === "single" && (!globalStart || !globalEnd)) {
+        setError("Por favor, selecione as datas de início e fim da ação.");
+        return;
+      }
+
+      const formData = new FormData(e.currentTarget);
+      formData.append("rede", selectedRede.nome);
+      formData.append("codigo_matriz", selectedRede.codigo);
+      if (selectedRede.gerente) formData.append("gerente", selectedRede.gerente);
+      if (selectedRede.uf) formData.append("uf", selectedRede.uf);
+      formData.append("tipo_pagamento", tipoPagamento);
+      formData.append("tipo_acao_detalhe", "Aniversário");
+      formData.append("tipo_aniversario", "Pagamento Único");
+      formData.append("abrangencia", "Pagamento Único");
+      formData.append("familia_produto", "Pagamento Único");
+      formData.append("valor_pagamento_unico", valorNum.toString());
+      formData.append("valor_investimento", valorNum.toString());
+      formData.append("observacao_aniversario", observacaoAniversario.trim());
+      formData.set("data_inicio", globalStart);
+      formData.set("data_fim", globalEnd);
+      formData.append("date_mode", "single");
+
+      const packedUnico = [{
+        familia_id: "pagamento_unico",
+        familia_nome: "Pagamento Único",
+        preco_flat: 0,
+        preco_acao: 0,
+        investimento: valorNum,
+        expectativa_volume: 1,
+        observacao: observacaoAniversario.trim(),
+        tipo_aniversario: "Pagamento Único",
+        start_date: globalStart,
+        end_date: globalEnd,
+        status_trade: "PENDENTE"
+      }];
+
+      formData.append("familias_detalhes", JSON.stringify(packedUnico));
+      formData.append("skus_detalhes", "[]");
+      formData.append("is_planejamento", isPlanejamento ? "true" : "false");
+
+      startTransition(async () => {
+        try {
+          let result;
+          if (initialData?.id) {
+            result = await atualizarAcaoInvestimento(initialData.id, formData);
+          } else {
+            result = await criarAcaoInvestimento(formData);
+          }
+          
+          if (result?.success) {
+            router.refresh();
+            if (result.data?.is_planejamento || (result as any).is_planejamento) {
+              router.push("/investimento/planejamento");
+            } else {
+              const targetFase = initialData?.fase_atual || 1;
+              router.push(`/investimento?fase=${targetFase}`);
+            }
+          } else if (result) {
+            setError(result.message || "Ocorreu um erro ao salvar.");
+          }
+        } catch (err: unknown) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          setError(errMsg || "Ocorreu um erro ao salvar.");
+        }
+      });
+      return;
+    }
+
     if (!showFamilias && !showSkus) {
       setError("Por favor, selecione ao menos uma abrangência (Família ou SKU).");
       return;
@@ -495,6 +611,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     if (selectedRede.uf) formData.append("uf", selectedRede.uf);
     formData.append("tipo_pagamento", tipoPagamento);
     formData.append("tipo_acao_detalhe", tipoAcaoDetalhe);
+    formData.append("tipo_aniversario", tipoAcaoDetalhe === "Aniversário" ? "Ação na Família" : "");
     formData.append("abrangencia", calculatedAbrangencia);
     formData.set("data_inicio", calculatedStart);
     formData.set("data_fim", calculatedEnd);
@@ -735,6 +852,38 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
             </div>
           </div>
 
+          {/* Tipo de Aniversário (SOMENTE quando Aniversário estiver selecionado) */}
+          {tipoAcaoDetalhe === "Aniversário" && (
+            <div className="space-y-2 animate-in fade-in">
+              <label className="block text-sm font-medium text-muted">Tipo de Aniversário</label>
+              <div className="grid grid-cols-2 gap-3">
+                {(["Pagamento Único", "Ação na Família"] as const).map((opcao) => (
+                  <label 
+                    key={opcao} 
+                    className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                      tipoAniversario === opcao ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+                    } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name="tipo_aniversario_ui"
+                      disabled={isLocked}
+                      className="sr-only peer"
+                      checked={tipoAniversario === opcao}
+                      onChange={() => setTipoAniversario(opcao)}
+                    />
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                      tipoAniversario === opcao ? 'border-gold bg-gold' : 'border-foreground-muted'
+                    }`}>
+                      <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: tipoAniversario === opcao ? 1 : 0 }} />
+                    </div>
+                    <span className="font-medium text-sm">{opcao}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Pagamento */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-muted">Pagamento</label>
@@ -855,422 +1004,417 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
           </div>
         </div>
 
-        {/* BLOCK 3: Abrangência */}
-        <div className="pt-4 border-t border-border space-y-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Abrangência</label>
-            <div className="grid grid-cols-3 gap-3">
-              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
-                abrangenciaUi === "Família" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
-              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <input 
-                  type="radio" 
-                  name="abrangencia_ui" 
-                  disabled={isLocked}
-                  className="sr-only" 
-                  checked={abrangenciaUi === "Família"}
-                  onChange={() => setAbrangenciaUi("Família")}
-                />
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                  abrangenciaUi === "Família" ? 'border-gold bg-gold' : 'border-foreground-muted'
-                }`}>
-                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Família" ? 1 : 0 }} />
-                </div>
-                <span className="text-sm">Família</span>
-              </label>
-
-              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
-                abrangenciaUi === "SKU" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
-              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <input 
-                  type="radio" 
-                  name="abrangencia_ui" 
-                  disabled={isLocked}
-                  className="sr-only" 
-                  checked={abrangenciaUi === "SKU"}
-                  onChange={() => setAbrangenciaUi("SKU")}
-                />
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                  abrangenciaUi === "SKU" ? 'border-gold bg-gold' : 'border-foreground-muted'
-                }`}>
-                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "SKU" ? 1 : 0 }} />
-                </div>
-                <span className="text-sm">SKU</span>
-              </label>
-
-              <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
-                abrangenciaUi === "Misto" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
-              } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                <input 
-                  type="radio" 
-                  name="abrangencia_ui" 
-                  disabled={isLocked}
-                  className="sr-only" 
-                  checked={abrangenciaUi === "Misto"}
-                  onChange={() => setAbrangenciaUi("Misto")}
-                />
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
-                  abrangenciaUi === "Misto" ? 'border-gold bg-gold' : 'border-foreground-muted'
-                }`}>
-                  <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Misto" ? 1 : 0 }} />
-                </div>
-                <span className="text-sm">Ambos</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Seção Famílias */}
-          {showFamilias && (
-            <div className="space-y-6 animate-in fade-in relative z-40">
+        {/* BLOCK 3: Pagamento Único ou Abrangência */}
+        {isAniversarioPagamentoUnico ? (
+          <div className="pt-4 border-t border-border space-y-4 animate-in fade-in">
+            <div className="space-y-4 bg-background border border-border p-4 rounded-xl">
               <div className="space-y-2">
-                <label className="block text-sm font-medium text-muted">Seleção de Famílias</label>
+                <label className="block text-sm font-medium text-muted">
+                  Valor do Pagamento Único <span className="text-red-400">*</span>
+                </label>
                 <div className="relative">
-                  {isLocked ? (
-                    <div className="flex flex-wrap gap-2 p-3 bg-elevated border border-border rounded-xl">
-                      {selectedFamilias.map(f => (
-                        <span key={f} className="px-2.5 py-1 bg-gold/15 text-gold font-semibold text-xs rounded-lg border border-gold/20">{f}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <MultiSelect
-                      value={selectedFamilias}
-                      onChange={setSelectedFamilias}
-                      options={familias}
-                      placeholder="Selecione as famílias"
-                      className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-foreground"
-                    />
-                  )}
+                  <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-gold" />
+                  <input 
+                    type="text"
+                    disabled={isLocked}
+                    value={valorPagamentoUnico}
+                    onChange={(e) => setValorPagamentoUnico(maskCurrency(e.target.value))}
+                    placeholder="R$ 0,00"
+                    className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-gold font-bold text-base focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                  />
                 </div>
               </div>
 
-              {selectedFamilias.length > 0 && (
-                <div className="space-y-4 pt-4">
-                  <h3 className="text-sm font-bold text-foreground">Detalhes por Família</h3>
-                  {selectedFamilias.map(familia => {
-                    const lockKey = `fam_${familia}`;
-                    const isOverridden = overrideLocks[lockKey];
-                    const precoError = getPrecoError(familiaDetails[familia]);
-                    return (
-                      <div key={familia} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
-                        <h4 className="font-bold text-gold">{familia}</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Preço Flat</label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={familiaDetails[familia]?.preco_flat || ""}
-                                onChange={(e) => handleFamiliaChange(familia, "preco_flat", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Preço Ação</label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={familiaDetails[familia]?.preco_acao || ""}
-                                onChange={(e) => handleFamiliaChange(familia, "preco_acao", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
-                              />
-                            </div>
-                            {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
-                            {getDescontoAlerta(familiaDetails[familia]) && (
-                              <div className="text-[11px] text-red-500 font-bold flex items-center gap-1.5 mt-1.5 p-2 rounded-lg bg-red-950/40 border border-red-500/40 text-[#DC2626]">
-                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                                <span>🔴 {getDescontoAlerta(familiaDetails[familia])}</span>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-muted">Observação</label>
+                <textarea
+                  rows={3}
+                  disabled={isLocked}
+                  value={observacaoAniversario}
+                  onChange={(e) => setObservacaoAniversario(e.target.value)}
+                  placeholder="Digite aqui a justificativa ou informações sobre o pagamento de aniversário..."
+                  className="w-full bg-elevated border border-border rounded-lg p-3 text-foreground text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all resize-y placeholder:text-muted/60"
+                />
+              </div>
+
+              {parseNumericValue(valorPagamentoUnico) > 0 && (
+                <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-2">
+                  <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
+                  <span className="text-xl font-black text-gold">
+                    {formatCurrencyValue(parseNumericValue(valorPagamentoUnico))}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          /* BLOCK 3: Abrangência (Fluxo Atual) */
+          <div className="pt-4 border-t border-border space-y-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-muted">Abrangência</label>
+              <div className="grid grid-cols-3 gap-3">
+                <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                  abrangenciaUi === "Família" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+                } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <input 
+                    type="radio" 
+                    name="abrangencia_ui" 
+                    disabled={isLocked}
+                    className="sr-only" 
+                    checked={abrangenciaUi === "Família"}
+                    onChange={() => setAbrangenciaUi("Família")}
+                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                    abrangenciaUi === "Família" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                  }`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Família" ? 1 : 0 }} />
+                  </div>
+                  <span className="text-sm">Família</span>
+                </label>
+
+                <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                  abrangenciaUi === "SKU" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+                } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <input 
+                    type="radio" 
+                    name="abrangencia_ui" 
+                    disabled={isLocked}
+                    className="sr-only" 
+                    checked={abrangenciaUi === "SKU"}
+                    onChange={() => setAbrangenciaUi("SKU")}
+                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                    abrangenciaUi === "SKU" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                  }`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "SKU" ? 1 : 0 }} />
+                  </div>
+                  <span className="text-sm">SKU</span>
+                </label>
+
+                <label className={`relative flex items-center gap-3 cursor-pointer rounded-lg border p-2.5 transition-colors focus-within:ring-2 focus-within:ring-gold/50 hover:bg-border/30 ${
+                  abrangenciaUi === "Misto" ? 'border-gold bg-gold/5 text-gold font-bold' : 'border-border bg-elevated text-foreground'
+                } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <input 
+                    type="radio" 
+                    name="abrangencia_ui" 
+                    disabled={isLocked}
+                    className="sr-only" 
+                    checked={abrangenciaUi === "Misto"}
+                    onChange={() => setAbrangenciaUi("Misto")}
+                  />
+                  <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${
+                    abrangenciaUi === "Misto" ? 'border-gold bg-gold' : 'border-foreground-muted'
+                  }`}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-black" style={{ opacity: abrangenciaUi === "Misto" ? 1 : 0 }} />
+                  </div>
+                  <span className="text-sm">Ambos</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Seção Famílias */}
+            {showFamilias && (
+              <div className="space-y-6 animate-in fade-in relative z-40">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-muted">Seleção de Famílias</label>
+                  <div className="relative">
+                    {isLocked ? (
+                      <div className="flex flex-wrap gap-2 p-3 bg-elevated border border-border rounded-xl">
+                        {selectedFamilias.map(f => (
+                          <span key={f} className="px-2.5 py-1 bg-gold/15 text-gold font-semibold text-xs rounded-lg border border-gold/20">{f}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <MultiSelect
+                        value={selectedFamilias}
+                        onChange={setSelectedFamilias}
+                        options={familias}
+                        placeholder="Selecione as famílias"
+                        className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-foreground"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {selectedFamilias.length > 0 && (
+                  <div className="space-y-4 pt-4">
+                    <h3 className="text-sm font-bold text-foreground">Detalhes por Família</h3>
+                    {selectedFamilias.map(familia => {
+                      const lockKey = `fam_${familia}`;
+                      const isOverridden = overrideLocks[lockKey];
+                      const precoError = getPrecoError(familiaDetails[familia]);
+                      return (
+                        <div key={familia} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
+                          <h4 className="font-bold text-gold">{familia}</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Preço Flat</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                                <input
+                                  type="text"
+                                  value={familiaDetails[familia]?.preco_flat || ""}
+                                  onChange={(e) => handleFamiliaChange(familia, "preco_flat", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                />
                               </div>
-                            )}
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <label className="block text-xs font-medium text-muted">Investimento</label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!isOverridden) {
-                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
-                                  } else {
-                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
-                                    setFamiliaDetails(prev => {
-                                      const updated = { ...prev, [familia]: { ...(prev[familia] || {}), investimento_justificativa: "" } };
-                                      updated[familia].investimento = computeInvestimento(updated[familia]?.preco_flat || "", updated[familia]?.preco_acao || "");
-                                      return updated;
-                                    });
-                                  }
-                                }}
-                                className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                                title={isOverridden ? "Voltar para cálculo automático (Preço Flat - Preço Ação)" : "Definido como automático (clique para fixar valor manual)"}
-                              >
-                                {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                              </button>
                             </div>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={familiaDetails[familia]?.investimento || ""}
-                                onChange={(e) => handleFamiliaChange(familia, "investimento", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all focus:border-gold focus:ring-1 focus:ring-gold"
-                              />
-                              {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Preço Ação</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                                <input
+                                  type="text"
+                                  value={familiaDetails[familia]?.preco_acao || ""}
+                                  onChange={(e) => handleFamiliaChange(familia, "preco_acao", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
+                                />
+                              </div>
+                              {precoError && <p className="text-[10px] text-red-500 font-bold mt-1">{precoError}</p>}
                             </div>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
-                            <div className="relative">
-                              <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Investimento Un.</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-gold" />
+                                <input
+                                  type="text"
+                                  value={familiaDetails[familia]?.investimento || ""}
+                                  onChange={(e) => handleFamiliaChange(familia, "investimento", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-gold font-bold text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                />
+                              </div>
+                              {isOverridden && (
+                                <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
+                                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                  Investimento editado manualmente
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Expectativa Volume</label>
                               <input
                                 type="text"
                                 value={familiaDetails[familia]?.expectativa_volume || ""}
                                 onChange={(e) => handleFamiliaChange(familia, "expectativa_volume", e.target.value, true)}
                                 placeholder="0"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 px-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
                               />
                             </div>
-                          </div>
-                          {dateMode === "multiple" && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
-                              <div className="space-y-2">
-                                <label className="block text-xs font-medium text-muted">Data Início</label>
-                                <input
-                                  type="date"
-                                  required={dateMode === "multiple"}
-                                  value={familiaDetails[familia]?.start_date || ""}
-                                  onChange={(e) => handleFamiliaChange(familia, "start_date", e.target.value)}
-                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <label className="block text-xs font-medium text-muted">Data Fim</label>
-                                <input
-                                  type="date"
-                                  required={dateMode === "multiple"}
-                                  value={familiaDetails[familia]?.end_date || ""}
-                                  onChange={(e) => handleFamiliaChange(familia, "end_date", e.target.value)}
-                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-                                />
-                              </div>
-                            </div>
-                          )}
-                          <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
-                            <span className="text-xs font-bold text-gold">Custo Estimado ({familia})</span>
-                            <span className="text-sm font-black text-gold">
-                              {formatCurrencyValue(parseNumericValue(familiaDetails[familia]?.investimento || "") * parseNumericValue(familiaDetails[familia]?.expectativa_volume || ""))}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Seção SKUs */}
-          {showSkus && (
-            <div className="space-y-6 animate-in fade-in relative z-40 pt-4">
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-muted">Seleção de SKUs</label>
-                <div className="relative">
-                  {isLocked ? (
-                    <div className="flex flex-wrap gap-2 p-3 bg-elevated border border-border rounded-xl">
-                      {selectedSkus.map(s => (
-                        <span key={s} className="px-2.5 py-1 bg-gold/15 text-gold font-semibold text-xs rounded-lg border border-gold/20">{s}</span>
-                      ))}
-                    </div>
-                  ) : (
-                    <MultiSelect
-                      value={selectedSkus}
-                      onChange={setSelectedSkus}
-                      options={skus || []}
-                      placeholder="Selecione os SKUs"
-                      className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-foreground"
-                    />
-                  )}
-                </div>
-              </div>
-
-              {selectedSkus.length > 0 && (
-                <div className="space-y-4 pt-4">
-                  <h3 className="text-sm font-bold text-foreground">Detalhes por SKU</h3>
-                  {selectedSkus.map(sku => {
-                    const lockKey = `sku_${sku}`;
-                    const isOverridden = overrideLocks[lockKey];
-                    const precoError = getPrecoError(skuDetails[sku]);
-                    return (
-                      <div key={sku} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
-                        <h4 className="font-bold text-gold">{sku}</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Preço Flat</label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={skuDetails[sku]?.preco_flat || ""}
-                                onChange={(e) => handleSkuChange(sku, "preco_flat", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Preço Ação</label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={skuDetails[sku]?.preco_acao || ""}
-                                onChange={(e) => handleSkuChange(sku, "preco_acao", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
-                              />
-                            </div>
-                            {precoError && <p className="text-[10px] text-red-400 font-medium flex items-center gap-1"><AlertTriangle className="w-3 h-3" />{precoError}</p>}
-                            {getDescontoAlerta(skuDetails[sku]) && (
-                              <div className="text-[11px] text-red-500 font-bold flex items-center gap-1.5 mt-1.5 p-2 rounded-lg bg-red-950/40 border border-red-500/40 text-[#DC2626]">
-                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                                <span>🔴 {getDescontoAlerta(skuDetails[sku])}</span>
+                            {dateMode === "multiple" && (
+                              <div className="col-span-1 sm:col-span-2 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
+                                <div className="space-y-2">
+                                  <label className="block text-xs font-medium text-muted">Data Início</label>
+                                  <input
+                                    type="date"
+                                    required={dateMode === "multiple"}
+                                    value={familiaDetails[familia]?.start_date || ""}
+                                    onChange={(e) => handleFamiliaChange(familia, "start_date", e.target.value)}
+                                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-xs font-medium text-muted">Data Fim</label>
+                                  <input
+                                    type="date"
+                                    required={dateMode === "multiple"}
+                                    value={familiaDetails[familia]?.end_date || ""}
+                                    onChange={(e) => handleFamiliaChange(familia, "end_date", e.target.value)}
+                                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                  />
+                                </div>
                               </div>
                             )}
-                          </div>
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <label className="block text-xs font-medium text-muted">Investimento</label>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (!isOverridden) {
-                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: true }));
-                                  } else {
-                                    setOverrideLocks(prev => ({ ...prev, [lockKey]: false }));
-                                    setSkuDetails(prev => {
-                                      const updated = { ...prev, [sku]: { ...(prev[sku] || {}), investimento_justificativa: "" } };
-                                      updated[sku].investimento = computeInvestimento(updated[sku]?.preco_flat || "", updated[sku]?.preco_acao || "");
-                                      return updated;
-                                    });
-                                  }
-                                }}
-                                className={`p-0.5 rounded transition-colors ${isOverridden ? 'text-amber-400 hover:text-amber-300' : 'text-muted hover:text-foreground'}`}
-                                title={isOverridden ? "Voltar para cálculo automático (Preço Flat - Preço Ação)" : "Definido como automático (clique para fixar valor manual)"}
-                              >
-                                {isOverridden ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                              </button>
-                            </div>
-                            <div className="relative">
-                              <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
-                              <input
-                                type="text"
-                                value={skuDetails[sku]?.investimento || ""}
-                                onChange={(e) => handleSkuChange(sku, "investimento", e.target.value)}
-                                placeholder="R$ 0,00"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 font-medium text-sm transition-all focus:border-gold focus:ring-1 focus:ring-gold"
-                              />
-                              {!isOverridden && <span className="absolute right-2 top-2 text-[9px] text-muted font-medium bg-background px-1 rounded">AUTO</span>}
+                            <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
+                              <span className="text-xs font-bold text-gold">Custo Estimado ({familia})</span>
+                              <span className="text-sm font-black text-gold">
+                                {formatCurrencyValue(parseNumericValue(familiaDetails[familia]?.investimento || "") * parseNumericValue(familiaDetails[familia]?.expectativa_volume || ""))}
+                              </span>
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <label className="block text-xs font-medium text-muted">Exp. Vol.</label>
-                            <div className="relative">
-                              <Package className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Seção SKUs */}
+            {showSkus && (
+              <div className="space-y-6 animate-in fade-in relative z-30 pt-4 border-t border-border">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-muted">Seleção de SKUs</label>
+                  <div className="relative">
+                    {isLocked ? (
+                      <div className="flex flex-wrap gap-2 p-3 bg-elevated border border-border rounded-xl">
+                        {selectedSkus.map(s => (
+                          <span key={s} className="px-2.5 py-1 bg-gold/15 text-gold font-semibold text-xs rounded-lg border border-gold/20">{s}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <MultiSelect
+                        value={selectedSkus}
+                        onChange={setSelectedSkus}
+                        options={skus || []}
+                        placeholder="Selecione os SKUs"
+                        className="w-full bg-elevated border border-border rounded-xl px-4 py-3 text-foreground"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {selectedSkus.length > 0 && (
+                  <div className="space-y-4 pt-4">
+                    <h3 className="text-sm font-bold text-foreground">Detalhes por SKU</h3>
+                    {selectedSkus.map(sku => {
+                      const lockKey = `sku_${sku}`;
+                      const isOverridden = overrideLocks[lockKey];
+                      const precoError = getPrecoError(skuDetails[sku]);
+                      return (
+                        <div key={sku} className={`bg-background border ${precoError ? 'border-red-500/50' : 'border-border'} p-4 rounded-xl space-y-4`}>
+                          <h4 className="font-bold text-gold">{sku}</h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Preço Flat</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                                <input
+                                  type="text"
+                                  value={skuDetails[sku]?.preco_flat || ""}
+                                  onChange={(e) => handleSkuChange(sku, "preco_flat", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                />
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Preço Ação</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-muted" />
+                                <input
+                                  type="text"
+                                  value={skuDetails[sku]?.preco_acao || ""}
+                                  onChange={(e) => handleSkuChange(sku, "preco_acao", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className={`w-full bg-elevated border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:ring-1 transition-all ${precoError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' : 'border-border focus:border-gold focus:ring-gold'}`}
+                                />
+                              </div>
+                              {precoError && <p className="text-[10px] text-red-500 font-bold mt-1">{precoError}</p>}
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Investimento Un.</label>
+                              <div className="relative">
+                                <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-gold" />
+                                <input
+                                  type="text"
+                                  value={skuDetails[sku]?.investimento || ""}
+                                  onChange={(e) => handleSkuChange(sku, "investimento", e.target.value)}
+                                  placeholder="R$ 0,00"
+                                  className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-gold font-bold text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                />
+                              </div>
+                              {isOverridden && (
+                                <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-1">
+                                  <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                                  Investimento editado manualmente
+                                </p>
+                              )}
+                            </div>
+                            <div className="space-y-2">
+                              <label className="block text-xs font-medium text-muted">Expectativa Volume</label>
                               <input
                                 type="text"
                                 value={skuDetails[sku]?.expectativa_volume || ""}
                                 onChange={(e) => handleSkuChange(sku, "expectativa_volume", e.target.value, true)}
                                 placeholder="0"
-                                className="w-full bg-elevated border border-border rounded-lg py-2 pl-9 pr-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
+                                className="w-full bg-elevated border border-border rounded-lg py-2 px-3 text-foreground font-medium text-sm focus:border-gold focus:ring-1 focus:ring-gold transition-all"
                               />
                             </div>
-                          </div>
-                          {dateMode === "multiple" && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 col-span-1 sm:col-span-2 lg:col-span-4 border-t border-border/50 pt-3 mt-1">
-                              <div className="space-y-2">
-                                <label className="block text-xs font-medium text-muted">Data Início</label>
-                                <input
-                                  type="date"
-                                  required={dateMode === "multiple"}
-                                  value={skuDetails[sku]?.start_date || ""}
-                                  onChange={(e) => handleSkuChange(sku, "start_date", e.target.value)}
-                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-                                />
+                            {dateMode === "multiple" && (
+                              <div className="col-span-1 sm:col-span-2 lg:col-span-4 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border/50">
+                                <div className="space-y-2">
+                                  <label className="block text-xs font-medium text-muted">Data Início</label>
+                                  <input
+                                    type="date"
+                                    required={dateMode === "multiple"}
+                                    value={skuDetails[sku]?.start_date || ""}
+                                    onChange={(e) => handleSkuChange(sku, "start_date", e.target.value)}
+                                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="block text-xs font-medium text-muted">Data Fim</label>
+                                  <input
+                                    type="date"
+                                    required={dateMode === "multiple"}
+                                    value={skuDetails[sku]?.end_date || ""}
+                                    onChange={(e) => handleSkuChange(sku, "end_date", e.target.value)}
+                                    onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
+                                    className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
+                                  />
+                                </div>
                               </div>
-                              <div className="space-y-2">
-                                <label className="block text-xs font-medium text-muted">Data Fim</label>
-                                <input
-                                  type="date"
-                                  required={dateMode === "multiple"}
-                                  value={skuDetails[sku]?.end_date || ""}
-                                  onChange={(e) => handleSkuChange(sku, "end_date", e.target.value)}
-                                  onClick={(e) => (e.target as any).showPicker && (e.target as any).showPicker()}
-                                  className="w-full bg-elevated border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-gold/50 [color-scheme:dark] cursor-pointer"
-                                />
-                              </div>
+                            )}
+                            <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
+                              <span className="text-xs font-bold text-gold">Custo Estimado ({sku})</span>
+                              <span className="text-sm font-black text-gold">
+                                {formatCurrencyValue(parseNumericValue(skuDetails[sku]?.investimento || "") * parseNumericValue(skuDetails[sku]?.expectativa_volume || ""))}
+                              </span>
                             </div>
-                          )}
-                          <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-gold/5 border border-gold/10 p-3 rounded-lg flex items-center justify-between mt-1">
-                            <span className="text-xs font-bold text-gold">Custo Estimado ({sku})</span>
-                            <span className="text-sm font-black text-gold">
-                              {formatCurrencyValue(parseNumericValue(skuDetails[sku]?.investimento || "") * parseNumericValue(skuDetails[sku]?.expectativa_volume || ""))}
-                            </span>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* COMBINED Investimento Total Estimado */}
-          {((showFamilias && selectedFamilias.length > 0) || (showSkus && selectedSkus.length > 0)) && (
-            <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-4">
-              <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
-              <span className="text-xl font-black text-gold">
-                {formatCurrencyValue(
-                  (showFamilias ? selectedFamilias.reduce((total, fam) => {
-                    const inv = parseNumericValue(familiaDetails[fam]?.investimento || "");
-                    const vol = parseNumericValue(familiaDetails[fam]?.expectativa_volume || "");
-                    return total + (inv * vol);
-                  }, 0) : 0) +
-                  (showSkus ? selectedSkus.reduce((total, sku) => {
-                    const inv = parseNumericValue(skuDetails[sku]?.investimento || "");
-                    const vol = parseNumericValue(skuDetails[sku]?.expectativa_volume || "");
-                    return total + (inv * vol);
-                  }, 0) : 0)
+                      );
+                    })}
+                  </div>
                 )}
-              </span>
-            </div>
-          )}
-        </div>
+              </div>
+            )}
 
-
+            {/* COMBINED Investimento Total Estimado */}
+            {((showFamilias && selectedFamilias.length > 0) || (showSkus && selectedSkus.length > 0)) && (
+              <div className="bg-gold/10 border border-gold/20 p-4 rounded-xl flex items-center justify-between mt-4">
+                <span className="text-sm font-bold text-gold">Investimento Total Estimado</span>
+                <span className="text-xl font-black text-gold">
+                  {formatCurrencyValue(
+                    (showFamilias ? selectedFamilias.reduce((total, fam) => {
+                      const inv = parseNumericValue(familiaDetails[fam]?.investimento || "");
+                      const vol = parseNumericValue(familiaDetails[fam]?.expectativa_volume || "");
+                      return total + (inv * vol);
+                    }, 0) : 0) +
+                    (showSkus ? selectedSkus.reduce((total, sku) => {
+                      const inv = parseNumericValue(skuDetails[sku]?.investimento || "");
+                      const vol = parseNumericValue(skuDetails[sku]?.expectativa_volume || "");
+                      return total + (inv * vol);
+                    }, 0) : 0)
+                  )}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         </fieldset>
 
         {/* Consultor Comercial Inteligente de Lançamento */}
-        <LaunchInvestmentAdvisor
-          rede={selectedRede}
-          tipoPagamento={tipoPagamento}
-          tipoAcaoDetalhe={tipoAcaoDetalhe}
-          abrangencia={abrangenciaUi}
-          selectedFamilias={selectedFamilias}
-          familiaDetails={familiaDetails}
-          selectedSkus={selectedSkus}
-          skuDetails={skuDetails}
-          mesReferencia={mesReferencia}
-        />
+        {!isAniversarioPagamentoUnico && (
+          <LaunchInvestmentAdvisor
+            rede={selectedRede}
+            tipoPagamento={tipoPagamento}
+            tipoAcaoDetalhe={tipoAcaoDetalhe}
+            abrangencia={abrangenciaUi}
+            selectedFamilias={selectedFamilias}
+            familiaDetails={familiaDetails}
+            selectedSkus={selectedSkus}
+            skuDetails={skuDetails}
+            mesReferencia={mesReferencia}
+          />
+        )}
 
         {/* Submit */}
         {!isLocked && (

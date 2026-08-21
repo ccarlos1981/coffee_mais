@@ -310,10 +310,109 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     const data_fim = formData.get("data_fim") as string;
     const tipo_acao = formData.get("tipo_acao") as string;
     const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
+    const tipo_aniversario = formData.get("tipo_aniversario") as string;
     const mes_referencia = formData.get("mes_referencia") as string;
     const date_mode = (formData.get("date_mode") as string) || "single";
     const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
-    
+    const is_planejamento = formData.get("is_planejamento") === "true";
+
+    const isPagamentoUnico = tipo_acao_detalhe === "Aniversário" && (tipo_aniversario === "Pagamento Único" || abrangencia === "Pagamento Único");
+
+    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+    }
+
+    // Fluxo específico para Aniversário -> Pagamento Único
+    if (isPagamentoUnico) {
+      const rawValorUnico = formData.get("valor_pagamento_unico") as string || formData.get("valor_investimento") as string;
+      const valor_pagamento_unico = parseCurrency(rawValorUnico) || 0;
+      if (valor_pagamento_unico <= 0) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, "O valor do Pagamento Único deve ser maior que zero.");
+      }
+
+      const observacao_aniversario = (formData.get("observacao_aniversario") as string) || "";
+
+      const actionsToInsert = [{
+        rede,
+        codigo_matriz: codigo_matriz || null,
+        data_inicio,
+        data_fim,
+        date_mode: "single",
+        tipo_acao,
+        tipo_acao_detalhe: "Aniversário",
+        familia_produto: "Pagamento Único",
+        familias_detalhes: [{
+          familia_id: "pagamento_unico",
+          familia_nome: "Pagamento Único",
+          preco_flat: 0,
+          preco_acao: 0,
+          investimento: valor_pagamento_unico,
+          expectativa_volume: 1,
+          observacao: observacao_aniversario,
+          tipo_aniversario: "Pagamento Único",
+          start_date: data_inicio,
+          end_date: data_fim,
+          status_trade: "PENDENTE"
+        }],
+        preco_flat: 0,
+        preco_acao: 0,
+        valor_investimento: valor_pagamento_unico,
+        expectativa_volume: 1,
+        abrangencia: "Pagamento Único",
+        tipo_pagamento,
+        skus_detalhes: [],
+        mes_referencia,
+        fase_atual: 1,
+        is_planejamento,
+        alertas_preventivos: [],
+        status_financeiro: "NAO_FATURADA"
+      }];
+
+      const p_campanha = {
+        nome_campanha: `Campanha ${rede} - ${mes_referencia}`,
+        rede,
+        codigo_matriz: codigo_matriz || null,
+        mes_referencia,
+        status_operacional: "PLANEJAMENTO",
+        status_financeiro: "ABERTA",
+        gerente_id: gerenteId || null
+      };
+
+      const adminClient = createAdminClient();
+      const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_campanha_e_acoes_v2", {
+        p_campanha,
+        p_acoes: actionsToInsert
+      });
+
+      if (rpcError) {
+        console.error("Erro na transação de criação de campanha/ações (Pagamento Único):", rpcError);
+        throw rpcError;
+      }
+
+      if (isFallbackManager) {
+        try {
+          await supabase.from("cm_audit_logs").insert({
+            table_name: "cm_campanhas",
+            action: "CAMPAIGN_MANAGER_FALLBACK",
+            user_id: user.id,
+            new_data: {
+              campanha_id: (rpcResult as any)?.campanha_id,
+              rede,
+              codigo_matriz,
+              gerente_id: gerenteId,
+              detalhe: "Ownership comercial de investimento criado via fallback automático (Inside Sales) devido a ausência de gerente no cadastro mestre."
+            }
+          });
+        } catch (logErr) {
+          console.error("Falha ao registrar log de auditoria de fallback de gerente:", logErr);
+        }
+      }
+
+      revalidatePath("/investimento");
+      revalidatePath("/investimento/planejamento");
+      return successResult({ is_planejamento });
+    }
+
     // Parse familias_detalhes (multi-family JSONB)
     let familias_detalhes: any = [];
     const fam_str = formData.get("familias_detalhes") as string;
@@ -330,10 +429,6 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       try {
         skus_detalhes = JSON.parse(skus_str);
       } catch(e) {}
-    }
-
-    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
     }
 
     if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
@@ -411,8 +506,6 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
         }
       }
     }
-
-    const is_planejamento = formData.get("is_planejamento") === "true";
 
     // 1. Fetch SKU conversion info to map SKUs to families dynamically
     const { data: skuProducts } = await supabase
@@ -609,10 +702,95 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
     const data_fim = formData.get("data_fim") as string;
     const tipo_acao = formData.get("tipo_acao") as string;
     const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
+    const tipo_aniversario = formData.get("tipo_aniversario") as string;
     const mes_referencia = formData.get("mes_referencia") as string;
     const date_mode = (formData.get("date_mode") as string) || "single";
     const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
-    
+    const is_planejamento = formData.get("is_planejamento") === "true";
+
+    const isPagamentoUnico = tipo_acao_detalhe === "Aniversário" && (tipo_aniversario === "Pagamento Único" || abrangencia === "Pagamento Único");
+
+    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+    }
+
+    if (isPagamentoUnico) {
+      const rawValorUnico = formData.get("valor_pagamento_unico") as string || formData.get("valor_investimento") as string;
+      const valor_pagamento_unico = parseCurrency(rawValorUnico) || 0;
+      if (valor_pagamento_unico <= 0) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, "O valor do Pagamento Único deve ser maior que zero.");
+      }
+
+      const observacao_aniversario = (formData.get("observacao_aniversario") as string) || "";
+
+      // Check lock by status (fase_atual >= 5)
+      const { data: currentAction } = await supabase
+        .from("cm_acoes_investimento")
+        .select("fase_atual")
+        .eq("id", id)
+        .single();
+
+      if (currentAction && (currentAction.fase_atual || 1) >= 5) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return errorResult(ActionErrorCode.UNAUTHORIZED, "Não autorizado.");
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        const roleLower = profile?.role?.toLowerCase();
+        if (roleLower !== "admin" && roleLower !== "ceo" && roleLower !== "diretor") {
+          return errorResult(ActionErrorCode.BUSINESS_RULE_VIOLATION, "Esta ação está aprovada e bloqueada para edição. Somente diretores, CEO ou Admin podem reabrir ou alterar.");
+        }
+      }
+
+      const { error } = await supabase
+        .from("cm_acoes_investimento")
+        .update({
+          rede,
+          codigo_matriz: codigo_matriz || null,
+          data_inicio,
+          data_fim,
+          date_mode: "single",
+          tipo_acao,
+          tipo_acao_detalhe: "Aniversário",
+          familia_produto: "Pagamento Único",
+          familias_detalhes: [{
+            familia_id: "pagamento_unico",
+            familia_nome: "Pagamento Único",
+            preco_flat: 0,
+            preco_acao: 0,
+            investimento: valor_pagamento_unico,
+            expectativa_volume: 1,
+            observacao: observacao_aniversario,
+            tipo_aniversario: "Pagamento Único",
+            start_date: data_inicio,
+            end_date: data_fim,
+            status_trade: "PENDENTE"
+          }],
+          preco_flat: 0,
+          preco_acao: 0,
+          valor_investimento: valor_pagamento_unico,
+          expectativa_volume: 1,
+          abrangencia: "Pagamento Único",
+          tipo_pagamento,
+          skus_detalhes: [],
+          mes_referencia,
+          is_planejamento,
+          alertas_preventivos: []
+        })
+        .eq("id", id);
+
+      if (error) {
+        console.error("Erro ao atualizar ação de investimento (Pagamento Único):", error);
+        throw error;
+      }
+
+      revalidatePath("/investimento");
+      revalidatePath("/investimento/planejamento");
+      return successResult({ is_planejamento });
+    }
+
     // Parse familias_detalhes (multi-family JSONB)
     let familias_detalhes: any = [];
     const fam_str = formData.get("familias_detalhes") as string;
@@ -629,10 +807,6 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
       try {
         skus_detalhes = JSON.parse(skus_str);
       } catch(e) {}
-    }
-
-    if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
-      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
     }
 
     if ((!familias_detalhes || familias_detalhes.length === 0) && (!skus_detalhes || skus_detalhes.length === 0)) {
@@ -710,8 +884,6 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
         }
       }
     }
-
-    const is_planejamento = formData.get("is_planejamento") === "true";
 
     // Check lock by status (fase_atual >= 5)
     const { data: currentAction } = await supabase
