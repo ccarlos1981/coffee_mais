@@ -62,6 +62,7 @@ export interface ResolveMatrizInput {
   nome_parceiro?: string | null;
   razao_social?: string | null;
   uf?: string | null;
+  regional?: string | null;
   responsavel?: string | null;
   gerente?: string | null;
   gerente_responsavel?: string | null;

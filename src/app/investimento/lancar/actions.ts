@@ -18,9 +18,85 @@ import { MotivoDivergencia } from "../divergencia-constants";
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
+  if (/^\d+(\.\d+)?$/.test(str.trim())) {
+    const num = parseFloat(str.trim());
+    return isNaN(num) ? null : num;
+  }
   const cleaned = str.replace(/[R$\s\.]/g, '').replace(',', '.');
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+async function resolveCanonicalCodigoMatriz(
+  supabase: any,
+  codigoRecebido: string | null | undefined,
+  redeNome?: string | null | undefined
+): Promise<string | null> {
+  if (!codigoRecebido && !redeNome) return null;
+
+  const raw = (codigoRecebido || "").trim();
+  const clean = cleanMatrixCode(raw);
+  const normName = (redeNome || "").trim().toUpperCase();
+
+  // 1. Se já for um código exato válido em cm_redes_matrizes
+  if (raw) {
+    const { data: exactMatch } = await supabase
+      .from("cm_redes_matrizes")
+      .select("codigo")
+      .eq("codigo", raw)
+      .limit(1)
+      .maybeSingle();
+
+    if (exactMatch?.codigo) {
+      return exactMatch.codigo;
+    }
+  }
+
+  // 2. Se foi enviado código limpo (ex: "95580"), buscar com nome e código
+  if (clean && normName) {
+    const { data: nameAndCodeMatch } = await supabase
+      .from("cm_redes_matrizes")
+      .select("codigo")
+      .or(`codigo.eq.${clean},codigo.eq.${clean}.0,codigo.ilike.${clean}.%`)
+      .ilike("nome", normName)
+      .limit(1)
+      .maybeSingle();
+
+    if (nameAndCodeMatch?.codigo) {
+      return nameAndCodeMatch.codigo;
+    }
+  }
+
+  // 3. Buscar por cleanCode nas variantes (.0, .1, .2, etc.)
+  if (clean) {
+    const { data: codeVariants } = await supabase
+      .from("cm_redes_matrizes")
+      .select("codigo")
+      .or(`codigo.eq.${clean},codigo.eq.${clean}.0,codigo.ilike.${clean}.%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (codeVariants?.codigo) {
+      return codeVariants.codigo;
+    }
+  }
+
+  // 4. Buscar por nome da Matriz
+  if (normName) {
+    const { data: nameMatch } = await supabase
+      .from("cm_redes_matrizes")
+      .select("codigo")
+      .ilike("nome", normName)
+      .limit(1)
+      .maybeSingle();
+
+    if (nameMatch?.codigo) {
+      return nameMatch.codigo;
+    }
+  }
+
+  // Fallback: se não encontrar no cm_redes_matrizes, retornar raw original
+  return raw || null;
 }
 
 function parseVolume(str: string | null): number | null {
@@ -214,7 +290,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
 
     const supabase = await createClient();
 
-    const codigo_matriz = formData.get("codigo_matriz") as string;
+    const rawCodigoMatriz = formData.get("codigo_matriz") as string;
+    const codigo_matriz = await resolveCanonicalCodigoMatriz(supabase, rawCodigoMatriz, rede);
     const gerenteName = formData.get("gerente") as string;
 
     let gerenteId: string | null = null;
@@ -300,6 +377,10 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       if (profileByForm) {
         gerenteId = profileByForm.id;
       }
+    }
+
+    if (!gerenteId && profile.role === "Gerente Regional") {
+      gerenteId = user.id;
     }
 
     if (!gerenteId) {
@@ -546,7 +627,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
           [f],
           sDet,
           rede,
-          codigo_matriz
+          codigo_matriz || ""
         );
 
         actionsToInsert.push({
@@ -593,7 +674,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
           [],
           [s],
           rede,
-          codigo_matriz
+          codigo_matriz || ""
         );
 
         actionsToInsert.push({
@@ -698,7 +779,8 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
   try {
     const supabase = await createClient();
 
-    const codigo_matriz = formData.get("codigo_matriz") as string;
+    const rawCodigoMatriz = formData.get("codigo_matriz") as string;
+    const codigo_matriz = await resolveCanonicalCodigoMatriz(supabase, rawCodigoMatriz, rede);
     const data_fim = formData.get("data_fim") as string;
     const tipo_acao = formData.get("tipo_acao") as string;
     const tipo_acao_detalhe = (formData.get("tipo_acao_detalhe") as string) || "Ação de Vendas";
@@ -926,7 +1008,7 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
       familias_detalhes,
       skus_detalhes,
       rede,
-      codigo_matriz
+      codigo_matriz || ""
     );
 
     const { error } = await supabase
@@ -2752,9 +2834,33 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 
 export async function obterRedesMatrizes() {
   const supabase = await createClient();
-  
-  // PostgREST/Supabase limits max rows per request.
-  // We fetch all pages from cm_clientes directly to guarantee the single source of truth.
+
+  // 1. Carregar cm_redes_matrizes para indexação canônica exata da FK
+  const { data: dbMatrices } = await supabase
+    .from("cm_redes_matrizes")
+    .select("codigo, nome");
+
+  const validCodesSet = new Set<string>();
+  const byCleanAndName = new Map<string, string>();
+  const byClean = new Map<string, string>();
+  const byName = new Map<string, string>();
+
+  (dbMatrices || []).forEach((m: any) => {
+    validCodesSet.add(m.codigo);
+    const clean = cleanMatrixCode(m.codigo);
+    if (clean) {
+      if (!byClean.has(clean)) {
+        byClean.set(clean, m.codigo);
+      }
+    }
+    const n = (m.nome || "").trim().toUpperCase();
+    if (n) {
+      if (clean) byCleanAndName.set(`${clean}___${n}`, m.codigo);
+      if (!byName.has(n)) byName.set(n, m.codigo);
+    }
+  });
+
+  // 2. Fetch all pages from cm_clientes directly to guarantee the single source of truth
   const pageSize = 1000;
   let page = 0;
   const allClients: any[] = [];
@@ -2779,9 +2885,10 @@ export async function obterRedesMatrizes() {
     page++;
   }
 
-  // Deduplicação e consolidação de Matrizes a partir do cadastro único cm_clientes
+  // 3. Deduplicação e consolidação de Matrizes preservando o código canônico
   const matrixMap = new Map<string, {
     codigo: string;
+    displayCode: string;
     nome: string;
     canal: string;
     uf?: string | null;
@@ -2795,18 +2902,34 @@ export async function obterRedesMatrizes() {
 
     const nomeUpper = nome.toUpperCase();
     const rawCodigoMatriz = (c.codigo_matriz || "").trim();
-    const codigoMatriz = cleanMatrixCode(rawCodigoMatriz) || (rawCodigoMatriz ? String(rawCodigoMatriz).trim() : "");
+    const clean = cleanMatrixCode(rawCodigoMatriz) || cleanMatrixCode(c.codigo) || "";
+
+    // Resolver código canônico oficial compatível com cm_redes_matrizes.codigo
+    let canonical = "";
+    if (rawCodigoMatriz && validCodesSet.has(rawCodigoMatriz)) {
+      canonical = rawCodigoMatriz;
+    } else if (clean && byCleanAndName.has(`${clean}___${nomeUpper}`)) {
+      canonical = byCleanAndName.get(`${clean}___${nomeUpper}`)!;
+    } else if (clean && byClean.has(clean)) {
+      canonical = byClean.get(clean)!;
+    } else if (byName.has(nomeUpper)) {
+      canonical = byName.get(nomeUpper)!;
+    } else {
+      canonical = rawCodigoMatriz || (c.codigo ? `${c.codigo}.0` : "");
+    }
+
+    const displayCode = cleanMatrixCode(canonical) || clean || canonical;
     const gerente = (c.responsavel || "").trim() || null;
     const uf = (c.uf || "").trim() || null;
     const regional = (c.regional || "").trim() || null;
     const canal = (c.tipo_parceiro || "").trim() || "Outros";
 
-    // Chave única de agrupamento da Matriz (Deduplica múltiplos clientes/PDVs que compartilham a mesma matriz)
     const key = nomeUpper;
 
     if (!matrixMap.has(key)) {
       matrixMap.set(key, {
-        codigo: codigoMatriz || cleanMatrixCode(c.codigo) || String(c.codigo || ""),
+        codigo: canonical,
+        displayCode,
         nome,
         canal,
         uf,
@@ -2815,9 +2938,9 @@ export async function obterRedesMatrizes() {
       });
     } else {
       const existing = matrixMap.get(key)!;
-      // Priorizar codigo_matriz oficial se existing tinha apenas código do cliente
-      if (codigoMatriz && (!existing.codigo || existing.codigo === cleanMatrixCode(c.codigo) || existing.codigo === String(c.codigo || ''))) {
-        existing.codigo = codigoMatriz;
+      if (canonical && (!existing.codigo || !validCodesSet.has(existing.codigo))) {
+        existing.codigo = canonical;
+        existing.displayCode = displayCode;
       }
       if (!existing.uf && uf) existing.uf = uf;
       if (!existing.regional && regional) existing.regional = regional;

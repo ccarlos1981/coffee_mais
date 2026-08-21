@@ -10,7 +10,7 @@ import { LaunchInvestmentAdvisor } from "./LaunchInvestmentAdvisor";
 import { cleanMatrixCode } from "@/lib/utils/excel-import";
 
 interface InvestmentFormProps {
-  redes: Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
+  redes: Array<{ codigo: string; displayCode?: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
   familias: string[];
   skus?: string[];
   initialData?: any;
@@ -39,9 +39,9 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     return rawRedes.map(r => {
       const base = cleanMatrixCode(r.codigo).split(".")[0];
       const total = baseCounts[base] || 0;
-      const displayCode = total > 1
+      const displayCode = r.displayCode || (total > 1
         ? `${base}.${runningIndices[base] = (runningIndices[base] || 0) + 1}`
-        : cleanMatrixCode(r.codigo);
+        : cleanMatrixCode(r.codigo));
       return {
         ...r,
         displayCode
