@@ -1646,3 +1646,11 @@ To https://github.com/ccarlos1981/coffee_mais.git
  8 files changed, 307 insertions(+), 213 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [20/08/2026 13:58] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 0731634] auto-save: 21/08/2026 09:11
+ 7 files changed, 19869 insertions(+), 45 deletions(-)
+remote: warning: See https://gh.io/lfs for more information.        
+remote: warning: File backups/backup.log is 76.20 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/ccarlos1981/coffee_mais.git
+   34735e8..0731634  main -> main
+[21/08/2026 09:11] ✅ Alterações enviadas com sucesso para o GitHub.

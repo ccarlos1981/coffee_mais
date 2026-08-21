@@ -594,6 +594,23 @@ export default function InvestimentoPage() {
     };
   }, [matrizLookup]);
 
+  const selectedActionMatrizNome = useMemo(() => {
+    if (!selectedAction) return "";
+    if (matrizLookup) {
+      const res = resolveClienteMatriz({
+        rede: selectedAction.rede,
+        codigo_matriz: selectedAction.codigo_matriz,
+        gerente_responsavel: (selectedAction as any).gerente_responsavel,
+        gerente: (selectedAction as any).gerente_responsavel || (selectedAction as any).gerente_nome || (selectedAction as any).gerente || (selectedAction as any).manager_name || (selectedAction as any).responsavel || (selectedAction as any).user_name,
+        responsavel: (selectedAction as any).gerente_responsavel || (selectedAction as any).responsavel || (selectedAction as any).manager_name,
+        uf: (selectedAction as any).uf || (selectedAction as any).estado,
+        regional: (selectedAction as any).regional || (selectedAction as any).regiao,
+      }, matrizLookup);
+      return res.matriz || selectedAction.rede || "";
+    }
+    return selectedAction.rede || "";
+  }, [selectedAction, matrizLookup]);
+
   const fetchBoletosDaRede = async (
     rede: string, 
     codigoMatriz?: string | null, 
@@ -605,115 +622,78 @@ export default function InvestimentoPage() {
       setBoletosAbertos([]);
       return;
     }
-    const redeClean = rede.toUpperCase().trim();
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-    // 1. Mapeamento de ownership comercial das filiais/parceiros da rede em cm_clientes
-    const corporateCodes = new Set<string>();
-    const allowedCarteiraCodes = new Set<string>();
-    const blockedOtherBranchCodes = new Set<string>();
+    // 1. Resolver a Matriz oficial da ação através da arquitetura canônica matriz-resolver.ts
+    const actionResolved = matrizLookup ? resolveClienteMatriz({
+      rede,
+      codigo_matriz: codigoMatriz,
+      gerente_responsavel: actionGerente,
+      gerente: actionGerente,
+      responsavel: actionGerente,
+      uf: actionUf,
+      regional: actionRegional,
+    }, matrizLookup) : null;
+
+    const targetMatriz = actionResolved?.matriz || rede;
+    const normTarget = targetMatriz.toUpperCase().trim();
+
+    // 2. Coletar todos os códigos de cliente (PDVs/filiais) pertencentes à matriz oficial da ação
     const partnerCodes: string[] = [];
-
-    const normActionGerente = (actionGerente || '').trim().toLowerCase();
-    const normActionUf = (actionUf || '').trim().toLowerCase();
-    const normActionRegional = (actionRegional || '').trim().toLowerCase();
-
-    try {
-      const clientQueries: string[] = [];
-      if (codigoMatriz) {
-        clientQueries.push(`codigo_matriz.eq.${codigoMatriz}`);
-        clientQueries.push(`codigo.eq.${parseInt(codigoMatriz, 10) || 0}`);
-      }
-      clientQueries.push(`matriz.ilike.%${redeClean}%`);
-      clientQueries.push(`nome_matriz.ilike.%${redeClean}%`);
-
-      const { data: clients } = await supabase
-        .from('cm_clientes')
-        .select('codigo, codigo_matriz, responsavel, gerente_id, uf, regional, razao_social, matriz')
-        .or(clientQueries.join(','));
-
-      if (clients && clients.length > 0) {
-        const matCodeStr = codigoMatriz ? String(codigoMatriz) : '';
-
-        clients.forEach((c: any) => {
-          if (c.codigo === undefined || c.codigo === null) return;
-          const codeStr = String(c.codigo);
-          partnerCodes.push(codeStr);
-
-          const cResponsavel = (c.responsavel || c.gerente_id || '').trim().toLowerCase();
-          const cUf = (c.uf || '').trim().toLowerCase();
-          const cRegional = (c.regional || '').trim().toLowerCase();
-
-          const isCorporateMatriz = (matCodeStr && codeStr === matCodeStr) ||
-            (!cResponsavel && !cUf && !cRegional) ||
-            (c.razao_social || '').toUpperCase().includes('MATRIZ') ||
-            (c.razao_social || '').toUpperCase().includes('CORPORATIVO');
-
-          if (isCorporateMatriz) {
-            corporateCodes.add(codeStr);
-          } else {
-            // Verificar se a filial pertence à regional/gerente da ação
-            const isManagerMatch = normActionGerente && cResponsavel && (cResponsavel.includes(normActionGerente) || normActionGerente.includes(cResponsavel));
-            const isUfMatch = normActionUf && cUf && (cUf === normActionUf);
-            const isRegionalMatch = normActionRegional && cRegional && (cRegional === normActionRegional);
-
-            if (isManagerMatch || isUfMatch || isRegionalMatch || (!normActionGerente && !normActionUf && !normActionRegional)) {
-              allowedCarteiraCodes.add(codeStr);
-            } else if (cResponsavel || cUf || cRegional) {
-              // Filial pertence expressamente a outra regional/gerente
-              blockedOtherBranchCodes.add(codeStr);
-            }
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Erro ao buscar parceiros da rede:", e);
+    if (matrizLookup) {
+      matrizLookup.byClientCode.forEach((resolved, clientCode) => {
+        if (resolved.matriz.toUpperCase().trim() === normTarget) {
+          partnerCodes.push(clientCode);
+        }
+      });
     }
 
-    // 2. Construir filtros para consultar cm_boletos
-    const boletoFilters: string[] = [`rede.ilike.%${redeClean}%`];
-    
-    const firstWord = redeClean.split(' ')[0];
-    if (firstWord && firstWord.length >= 3 && firstWord !== redeClean) {
-      boletoFilters.push(`rede.ilike.%${firstWord}%`);
-    }
-
+    // 3. Montar filtros otimizados para buscar boletos em aberto no Supabase
+    const orFilters: string[] = [];
     if (partnerCodes.length > 0) {
       const uniqueCodes = Array.from(new Set(partnerCodes));
-      uniqueCodes.forEach(code => {
-        boletoFilters.push(`parceiro_codigo.eq.${code}`);
+      uniqueCodes.slice(0, 50).forEach(code => {
+        orFilters.push(`parceiro_codigo.eq.${code}`);
       });
     }
 
-    const limitedFilters = Array.from(new Set(boletoFilters)).slice(0, 60);
+    const cleanWord = targetMatriz.replace(/[\(\),]/g, ' ').trim().split(' ')[0];
+    if (cleanWord && cleanWord.length >= 3) {
+      orFilters.push(`rede.ilike.%${cleanWord}%`);
+    }
 
-    const { data } = await supabase
-      .from('cm_boletos')
-      .select('*')
-      .or(limitedFilters.join(','))
-      .eq('status', 'Aberto')
-      .gte('vencimento', todayStr)
-      .order('vencimento', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('cm_boletos')
+        .select('*')
+        .or(orFilters.length > 0 ? orFilters.join(',') : `rede.ilike.%${rede}%`)
+        .eq('status', 'Aberto')
+        .gte('vencimento', todayStr)
+        .order('vencimento', { ascending: true });
 
-    if (data) {
-      // 3. Filtrar boletos respeitando a responsabilidade regional
-      const regionalBoletos = data.filter((b: any) => {
-        if (!b) return false;
-        const pCode = b.parceiro_codigo ? String(b.parceiro_codigo) : '';
+      if (error) {
+        console.error("Erro ao buscar boletos da rede:", error);
+        setBoletosAbertos([]);
+        return;
+      }
 
-        // Se o boleto pertence a uma filial de outra regional/gerente -> Bloquear
-        if (pCode && blockedOtherBranchCodes.has(pCode) && !allowedCarteiraCodes.has(pCode) && !corporateCodes.has(pCode)) {
-          return false;
-        }
+      if (data && data.length > 0) {
+        // 4. Filtrar estritamente pela Matriz oficial resolvida em cada boleto
+        const matchingBoletos = data.filter((b: any) => {
+          const bInfo = getBoletoMatrizInfo(b);
+          return bInfo.matriz.toUpperCase().trim() === normTarget;
+        });
 
-        return true;
-      });
-
-      setBoletosAbertos(filterAndDeduplicateBoletos(regionalBoletos));
-    } else {
+        setBoletosAbertos(filterAndDeduplicateBoletos(matchingBoletos));
+      } else {
+        setBoletosAbertos([]);
+      }
+    } catch (e) {
+      console.error("Exceção ao buscar boletos da rede:", e);
       setBoletosAbertos([]);
     }
+
     setBoletoSearchTerm("");
     setBoletoSearchResults([]);
     setSelectedBoletoLabel("");
@@ -912,7 +892,7 @@ export default function InvestimentoPage() {
         fetchBoletosDaRede(
           selectedAction.rede, 
           selectedAction.codigo_matriz,
-          (selectedAction as any).gerente_nome || (selectedAction as any).gerente_id || (selectedAction as any).user_name,
+          (selectedAction as any).gerente_responsavel || (selectedAction as any).gerente_nome || (selectedAction as any).gerente || (selectedAction as any).manager_name || (selectedAction as any).responsavel || (selectedAction as any).user_name,
           (selectedAction as any).uf || (selectedAction as any).estado,
           (selectedAction as any).regional || (selectedAction as any).regiao
         );
@@ -980,7 +960,7 @@ export default function InvestimentoPage() {
       }
       setDetailsExpanded(false);
     }
-  }, [selectedAction]);
+  }, [selectedAction, matrizLookup]);
 
   const allTradeChecked = Object.values(tradeChecklist).every(Boolean);
 
@@ -5939,7 +5919,7 @@ export default function InvestimentoPage() {
                                   setShowBoletoDropdown(true);
                                 }}
                                 onFocus={() => setShowBoletoDropdown(true)}
-                                placeholder={`Adicionar boleto... (mostrando ${boletosAbertos.length} da rede ${selectedAction.rede})`}
+                                placeholder={`Adicionar boleto... (mostrando ${boletosAbertos.length} de ${selectedActionMatrizNome || selectedAction.rede})`}
                                 className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50 placeholder:text-muted/60"
                               />
                               {boletoSearchLoading && (
@@ -5953,7 +5933,7 @@ export default function InvestimentoPage() {
                                 {boletoSearchTerm.length === 0 && boletosAbertos.length > 0 && (
                                   <>
                                     <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
-                                      Boletos da rede {selectedAction.rede}
+                                      Boletos em aberto — {selectedActionMatrizNome || selectedAction.rede}
                                     </div>
                                     {boletosAbertos.map(b => {
                                       const { matriz: matrizNome, razaoSocial, codigoCliente } = getBoletoMatrizInfo(b);
@@ -6029,7 +6009,7 @@ export default function InvestimentoPage() {
                                 {/* Empty rede default */}
                                 {boletoSearchTerm.length === 0 && boletosAbertos.length === 0 && (
                                   <div className="px-3 py-3 text-center">
-                                    <p className="text-xs text-amber-500">Nenhum boleto em aberto para a rede {selectedAction.rede}.</p>
+                                    <p className="text-xs text-amber-500">Nenhum boleto em aberto para {selectedActionMatrizNome || selectedAction.rede}.</p>
                                     <p className="text-[10px] text-muted mt-1">Digite acima para buscar em todas as redes.</p>
                                   </div>
                                 )}
