@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const normalizeGerenteNome = (nome?: string | null): string => {
@@ -78,6 +79,7 @@ const buildMonths = (
 interface AcaoRow {
   id: string;
   rede: string;
+  codigo_matriz?: string | null;
   gerente_responsavel?: string | null;
   gerente?: string | null;
   valor_investimento: number | null;
@@ -144,6 +146,7 @@ export default function InvestClientePage() {
   const [rawAcoes, setRawAcoes] = useState<AcaoRow[]>([]);
   const [rawVinculoMap, setRawVinculoMap] = useState<Record<string, VinculoRow[]>>({});
   const [gerenteMap, setGerenteMap] = useState<Record<string, string>>({});
+  const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
   // ── faturamento per rede for the selected month ───────────────────────────
   const [fatMap, setFatMap] = useState<Record<string, number>>({});
   const [fatLoading, setFatLoading] = useState(false);
@@ -162,7 +165,7 @@ export default function InvestClientePage() {
       const { data: acoes, error: aErr } = await supabase
         .from("v_acoes_investimento_com_gerente")
         .select(
-          "id, rede, gerente_responsavel, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
+          "id, rede, codigo_matriz, gerente_responsavel, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
         )
         .eq("is_planejamento", false)
         .is("financeiro_pago_em", null);
@@ -213,6 +216,28 @@ export default function InvestClientePage() {
           gMap[m.nome.toUpperCase().trim()] = m.gerente || "Sem Gerente";
       });
       setGerenteMap(gMap);
+
+      // 4. Fonte Canônica cm_clientes para Resolução de Matrizes Sem Colisão
+      let allClients: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: cChunk, error: cErr } = await supabase
+          .from("cm_clientes")
+          .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (cErr) {
+          console.error("Erro ao carregar cm_clientes em invest-cliente:", cErr);
+          break;
+        }
+        if (!cChunk || cChunk.length === 0) break;
+        allClients = [...allClients, ...cChunk];
+        if (cChunk.length < pageSize) break;
+        page++;
+      }
+      if (allClients.length > 0) {
+        setMatrizLookup(buildMatrizLookup(allClients));
+      }
     } catch (err) {
       console.error("Erro ao carregar dados:", err);
     } finally {
@@ -271,6 +296,7 @@ export default function InvestClientePage() {
       string,
       {
         rede: string;
+        rawRede?: string;
         gerente: string;
         expectativaInvest: number;
         naoProvisionado: number;
@@ -284,9 +310,23 @@ export default function InvestClientePage() {
       // Fase 1 (Planej. GRV) não entra no painel
       if ((a.fase_atual ?? 0) === 1) return;
 
-      const redeName = (a.rede || "SEM REDE").trim();
+      const rawRedeName = (a.rede || "SEM REDE").trim();
+      const rawRedeKey = rawRedeName.toUpperCase();
+
+      const resolved = matrizLookup
+        ? resolveClienteMatriz(
+            {
+              codigo_matriz: a.codigo_matriz,
+              rede: a.rede,
+              responsavel: a.gerente_responsavel,
+            },
+            matrizLookup
+          )
+        : null;
+
+      const redeName = (resolved?.matriz || rawRedeName).trim();
       const redeKey = redeName.toUpperCase();
-      const gerenteRaw = (a.gerente_responsavel || a.gerente || gerenteMap[redeKey] || "Sem Gerente").trim() || "Sem Gerente";
+      const gerenteRaw = (a.gerente_responsavel || a.gerente || resolved?.responsavel || gerenteMap[redeKey] || gerenteMap[rawRedeKey] || "Sem Gerente").trim() || "Sem Gerente";
       const gerenteAcao = normalizeGerenteNome(gerenteRaw);
       const compositeKey = `${gerenteAcao}___${redeKey}`;
       const valor =
@@ -295,6 +335,7 @@ export default function InvestClientePage() {
       if (!redeAgg[compositeKey]) {
         redeAgg[compositeKey] = {
           rede: redeName,
+          rawRede: rawRedeName,
           gerente: gerenteAcao,
           expectativaInvest: 0,
           naoProvisionado: 0,
@@ -369,7 +410,7 @@ export default function InvestClientePage() {
     const clientesList: ClienteData[] = Object.values(redeAgg)
       .filter((v) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
       .map((agg) => {
-        const fat = fatMap[agg.rede.toUpperCase()] || 0;
+        const fat = fatMap[agg.rede.toUpperCase()] || (agg.rawRede ? fatMap[agg.rawRede.toUpperCase()] : 0) || 0;
         const perc =
           fat > 0 ? ((agg.naoProvisionado + agg.provisionado) / fat) * 100 : null;
         return {
@@ -425,7 +466,7 @@ export default function InvestClientePage() {
       .sort((a, b) => b.totals.expectativaInvest - a.totals.expectativaInvest);
 
     return grupoList;
-  }, [rawAcoes, rawVinculoMap, gerenteMap, fatMap, selectedMes]);
+  }, [rawAcoes, rawVinculoMap, gerenteMap, fatMap, selectedMes, matrizLookup]);
 
   // Auto-expand all groups when grupos change
   useEffect(() => {
@@ -499,7 +540,7 @@ export default function InvestClientePage() {
   // ─── CSV export ───────────────────────────────────────────────────────────
   const exportCSV = () => {
     const headers = [
-      "Responsável", "Rede",
+      "Responsável", "Matriz",
       `Fat. ${mesLabel(selectedMes)}`, "% Invest.",
       "Expect. Investimento", "Não provisionado", "Provisionado",
       ...MONTHS.map((m) => m.label),
@@ -988,7 +1029,7 @@ export default function InvestClientePage() {
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-gray-50 border-b-2 border-gray-200">
-                              <th className="py-3 px-5 text-xs font-black text-gray-700 uppercase tracking-wider">Rede</th>
+                              <th className="py-3 px-5 text-xs font-black text-gray-700 uppercase tracking-wider">Matriz</th>
                               <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Fat. {mesLabel(selectedMes)}</th>
                               <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">% Inv.</th>
                               <th className="py-3 px-4 text-xs font-bold text-gray-600 uppercase tracking-wider text-right">Expect.</th>

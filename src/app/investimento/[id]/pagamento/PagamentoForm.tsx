@@ -9,9 +9,10 @@ import { supabase } from "@/lib/supabase";
 
 interface PagamentoFormProps {
   investment: any;
+  matrizNome?: string;
 }
 
-export function PagamentoForm({ investment }: PagamentoFormProps) {
+export function PagamentoForm({ investment, matrizNome }: PagamentoFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +75,7 @@ export function PagamentoForm({ investment }: PagamentoFormProps) {
         <div>
           <h1 className="text-xl font-bold text-foreground">Confirmar Pagamento</h1>
           <p className="text-sm text-muted mt-0.5">
-            {investment.rede} — {investment.codigo ? `#${investment.codigo}` : ''} — Fase 5: Financeiro
+            {matrizNome || investment.rede} — {investment.codigo ? `#${investment.codigo}` : ''} — Fase 5: Financeiro
           </p>
         </div>
       </div>

@@ -9,9 +9,10 @@ import { supabase } from "@/lib/supabase";
 
 interface ApuracaoFormProps {
   investment: any;
+  matrizNome?: string;
 }
 
-export function ApuracaoForm({ investment }: ApuracaoFormProps) {
+export function ApuracaoForm({ investment, matrizNome }: ApuracaoFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export function ApuracaoForm({ investment }: ApuracaoFormProps) {
         <div>
           <h1 className="text-xl font-bold text-foreground">Apuração da Ação</h1>
           <p className="text-sm text-muted mt-0.5">
-            {investment.rede} — {investment.codigo ? `#${investment.codigo}` : ''} — Fase 3: Dossiê Comercial
+            {matrizNome || investment.rede} — {investment.codigo ? `#${investment.codigo}` : ''} — Fase 3: Dossiê Comercial
           </p>
         </div>
       </div>
