@@ -46,6 +46,7 @@ import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, promoverPlanejamento, obterPlanilhaModelo } from "../lancar/actions";
+import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 interface AcaoInvestimento {
   id: string;
@@ -202,6 +203,21 @@ export default function PlanejamentoInvestimentoPage() {
   const [fileHash, setFileHash] = useState("");
   const [rawExcelRows, setRawExcelRows] = useState<any[][]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
+
+  const getMatrizNome = (row: any) => {
+    if (matrizLookup && row) {
+      const res = resolveClienteMatriz({
+        codigo: row.codigo,
+        codigo_matriz: row.codigo_matriz,
+        rede: row.rede,
+        responsavel: row.gerente_responsavel || row.gerente,
+        uf: row.uf,
+      }, matrizLookup);
+      return res.matriz;
+    }
+    return row?.rede || "Sem Rede";
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -246,6 +262,28 @@ export default function PlanejamentoInvestimentoPage() {
       }
       setFaturamentoMap(fatMap);
       setFaturamentoTotalMap(totalFatMap);
+
+      // Fetch cm_clientes para resolução de matrizes sem colisão
+      let allClients: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: cChunk, error: cErr } = await supabase
+          .from("cm_clientes")
+          .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (cErr) {
+          console.error("Erro ao carregar cm_clientes em planejamento:", cErr);
+          break;
+        }
+        if (!cChunk || cChunk.length === 0) break;
+        allClients = [...allClients, ...cChunk];
+        if (cChunk.length < pageSize) break;
+        page++;
+      }
+      if (allClients.length > 0) {
+        setMatrizLookup(buildMatrizLookup(allClients));
+      }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
@@ -499,12 +537,12 @@ export default function PlanejamentoInvestimentoPage() {
       setTimeout(() => setFeedback(null), 3000);
       return;
     }
-    const headers = ["Código", "Data Registro", "Rede", "Família", "Ação", "Data Início", "Data Fim", "Valor"];
+    const headers = ["Código", "Data Registro", "Matriz", "Família", "Ação", "Data Início", "Data Fim", "Valor"];
     const csvRows: string[] = [];
 
     filteredData.forEach(row => {
       const createdStr = row.created_at ? new Date(row.created_at).toLocaleDateString("pt-BR") : "";
-      const redeStr = `"${row.rede || ""}"`;
+      const redeStr = `"${getMatrizNome(row)}"`;
       const acaoStr = `"${row.tipo_acao || ""}"`;
 
       if (row.abrangencia !== "SKU" && row.familias_detalhes && row.familias_detalhes.length > 0) {
@@ -1136,7 +1174,7 @@ export default function PlanejamentoInvestimentoPage() {
                   <tr>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Cód.</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Data Registro</th>
-                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Rede</th>
+                    <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Matriz</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Mês</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Período Ação</th>
                     <th className="px-6 py-4 font-semibold text-muted text-xs tracking-wider uppercase border-b border-border">Tipo</th>
@@ -1174,7 +1212,7 @@ export default function PlanejamentoInvestimentoPage() {
                         </td>
                         <td className="px-6 py-4 font-medium text-foreground">
                           <div>
-                            <span>{row.rede}</span>
+                            <span>{getMatrizNome(row)}</span>
                             {row.codigo_matriz && (
                               <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
                             )}
@@ -1269,7 +1307,7 @@ export default function PlanejamentoInvestimentoPage() {
                       <div className="flex justify-between items-start">
                         <div>
                           <span className="font-mono text-xs text-gold font-bold">{row.codigo ? `#${row.codigo}` : '-'}</span>
-                          <h4 className="font-bold text-foreground mt-0.5">{row.rede}</h4>
+                          <h4 className="font-bold text-foreground mt-0.5">{getMatrizNome(row)}</h4>
                         </div>
                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                           {row.tipo_acao}
@@ -1520,7 +1558,7 @@ export default function PlanejamentoInvestimentoPage() {
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border flex-shrink-0 ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>
                       {row.tipo_acao}
                     </span>
-                    <span className="font-bold text-sm text-foreground group-hover:text-gold transition-colors truncate">{row.rede}</span>
+                    <span className="font-bold text-sm text-foreground group-hover:text-gold transition-colors truncate">{getMatrizNome(row)}</span>
                     <span className="text-xs text-muted truncate hidden sm:inline">{row.abrangencia === "SKU" ? "SKUs" : (row.familias_detalhes && row.familias_detalhes.length > 0 ? row.familias_detalhes.map((f: any) => f.familia_nome).join(", ") : row.familia_produto)}</span>
                   </div>
                   <span className="font-black text-sm text-foreground flex-shrink-0">
@@ -1545,7 +1583,7 @@ export default function PlanejamentoInvestimentoPage() {
               <div>
                 <span className="text-xs text-muted block mb-0.5">Detalhes do Planejamento</span>
                 <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                  {selectedAction.rede}
+                  {getMatrizNome(selectedAction)}
                   {selectedAction.codigo && <span className="font-mono text-sm text-gold bg-gold/10 px-1.5 py-0.5 rounded">#{selectedAction.codigo}</span>}
                 </h2>
               </div>

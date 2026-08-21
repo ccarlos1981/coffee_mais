@@ -56,6 +56,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
+import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 
 const normalizeGerenteNome = (nome?: string | null): string => {
@@ -356,6 +357,7 @@ export default function InvestimentoPage() {
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
   const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
   const [showOnlyWithoutActions, setShowOnlyWithoutActions] = useState(false);
+  const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
 
   // Calendar State
   const [viewMode, setViewMode] = useState<"table" | "calendar" | "matrix">("table");
@@ -568,6 +570,30 @@ export default function InvestimentoPage() {
     return result;
   };
 
+  const getBoletoMatrizInfo = useCallback((b: any) => {
+    if (matrizLookup && b) {
+      const res = resolveClienteMatriz({
+        parceiro_codigo: b.parceiro_codigo,
+        codigo: b.parceiro_codigo,
+        rede: b.rede,
+      }, matrizLookup);
+      return {
+        matriz: res.matriz || b.rede || "Sem Rede",
+        razaoSocial: b.rede || res.razaoSocial || "",
+        codigoCliente: res.codigoCliente || b.parceiro_codigo,
+        uf: res.uf,
+        responsavel: res.responsavel,
+      };
+    }
+    return {
+      matriz: b?.rede || "Sem Rede",
+      razaoSocial: b?.rede || "",
+      codigoCliente: b?.parceiro_codigo,
+      uf: null,
+      responsavel: null,
+    };
+  }, [matrizLookup]);
+
   const fetchBoletosDaRede = async (
     rede: string, 
     codigoMatriz?: string | null, 
@@ -700,21 +726,66 @@ export default function InvestimentoPage() {
     }
     setBoletoSearchLoading(true);
     const termClean = term.toUpperCase().trim();
+    const safeText = termClean.replace(/[\(\),]/g, " ").trim().replace(/\s+/g, " ");
     const now = new Date();
     const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // 1. Mapear códigos de parceiros em cm_clientes cuja Matriz / Razão Social / Código contenham o termo de busca
+    const matchingPartnerCodes: string[] = [];
+    if (matrizLookup) {
+      matrizLookup.byClientCode.forEach((resolved, clientCode) => {
+        if (
+          resolved.matriz.toUpperCase().includes(termClean) ||
+          (resolved.codigoMatriz && resolved.codigoMatriz.includes(termClean)) ||
+          (resolved.razaoSocial && resolved.razaoSocial.toUpperCase().includes(termClean)) ||
+          (safeText && resolved.matriz.toUpperCase().includes(safeText))
+        ) {
+          matchingPartnerCodes.push(clientCode);
+        }
+      });
+    }
+
+    const orFilters: string[] = [];
+    if (safeText) {
+      orFilters.push(`rede.ilike.%${safeText}%`);
+      orFilters.push(`numero_boleto.ilike.%${safeText}%`);
+      orFilters.push(`nro_nota.ilike.%${safeText}%`);
+      orFilters.push(`parceiro_codigo.ilike.%${safeText}%`);
+    }
+
+    if (matchingPartnerCodes.length > 0) {
+      const topCodes = Array.from(new Set(matchingPartnerCodes)).slice(0, 50);
+      topCodes.forEach(c => orFilters.push(`parceiro_codigo.eq.${c}`));
+    }
 
     const { data } = await supabase
       .from('cm_boletos')
       .select('*')
-      .or(`rede.ilike.%${termClean}%,numero_boleto.ilike.%${termClean}%,nro_nota.ilike.%${termClean}%,parceiro_codigo.ilike.%${termClean}%`)
+      .or(orFilters.join(','))
       .eq('status', 'Aberto')
       .gte('vencimento', todayStr)
       .order('vencimento', { ascending: true })
       .limit(60);
 
-    setBoletoSearchResults(filterAndDeduplicateBoletos(data || []));
+    const deduped = filterAndDeduplicateBoletos(data || []);
+
+    // 2. Filtrar em memória utilizando a Matriz oficial resolvida
+    const filtered = deduped.filter(b => {
+      const info = getBoletoMatrizInfo(b);
+      const searchNeedle = termClean;
+      return (
+        info.matriz.toUpperCase().includes(searchNeedle) ||
+        (info.razaoSocial && info.razaoSocial.toUpperCase().includes(searchNeedle)) ||
+        String(b.numero_boleto || "").toUpperCase().includes(searchNeedle) ||
+        String(b.parceiro_codigo || "").toUpperCase().includes(searchNeedle) ||
+        String(b.nro_nota || "").toUpperCase().includes(searchNeedle) ||
+        (safeText && info.matriz.toUpperCase().includes(safeText))
+      );
+    });
+
+    setBoletoSearchResults(filtered);
     setBoletoSearchLoading(false);
-  }, []);
+  }, [matrizLookup, getBoletoMatrizInfo]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -849,21 +920,24 @@ export default function InvestimentoPage() {
         // Buscar boletos vinculados na tabela de relações
         supabase
           .from('cm_acoes_boletos_vinculo')
-          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, valor_total, vencimento, status, tipo_titulo, prazo)')
+          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, parceiro_codigo, valor_total, vencimento, status, tipo_titulo, prazo)')
           .eq('acao_id', selectedAction.id)
           .then(({ data: vinculosData, error }: any) => {
             if (!error && vinculosData && vinculosData.length > 0) {
               const parsed = vinculosData.map((v: any) => {
                 const b = v.cm_boletos;
+                const info = getBoletoMatrizInfo(b);
                 return {
                   boleto_id: b.id,
                   valor_associado: v.valor_associado.toString(),
-                  label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                  label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                   numero_boleto: b.numero_boleto,
                   valor_total: b.valor_total,
                   tipo_titulo: b.tipo_titulo,
                   vencimento: b.vencimento,
-                  rede: b.rede,
+                  rede: info.matriz,
+                  parceiro_nome: b.rede,
+                  parceiro_codigo: b.parceiro_codigo,
                   prazo: b.prazo
                 };
               });
@@ -878,15 +952,18 @@ export default function InvestimentoPage() {
                   .single()
                   .then(({ data: b }: { data: any }) => {
                     if (b) {
+                      const info = getBoletoMatrizInfo(b);
                       setVinculosBoletos([{
                         boleto_id: b.id,
                         valor_associado: (selectedAction.apuracao_valor_realizado || getValorTotal(selectedAction)).toString(),
-                        label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                        label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
                         numero_boleto: b.numero_boleto,
                         valor_total: b.valor_total,
                         tipo_titulo: b.tipo_titulo,
                         vencimento: b.vencimento,
-                        rede: b.rede,
+                        rede: info.matriz,
+                        parceiro_nome: b.rede,
+                        parceiro_codigo: b.parceiro_codigo,
                         prazo: b.prazo
                       }]);
                     } else {
@@ -1480,6 +1557,28 @@ export default function InvestimentoPage() {
       }
       setFaturamentoMap(fatMap);
       setFaturamentoTotalMap(totalFatMap);
+
+      // Fetch cm_clientes para resolução de matrizes sem colisão
+      let allClients: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: cChunk, error: cErr } = await supabase
+          .from("cm_clientes")
+          .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (cErr) {
+          console.error("Erro ao carregar cm_clientes em investimento:", cErr);
+          break;
+        }
+        if (!cChunk || cChunk.length === 0) break;
+        allClients = [...allClients, ...cChunk];
+        if (cChunk.length < pageSize) break;
+        page++;
+      }
+      if (allClients.length > 0) {
+        setMatrizLookup(buildMatrizLookup(allClients));
+      }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(err);
@@ -1496,24 +1595,14 @@ export default function InvestimentoPage() {
         const { data } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
         if (data) setUserRole(data.role);
 
-        // Fetch sort preferences
-        try {
-          const { data: prefData } = await supabase
-            .from('cm_user_preferences')
-            .select('investimento_sort_column, investimento_sort_direction')
-            .eq('user_id', user.id)
-            .maybeSingle();
-
-          if (prefData) {
-            if (prefData.investimento_sort_column) {
-              setSortField(prefData.investimento_sort_column);
-            }
-            if (prefData.investimento_sort_direction) {
-              setSortDirection(prefData.investimento_sort_direction as "asc" | "desc");
-            }
-          }
-        } catch (prefErr) {
-          console.error("Erro ao carregar preferências de ordenação:", prefErr);
+        // Load favorites/preferences
+        const { data: prefData } = await supabase
+          .from('cm_user_preferences')
+          .select('preferences')
+          .eq('user_id', user.id)
+          .single();
+        if (prefData?.preferences?.viewMode) {
+          setViewMode(prefData.preferences.viewMode);
         }
       }
     };
@@ -1521,11 +1610,9 @@ export default function InvestimentoPage() {
     loadData();
   }, [loadData]);
 
-  const formatMesReferencia = (mesStr: string | null | undefined) => {
+  const formatMesReferencia = (mesStr?: string | null) => {
     if (!mesStr) return "-";
-    const parts = mesStr.split("-");
-    if (parts.length !== 2) return mesStr;
-    const [year, month] = parts;
+    const [year, month] = mesStr.split("-");
     const meses = [
       "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
       "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
@@ -1542,9 +1629,24 @@ export default function InvestimentoPage() {
   const getGerenteAndUF = (row: any) => {
     let uf = "UF N/D";
     let manager = "SEM GERENTE";
+    let matrizResolved = row?.rede || "";
     
     if (row.gerente_responsavel) {
       manager = row.gerente_responsavel;
+    }
+    
+    if (matrizLookup) {
+      const resolved = resolveClienteMatriz({
+        codigo: row.codigo,
+        codigo_matriz: row.codigo_matriz,
+        rede: row.rede,
+        responsavel: row.gerente_responsavel,
+        uf: row.uf,
+      }, matrizLookup);
+      if (resolved.uf) uf = resolved.uf;
+      if (!row.gerente_responsavel && resolved.responsavel) manager = resolved.responsavel;
+      matrizResolved = resolved.matriz;
+      return { uf, manager, matriz: matrizResolved };
     }
     
     // Look up UF in matrizes
@@ -1554,11 +1656,13 @@ export default function InvestimentoPage() {
       if (match) {
         if (match.uf) uf = match.uf;
         if (!row.gerente_responsavel && match.gerente) manager = match.gerente;
+        matrizResolved = match.nome || row.rede;
       } else {
         const fallbackMatch = matrizes.find((m: any) => m.codigo === row.codigo_matriz);
         if (fallbackMatch) {
           if (fallbackMatch.uf) uf = fallbackMatch.uf;
           if (!row.gerente_responsavel && fallbackMatch.gerente) manager = fallbackMatch.gerente;
+          matrizResolved = fallbackMatch.nome || row.rede;
         }
       }
     } else if (row.rede) {
@@ -1567,10 +1671,11 @@ export default function InvestimentoPage() {
       if (match) {
         if (match.uf) uf = match.uf;
         if (!row.gerente_responsavel && match.gerente) manager = match.gerente;
+        matrizResolved = match.nome || row.rede;
       }
     }
     
-    return { uf, manager };
+    return { uf, manager, matriz: matrizResolved };
   };
 
   const mesesDisponiveis = useMemo(() => {
@@ -2436,7 +2541,7 @@ export default function InvestimentoPage() {
       "Nome Campanha",
       "Valor Consolidado Campanha (Apenas Ref. - NÃO Somar em Pivôs)",
       "Gerente Responsável",
-      "Rede",
+      "Matriz",
       "Código Matriz",
       "Mês Referência",
       "Abrangência",
@@ -2468,17 +2573,17 @@ export default function InvestimentoPage() {
       "Financeiro Observações",
       "ROI",
       "Volume Real",
-      "Faturamento Real",
-      "Margem Real",
+      "Real Faturamento",
+      "Real Margem",
       "Aprovado Por",
       "Aprovado Em",
       "Motivo Reabertura",
       "Comentário Aprovação",
-      "Motivo Rejeição",
+      "Motivo Reprovação",
       "Motivo Cancelamento",
-      "Score de Execução",
-      "Família Detalhes",
-      "SKU Detalhes",
+      "Execution Score",
+      "Famílias Detalhes",
+      "SKUs Detalhes",
       "Documento URL",
       "Evidências URLs",
       "Comprovante Pagamento URL",
@@ -2506,6 +2611,9 @@ export default function InvestimentoPage() {
     const csvRows: string[] = [];
 
     filteredData.forEach(row => {
+      const { matriz: resM } = getGerenteAndUF(row);
+      const matrizNome = resM || row.rede;
+
       if (row.abrangencia !== "SKU" && row.familias_detalhes && row.familias_detalhes.length > 0) {
         row.familias_detalhes.forEach(f => {
           const flatVal = f.preco_flat != null ? f.preco_flat : row.preco_flat;
@@ -2522,7 +2630,7 @@ export default function InvestimentoPage() {
             escapeCSV(row.nome_campanha || ""),
             escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
             escapeCSV(row.gerente_responsavel),
-            escapeCSV(row.rede),
+            escapeCSV(matrizNome),
             escapeCSV(row.codigo_matriz),
             escapeCSV(row.mes_referencia),
             escapeCSV(row.abrangencia),
@@ -2590,7 +2698,7 @@ export default function InvestimentoPage() {
             escapeCSV(row.nome_campanha || ""),
             escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
             escapeCSV(row.gerente_responsavel),
-            escapeCSV(row.rede),
+            escapeCSV(matrizNome),
             escapeCSV(row.codigo_matriz),
             escapeCSV(row.mes_referencia),
             escapeCSV(row.abrangencia),
@@ -2656,7 +2764,7 @@ export default function InvestimentoPage() {
           escapeCSV(row.nome_campanha || ""),
           escapeCSV(row.campanha_id && campaignValPrevMap[row.campanha_id] != null ? campaignValPrevMap[row.campanha_id].toString().replace('.', ',') : ""),
           escapeCSV(row.gerente_responsavel),
-          escapeCSV(row.rede),
+          escapeCSV(matrizNome),
           escapeCSV(row.codigo_matriz),
           escapeCSV(row.mes_referencia),
           escapeCSV(row.abrangencia),
@@ -3302,7 +3410,15 @@ export default function InvestimentoPage() {
                               </td>
                               <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
                                 <div>
-                                  <span>{item.rede}</span>
+                                  <span>{(() => {
+                                    const fakeRow = {
+                                      rede: item.rede,
+                                      codigo_matriz: item.codigo_matriz,
+                                      gerente_responsavel: item.acoes?.[0]?.gerente_responsavel
+                                    };
+                                    const { matriz: resM } = getGerenteAndUF(fakeRow);
+                                    return resM || item.rede;
+                                  })()}</span>
                                   {item.codigo_matriz && (
                                     <span className="text-[10px] text-muted block font-mono mt-0.5">{item.codigo_matriz}</span>
                                   )}
@@ -3498,7 +3614,10 @@ export default function InvestimentoPage() {
                             </td>
                             <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
                               <div>
-                                <span>{row.rede}</span>
+                                <span>{(() => {
+                                  const { matriz: resM } = getGerenteAndUF(row);
+                                  return resM || row.rede;
+                                })()}</span>
                                 {row.codigo_matriz && (
                                   <span className="text-[10px] text-muted block font-mono mt-0.5">{row.codigo_matriz}</span>
                                 )}
@@ -3691,7 +3810,15 @@ export default function InvestimentoPage() {
                                   <span className="text-[11px] text-muted font-medium">{formatMesReferencia(item.mes_referencia)}</span>
                                 </div>
                                 <h3 className="font-bold text-foreground text-base leading-tight">
-                                  {item.rede}
+                                  {(() => {
+                                    const fakeRow = {
+                                      rede: item.rede,
+                                      codigo_matriz: item.codigo_matriz,
+                                      gerente_responsavel: item.acoes?.[0]?.gerente_responsavel
+                                    };
+                                    const { matriz: resM } = getGerenteAndUF(fakeRow);
+                                    return resM || item.rede;
+                                  })()}
                                 </h3>
                                 {(() => {
                                   const fakeRow = {
@@ -3806,7 +3933,10 @@ export default function InvestimentoPage() {
                                   <span className="text-xs text-muted font-medium">{new Date(row.created_at).toLocaleDateString('pt-BR')}</span>
                                 </div>
                                 <h3 className="font-bold text-foreground text-lg leading-tight flex items-baseline gap-2">
-                                  {row.rede}
+                                  {(() => {
+                                    const { matriz: resM } = getGerenteAndUF(row);
+                                    return resM || row.rede;
+                                  })()}
                                   {row.codigo_matriz && <span className="font-mono text-xs font-normal text-muted">({row.codigo_matriz})</span>}
                                 </h3>
                                 {(() => {
@@ -4110,7 +4240,10 @@ export default function InvestimentoPage() {
 
                                     <div className="pl-1.5 space-y-1">
                                       <span className="block font-black text-xs text-foreground group-hover:text-gold transition-colors line-clamp-2 leading-tight">
-                                        {action.rede}
+                                        {(() => {
+                                          const { matriz: resM } = getGerenteAndUF(action);
+                                          return resM || action.rede;
+                                        })()}
                                       </span>
 
                                       <div className="flex items-center justify-between text-[10px] text-muted gap-1">
@@ -4123,7 +4256,7 @@ export default function InvestimentoPage() {
                                       </div>
 
                                       <div className="flex items-center justify-between pt-0.5">
-                                        <span className={`px-1 rounded text-[8px] font-bold border ${
+                                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-bold border ${
                                           action.tipo_acao === 'Sell Out'
                                             ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20'
                                             : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
@@ -5069,7 +5202,12 @@ export default function InvestimentoPage() {
                           </span>
                         )}
                       </div>
-                      <h3 className="font-bold text-foreground text-lg leading-tight uppercase tracking-wide">{selectedAction.rede}</h3>
+                      <h3 className="font-bold text-foreground text-lg leading-tight uppercase tracking-wide">
+                        {(() => {
+                          const { matriz: resM } = getGerenteAndUF(selectedAction);
+                          return resM || selectedAction.rede;
+                        })()}
+                      </h3>
                       <p className="text-sm text-foreground/80 mt-0.5">
                         {selectedAction.abrangencia === "SKU" 
                           ? "Múltiplos SKUs" 
@@ -5125,15 +5263,32 @@ export default function InvestimentoPage() {
                 {detailsExpanded && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="bg-elevated p-3 rounded-xl border border-border">
-                      <span className="text-xs text-muted block mb-1">Rede</span>
-                      <span className="font-bold text-foreground block truncate" title={selectedAction.rede}>
-                        {selectedAction.rede}
+                      <span className="text-xs text-muted block mb-1">Matriz</span>
+                      <span className="font-bold text-foreground block truncate" title={(() => {
+                        const { matriz: resM } = getGerenteAndUF(selectedAction);
+                        return resM || selectedAction.rede;
+                      })()}>
+                        {(() => {
+                          const { matriz: resM } = getGerenteAndUF(selectedAction);
+                          return resM || selectedAction.rede;
+                        })()}
                       </span>
                       {selectedAction.codigo_matriz && (
                         <span className="text-[11px] text-muted font-mono block mt-0.5">
-                          ({selectedAction.codigo_matriz})
+                          Código: {selectedAction.codigo_matriz}
                         </span>
                       )}
+                      {selectedAction.rede && (() => {
+                        const { matriz: resM } = getGerenteAndUF(selectedAction);
+                        if (resM && resM !== selectedAction.rede) {
+                          return (
+                            <span className="text-[10px] text-muted block truncate mt-0.5" title={selectedAction.rede}>
+                              Parceiro: {selectedAction.rede}
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                     <div className="bg-elevated p-3 rounded-xl border border-border">
                       <span className="text-xs text-muted block mb-1">Mês de Referência</span>
@@ -5725,6 +5880,11 @@ export default function InvestimentoPage() {
                                     <span className="text-xs font-bold text-purple-300 block truncate" title={vinculo.label}>
                                       {vinculo.rede ? `${vinculo.rede} — ` : ''}Nº {vinculo.numero_boleto} {vinculo.tipo_titulo ? `[${vinculo.tipo_titulo}]` : ''}
                                     </span>
+                                    {vinculo.parceiro_nome && vinculo.parceiro_nome.toUpperCase() !== (vinculo.rede || '').toUpperCase() && (
+                                      <span className="text-[10px] text-muted block truncate mt-0.5" title={vinculo.parceiro_nome}>
+                                        {vinculo.parceiro_nome} {vinculo.parceiro_codigo ? `(Cód: ${vinculo.parceiro_codigo})` : ''}
+                                      </span>
+                                    )}
                                     {vinculo.valor_total !== undefined && (
                                       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[10px] text-purple-300/80">
                                         <span>Valor Original: <strong className="text-gold font-bold">{formatCurrency(vinculo.valor_total)}</strong></span>
@@ -5795,62 +5955,74 @@ export default function InvestimentoPage() {
                                     <div className="px-3 py-1.5 text-[10px] font-bold text-muted uppercase tracking-wider bg-elevated border-b border-border sticky top-0">
                                       Boletos da rede {selectedAction.rede}
                                     </div>
-                                    {boletosAbertos.map(b => (
-                                      <button
-                                        key={b.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
-                                            alert("Este boleto já foi adicionado.");
-                                            return;
-                                          }
-                                          const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
-                                          const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
-                                          const remaining = Math.max(0, totalRealizado - alreadyAssociated);
-                                          const defaultVal = Math.min(b.valor_total, remaining);
-
-                                          setVinculosBoletos([
-                                            ...vinculosBoletos,
-                                            {
-                                              boleto_id: b.id,
-                                              valor_associado: defaultVal.toFixed(2),
-                                              label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
-                                              numero_boleto: b.numero_boleto,
-                                              valor_total: b.valor_total,
-                                              tipo_titulo: b.tipo_titulo,
-                                              vencimento: b.vencimento,
-                                              rede: b.rede,
-                                              prazo: b.prazo
+                                    {boletosAbertos.map(b => {
+                                      const { matriz: matrizNome, razaoSocial, codigoCliente } = getBoletoMatrizInfo(b);
+                                      return (
+                                        <button
+                                          key={b.id}
+                                          type="button"
+                                          onClick={() => {
+                                            if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
+                                              alert("Este boleto já foi adicionado.");
+                                              return;
                                             }
-                                          ]);
-                                          if (b.prazo) {
-                                            const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
-                                              ? b.prazo 
-                                              : `${b.prazo} dias`;
-                                            setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
-                                          }
-                                          setShowBoletoDropdown(false);
-                                          setBoletoSearchTerm("");
-                                        }}
-                                        className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
-                                            <span className="text-xs text-muted">{b.rede}</span>
-                                            {b.tipo_titulo && (
-                                              <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
-                                                {b.tipo_titulo}
+                                            const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
+                                            const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
+                                            const remaining = Math.max(0, totalRealizado - alreadyAssociated);
+                                            const defaultVal = Math.min(b.valor_total, remaining);
+
+                                            setVinculosBoletos([
+                                              ...vinculosBoletos,
+                                              {
+                                                boleto_id: b.id,
+                                                valor_associado: defaultVal.toFixed(2),
+                                                label: `${matrizNome} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                                numero_boleto: b.numero_boleto,
+                                                valor_total: b.valor_total,
+                                                tipo_titulo: b.tipo_titulo,
+                                                vencimento: b.vencimento,
+                                                rede: matrizNome,
+                                                parceiro_nome: b.rede,
+                                                parceiro_codigo: b.parceiro_codigo,
+                                                prazo: b.prazo
+                                              }
+                                            ]);
+                                            if (b.prazo) {
+                                              const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
+                                                ? b.prazo 
+                                                : `${b.prazo} dias`;
+                                              setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
+                                            }
+                                            setShowBoletoDropdown(false);
+                                            setBoletoSearchTerm("");
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-bold text-sm text-foreground">{matrizNome}</span>
+                                              <span className="font-mono text-xs text-gold font-bold bg-gold/10 px-1.5 py-0.5 rounded border border-gold/20">
+                                                Nº {b.numero_boleto}
                                               </span>
+                                              {b.tipo_titulo && (
+                                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
+                                                  {b.tipo_titulo}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {razaoSocial && razaoSocial.toUpperCase() !== matrizNome.toUpperCase() && (
+                                              <div className="text-[11px] text-muted truncate mt-0.5" title={razaoSocial}>
+                                                {razaoSocial} {codigoCliente ? `(Cód: ${codigoCliente})` : ''}
+                                              </div>
                                             )}
+                                            <div className="flex items-center gap-3 mt-1 text-xs">
+                                              <span className="font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                            </div>
                                           </div>
-                                          <div className="flex items-center gap-3 mt-0.5">
-                                            <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
-                                            <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
-                                          </div>
-                                        </div>
-                                      </button>
-                                    ))}
+                                        </button>
+                                      );
+                                    })}
                                   </>
                                 )}
 
@@ -5873,62 +6045,74 @@ export default function InvestimentoPage() {
                                         Nenhum boleto encontrado.
                                       </div>
                                     )}
-                                    {boletoSearchResults.map(b => (
-                                      <button
-                                        key={b.id}
-                                        type="button"
-                                        onClick={() => {
-                                          if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
-                                            alert("Este boleto já foi adicionado.");
-                                            return;
-                                          }
-                                          const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
-                                          const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
-                                          const remaining = Math.max(0, totalRealizado - alreadyAssociated);
-                                          const defaultVal = Math.min(b.valor_total, remaining);
-
-                                          setVinculosBoletos([
-                                            ...vinculosBoletos,
-                                            {
-                                              boleto_id: b.id,
-                                              valor_associado: defaultVal.toFixed(2),
-                                              label: `${b.rede} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
-                                              numero_boleto: b.numero_boleto,
-                                              valor_total: b.valor_total,
-                                              tipo_titulo: b.tipo_titulo,
-                                              vencimento: b.vencimento,
-                                              rede: b.rede,
-                                              prazo: b.prazo
+                                    {boletoSearchResults.map(b => {
+                                      const { matriz: matrizNome, razaoSocial, codigoCliente } = getBoletoMatrizInfo(b);
+                                      return (
+                                        <button
+                                          key={b.id}
+                                          type="button"
+                                          onClick={() => {
+                                            if (vinculosBoletos.some(v => v.boleto_id === b.id)) {
+                                              alert("Este boleto já foi adicionado.");
+                                              return;
                                             }
-                                          ]);
-                                          if (b.prazo) {
-                                            const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
-                                              ? b.prazo 
-                                              : `${b.prazo} dias`;
-                                            setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
-                                          }
-                                          setShowBoletoDropdown(false);
-                                          setBoletoSearchTerm("");
-                                        }}
-                                        className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
-                                      >
-                                        <div className="flex-1 min-w-0">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-bold text-sm text-foreground">Nº {b.numero_boleto}</span>
-                                            <span className="text-xs text-muted truncate">{b.rede}</span>
-                                            {b.tipo_titulo && (
-                                              <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
-                                                {b.tipo_titulo}
+                                            const totalRealizado = parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || 0;
+                                            const alreadyAssociated = vinculosBoletos.reduce((sum, v) => sum + (parseFloat(v.valor_associado.replace(',', '.')) || 0), 0);
+                                            const remaining = Math.max(0, totalRealizado - alreadyAssociated);
+                                            const defaultVal = Math.min(b.valor_total, remaining);
+
+                                            setVinculosBoletos([
+                                              ...vinculosBoletos,
+                                              {
+                                                boleto_id: b.id,
+                                                valor_associado: defaultVal.toFixed(2),
+                                                label: `${matrizNome} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                                                numero_boleto: b.numero_boleto,
+                                                valor_total: b.valor_total,
+                                                tipo_titulo: b.tipo_titulo,
+                                                vencimento: b.vencimento,
+                                                rede: matrizNome,
+                                                parceiro_nome: b.rede,
+                                                parceiro_codigo: b.parceiro_codigo,
+                                                prazo: b.prazo
+                                              }
+                                            ]);
+                                            if (b.prazo) {
+                                              const cleanPrazo = String(b.prazo).toLowerCase().includes('dia') 
+                                                ? b.prazo 
+                                                : `${b.prazo} dias`;
+                                              setApuracaoForm(prev => ({ ...prev, condicao_pagamento: cleanPrazo }));
+                                            }
+                                            setShowBoletoDropdown(false);
+                                            setBoletoSearchTerm("");
+                                          }}
+                                          className="w-full text-left px-3 py-2 hover:bg-purple-500/10 transition-colors flex items-center gap-3 border-b border-border/50 last:border-0"
+                                        >
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span className="font-bold text-sm text-foreground">{matrizNome}</span>
+                                              <span className="font-mono text-xs text-gold font-bold bg-gold/10 px-1.5 py-0.5 rounded border border-gold/20">
+                                                Nº {b.numero_boleto}
                                               </span>
+                                              {b.tipo_titulo && (
+                                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[9px] font-bold border border-blue-500/20 uppercase tracking-wide">
+                                                  {b.tipo_titulo}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {razaoSocial && razaoSocial.toUpperCase() !== matrizNome.toUpperCase() && (
+                                              <div className="text-[11px] text-muted truncate mt-0.5" title={razaoSocial}>
+                                                {razaoSocial} {codigoCliente ? `(Cód: ${codigoCliente})` : ''}
+                                              </div>
                                             )}
+                                            <div className="flex items-center gap-3 mt-1 text-xs">
+                                              <span className="font-bold text-gold">{formatCurrency(b.valor_total)}</span>
+                                              <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
+                                            </div>
                                           </div>
-                                          <div className="flex items-center gap-3 mt-0.5">
-                                            <span className="text-xs font-bold text-gold">{formatCurrency(b.valor_total)}</span>
-                                            <span className="text-[10px] text-muted">Venc: {new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}</span>
-                                          </div>
-                                        </div>
-                                      </button>
-                                    ))}
+                                        </button>
+                                      );
+                                    })}
                                   </>
                                 )}
                               </div>

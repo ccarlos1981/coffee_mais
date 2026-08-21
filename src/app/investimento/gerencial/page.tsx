@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
+import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 const MONTHS_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -65,6 +66,7 @@ export default function DashGerencialPage() {
   const [rawInvest, setRawInvest] = useState<any[]>([]);
   const [redesMap, setRedesMap] = useState<Record<string, RedeMapInfo>>({});
   const [codesMap, setCodesMap] = useState<Record<string, RedeMapInfo>>({});
+  const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
 
   const toggleGerente = (rede: string) => {
     setExpandedGerentes(prev => {
@@ -107,6 +109,28 @@ export default function DashGerencialPage() {
       });
       setRedesMap(rMap);
       setCodesMap(cMap);
+
+      // Fetch cm_clientes para resolução de matrizes sem colisão
+      let allClients: any[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      while (true) {
+        const { data: cChunk, error: cErr } = await supabase
+          .from("cm_clientes")
+          .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+        if (cErr) {
+          console.error("Erro ao carregar cm_clientes em gerencial:", cErr);
+          break;
+        }
+        if (!cChunk || cChunk.length === 0) break;
+        allClients = [...allClients, ...cChunk];
+        if (cChunk.length < pageSize) break;
+        page++;
+      }
+      if (allClients.length > 0) {
+        setMatrizLookup(buildMatrizLookup(allClients));
+      }
 
       // 2. Fetch Vendas with range pagination
       let vendas: any[] = [];
@@ -293,10 +317,16 @@ export default function DashGerencialPage() {
       
       const redeInfo = (codNorm ? codesMap[codNorm] : null) || redesMap[redeNorm] || { gerente: "Sem Gerente", uf: "N/I", canal: "N/I" };
       
-      const gerente = v.gerente_responsavel || "Sem Gerente";
+      const resolved = matrizLookup ? resolveClienteMatriz({
+        codigo_matriz: v.codigo_matriz,
+        rede: v.rede,
+        responsavel: v.gerente_responsavel,
+      }, matrizLookup) : null;
+
+      const gerente = v.gerente_responsavel || resolved?.responsavel || redeInfo.gerente || "Sem Gerente";
       const canal = redeInfo.canal || "N/I";
-      const uf = redeInfo.uf || "N/I";
-      const rede = v.rede || "N/I";
+      const uf = resolved?.uf || redeInfo.uf || "N/I";
+      const rede = resolved?.matriz || v.rede || "N/I";
 
       mapOptions.managers.add(gerente);
       mapOptions.ufs.add(uf);
