@@ -3749,6 +3749,77 @@ A partir de 19/08/2026, as diretrizes de controle de acesso, matriz de autoriza�
 
 Status de Governança: `RDM_ACCESS_CONTROL = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
 
+---
+
+## 119. Baseline Oficial — Importação Automática CFOP.CSV via Google Drive
+
+A partir de 21/08/2026, o ecossistema Coffee++ passa a operar com importação diária automática de faturamento através de integração direta com o Google Drive, substituindo o processo manual diário de upload XLSX.
+
+### Status Arquitetural:
+`IMPORT_HUB_AUTO_DRIVE = ATIVO_E_CONGELADO` & `BASELINE = PERMANENTE`
+
+### Diretrizes Mandatórias:
+
+1. **Origem Oficial dos Dados**:
+   - A pasta corporativa oficial do Google Drive configurada em `GOOGLE_DRIVE_FOLDER_ID` é a única fonte primária para ingestão de faturamento comercial.
+   - O arquivo oficial possui obrigatoriamente o nome padronizado `CFOP.CSV`.
+   - O arquivo é de natureza acumulada desde o primeiro dia do mês até a data de extração, sendo substituído diariamente pelo ERP Sankhya.
+
+2. **Agendamento e Janela de Execução**:
+   - A rotina automática executa de **segunda-feira a sábado às 07:00** (horário oficial de Brasília — `America/Sao_Paulo`).
+   - Política oficial de retries automáticos em caso de indisponibilidade transitória ou atraso na disponibilização do arquivo:
+     - 07:00 — Tentativa principal;
+     - 07:15 — Retry 1;
+     - 07:30 — Retry 2;
+     - 08:00 — Retry final.
+   - **Regra Estrita de Domingo**: Execuções aos domingos são bloqueadas a nível de agendamento (`schedule: "0 10 * * 1-6"`) e por barreira lógica de código (`dayOfWeek === 0`).
+
+3. **Arquitetura de Isolamento e Processamento em Staging**:
+   - O processamento nunca toca diretamente na tabela oficial `cm_faturamento` durante a ingestão.
+   - Todo parsing streaming, validação sintática das 29 colunas, tipagem e cálculo de métricas ocorrem isoladamente em memória e na tabela `cm_faturamento_staging`.
+
+4. **Transacionalidade e Atomic Swap**:
+   - A promoção dos dados de `cm_faturamento_staging` para `cm_faturamento` é 100% transacional e atômica via RPC PostgREST (`executar_atomic_swap_faturamento`).
+   - A exclusão do mês corrente em `cm_faturamento` e a inserção dos novos dados ocorrem na mesma transação atômica (`BEGIN ... COMMIT`).
+   - Em caso de qualquer erro em qualquer etapa, ocorre `ROLLBACK` total instantâneo, mantendo a base oficial intacta.
+
+5. **Exclusividade e Proteção Concorrente (Advisory Lock)**:
+   - Toda execução adquire obrigatoriamente um lock transacional exclusivo do Postgres (`pg_try_advisory_lock('coffee_mais_import_drive_lock')`).
+   - Múltiplas importações concorrentes são expressamente proibidas e rejeitadas.
+
+6. **Barreiras Obrigatórias de Segurança (Zero Data Loss)**:
+   A promoção para a base oficial é terminantemente bloqueada se qualquer uma das 6 barreiras falhar:
+   - **Barreira A (Idempotência / Deduplicação)**: Se o hash SHA-256 for idêntico ao de um lote já processado com sucesso, a importação é ignorada (`SKIPPED_DUPLICATE_HASH`);
+   - **Barreira B (Validação Estrutural e de Tipagem)**: Arquivo vazio, delimitador divergente ou ausência de qualquer uma das 29 colunas obrigatórias abortam o pipeline;
+   - **Barreira C (Não-Regressão de Período)**: O período de dados do CSV deve cobrir desde o dia 01 até a data atual, sendo proibida a ingestão de períodos parciais ou retroativos;
+   - **Barreira D (Monotonicidade de Volume e Receita)**: O arquivo do dia deve conter volume de linhas, NFs e faturamento maiores ou iguais aos do lote anterior;
+   - **Barreira E (Missing Invoice Guard)**: Nenhuma Nota Fiscal faturada em lote anterior pode desaparecer no lote novo;
+   - **Barreira F (Spike Guard)**: O incremento diário de faturamento não pode exceder 4x a média diária histórica sem autorização.
+
+7. **Reconciliação em Camadas e Sincronização Automática**:
+   - Após a promoção atômica com sucesso, a RPC `refresh_materialized_views()` atualiza instantaneamente as views oficiais:
+     `public.sales` = `mv_vendas_mensal` = `mv_vendas_cliente_mensal` = `/vendas`.
+   - O pipeline afere paridade matemática entre Staging, `cm_faturamento` e Materialized Views, garantindo **0,0000% de desvio financeiro**.
+
+8. **Sistema de Alertas e Notificações Executivas**:
+   - Ao término de cada execução (sucesso, aviso, bloqueio ou erro), um relatório detalhado é enviado automaticamente para `cristiano.santos@coffeemais.com` contendo:
+     - Data/hora e horário de Brasília;
+     - Nome do arquivo, modifiedTime e SHA-256;
+     - Batch ID e período acumulado;
+     - Linhas, NFs, faturamento líquido, bruto, devoluções e cancelamentos;
+     - Status da promoção e das Materialized Views;
+     - Delta financeiro e duração da execução;
+     - Motivo do bloqueio / erro, quando houver.
+
+9. **Plano de Contingência (Preservação do Upload Manual)**:
+   - A interface de upload manual XLSX em `/upload` permanece 100% ativa e funcional como contingência operacional.
+   - Nenhuma lógica manual existente foi removida ou depreciada.
+
+10. **Preservação Absoluta das Regras Financeiras**:
+    - A ativação do Import Hub não altera nenhuma regra de negócio, cálculo de DRE, MACO, CPV, impostos, frete, investimentos, TOPs ou regras de expurgo de devoluções e cancelamentos.
+
+Status Arquitetural: `IMPORT_HUB_AUTO_DRIVE = ATIVO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
 
 
 

@@ -36,6 +36,8 @@ const ALLOWED_PHYSICAL_TABLE_EXCEPTIONS = [
   'get_actual_sales_v2', // RPC homologada da Fase 3
   'upload/page.tsx', // Hub de Importação UI
   'ownership', // Domínio de ownership
+  'csv-import-service.ts', // Engine de importação CSV Google Drive
+  'import-drive/route.ts', // Cron de importação Google Drive
 ];
 
 // Arquivos autorizados no Registry de Views
@@ -47,6 +49,7 @@ const ALLOWED_VIEW_REGISTRY_FILES = [
   'route-engine.ts',
   'daily/route.ts', // Exceção homologada da Seção 10 para faturamento diário
   'import-service.ts', // Motor de importação DRE
+  'csv-import-service.ts', // Motor de importação CSV Google Drive
   'OFFICIAL_ANALYTICS_SOURCES', // Uso via constante exportada da AnalyticsEngine
 ];
 

@@ -16,6 +16,24 @@ export const maxDuration = 60;
  *   0 5 * * 1     → 02:00 BRT Monday (reconciliation, last 30 days)
  */
 export async function GET(request: Request) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DESATIVADO (Demanda 065 — 2026-08-22)
+  // 
+  // O Google Drive CFOP.CSV é agora o ÚNICO escritor oficial de faturamento.
+  // O BigQuery Sync foi desativado para evitar conflito de escritores na base
+  // de faturamento. O código abaixo é preservado como contingência/legado.
+  //
+  // Para reativar, remova este guard e revalide as credenciais BigQuery.
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log("[BigQuery Cron] DESATIVADO — Google Drive CSV é o escritor oficial de faturamento (Demanda 065).");
+  return NextResponse.json({
+    success: true,
+    status: "DISABLED",
+    reason: "BigQuery Sync desativado. Google Drive CFOP.CSV é o único escritor oficial de faturamento desde Demanda 065 (2026-08-22).",
+    action: "Nenhuma sincronização executada.",
+  });
+
+  // ─── Código legado preservado como contingência (não executado) ───
   try {
     // Auth check (same pattern as existing crons)
     const authHeader = request.headers.get("authorization");
@@ -80,12 +98,12 @@ export async function GET(request: Request) {
       success: true,
       ...result,
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("[BigQuery Cron] Error:", err);
     return NextResponse.json(
       {
         success: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: err?.message || String(err),
       },
       { status: 500 }
     );
