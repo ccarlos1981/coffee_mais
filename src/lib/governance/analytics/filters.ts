@@ -45,13 +45,15 @@ export function parseAnalyticsFiltersFromParams(searchParams: URLSearchParams): 
   let startMonth = startMonthParam || (startDate ? startDate.substring(0, 7) : null);
   let endMonth = endMonthParam || (endDate ? endDate.substring(0, 7) : null);
 
-  const manager_id = searchParams.get('manager_id') !== 'all' ? searchParams.get('manager_id') : null;
-  const manager = searchParams.get('manager') !== 'all' ? searchParams.get('manager') : null;
-  const familia = searchParams.get('familia') !== 'all' ? searchParams.get('familia') : null;
-  const uf = searchParams.get('uf') !== 'all' ? searchParams.get('uf') : null;
-  const channel = searchParams.get('channel') !== 'all' ? searchParams.get('channel') : null;
-  const matriz = searchParams.get('matriz') !== 'all' ? searchParams.get('matriz') : (searchParams.get('rede') !== 'all' ? searchParams.get('rede') : null);
-  const product = searchParams.get('product') !== 'all' ? searchParams.get('product') : null;
+  const isAll = (val: string | null) => !val || ['all', 'todos', 'todas'].includes(val.trim().toLowerCase());
+
+  const manager_id = !isAll(searchParams.get('manager_id')) ? searchParams.get('manager_id') : null;
+  const manager = !isAll(searchParams.get('manager')) ? searchParams.get('manager') : null;
+  const familia = !isAll(searchParams.get('familia')) ? searchParams.get('familia') : null;
+  const uf = !isAll(searchParams.get('uf')) ? searchParams.get('uf') : null;
+  const channel = !isAll(searchParams.get('channel')) ? searchParams.get('channel') : null;
+  const matriz = !isAll(searchParams.get('matriz')) ? searchParams.get('matriz') : (!isAll(searchParams.get('rede')) ? searchParams.get('rede') : null);
+  const product = !isAll(searchParams.get('product')) ? searchParams.get('product') : null;
   const dimension = searchParams.get('dimension') || searchParams.get('selectedDimension');
 
   const investment = parseFloat(searchParams.get('investment') || '0');
