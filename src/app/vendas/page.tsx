@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
 import { Filter,
   Bell,
@@ -31,6 +30,7 @@ import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator
 import {
   CommercialRole,
   isDistributorClient,
+  isInsideSalesClient,
   getDrilldownLabel,
   DISTRIBUTORS_REGISTRY,
   OFFICIAL_COMMERCIAL_ROLES,
@@ -116,6 +116,9 @@ interface ManagerData {
 interface TopClientRow extends ClientRow {
   prevMonthFat: number;
   prevYearFat: number;
+  paceFat?: number;
+  paceQty?: number;
+  paceMaco?: number;
 }
 
 interface FamiliaData {
@@ -148,12 +151,12 @@ export default function VendasDashboard() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
 
-  // Sidebar filters (persisted and synced)
-  const [filterManager, setFilterManager] = usePersistedState<string[]>("db_filter_manager", []);
-  const [filterFamilia, setFilterFamilia] = usePersistedState<string[]>("db_filter_familia", []);
-  const [filterUf, setFilterUf] = usePersistedState<string[]>("db_filter_uf", []);
-  const [filterChannel, setFilterChannel] = usePersistedState<string[]>("db_filter_channel", []);
-  const [filterProduct, setFilterProduct] = usePersistedState<string[]>("db_filter_product", []);
+  // Sidebar filters (inicializados como TODOS / limpos para garantir carregamento total)
+  const [filterManager, setFilterManager] = useState<string[]>([]);
+  const [filterFamilia, setFilterFamilia] = useState<string[]>([]);
+  const [filterUf, setFilterUf] = useState<string[]>([]);
+  const [filterChannel, setFilterChannel] = useState<string[]>([]);
+  const [filterProduct, setFilterProduct] = useState<string[]>([]);
 
   // Dynamic filter options
   const [filterOptions, setFilterOptions] = useState<FiltersData>({
@@ -215,14 +218,27 @@ export default function VendasDashboard() {
           endDate,
           investment: "0",
         };
-        if (filterManager.length > 0) {
-          const mappedIds = filterManager.map(m => CommercialDomainService.resolveManagerId(m) || m);
+
+        const cleanFilterValues = (vals: string[]) => 
+          vals.filter(v => v && !['todos', 'todas', 'all'].includes(v.trim().toLowerCase()));
+
+        const cleanMgr = cleanFilterValues(filterManager);
+        if (cleanMgr.length > 0) {
+          const mappedIds = cleanMgr.map(m => CommercialDomainService.resolveManagerId(m) || m);
           params.manager_id = mappedIds.join(',');
         }
-        if (filterFamilia.length > 0) params.familia = filterFamilia.join(',');
-        if (filterUf.length > 0) params.uf = filterUf.join(',');
-        if (filterChannel.length > 0) params.channel = filterChannel.join(',');
-        if (filterProduct.length > 0) params.product = filterProduct.join(',');
+
+        const cleanFam = cleanFilterValues(filterFamilia);
+        if (cleanFam.length > 0) params.familia = cleanFam.join(',');
+
+        const cleanUfVal = cleanFilterValues(filterUf);
+        if (cleanUfVal.length > 0) params.uf = cleanUfVal.join(',');
+
+        const cleanChan = cleanFilterValues(filterChannel);
+        if (cleanChan.length > 0) params.channel = cleanChan.join(',');
+
+        const cleanProd = cleanFilterValues(filterProduct);
+        if (cleanProd.length > 0) params.product = cleanProd.join(',');
 
         const [bdRes, targetRes, apiRes] = await Promise.all([
           supabase
@@ -283,6 +299,21 @@ export default function VendasDashboard() {
             allManagerIds.add(getManagerId(m));
           });
 
+          // 🚀 SEGREGAÇÃO OFICIAL DO CANAL INSIDE SALES (Demanda 077)
+          // Coleta todos os clientes do canal Inside Sales em todas as carteiras
+          const allInsideClients: TopClientRow[] = [];
+          byManager.forEach(m => {
+            (m.topClients || []).forEach(c => {
+              if (isInsideSalesClient(c)) {
+                allInsideClients.push({
+                  ...c,
+                  maco: Number(c.maco || 0),
+                  paceMaco: Number((c as any).paceMaco || 0),
+                });
+              }
+            });
+          });
+
           const rows: ManagerRow[] = [];
           allManagerIds.forEach(mId => {
             const sales = byManager.find(s => getManagerId(s) === mId);
@@ -300,7 +331,8 @@ export default function VendasDashboard() {
                 paceMaco: Number((c as any).paceMaco || 0),
               }));
               const distClients = allClients.filter(c => isDistributorClient(c, mId));
-              const kaClients = allClients.filter(c => !isDistributorClient(c, mId));
+              const insideClients = allClients.filter(c => isInsideSalesClient(c));
+              const kaClients = allClients.filter(c => !isDistributorClient(c, mId) && !isInsideSalesClient(c));
 
               // 1. Busca de meta KA com prioridade absoluta para registros segregados com (KA)
               const explicitKaTarget = allTargets.find(t => {
@@ -338,7 +370,7 @@ export default function VendasDashboard() {
 
               const distTarget = explicitDistTarget || (mId === '1007' ? allTargets.find(t => t.manager_id === '1007' || t.manager?.toLowerCase() === 'distribuidor') : undefined);
 
-              // Linha KA
+              // Linha KA (deduz Distribuidores e Inside Sales para manter pureza dimensional)
               const kaLabel = `${mName} (KA)`;
               const kaKey = `${mId}-KA`;
               if (filterManager.length === 0 || filterManager.includes(kaKey) || filterManager.includes(kaLabel) || filterManager.includes(mId) || filterManager.includes(mName)) {
@@ -346,11 +378,14 @@ export default function VendasDashboard() {
                   const distFat = distClients.reduce((acc, c) => acc + (c.fat || 0), 0);
                   const distQty = distClients.reduce((acc, c) => acc + (c.qty || 0), 0);
 
+                  const insideFat = insideClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                  const insideQty = insideClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+
                   const officialManagerFat = sales?.fat || 0;
                   const officialManagerQty = sales?.qty || 0;
 
-                  const kaOfficialFat = Math.max(0, officialManagerFat - distFat);
-                  const kaOfficialQty = Math.max(0, officialManagerQty - distQty);
+                  const kaOfficialFat = Math.max(0, officialManagerFat - distFat - insideFat);
+                  const kaOfficialQty = Math.max(0, officialManagerQty - distQty - insideQty);
                   const kaOfficialMaco = kaClients.reduce((acc, c) => acc + (c.maco || 0), 0);
                   const kaOfficialPaceMaco = kaClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0);
                   const kaMetaFat = kaTarget?.target_revenue || 0;
@@ -411,39 +446,118 @@ export default function VendasDashboard() {
               }
             } else {
               // Gerente sem segregação comercial de roles (ex: Inside Sales, Ecommerce, Marketplace, etc.)
-              if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
+              const isInside = mId === '1004' || mName.toLowerCase() === 'inside sales';
 
-              if (filterChannel.length > 0) {
-                if (CommercialDomainService.isStandaloneChannelManager(mName) && !filterChannel.includes(mName)) return;
+              if (isInside) {
+                if (filterManager.length > 0 && !filterManager.includes('1004') && !filterManager.includes('Inside Sales') && !filterManager.includes('Inside')) return;
+                if (filterChannel.length > 0 && !filterChannel.includes('Inside Sales') && !filterChannel.includes('Inside')) return;
+
+                const totalInsideFat = allInsideClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                const totalInsideQty = allInsideClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+                const totalInsideMaco = allInsideClients.reduce((acc, c) => acc + (c.maco || 0), 0);
+                const totalInsidePaceMaco = allInsideClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0);
+                const totalInsidePaceFat = allInsideClients.reduce((acc, c) => acc + (c.paceFat || 0), 0);
+                const totalInsidePaceQty = allInsideClients.reduce((acc, c) => acc + (c.paceQty || 0), 0);
+
+                const sortedInsideClients = [...allInsideClients].sort((a, b) => (b.fat || 0) - (a.fat || 0));
+
+                const insideTarget = allTargets.find(t => getManagerId(t) === '1004' || (t.manager || '').toLowerCase() === 'inside sales');
+                const genMetaFat = insideTarget?.target_revenue || 0;
+                const genMetaUnd = insideTarget?.target_tons || 0;
+                const genMetaMaco = genMetaFat > 0 ? Number((genMetaFat * getMargemDesafio('1004')).toFixed(2)) : 0;
+
+                rows.push({
+                  manager: "Inside Sales",
+                  manager_id: "1004",
+                  role: "KA",
+                  fat: totalInsideFat,
+                  qty: totalInsideQty,
+                  maco: totalInsideMaco,
+                  vendaFutura: 0,
+                  paceFat: totalInsidePaceFat,
+                  paceQty: totalInsidePaceQty,
+                  paceMaco: totalInsidePaceMaco,
+                  topClients: sortedInsideClients,
+                  metaFat: genMetaFat,
+                  metaUnd: genMetaUnd,
+                  metaMaco: genMetaMaco,
+                });
+              } else {
+                if (filterManager.length > 0 && !filterManager.includes(mId) && !filterManager.includes(mName)) return;
+
+                if (filterChannel.length > 0) {
+                  if (CommercialDomainService.isStandaloneChannelManager(mName) && !filterChannel.includes(mName)) return;
+                }
+
+                const nonInsideClients = (sales?.topClients || []).filter(c => !isInsideSalesClient(c)).map(c => ({
+                  ...c,
+                  maco: Number(c.maco || 0),
+                  paceMaco: Number((c as any).paceMaco || 0),
+                }));
+                const otherInsideClients = (sales?.topClients || []).filter(c => isInsideSalesClient(c));
+                const otherInsideFat = otherInsideClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+                const otherInsideQty = otherInsideClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+
+                const genMetaFat = target?.target_revenue || 0;
+                const genMetaUnd = target?.target_tons || 0;
+                const genMetaMaco = genMetaFat > 0 ? Number((genMetaFat * getMargemDesafio(mId)).toFixed(2)) : 0;
+
+                rows.push({
+                  manager: mName,
+                  manager_id: mId,
+                  role: "KA",
+                  fat: Math.max(0, (sales?.fat || 0) - otherInsideFat),
+                  qty: Math.max(0, (sales?.qty || 0) - otherInsideQty),
+                  maco: nonInsideClients.reduce((acc, c) => acc + (c.maco || 0), 0),
+                  vendaFutura: sales?.vendaFutura || 0,
+                  paceFat: sales?.paceFat || 0,
+                  paceQty: sales?.paceQty || 0,
+                  paceMaco: nonInsideClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0),
+                  topClients: nonInsideClients,
+                  metaFat: genMetaFat,
+                  metaUnd: genMetaUnd,
+                  metaMaco: genMetaMaco,
+                });
               }
+            }
+          });
 
-              const genMetaFat = target?.target_revenue || 0;
-              const genMetaUnd = target?.target_tons || 0;
-              const genMetaMaco = genMetaFat > 0 ? Number((genMetaFat * getMargemDesafio(mId)).toFixed(2)) : 0;
-              const genClients = (sales?.topClients || []).map(c => ({
-                ...c,
-                maco: Number(c.maco || 0),
-                paceMaco: Number((c as any).paceMaco || 0),
-              }));
+          // Garantir presença da linha consolidada Inside Sales se houver vendas e não estiver no loop
+          if (allInsideClients.length > 0 && !rows.some(r => r.manager_id === '1004')) {
+            const isFilterMgrOk = filterManager.length === 0 || filterManager.includes('1004') || filterManager.includes('Inside Sales') || filterManager.includes('Inside');
+            const isFilterChanOk = filterChannel.length === 0 || filterChannel.includes('Inside Sales') || filterChannel.includes('Inside');
+            if (isFilterMgrOk && isFilterChanOk) {
+              const totalInsideFat = allInsideClients.reduce((acc, c) => acc + (c.fat || 0), 0);
+              const totalInsideQty = allInsideClients.reduce((acc, c) => acc + (c.qty || 0), 0);
+              const totalInsideMaco = allInsideClients.reduce((acc, c) => acc + (c.maco || 0), 0);
+              const totalInsidePaceMaco = allInsideClients.reduce((acc, c) => acc + (c.paceMaco || 0), 0);
+              const totalInsidePaceFat = allInsideClients.reduce((acc, c) => acc + (c.paceFat || 0), 0);
+              const totalInsidePaceQty = allInsideClients.reduce((acc, c) => acc + (c.paceQty || 0), 0);
+              const sortedInsideClients = [...allInsideClients].sort((a, b) => (b.fat || 0) - (a.fat || 0));
+
+              const insideTarget = allTargets.find(t => getManagerId(t) === '1004' || (t.manager || '').toLowerCase() === 'inside sales');
+              const genMetaFat = insideTarget?.target_revenue || 0;
+              const genMetaUnd = insideTarget?.target_tons || 0;
+              const genMetaMaco = genMetaFat > 0 ? Number((genMetaFat * getMargemDesafio('1004')).toFixed(2)) : 0;
 
               rows.push({
-                manager: mName,
-                manager_id: mId,
+                manager: "Inside Sales",
+                manager_id: "1004",
                 role: "KA",
-                fat: sales?.fat || 0,
-                qty: sales?.qty || 0,
-                maco: Number(sales?.maco || 0),
-                vendaFutura: sales?.vendaFutura || 0,
-                paceFat: sales?.paceFat || 0,
-                paceQty: sales?.paceQty || 0,
-                paceMaco: Number(sales?.paceMaco || 0),
-                topClients: genClients,
+                fat: totalInsideFat,
+                qty: totalInsideQty,
+                maco: totalInsideMaco,
+                vendaFutura: 0,
+                paceFat: totalInsidePaceFat,
+                paceQty: totalInsidePaceQty,
+                paceMaco: totalInsidePaceMaco,
+                topClients: sortedInsideClients,
                 metaFat: genMetaFat,
                 metaUnd: genMetaUnd,
                 metaMaco: genMetaMaco,
               });
             }
-          });
+          }
 
           rows.sort((a, b) => {
             const pA = a.metaFat > 0 ? (a.fat / a.metaFat) * 100 : -1;
@@ -884,12 +998,12 @@ export default function VendasDashboard() {
                   {/* Col 6-7: UND Meta + UND Real — quantidades */}
                   <col style={{ width: "9.0%" }} />
                   <col style={{ width: "9.0%" }} />
-                  {/* Col 8: UND Tend% — percentual */}
+                  {/* Col 8: UND %ATG — percentual */}
                   <col style={{ width: "7.875%" }} />
                   {/* Col 9-10: MACO Meta (R$) + MACO Real (R$) — monetárias */}
                   <col style={{ width: "10.5%" }} />
                   <col style={{ width: "10.5%" }} />
-                  {/* Col 11: MACO Tend% — percentual */}
+                  {/* Col 11: MACO %ATG — percentual */}
                   <col style={{ width: "7.875%" }} />
                 </colgroup>
                 <thead>
@@ -906,10 +1020,10 @@ export default function VendasDashboard() {
                     <th className="col-group-fat">Tend %</th>
                     <th className="col-group-und col-divider">Meta</th>
                     <th className="col-group-und">Real</th>
-                    <th className="col-group-und">Tend %</th>
+                    <th className="col-group-und">%ATG</th>
                     <th className="col-group-maco col-divider">Meta</th>
                     <th className="col-group-maco">Real</th>
-                    <th className="col-group-maco">Tend %</th>
+                    <th className="col-group-maco">%ATG</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -923,8 +1037,8 @@ export default function VendasDashboard() {
                     <>
                       {managerRows.map((row) => {
                         const pFat = calcTendPct(row.fat, row.metaFat);
-                        const pUnd = calcTendPct(row.qty, row.metaUnd);
-                        const pMaco = calcTendPct(row.maco, row.metaMaco);
+                        const pUnd = pct(row.qty, row.metaUnd);
+                        const pMaco = pct(row.maco, row.metaMaco);
                         const isExpanded = expandedManager === row.manager;
 
                         return [
@@ -1029,13 +1143,13 @@ export default function VendasDashboard() {
                           </td>
                           <td className="col-divider">{formatNumber(totals.metaUnd, 0)}</td>
                           <td>{formatNumber(totals.qty, 0)}</td>
-                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.qty, totals.metaUnd), totals.metaUnd)}>
-                            {totals.metaUnd > 0 ? formatPercent(calcTendPct(totals.qty, totals.metaUnd)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                            {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
                           </td>
                           <td className="col-divider">{formatCurrency(totals.metaMaco / 1000)}</td>
                           <td>{formatCurrency(totals.maco / 1000)}</td>
-                          <td className="pct-cell" style={getPctStyle(calcTendPct(totals.maco, totals.metaMaco), totals.metaMaco)}>
-                            {totals.metaMaco > 0 ? formatPercent(calcTendPct(totals.maco, totals.metaMaco)) : "-"}
+                          <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                            {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
                           </td>
                         </tr>
                       )}
@@ -1191,7 +1305,7 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>Tend %</th>
+                      <th>%ATG</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1204,7 +1318,7 @@ export default function VendasDashboard() {
                     ) : (
                       <>
                         {managerRows.map((row) => {
-                          const pUnd = calcTendPct(row.qty, row.metaUnd);
+                          const pUnd = pct(row.qty, row.metaUnd);
                           const isExpanded = expandedManager === row.manager;
                           return [
                             <tr key={row.manager}>
@@ -1270,8 +1384,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatNumber(totals.metaUnd, 0)}</td>
                             <td>{formatNumber(totals.qty, 0)}</td>
-                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.qty, totals.metaUnd), totals.metaUnd)}>
-                              {totals.metaUnd > 0 ? formatPercent(calcTendPct(totals.qty, totals.metaUnd)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(pct(totals.qty, totals.metaUnd), totals.metaUnd)}>
+                              {totals.metaUnd > 0 ? formatPercent(pct(totals.qty, totals.metaUnd)) : "-"}
                             </td>
                           </tr>
                         )}
@@ -1297,7 +1411,7 @@ export default function VendasDashboard() {
                       <th style={{ textAlign: "left" }}>Gerente</th>
                       <th>Meta</th>
                       <th>Real</th>
-                      <th>Tend %</th>
+                      <th>%ATG</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1310,7 +1424,7 @@ export default function VendasDashboard() {
                     ) : (
                       <>
                         {managerRows.map((row) => {
-                          const pMaco = calcTendPct(row.maco, row.metaMaco);
+                          const pMaco = pct(row.maco, row.metaMaco);
                           const isExpanded = expandedManager === row.manager;
                           return [
                             <tr key={row.manager}>
@@ -1376,8 +1490,8 @@ export default function VendasDashboard() {
                             <td>TOTAL</td>
                             <td>{formatCurrency(totals.metaMaco / 1000)}</td>
                             <td>{formatCurrency(totals.maco / 1000)}</td>
-                            <td className="pct-cell" style={getPctStyle(calcTendPct(totals.maco, totals.metaMaco), totals.metaMaco)}>
-                              {totals.metaMaco > 0 ? formatPercent(calcTendPct(totals.maco, totals.metaMaco)) : "-"}
+                            <td className="pct-cell" style={getPctStyle(pct(totals.maco, totals.metaMaco), totals.metaMaco)}>
+                              {totals.metaMaco > 0 ? formatPercent(pct(totals.maco, totals.metaMaco)) : "-"}
                             </td>
                           </tr>
                         )}

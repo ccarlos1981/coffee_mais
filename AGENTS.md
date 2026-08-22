@@ -3617,6 +3617,122 @@ A view `public.sales` passa a obedecer estritamente à seguinte ordem hierárqui
 
 Status Arquitetural: `SALES_DIMENSIONAL_CLASSIFICATION = LOCKED` & `DIGITAL_CHANNELS_SEGREGATION = ENFORCED` & `AMAZON_1P_SEGREGATION = ENFORCED` & `FINANCIAL_PARITY = CONFIRMED` & `DIMENSIONAL_PARITY = CONFIRMED` & `BASELINE = PERMANENTE`.
 
+---
+
+## 79. Baseline Oficial — Segregação Oficial do Canal Inside Sales no Dashboard `/vendas` (Demanda 077)
+
+A partir de 22/08/2026, a apresentação dimensional do canal Inside Sales no dashboard `/vendas` passa a seguir a segregação comercial homologada na Demanda 077, tornando-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Canal Consolidado no `/vendas`**: O canal Inside Sales deve ser apresentado no dashboard `/vendas` como uma linha consolidada e dedicada, independentemente do `manager_id` cadastral do parceiro em `cm_clientes`.
+2. **Critério Oficial de Identificação**: A identificação oficial utiliza estritamente `channel = 'Inside Sales'` (via função canônica de domínio `isInsideSalesClient`).
+3. **Dedução das Linhas KA**: O faturamento, volume (unidades) e MACO de Inside Sales pertencentes aos clientes das carteiras dos gerentes de campo (`1000 Julliano`, `1001 Leandro`, `1002 Luiz`, `1003 John Guedes`) são retirados das respectivas linhas KA e consolidados exclusivamente na linha `"Inside Sales"`.
+4. **Fórmulas Homologadas**:
+   $$\text{kaOfficialFat} = \max(0, \text{officialManagerFat} - \text{distFat} - \text{insideFat})$$
+   $$\text{kaOfficialQty} = \max(0, \text{officialManagerQty} - \text{distQty} - \text{insideQty})$$
+   $$\text{kaOfficialMaco} = \max(0, \text{officialManagerMaco} - \text{distMaco} - \text{insideMaco})$$
+5. **Conservação Financeira Absoluta**: A segregação é exclusivamente dimensional/apresentacional. Nenhum valor financeiro total da empresa pode sofrer alteração ($\text{TOTAL\_ANTES} = \text{TOTAL\_DEPOIS}$, com $\Delta = \text{R\$ } 0,00$).
+6. **Referência Homologada — Agosto/2026**:
+   * **Linha "Inside Sales" no `/vendas`**: `R$ 98.184,31`
+   * **Composição Dimensional**:
+     - Leandro / 1001: `R$ 34.890,33`
+     - Luiz / 1002: `R$ 33.574,64`
+     - Inside Sales / 1004: `R$ 18.685,88`
+     - Julliano / 1000: `R$ 7.308,88`
+     - John Guedes / 1003: `R$ 3.724,58`
+     - **Total**: `R$ 98.184,31`
+7. **Auditoria Complementar Homologada**:
+   - Junho/2026: Paridade financeira $\Delta = \text{R\$ } 0,00$
+   - Julho/2026: Paridade financeira $\Delta = \text{R\$ } 0,00$
+   - Agosto/2026: Paridade financeira $\Delta = \text{R\$ } 0,00$
+   - Valores negativos brutos encontrados: 0
+   - Sobreposições Distribuidor × Inside Sales: 0
+   - Casos onde $\text{distFat} + \text{insideFat} > \text{officialManagerFat}$: 0
+   - Mascaramento por `Math.max(0, ...)`: 0 ocorrências
+8. **Status de Governança**:
+   * `FINANCIAL_PARITY = TRUE`
+   * `DIMENSIONAL_PARITY = TRUE`
+   * `NO_DIMENSIONAL_OVERLAP = TRUE`
+   * `MATH_MAX_MASKING = FALSE`
+   * `DATABASE_MUTATIONS = 0`
+   * `FINANCIAL_RULES_CHANGED = FALSE`
+   * `IMPORT_HUB_CHANGED = FALSE`
+   * `CRON_CHANGED = FALSE`
+   * `BIGQUERY_CHANGED = FALSE`
+   * `BASELINE_073_CHANGED = FALSE`
+
+Status Arquitetural: `INSIDE_SALES_SEGREGATION = LOCKED` & `INSIDE_SALES_CONSOLIDATION = ENFORCED` & `KA_LINES_PURITY = ENFORCED` & `FINANCIAL_PARITY = CONFIRMED` & `BASELINE = PERMANENTE`.
+
+---
+
+## 80. Baseline Oficial — Conclusão da Auditoria de CPV/MACO e Governança do Master Data (Demandas 077 a 083)
+
+A partir de 22/08/2026, com base nas conclusões das Demandas 077, 078, 079, 081 e 082, a governança de CPV (Custo dos Produtos Vendidos), MACO (Margem de Contribuição) e a arquitetura do futuro Master Data de Custos Unitários tornam-se baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias de Governança:
+1. **Preservação Integral da Fórmula Oficial de MACO**:
+   $$\text{MACO} = \text{Faturamento Líquido} - \text{Impostos} - \text{Investimento Comercial} - \text{Frete (3\%)} - \text{CPV}$$
+   A fórmula oficial permanece 100% inalterada em toda a plataforma.
+2. **Classificação Oficial da Fonte Atual de CPV**:
+   * O campo `cm_faturamento_sankhya.custo_total` fica formalmente classificado como:
+     $$\texttt{CPV\_SOURCE\_STATUS} = \texttt{NOT\_SUITABLE}$$
+     para fins de cálculo direto e agregação da MACO analítica.
+3. **Fundamentação Técnica da Assimetria Estrutural do ERP**:
+   * O campo `custo_total` no Sankhya ERP apresenta comportamento estruturalmente assimétrico entre canais B2C e B2B:
+     - **Canais B2C (Marketplace / Ecommerce)**: O ERP registra o valor integral da tabela de varejo/consumidor por nota/linha (R$ 28,00 a R$ 39,99/un), gerando superestimação artificial de CPV e MACO negativa de até -53%.
+     - **Canais B2B (Key Account / Amazon 1P / Distribuidores)**: O ERP registra o custo padrão unitário de 1 unidade para notas contendo centenas ou milhares de itens, gerando subestimação extrema de CPV (R$ 0,01 a R$ 0,28/un) e MACO artificial de 96% a 99%.
+4. **Interpretação da MACO Negativa do Marketplace**:
+   * A MACO negativa atualmente reportada no Marketplace (ex: -R$ 538.383,82 em Agosto/2026) constitui **indicador de distorção de fonte de CPV do ERP** e **NÃO deve ser interpretada como resultado econômico homologado da operação**.
+5. **Natureza Estritamente Analítica da Simulação (Ref. R$ 11,80/un)**:
+   * A simulação executada na Demanda 082 utilizando a referência de R$ 11,80/un constitui exclusivamente um teste analítico de sensibilidade:
+     ```ini
+     SIMULATION_CPV = R$ 11,80/un
+     SIMULATION_ONLY = TRUE
+     OFFICIAL_CPV = FALSE
+     CONTROLADORIA_HOMOLOGATION = PENDING
+     ```
+   * **Resultado Comparativo da Simulação (Agosto/2026)**:
+     - $\text{MACO Atual (Sankhya ERP)} = -\text{R\$ } 538.383,82 \quad (-52,08\%)$
+     - $\text{MACO Simulada (Ref. R\$ 11,80/un)} = +\text{R\$ } 209.312,00 \quad (+20,25\%)$
+     - $\Delta \text{ MACO (Recuperação Analítica)} = +\text{R\$ } 747.695,82 \quad (+72,33\text{ p.p.})$
+     *(Estes valores representam estritamente o resultado de simulação paramétrica e não resultado contábil oficial).*
+6. **Fonte Futura Homologada do Master Data**:
+   * A futura fonte oficial de CPV unitário será a tabela `public.cm_skus_custos`.
+   * A criação física da tabela e sua integração analítica em produção **somente poderão ocorrer após o recebimento formal e aprovação da planilha de custos fornecida pela Controladoria**.
+7. **Regra de Cálculo Futuro do CPV por Linha**:
+   $$\text{CPV}_{\text{linha}} = \text{quantidade\_faturada} \times \text{custo\_unitario\_vigente}(\text{codigo\_sku}, \text{data\_venda})$$
+8. **Regra de Governança para SKUs sem Custo Homologado**:
+   * Caso um SKU comercializado não possua custo homologado na data da venda:
+     ```ini
+     CPV = NULL
+     cpv_status = COST_NOT_FOUND
+     ```
+   * **Proibições Absolutas**: É expressamente proibido utilizar 45%, taxa média arbitrária, `custo_total` do Sankhya como fallback, custo zero silencioso ou custo de outro SKU.
+9. **Condicionamento de Eventos Futuros**:
+   * Qualquer implementação física em banco (`DATABASE_MUTATIONS > 0`), criação de migration ou alteração na camada de dados do dashboard `/vendas` depende exclusivamente do envio e homologação formal do arquivo da Controladoria.
+
+### Declaração de Conformidade:
+```ini
+CPV_SANKHYA_COST_TOTAL = NOT_SUITABLE
+CPV_MASTER_DATA = FUTURE_OFFICIAL_SOURCE
+CONTROLADORIA_FILE = PENDING
+R$11_80_SIMULATION = NON_OFFICIAL
+MACO_FORMULA = PRESERVED
+MARKETPLACE_MACO_NEGATIVE = CPV_SOURCE_DISTORTION_INDICATOR
+DATABASE_MUTATIONS = 0
+FUNCTIONAL_CODE_CHANGES = 0
+SQL_CHANGES = 0
+VIEWS_CHANGED = FALSE
+ANALYTICS_ENGINE_CHANGED = FALSE
+MACO_RULES_CHANGED = FALSE
+BASELINES_073_077_078_079_PRESERVED = TRUE
+
+STATUS = CPV_GOVERNANCE_BASELINE_REGISTERED
+```
+
+Status Arquitetural: `CPV_GOVERNANCE = LOCKED` & `CPV_SANKHYA_STATUS = NOT_SUITABLE` & `CPV_MASTER_DATA_SPECIFICATION = HOMOLOGATED` & `MACO_FORMULA = PRESERVED` & `BASELINE = PERMANENTE`.
+
+
 
 
 

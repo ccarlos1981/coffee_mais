@@ -361,6 +361,17 @@ export function isDistributorClient(
   return def.redes.some(r => redeUpper.includes(r.toUpperCase()));
 }
 
+/**
+ * Verifica se um registro (cliente/venda) pertence ao canal oficial Inside Sales.
+ */
+export function isInsideSalesClient(
+  clientObj: { channel?: string | null }
+): boolean {
+  if (!clientObj || !clientObj.channel) return false;
+  const norm = clientObj.channel.trim().toUpperCase();
+  return norm === 'INSIDE SALES' || norm === 'INSIDE';
+}
+
 import { resolveCanonicalManager } from './canonical';
 
 /**

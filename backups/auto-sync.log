@@ -1680,3 +1680,11 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    191a46f..0e3bd36  main -> main
 [22/08/2026 08:23] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 4a7e915] auto-save: 22/08/2026 15:20
+ 7 files changed, 909 insertions(+), 13 deletions(-)
+ create mode 100644 supabase/migrations/20260822_align_public_sales_channel_classification.sql
+ create mode 100644 supabase/migrations/20260822_fix_get_actual_sales_v2_dist_segregation.sql
+ create mode 100644 supabase/migrations/20260822_fix_mv_vendas_mensal_distributor_manager_attribution.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   0e3bd36..4a7e915  main -> main
+[22/08/2026 15:20] ✅ Alterações enviadas com sucesso para o GitHub.
