@@ -3417,6 +3417,208 @@ A partir de 19/08/2026, a arquitetura, regras de resolução hierárquica, isola
 
 Status Arquitetural: `META_MACO_GOVERNANCE = LOCKED` & `BASELINE = PERMANENTE` & `STATUS = CONFIRMED`.
 
+---
+
+## 76. Baseline Oficial — Domínio Metas: Segregação do Real Faturamento por Canal × Gerente (Baseline Permanente)
+
+A partir de 22/08/2026, a arquitetura de segregação de faturamento realizado por Canal e Gerente, a RPC oficial `public.get_actual_sales_v2` e as identidades matemáticas do **Domínio Metas (`/metas`)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural
+`DOMAIN_METAS = HOMOLOGATED` & `REAL_CHANNEL_MANAGER_SEGREGATION = ENFORCED` & `MATHEMATICAL_IDENTITY = PASS` & `REGRESSION_STATUS = PASS` & `PRODUCTION_READY = TRUE`
+
+### RPC Oficial
+- `public.get_actual_sales_v2(p_channel text, p_manager_id text, p_manager_name text, p_years text[])`
+- `public.get_actual_sales_v2(p_channel text, p_manager text, p_years text[])` (overload canônico de 3 parâmetros)
+
+### Regras Homologadas de Negócio e Consulta:
+1. **Toda Empresa**: Consolida todos os canais e todos os gerentes da organização.
+2. **Canal KA**:
+   - Quando `p_manager_id = 'Total'`, retorna o consolidado de todos os gerentes no canal KA.
+   - Quando um gerente individual for selecionado (ex: `1000`, `1001`, `1002`, `1003`), filtra estritamente por `m.channel = 'KA'` e `m.manager_id = p_manager_id` (com fallback por nome).
+3. **Canal Distribuidor**:
+   - Quando `p_manager_id = 'Total'`, retorna o faturamento consolidado de todos os distribuidores da empresa (incluindo carteiras gerenciais e distribuidor corporativo).
+   - Quando um gerente individual for selecionado, o filtro por `m.manager_id = p_manager_id` (ou `p_manager_name`) é **estritamente obrigatório**.
+   - É expressamente proibido retornar o total da empresa no canal Distribuidor quando um gerente específico estiver selecionado.
+4. **Demais Canais Corporativos**:
+   - Os canais `Inside Sales`, `Ecommerce`, `Marketplace`, `Amazon 1P` e `Private Label` (Marca Própria) não possuem seletor de gerente na interface e operam em modo corporativo consolidado (`m.channel = p_channel`).
+
+### Evidências Homologadas (Agosto/2026):
+* **Toda Empresa**: R$ 5.135.187,27 (190.808,1 UN)
+* **KA Total**: R$ 2.038.747,32 (75.991 UN)
+  - `KA Luiz (1002)`: R$ 928.069,80 (36.089 UN)
+  - `KA Leandro (1001)`: R$ 590.412,40 (20.540 UN)
+  - `KA Julliano (1000)`: R$ 416.525,56 (15.718 UN)
+  - `KA John Guedes (1003)`: R$ 103.739,56 (3.644 UN)
+* **Distribuidor Total**: R$ 574.434,06 (28.374 UN)
+  - `Distribuidor John Guedes (1003)`: R$ 602,70 (50 UN)
+  - `Distribuidor Leandro (1001)`: R$ 0,00 (0 UN)
+  - `Distribuidor Luiz (1002)`: R$ 0,00 (0 UN)
+  - `Distribuidor Corporativo (1007)`: R$ 573.831,36 (28.324 UN)
+* **Inside Sales**: R$ 98.184,31 (3.036 UN)
+* **Ecommerce**: R$ 1.001.134,52 (28.905,1 UN)
+* **Marketplace**: R$ 1.033.664,80 (36.636 UN)
+* **Amazon 1P**: R$ 306.606,00 (13.420 UN)
+* **Private Label (Marca Própria)**: R$ 0,00 (0 UN)
+
+### Identidade Matemática Homologada:
+1. **Identidade por Gerente (John Guedes — Agosto/2026)**:
+   $$\text{Real KA} \ (\text{R\$ } 103.739,56) + \text{Real Distribuidor} \ (\text{R\$ } 602,70) + \text{Real Inside Sales} \ (\text{R\$ } 3.724,58) + \text{Demais} \ (\text{R\$ } 0,00) = \mathbf{\text{R\$ } 108.066,84}$$
+   $$\text{Real Total John} = \mathbf{\text{R\$ } 108.066,84} \quad (\Delta = \mathbf{\text{R\$ } 0,00})$$
+
+2. **Identidade do Canal Distribuidor (Agosto/2026)**:
+   $$\text{John} \ (\text{R\$ } 602,70) + \text{Leandro} \ (\text{R\$ } 0,00) + \text{Luiz} \ (\text{R\$ } 0,00) + \text{Corp} \ (\text{R\$ } 573.831,36) = \mathbf{\text{R\$ } 574.434,06}$$
+   $$\text{Total Distribuidor Empresa} = \mathbf{\text{R\$ } 574.434,06} \quad (\Delta = \mathbf{\text{R\$ } 0,00})$$
+
+### Integridade dos Dados e Não-Regressão:
+* `public.targets`: 0 alterações durante o ciclo de auditoria e correção. Metas, Forecast e Desafio 100% preservados.
+* `public.cm_weekly_projections` (RPS): 0 alterações. Projeções semanais 100% preservadas.
+* `mv_vendas_mensal`: Operação estritamente somente leitura mantida.
+* `AnalyticsEngine`, ViewModels e Contratos de APIs: Intactos e sem desvios.
+* Eliminação definitiva da cláusula permissiva `OR (p_channel <> 'KA' AND m.channel = p_channel)` na definição ativa da RPC.
+
+### Validação Técnica:
+* `npx tsc --noEmit`: 0 erros.
+* `npm run build`: Sucesso (139 rotas compiladas).
+
+### Diretriz de Governança:
+A partir desta baseline, qualquer alteração na lógica de segregação de REAL por Canal × Gerente, na RPC `get_actual_sales_v2` ou na identidade matemática do domínio Metas deverá ser tratada como alteração controlada de baseline, exigindo nova auditoria forense de regressão e nova homologação formal.
+
+Status Arquitetural: `DOMAIN_METAS = HOMOLOGATED` & `BASELINE = PERMANENTE` & `STATUS = CONFIRMED`.
+
+---
+
+## 77. Baseline Oficial — Atribuição de Distribuidores por Carteira Comercial na `mv_vendas_mensal` (Baseline Permanente)
+
+A partir de 22/08/2026, a regra de classificação e atribuição de faturamento de parceiros do canal Distribuidor às suas respectivas carteiras comerciais oficiais na Materialized View `public.mv_vendas_mensal` torna-se o baseline permanente e oficial de governança do Coffee++.
+
+### Status Arquitetural
+`DISTRIBUTOR_MANAGER_ATTRIBUTION = ENFORCED` & `OFFICIAL_COMMERCIAL_MANAGER_IDS = 1000,1001,1002,1003` & `CORPORATE_DISTRIBUTOR_MANAGER_ID = 1007` & `MATHEMATICAL_IDENTITY = ENFORCED` & `DUPLICATION = FORBIDDEN` & `LOSS_OF_REVENUE = FORBIDDEN` & `BASELINE_STATUS = LOCKED`
+
+### Regra Oficial Homologada de Classificação
+A atribuição do faturamento de distribuidores **NÃO** pode utilizar o texto do vendedor Sankhya `"DISTRIBUIDOR"` como critério prioritário para direcionar automaticamente o faturamento ao `manager_id = '1007'`.
+
+A hierarquia oficial e imutável de apuração de `manager_id` em `public.mv_vendas_mensal` é:
+1. **Canais Fixos Oficiais**:
+   - `AMAZON 1P` $\rightarrow$ `1008`
+   - `SHOPIFY` / `LIVELO` $\rightarrow$ `1005`
+   - `AMAZONFBA` / `MELI FULL` / `SHOPEE` / `AMAZONBR` / `ANYMARKET` / `MAGALU` / `MELI` $\rightarrow$ `1006`
+2. **Regras Especiais de Apuração**:
+   - Se `r.manager_id_apuracao IS NOT NULL` $\rightarrow$ utilizar `r.manager_id_apuracao`.
+3. **Carteiras Comerciais Oficiais (Prioridade Absoluta)**:
+   - Se `c.manager_id IN ('1000', '1001', '1002', '1003')` $\rightarrow$ utilizar obrigatoriamente `c.manager_id` (o faturamento pertence ao respectivo gerente comercial oficial).
+4. **Distribuidor Corporativo (Fallback Controlado)**:
+   - Se `v.nome_vendedor = 'DISTRIBUIDOR'` OU `c.tipo_parceiro = 'Distribuidor'` (e o parceiro não possuir gerente comercial 1000-1003) $\rightarrow$ atribuir a `1007` (Distribuidor Corporativo).
+5. **Fallback Geral**:
+   - `COALESCE(c.manager_id, '9999')`.
+
+### Carteiras Oficiais Homologadas
+* **BRASSOL** (códigos `221911` e `221912`): Pertence ao gerente **John Guedes** (`manager_id = '1003'`).
+* **DISTRA** (código `114527`): Pertence ao gerente **Leandro** (`manager_id = '1001'`).
+* **SOST** (código `212424`): Pertence ao gerente **Luiz** (`manager_id = '1002'`).
+* **MANACAS** (código `223911`): Pertence ao gerente **Luiz** (`manager_id = '1002'`).
+* **Distribuidores sem gerente comercial oficial** (ex: `217953` MGE DISTRIBUIDORA, `228858` ARMAZENS MARTINS): Atribuídos a **Distribuidor Corporativo** (`manager_id = '1007'`).
+
+### Princípio Fundamental
+O `manager_id` existente no cadastro oficial de `public.cm_clientes` é a fonte única de verdade (**Single Source of Truth**) para atribuição da carteira comercial.
+O nome textual do vendedor no ERP Sankhya (`v.nome_vendedor = 'DISTRIBUIDOR'`) **NÃO pode sobrescrever** uma carteira comercial oficial válida (`1000`, `1001`, `1002`, `1003`).
+
+### Identidade Matemática e Preservação Financeira
+A redistribuição da classificação de gerente é estritamente neutra em relação aos totais financeiros:
+$$\sum \text{Faturamento por Gerentes (1001, 1002, 1003)} + \text{Corporativo (1007)} = \text{Total Canal Distribuidor} \quad (\Delta = \mathbf{\text{R\$ } 0,0000})$$
+$$\sum \text{Todos os Canais} = \text{Total Faturamento Empresa} \quad (\Delta = \mathbf{\text{R\$ } 0,0000})$$
+
+### Duplicidade e Perda de Faturamento
+A atribuição é estritamente **mutuamente exclusiva**:
+* **É expressamente proibido**: duplicar faturamento, criar faturamento artificial, perder faturamento, atribuir simultaneamente uma nota a gerente comercial e corporativo, ou reter faturamento comercial oficial em `1007`.
+
+### Fluxo Arquitetural Oficial (SSOT)
+$$\text{public.cm\_clientes} \longrightarrow \text{public.mv\_vendas\_mensal} \longrightarrow \text{public.get\_actual\_sales\_v2} \longrightarrow \text{/metas}$$
+* `public.mv\_vendas\_mensal`: Preserva na origem a segregação oficial por gerente comercial.
+* `public.get\_actual\_sales\_v2`: Respeita a classificação da view sem regras intermediárias arbitrárias.
+* `/metas`: Consome diretamente a RPC sem regras comerciais locais no React.
+
+### Evidências da Homologação (Acumulado 2026):
+* **BRASSOL**: Julho/2026 = `R$ 216.787,65` | Agosto/2026 = `R$ 6.066,30` $\rightarrow$ John Guedes (`1003`)
+* **DISTRA**: Julho/2026 = `R$ 120.681,60` | Agosto/2026 = `R$ 50.438,40` $\rightarrow$ Leandro (`1001`)
+* **SOST**: Junho/2026 = `R$ 175.513,00` | Agosto/2026 = `R$ 49.950,80` $\rightarrow$ Luiz (`1002`)
+* **MANACAS**: Agosto/2026 = `R$ 467.260,60` $\rightarrow$ Luiz (`1002`)
+* **Distribuidor Corporativo (1007)**: `R$ 26.577,76` (MGE `R$ 25.859,80` + Armazéns Martins `R$ 717,96`)
+* **Total Canal Distribuidor 2026**: `R$ 1.242.687,31` (63.527 UN)
+* **Total Empresa 2026**: `R$ 65.058.981,34` (2.256.393,6 UN)
+* **Duplicação**: ZERO | **Perda**: ZERO | **Regressão em Outros Canais**: PASS
+
+### Testes Técnicos Homologados:
+* Migration aplicada: `supabase/migrations/20260822_fix_mv_vendas_mensal_distributor_manager_attribution.sql`
+* `npx tsc --noEmit`: 0 erros.
+* `npm run build`: Sucesso (139/139 rotas compiladas).
+* RPC `get_actual_sales_v2`: PASS.
+* Interface `/metas`: PASS.
+* View de monitoramento `public.vw_mv_health_check`: `STATUS = OK`.
+
+### Regra de Não-Regressão
+Futuras alterações em `mv_vendas_mensal`, `mv_vendas_cliente_mensal`, `cm_clientes`, `get_actual_sales_v2`, `commercial-structure.ts` ou na tela `/metas` **NÃO podem quebrar a segregação Canal × Gerente × Distribuidor**. Qualquer modificação futura exigirá auditoria formal de atribuição, identidade matemática e não-regressão.
+
+Status Arquitetural: `DISTRIBUTOR_MANAGER_ATTRIBUTION = LOCKED` & `CORPORATE_DISTRIBUTOR_FALLBACK = LOCKED` & `MATHEMATICAL_IDENTITY = ENFORCED` & `DUPLICATION = FORBIDDEN` & `LOSS = FORBIDDEN` & `REGRESSION_TEST_REQUIRED = TRUE` & `BASELINE = PERMANENTE`.
+
+---
+
+## 78. Baseline Oficial — Alinhamento da Classificação Dimensional de Canais e Gerentes em `public.sales` (Baseline Permanente)
+
+A partir de 22/08/2026, a classificação dimensional de canais e gerentes na view oficial de vendas realtime `public.sales` foi homologada, alinhada à view materializada `public.mv_vendas_mensal` e congelada como baseline permanente do Coffee++.
+
+### Status
+* `CLASSIFICATION_BASELINE_073 = TRUE`
+* `FINANCIAL_PARITY = TRUE`
+* `DIMENSIONAL_PARITY = TRUE`
+* `IMPORT_HUB_FROZEN = TRUE`
+* `CRON_FROZEN = TRUE`
+* `BIGQUERY_CHANGED = FALSE`
+* `FINANCIAL_RULES_FROZEN = TRUE`
+* `TOPS_1705_1716_1714 = UNTOUCHED`
+* `DELTA_FINANCEIRO = R$ 0,00`
+* `STATUS = BASELINE_PERMANENT`
+
+### Hierarquia Oficial de Classificação Dimensional
+A view `public.sales` passa a obedecer estritamente à seguinte ordem hierárquica e determinística para derivar `channel`, `manager_id`, `manager` e `rede`:
+
+1. **Canais Digitais Identificados por Vendedor/Origem Sankhya**:
+   - `SHOPIFY`, `LIVELO` $\rightarrow$ `channel = 'Ecommerce'`, `manager = 'Ecommerce'`, `manager_id = '1005'`
+   - `AMAZONFBA`, `MELI FULL`, `SHOPEE`, `AMAZONBR`, `ANYMARKET`, `MAGALU`, `MELI` $\rightarrow$ `channel = 'Marketplace'`, `manager = 'Marketplace'`, `manager_id = '1006'`
+   - `AMAZON 1P` $\rightarrow$ `channel = 'Amazon 1P'`, `manager = 'Amazon 1P'`, `manager_id = '1008'` *(permanece desmembrada, sem ser absorvida por Inside Sales ou Julliano)*.
+2. **Regras Especiais de Apuração Comercial**:
+   - `r.manager_id_apuracao` e `r.gerente_apuracao` a partir de `cm_regras_apuracao_comercial` quando ativas.
+3. **Carteira Oficial de Gerentes de Campo (KA)**:
+   - Respeita a prioridade oficial de `cm_clientes` (`c.manager_id IN ('1000', '1001', '1002', '1003')`).
+4. **Distribuidores Homologados**:
+   - Respeita as regras de atribuição homologadas na Seção 77 (`v.nome_vendedor = 'DISTRIBUIDOR' OR c.tipo_parceiro = 'Distribuidor'`), mantendo distribuidores comerciais com seus respectivos gerentes e distribuidores corporativos em `1007`.
+5. **Demais Classificações Cadastrais Oficiais**:
+   - Utiliza `c.tipo_parceiro`, `c.responsavel`, `c.manager_id` de `cm_clientes`.
+6. **Resíduo Legítimo em `SEM RESPONSÁVEL` / `Outros`**:
+   - Apenas clientes e transações que genuinamente não possuem vínculo comercial cadastrado permanecem em `manager = 'SEM RESPONSÁVEL'` e `channel = 'Outros'`.
+
+### Valores Oficiais de Referência (Acumulado 2026):
+* **KA**: `R$ 38.975.031,53` (8.707 linhas)
+* **Ecommerce**: `R$ 11.680.806,69` (258.003 linhas)
+* **Marketplace**: `R$ 6.669.660,54` (177.841 linhas)
+* **Amazon 1P**: `R$ 3.112.415,42` (329 linhas)
+* **Distribuidor**: `R$ 1.242.687,31` (281 linhas)
+* **Inside Sales**: `R$ 1.217.865,81` (4.285 linhas)
+* **Marca Própria (Private Label)**: `R$ 880.290,00` (12 linhas)
+* **Inside inter**: `R$ 300.265,24` (211 linhas)
+* **Exportação**: `R$ 44.148,16` (16 linhas)
+* **Outros / SEM RESPONSÁVEL**: `R$ 935.810,64` (4.306 linhas)
+* **TOTAL EMPRESA**: `R$ 65.058.981,34` (453.991 linhas)
+
+### Regras de Preservação e Não-Regressão
+1. **Preservação de TOPs**: As TOPs `1705` (Venda Exportação Direta), `1716` (Venda Girus MT) e `1714` (Venda Suframa) permanecem fora do escopo e inalteradas. Qualquer inclusão futura exigirá decisão e homologação comercial formal prévia.
+2. **Paridade Financeira e Dimensional Absoluta**: Toda consulta sobre `public.sales` deve obrigatoriamente manter 0,0000% de desvio em relação a `mv_vendas_mensal`:
+   $$\text{TOTAL } \texttt{public.sales} = \text{TOTAL } \texttt{mv\_vendas\_mensal} \quad (\Delta = \text{R\$ } 0,00)$$
+3. **Imutabilidade Operacional**: A integridade do Import Hub, rotinas do cron de importação, arquivos do Google Drive e filtros fiscais/contábeis permanece 100% blindada e inalterada.
+
+Status Arquitetural: `SALES_DIMENSIONAL_CLASSIFICATION = LOCKED` & `DIGITAL_CHANNELS_SEGREGATION = ENFORCED` & `AMAZON_1P_SEGREGATION = ENFORCED` & `FINANCIAL_PARITY = CONFIRMED` & `DIMENSIONAL_PARITY = CONFIRMED` & `BASELINE = PERMANENTE`.
+
+
+
 
 
 

@@ -1665,3 +1665,18 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    63f6115..191a46f  main -> main
 [21/08/2026 15:34] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 0e3bd36] auto-save: 22/08/2026 08:23
+ 14 files changed, 21823 insertions(+), 2 deletions(-)
+ create mode 100644 src/app/api/cron/import-drive/route.ts
+ create mode 100644 src/lib/services/csv-import-service.ts
+ create mode 100644 src/lib/services/email-notification-service.ts
+ create mode 100644 src/lib/services/google-drive-service.ts
+ create mode 100644 supabase/migrations/20260821_atomic_swap_and_advisory_lock.sql
+ create mode 100644 supabase/migrations/20260821_optimize_staging_bulk_insert.sql
+ create mode 100644 supabase/migrations/20260822_import_hub_idempotency.sql
+remote: warning: See https://gh.io/lfs for more information.        
+remote: warning: File backups/backup.log is 78.32 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/ccarlos1981/coffee_mais.git
+   191a46f..0e3bd36  main -> main
+[22/08/2026 08:23] ✅ Alterações enviadas com sucesso para o GitHub.

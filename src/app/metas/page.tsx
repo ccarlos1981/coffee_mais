@@ -33,19 +33,16 @@ const MONTHS = [
 ];
 
 import { OFFICIAL_COMMERCIAL_ROLES } from "@/lib/domain/commercial-structure";
-import { CommercialDomainService } from "@/lib/domain";
 
 const CHANNELS = [
   { id: "Toda Empresa", manager_id: "Toda Empresa", manager: "Toda Empresa", name: "Toda Empresa" },
   { id: "KA", manager_id: "KA", manager: "KA (Key Accounts)", name: "KA (Key Accounts)" },
-  ...OFFICIAL_COMMERCIAL_ROLES
-    .filter(r => CommercialDomainService.isStandaloneChannelManager(r.managerName))
-    .map(r => ({
-      id: r.managerName,
-      manager_id: r.managerId,
-      manager: r.managerName,
-      name: r.managerName === "Amazon 1P" ? "1P" : r.managerName,
-    }))
+  { id: "Distribuidor", manager_id: "1007", manager: "Distribuidor", name: "Distribuidor" },
+  { id: "Inside Sales", manager_id: "1004", manager: "Inside Sales", name: "Inside Sales" },
+  { id: "Ecommerce", manager_id: "1005", manager: "Ecommerce", name: "Ecommerce" },
+  { id: "Marketplace", manager_id: "1006", manager: "Marketplace", name: "Marketplace" },
+  { id: "Amazon 1P", manager_id: "1008", manager: "Amazon 1P", name: "Amazon 1P" },
+  { id: "Private Label", manager_id: "1009", manager: "Private Label", name: "Private Label" },
 ];
 
 export function cleanManagerName(name: string): string {
@@ -214,7 +211,10 @@ export default function MetasPage() {
             query = query.eq('manager_id', chDef.manager_id);
           }
         } else if (manager === 'Total') {
-          query = query.in('manager_id', CLEAN_MANAGERS.map((m: any) => m.manager_id).filter((id: string) => id && id !== 'Total'));
+          const ids = channel === 'Distribuidor'
+            ? [...CLEAN_MANAGERS.map((m: any) => m.manager_id).filter((id: string) => id && id !== 'Total'), '1007']
+            : CLEAN_MANAGERS.map((m: any) => m.manager_id).filter((id: string) => id && id !== 'Total');
+          query = query.in('manager_id', ids);
         } else {
           const mgrOpt = CLEAN_MANAGERS.find((m: any) => m.id === manager);
           if (mgrOpt?.manager_id) {
@@ -333,7 +333,15 @@ export default function MetasPage() {
       }
 
       if (selectedChannel === 'Toda Empresa') {
-        throw new Error("Não é possível salvar metas na visão 'Toda Empresa'. Por favor, selecione o canal (KA ou Distribuidor) e edite cada gerente individualmente.");
+        throw new Error("Não é possível salvar metas na visão 'Toda Empresa'. Por favor, selecione um canal específico.");
+      }
+
+      if (selectedChannel === 'KA' && selectedManager === 'Total') {
+        throw new Error("Não é possível salvar metas no 'Total' do canal KA. Por favor, selecione um gerente individual.");
+      }
+
+      if (selectedChannel === 'Distribuidor' && selectedManager === 'Total') {
+        throw new Error("Não é possível salvar metas no 'Total' do canal Distribuidor. Por favor, selecione um gerente individual.");
       }
 
       // Definir nome do manager para segregação no banco
@@ -445,7 +453,9 @@ export default function MetasPage() {
   const renderInputRow = (label: string, field: keyof GridData, isCurrency: boolean) => {
     const values = gridData[field];
     const total = sumArray(values);
-    const isReadOnly = (selectedChannel === 'KA' && selectedManager === 'Total') || selectedChannel === 'Toda Empresa';
+    const isReadOnly = (selectedChannel === 'KA' && selectedManager === 'Total') || 
+                       (selectedChannel === 'Distribuidor' && selectedManager === 'Total') || 
+                       selectedChannel === 'Toda Empresa';
 
     return (
       <tr className="hover:bg-muted/5 transition-colors">
@@ -563,7 +573,10 @@ export default function MetasPage() {
     );
   }
 
-  const isReadOnlyMode = (selectedChannel === 'KA' && selectedManager === 'Total') || selectedChannel === 'Toda Empresa';
+  const isReadOnlyMode = 
+    selectedChannel === 'Toda Empresa' || 
+    (selectedChannel === 'KA' && selectedManager === 'Total') || 
+    (selectedChannel === 'Distribuidor' && selectedManager === 'Total');
 
   return (
     <div className="min-h-screen bg-background">
@@ -802,6 +815,10 @@ export default function MetasPage() {
                     ) : selectedChannel === 'KA' && selectedManager === 'Total' ? (
                       <span className="text-xs text-amber-500 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
                         Modo Leitura: O KA Total é a soma de todos os gerentes. Selecione um gerente (ex: Leandro) para editar.
+                      </span>
+                    ) : selectedChannel === 'Distribuidor' && selectedManager === 'Total' ? (
+                      <span className="text-xs text-amber-500 font-medium bg-amber-500/10 px-3 py-1.5 rounded-lg border border-amber-500/20">
+                        Modo Leitura: O Distribuidor Total é a soma de todos os gerentes. Selecione um gerente (ex: Luiz) para editar.
                       </span>
                     ) : (
                       <span className="text-xs text-muted font-medium">
