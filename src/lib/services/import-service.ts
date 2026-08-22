@@ -810,6 +810,27 @@ export class ImportService {
     let oldBatchIdToSupersede: string | null = null;
 
     if (currentFileHash && serverPeriodStart && serverPeriodEnd) {
+      // D4 (Demanda 065): Barreira — impedir que o Excel sobrescreva fotografia oficial do Google Drive CSV
+      const { data: existingDriveBatch } = await supabase
+        .from("cm_sync_logs")
+        .select("id, period_start, period_end, finished_at")
+        .eq("status", "SUCCESS")
+        .eq("source", "google_drive_csv")
+        .lte("period_start", serverPeriodEnd)
+        .gte("period_end", serverPeriodStart)
+        .order("finished_at", { ascending: false })
+        .limit(1);
+
+      if (existingDriveBatch && existingDriveBatch.length > 0) {
+        const driveBatch = existingDriveBatch[0];
+        throw new IntegrityBarrierError(
+          `BLOQUEADO: O período ${serverPeriodStart} a ${serverPeriodEnd} já possui carga oficial via Google Drive CSV ` +
+          `(batch ${driveBatch.id}, concluído em ${driveBatch.finished_at}). ` +
+          `O upload Excel não pode sobrescrever a fotografia oficial. ` +
+          `Utilize o fluxo Google Drive CSV para atualizar os dados de faturamento.`
+        );
+      }
+
       const { data: existingSuccessLog } = await supabase
         .from("cm_sync_logs")
         .select("id, period_start, period_end")
