@@ -35,7 +35,9 @@ function normalizePct(val: any, defaultVal: number): number {
 }
 
 const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Gerente Nacional", "Diretor"];
-const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+const GERENTE_NACIONAL_EMAILS = [
+  "cristiano.santos@coffeemais.com"
+];
 
 export function canConfigureDesafioPct(role?: string | null, email?: string | null): boolean {
   if (role && FULL_ACCESS_ROLES.includes(role)) {

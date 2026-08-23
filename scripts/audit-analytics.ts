@@ -25,6 +25,7 @@ const ALLOWED_PHYSICAL_TABLE_EXCEPTIONS = [
   'sync-faturamento/route.ts',
   'tg_fn_sync_faturamento_sankhya_stmt',
   'daily/route.ts', // Exceção homologada para dados realtime diários
+  'executive-report-collector.ts', // Relatório Executivo Diário Transacional
   'process-excel/route.ts', // Engine de importação de planilhas Staging
   'bigquery.ts', // Mapeamento BigQuery
   'conciliation.ts', // Conciliação Fase 6

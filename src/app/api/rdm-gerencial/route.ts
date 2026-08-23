@@ -5,7 +5,9 @@ import { requireApprovedProfile } from '@/lib/supabase/auth-helpers';
 import { resolveCanonicalManager, isSameManager } from '@/lib/domain/canonical';
 
 const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Gerente Nacional", "Diretor"];
-const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+const GERENTE_NACIONAL_EMAILS = [
+  "cristiano.santos@coffeemais.com"
+];
 
 function checkIsGerenteNacionalAdmin(role?: string | null, email?: string | null): boolean {
   if (role && FULL_ACCESS_ROLES.includes(role)) {
