@@ -1,6 +1,9 @@
 import { AnalyticsEngine } from "@/lib/governance/analytics/engine";
 import { isInsideSalesClient } from "@/lib/domain/commercial-structure";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getValorProjetadoComercial, getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
+import { buildMatrizLookup, resolveClienteMatriz } from "@/lib/investimento/matriz-resolver";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics/sources";
 
 export interface SalesManagerReportRow {
   managerId: string;
@@ -21,6 +24,7 @@ export interface SalesManagerReportRow {
 
 export interface InvestmentManagerReportRow {
   responsavel: string;
+  clientesQtd: number;
   faturamento: number;
   expectativaInvestimento: number;
   pctInvestimento: number;
@@ -78,6 +82,50 @@ export interface NetworkOpportunityMetric {
   destaque: string;
 }
 
+export interface Top10RedeReportRow {
+  ranking: number;
+  rede: string;
+  gerente: string;
+  historico2026: {
+    jan: number;
+    fev: number;
+    mar: number;
+    abr: number;
+    mai: number;
+    jun: number;
+    jul: number;
+    agoMtd: number;
+    totalAno: number;
+  };
+  vsMesAnterior: {
+    fatMtdAtual: number;
+    fatMtdAnterior: number;
+    diffValor: number;
+    diffPct: number | null;
+    diffPctStr: string;
+    status: "NOVO" | "CRESCIMENTO" | "QUEDA" | "ESTAVEL";
+    statusLabel: string;
+  };
+  vsTrimestre: {
+    fatTrimAtualMtd: number;
+    fatTrimAntEquiv: number;
+    diffValor: number;
+    diffPct: number | null;
+    diffPctStr: string;
+  };
+}
+
+export interface IaExecutivaInsight {
+  alertas: string[];
+  oportunidades: string[];
+  ondeAgirHoje: {
+    responsavel: string;
+    prioridade: string;
+    impactoValor: number;
+    descricao: string;
+  }[];
+}
+
 export interface ExecutiveReportData {
   dataReferencia: string; // DD/MM/AAAA
   dataReferenciaIso: string; // AAAA-MM-DD
@@ -94,8 +142,34 @@ export interface ExecutiveReportData {
     validaParaHoje: boolean;
   };
   
-  // PÁGINA 1: VENDAS KA + DISTRIBUIDOR
+  // PÁGINA 1: KEY ACCOUNT (EXCLUSIVO)
   vendas: {
+    consolidadoKa: {
+      metaFat: number;
+      realFat: number;
+      pctAtgFat: number;
+      metaUnd: number;
+      realUnd: number;
+      pctAtgUnd: number;
+      metaMaco: number;
+      realMaco: number;
+      pctAtgMaco: number;
+      statusBadge: "CRITICO" | "ATENCAO" | "ATINGIDO";
+    };
+    gerentesKa: SalesManagerReportRow[];
+    distribuidor: {
+      metaFat: number;
+      realFat: number;
+      pctAtgFat: number;
+      metaUnd: number;
+      realUnd: number;
+      pctAtgUnd: number;
+      metaMaco: number;
+      realMaco: number;
+      pctAtgMaco: number;
+      statusBadge: "CRITICO" | "ATENCAO" | "ATINGIDO";
+      topClientes: { cliente: string; gerente: string; fat: number; und: number; maco: number }[];
+    };
     consolidadoKaDist: {
       metaFat: number;
       realFat: number;
@@ -139,6 +213,9 @@ export interface ExecutiveReportData {
     topClientesExpostos: InvestmentClientReportRow[];
   };
 
+  // PÁGINA 5: TOP 10 REDES E HISTÓRICO 2026
+  top10Redes: Top10RedeReportRow[];
+
   // DADOS DE INTELIGÊNCIA EXECUTIVA (MTD)
   inteligenciaMtd: {
     redesAlerta: NetworkAlertMetric[];
@@ -146,6 +223,9 @@ export interface ExecutiveReportData {
     gerentesDestaque: { gerente: string; pctAtgFat: number; realFat: number }[];
     gerentesGaps: { gerente: string; pctAtgFat: number; gapFat: number }[];
   };
+
+  // IA EXECUTIVA ESTRUTURADA
+  iaExecutiva: IaExecutivaInsight;
 }
 
 export class ExecutiveReportCollector {
@@ -179,6 +259,12 @@ export class ExecutiveReportCollector {
     // 4. Análise de Inteligência MTD
     const inteligenciaMtd = await this.collectInteligenciaMtd(compAtual, compAnterior, currentDay);
 
+    // 5. Coleta de Top 10 Redes e Histórico 2026 (Página 5)
+    const top10Redes = await this.collectTop10Redes(compAtual, currentDay);
+
+    // 6. Construção da IA Executiva Estruturada (Página 5)
+    const iaExecutiva = this.buildIaExecutiva(vendasData, investResumo, inteligenciaMtd, top10Redes);
+
     return {
       dataReferencia: dataRefBr,
       dataReferenciaIso: dataRefIso,
@@ -192,7 +278,9 @@ export class ExecutiveReportCollector {
       investimentosResumo: investResumo,
       investimentosPorCanal: investCanais,
       investimentosPorCliente: investClientes,
+      top10Redes,
       inteligenciaMtd,
+      iaExecutiva,
     };
   }
 
@@ -253,120 +341,150 @@ export class ExecutiveReportCollector {
     const [year, month] = compAtual.split("-").map(Number);
     const dtNext = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-    // Query oficial de vendas agrupada por gerente e canal com dados da BASELINE 077
-    const salesRows = await AnalyticsEngine.executeSql<any>(`
-      SELECT 
-        f.nome_vendedor,
-        f.nome_parceiro,
-        f.cod_parceiro,
-        f.cod_top,
-        c.responsavel,
-        c.manager_name,
-        c.tipo_parceiro,
-        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as faturamento,
-        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.quantidade) ELSE f.quantidade END) as quantidade,
-        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.custo_total) ELSE f.custo_total END) as custo,
-        SUM(
-          COALESCE(f.custo_icms, 0) + 
-          CASE WHEN ABS(COALESCE(f.vlr_total_st, 0)) >= ABS(COALESCE(f.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(f.vlr_total_st, 0) END
-        ) as impostos,
-        SUM((CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) * 0.03) as frete
-      FROM cm_faturamento_sankhya f
-      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
-      WHERE f.dt_faturamento >= '${dtStart}' AND f.dt_faturamento < '${dtNext}'
-        AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-        AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
-        AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
-      GROUP BY f.nome_vendedor, f.nome_parceiro, f.cod_parceiro, f.cod_top, c.responsavel, c.manager_name, c.tipo_parceiro
-    `);
-
-    // Busca metas oficiais em public.targets
-    const targetsRows = await AnalyticsEngine.executeSql<any>(`
+    // Query oficial de vendas agrupada por gerente e canal na fonte reguladora oficial (mv_vendas_mensal)
+    const mvSalesRows = await AnalyticsEngine.executeSql<any>(`
       SELECT 
         manager,
-        manager_id,
-        year,
-        month,
-        target_revenue as meta_fat,
-        target_tons as meta_und
-      FROM public.targets
-      WHERE year = ${year} AND month = ${month}
+        channel,
+        SUM(fat) as faturamento,
+        SUM(qty) as quantidade,
+        SUM(maco) as maco
+      FROM mv_vendas_mensal
+      WHERE mes = '${compAtual}'
+      GROUP BY manager, channel
     `);
 
+    // Busca metas oficiais em public.targets e configurações de MACO do Desafio DRE (mesma fonte oficial do Acompanhamento)
+    const [targetsRows, desafioConfigs] = await Promise.all([
+      AnalyticsEngine.executeSql<any>(`
+        SELECT 
+          manager,
+          manager_id,
+          year,
+          month,
+          target_revenue as meta_fat,
+          target_tons as meta_und
+        FROM public.targets
+        WHERE year = ${year} AND month = ${month}
+      `),
+      AnalyticsEngine.getAllDesafioDreConfigs(year, month),
+    ]);
+
+    const managersKaDef = [
+      { name: "Julliano", id: "1000" },
+      { name: "Leandro", id: "1001" },
+      { name: "Luiz", id: "1002" },
+      { name: "John Guedes", id: "1003" },
+    ];
+
     const targetsMap = new Map<string, { metaFat: number; metaUnd: number; metaMaco: number }>();
-    (targetsRows || []).forEach((t: any) => {
-      const key = (t.manager || t.manager_id || "").toUpperCase().trim();
-      const metaFat = Number(t.meta_fat || 0);
-      const metaUnd = Number(t.meta_und || 0);
-      const metaMaco = metaFat * 0.12; // Margem padrão estimada
-      targetsMap.set(key, { metaFat, metaUnd, metaMaco });
-      if (t.manager_id) {
-        targetsMap.set(String(t.manager_id).toUpperCase().trim(), { metaFat, metaUnd, metaMaco });
-      }
+    managersKaDef.forEach((m) => {
+      const target = (targetsRows || []).find((t: any) => {
+        const tId = String(t.manager_id || "");
+        const tName = String(t.manager || "");
+        if (tId === `${m.id}-KA` || tId === m.id) {
+          return tName.toLowerCase().includes("(ka)") || (!tName.toLowerCase().includes("(dist)") && !tName.toLowerCase().includes("distribuidor"));
+        }
+        return false;
+      });
+
+      const metaFat = Number(target?.meta_fat || 0);
+      const metaUnd = Number(target?.meta_und || 0);
+      const cfg = desafioConfigs.get(m.id) || desafioConfigs.get("CRISTIANO");
+      const margemMaco = cfg?.margem_maco_pct ?? 0.395;
+      const metaMaco = Math.round((metaFat * margemMaco) / 1000) * 1000;
+
+      targetsMap.set(m.name.toUpperCase(), { metaFat, metaUnd, metaMaco });
+      targetsMap.set(m.id, { metaFat, metaUnd, metaMaco });
     });
 
-    // Estrutura de Agregação por Gerente
-    const gerentesMap: Record<string, { fat: number; und: number; maco: number; distFat: number; distUnd: number; distMaco: number; insideFat: number; insideUnd: number; insideMaco: number }> = {
-      "Julliano": { fat: 0, und: 0, maco: 0, distFat: 0, distUnd: 0, distMaco: 0, insideFat: 0, insideUnd: 0, insideMaco: 0 },
-      "Leandro": { fat: 0, und: 0, maco: 0, distFat: 0, distUnd: 0, distMaco: 0, insideFat: 0, insideUnd: 0, insideMaco: 0 },
-      "Luiz": { fat: 0, und: 0, maco: 0, distFat: 0, distUnd: 0, distMaco: 0, insideFat: 0, insideUnd: 0, insideMaco: 0 },
-      "John Guedes": { fat: 0, und: 0, maco: 0, distFat: 0, distUnd: 0, distMaco: 0, insideFat: 0, insideUnd: 0, insideMaco: 0 },
+    // Metas oficiais do canal Distribuidor (Soma dinâmica dos gerentes com papel comercial DIST na fonte oficial public.targets + cm_rdm_desafio_config)
+    const managersDistDef = [
+      { name: "Luiz", id: "1002" },
+      { name: "John Guedes", id: "1003" },
+      { name: "Leandro", id: "1001" },
+      { name: "Julliano", id: "1000" },
+    ];
+
+    let distMetaFat = 0;
+    let distMetaUnd = 0;
+    let distMetaMaco = 0;
+
+    managersDistDef.forEach((m) => {
+      const target = (targetsRows || []).find((t: any) => {
+        const tId = String(t.manager_id || "");
+        const tName = String(t.manager || "");
+        if (tId === `${m.id}-DIST` || tId === m.id) {
+          return tName.toLowerCase().includes("(dist)") || tName.toLowerCase().includes("(distribuidor)");
+        }
+        return false;
+      });
+
+      const mFat = Number(target?.meta_fat || 0);
+      const mUnd = Number(target?.meta_und || 0);
+      const cfg = desafioConfigs.get(m.id) || desafioConfigs.get("CRISTIANO");
+      const margemMaco = cfg?.margem_maco_pct ?? 0.395;
+      const mMaco = mFat > 0 ? Number((mFat * margemMaco).toFixed(2)) : 0;
+
+      distMetaFat += mFat;
+      distMetaUnd += mUnd;
+      distMetaMaco += mMaco;
+    });
+
+    targetsMap.set("DISTRIBUIDOR", {
+      metaFat: distMetaFat,
+      metaUnd: distMetaUnd,
+      metaMaco: distMetaMaco,
+    });
+
+    // Inside Sales target
+    const insideTargetRow = (targetsRows || []).find((t: any) => t.manager_id === '1004' || (t.manager || '').toLowerCase().includes('inside'));
+    const insideMetaFat = Number(insideTargetRow?.meta_fat || 0);
+    const insideMetaUnd = Number(insideTargetRow?.meta_und || 0);
+    const insideMetaMaco = insideMetaFat > 0 ? Math.round((insideMetaFat * 0.31) / 1000) * 1000 : 20000;
+    targetsMap.set("INSIDE SALES", {
+      metaFat: insideMetaFat || 307838,
+      metaUnd: insideMetaUnd || 9000,
+      metaMaco: insideMetaMaco || 20000,
+    });
+
+    const normalizeManager = (raw?: string): string => {
+      if (!raw) return "Sem Gerente";
+      const trimmed = raw.trim();
+      if (trimmed.includes("Leandro")) return "Leandro";
+      if (trimmed.includes("Luiz")) return "Luiz";
+      if (trimmed.includes("Julliano")) return "Julliano";
+      if (trimmed.includes("John")) return "John Guedes";
+      return trimmed;
     };
 
-    let totalDistFat = 0;
-    let totalDistUnd = 0;
-    let totalDistMaco = 0;
+    // Estrutura de Agregação por Gerente KA
+    const gerentesKaData: Record<string, { fat: number; und: number; maco: number }> = {
+      "Julliano": { fat: 0, und: 0, maco: 0 },
+      "Leandro": { fat: 0, und: 0, maco: 0 },
+      "Luiz": { fat: 0, und: 0, maco: 0 },
+      "John Guedes": { fat: 0, und: 0, maco: 0 },
+    };
 
     let totalInsideFat = 0;
     let totalInsideUnd = 0;
     let totalInsideMaco = 0;
 
-    salesRows.forEach((r: any) => {
+    (mvSalesRows || []).forEach((r: any) => {
+      const ch = (r.channel || "").trim();
+      const g = normalizeManager(r.manager);
       const fat = Number(r.faturamento || 0);
       const und = Number(r.quantidade || 0);
-      const custo = Number(r.custo || 0);
-      const imp = Number(r.impostos || 0);
-      const frete = Number(r.frete || 0);
-      const maco = fat - imp - frete - custo;
+      const maco = Number(r.maco || 0);
 
-      const rawResp = (r.responsavel || r.manager_name || r.nome_vendedor || "").toUpperCase();
-      const tipoParc = (r.tipo_parceiro || "").toUpperCase();
-
-      const isInside = isInsideSalesClient({
-        channel: tipoParc.includes("INSIDE") || (r.nome_vendedor || "").toUpperCase().includes("INSIDE") ? "Inside Sales" : undefined,
-      });
-
-      const isDist = tipoParc.includes("DISTRIB") || rawResp.includes("DISTRIB");
-
-      // Mapear gerente de campo
-      let gKey = "";
-      if (rawResp.includes("JULLIANO")) gKey = "Julliano";
-      else if (rawResp.includes("LEANDRO")) gKey = "Leandro";
-      else if (rawResp.includes("LUIZ")) gKey = "Luiz";
-      else if (rawResp.includes("JOHN")) gKey = "John Guedes";
-
-      if (isInside) {
+      if (ch === "KA" && gerentesKaData[g]) {
+        gerentesKaData[g].fat += fat;
+        gerentesKaData[g].und += und;
+        gerentesKaData[g].maco += maco;
+      } else if (ch === "Inside Sales" || ch === "Inside inter") {
         totalInsideFat += fat;
         totalInsideUnd += und;
         totalInsideMaco += maco;
-        if (gKey && gerentesMap[gKey]) {
-          gerentesMap[gKey].insideFat += fat;
-          gerentesMap[gKey].insideUnd += und;
-          gerentesMap[gKey].insideMaco += maco;
-        }
-      } else if (isDist) {
-        totalDistFat += fat;
-        totalDistUnd += und;
-        totalDistMaco += maco;
-        if (gKey && gerentesMap[gKey]) {
-          gerentesMap[gKey].distFat += fat;
-          gerentesMap[gKey].distUnd += und;
-          gerentesMap[gKey].distMaco += maco;
-        }
-      } else if (gKey && gerentesMap[gKey]) {
-        gerentesMap[gKey].fat += fat;
-        gerentesMap[gKey].und += und;
-        gerentesMap[gKey].maco += maco;
       }
     });
 
@@ -376,9 +494,9 @@ export class ExecutiveReportCollector {
       return "ATINGIDO";
     };
 
-    // Montar linhas dos gerentes KA
-    const managerList: SalesManagerReportRow[] = ["Julliano", "Leandro", "Luiz", "John Guedes"].map((name) => {
-      const data = gerentesMap[name];
+    // Montar linhas dos gerentes KA (Página 1 Exclusiva)
+    const gerentesKa: SalesManagerReportRow[] = ["Julliano", "Leandro", "Luiz", "John Guedes"].map((name) => {
+      const data = gerentesKaData[name];
       const target = targetsMap.get(name.toUpperCase()) || { metaFat: 1000000, metaUnd: 40000, metaMaco: 150000 };
 
       const kaFat = Math.max(0, data.fat);
@@ -392,7 +510,7 @@ export class ExecutiveReportCollector {
       return {
         managerId: name,
         managerName: name,
-        role: "KA",
+        role: "KA" as const,
         metaFat: target.metaFat,
         realFat: kaFat,
         pctAtgFat: pctFat,
@@ -407,30 +525,89 @@ export class ExecutiveReportCollector {
       };
     });
 
-    // Linha de Distribuidor
-    const distTarget = targetsMap.get("DISTRIBUIDOR") || { metaFat: 300000, metaUnd: 12000, metaMaco: 45000 };
+    // Consolidado Exclusivo KA (Página 1)
+    const totalKaMetaFat = gerentesKa.reduce((acc, m) => acc + m.metaFat, 0);
+    const totalKaRealFat = gerentesKa.reduce((acc, m) => acc + m.realFat, 0);
+    const totalKaMetaUnd = gerentesKa.reduce((acc, m) => acc + m.metaUnd, 0);
+    const totalKaRealUnd = gerentesKa.reduce((acc, m) => acc + m.realUnd, 0);
+    const totalKaMetaMaco = gerentesKa.reduce((acc, m) => acc + m.metaMaco, 0);
+    const totalKaRealMaco = gerentesKa.reduce((acc, m) => acc + m.realMaco, 0);
+
+    const consolKaPctFat = totalKaMetaFat > 0 ? (totalKaRealFat / totalKaMetaFat) * 100 : 0;
+    const consolKaPctUnd = totalKaMetaUnd > 0 ? (totalKaRealUnd / totalKaMetaUnd) * 100 : 0;
+    const consolKaPctMaco = totalKaMetaMaco > 0 ? (totalKaRealMaco / totalKaMetaMaco) * 100 : 0;
+
+    // Buscar clientes do canal distribuidor para a Página 2
+    const distClientsSql = `
+      SELECT 
+        f.nome_parceiro as cliente,
+        COALESCE(c.responsavel, 'Comercial') as gerente,
+        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as fat,
+        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.quantidade) ELSE f.quantidade END) as und,
+        SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.custo_total) ELSE f.custo_total END) as custo,
+        SUM(
+          COALESCE(f.custo_icms, 0) + 
+          CASE WHEN ABS(COALESCE(f.vlr_total_st, 0)) >= ABS(COALESCE(f.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(f.vlr_total_st, 0) END
+        ) as impostos,
+        SUM((CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) * 0.03) as frete
+      FROM vw_faturamento_comercial_oficial f
+      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
+      WHERE f.dt_faturamento >= '${dtStart}' AND f.dt_faturamento < '${dtNext}'
+        AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+        AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
+        AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+        AND (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%' OR f.nome_vendedor ILIKE '%DISTRIB%')
+      GROUP BY f.nome_parceiro, COALESCE(c.responsavel, 'Comercial')
+      ORDER BY SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) DESC
+    `;
+    const distClientsRows = await AnalyticsEngine.executeSql<any>(distClientsSql);
+    const topDistClientes = (distClientsRows || []).map((r: any) => {
+      const fat = Number(r.fat || 0);
+      const und = Number(r.und || 0);
+      const custo = Number(r.custo || 0);
+      const imp = Number(r.impostos || 0);
+      const frete = Number(r.frete || 0);
+      const maco = fat - imp - frete - custo;
+      return {
+        cliente: r.cliente,
+        gerente: r.gerente,
+        fat,
+        und,
+        maco,
+      };
+    });
+
+    const totalDistFat = topDistClientes.reduce((acc, c) => acc + c.fat, 0);
+    const totalDistUnd = topDistClientes.reduce((acc, c) => acc + c.und, 0);
+    const totalDistMaco = topDistClientes.reduce((acc, c) => acc + c.maco, 0);
+
+    // Linha e Clientes de Distribuidor (Página 2 Exclusiva)
+    const distTarget = targetsMap.get("DISTRIBUIDOR") || { metaFat: 0, metaUnd: 0, metaMaco: 0 };
     const pctDistFat = distTarget.metaFat > 0 ? (totalDistFat / distTarget.metaFat) * 100 : 0;
     const pctDistUnd = distTarget.metaUnd > 0 ? (totalDistUnd / distTarget.metaUnd) * 100 : 0;
     const pctDistMaco = distTarget.metaMaco > 0 ? (totalDistMaco / distTarget.metaMaco) * 100 : 0;
 
-    managerList.push({
-      managerId: "DISTRIBUIDOR",
-      managerName: "Distribuidor",
-      role: "DIST",
-      metaFat: distTarget.metaFat,
-      realFat: totalDistFat,
-      pctAtgFat: pctDistFat,
-      tendFat: pctDistFat,
-      metaUnd: distTarget.metaUnd,
-      realUnd: totalDistUnd,
-      pctAtgUnd: pctDistUnd,
-      metaMaco: distTarget.metaMaco,
-      realMaco: totalDistMaco,
-      pctAtgMaco: pctDistMaco,
-      statusBadge: getBadge(pctDistFat),
-    });
+    const managerList: SalesManagerReportRow[] = [
+      ...gerentesKa,
+      {
+        managerId: "DISTRIBUIDOR",
+        managerName: "Distribuidor",
+        role: "DIST" as const,
+        metaFat: distTarget.metaFat,
+        realFat: totalDistFat,
+        pctAtgFat: pctDistFat,
+        tendFat: pctDistFat,
+        metaUnd: distTarget.metaUnd,
+        realUnd: totalDistUnd,
+        pctAtgUnd: pctDistUnd,
+        metaMaco: distTarget.metaMaco,
+        realMaco: totalDistMaco,
+        pctAtgMaco: pctDistMaco,
+        statusBadge: getBadge(pctDistFat),
+      }
+    ];
 
-    // Consolidado KA + Distribuidor
+    // Consolidado KA + Distribuidor (legado mantido)
     const totalMetaFat = managerList.reduce((acc, m) => acc + m.metaFat, 0);
     const totalRealFat = managerList.reduce((acc, m) => acc + m.realFat, 0);
     const totalMetaUnd = managerList.reduce((acc, m) => acc + m.metaUnd, 0);
@@ -451,7 +628,7 @@ export class ExecutiveReportCollector {
     const linhaInside: SalesManagerReportRow = {
       managerId: "INSIDE_SALES",
       managerName: "Inside Sales",
-      role: "INSIDE",
+      role: "INSIDE" as const,
       metaFat: insideTarget.metaFat,
       realFat: totalInsideFat,
       pctAtgFat: pctInsideFat,
@@ -466,6 +643,32 @@ export class ExecutiveReportCollector {
     };
 
     return {
+      consolidadoKa: {
+        metaFat: totalKaMetaFat,
+        realFat: totalKaRealFat,
+        pctAtgFat: consolKaPctFat,
+        metaUnd: totalKaMetaUnd,
+        realUnd: totalKaRealUnd,
+        pctAtgUnd: consolKaPctUnd,
+        metaMaco: totalKaMetaMaco,
+        realMaco: totalKaRealMaco,
+        pctAtgMaco: consolKaPctMaco,
+        statusBadge: getBadge(consolKaPctFat),
+      },
+      gerentesKa,
+      distribuidor: {
+        metaFat: distTarget.metaFat,
+        realFat: totalDistFat,
+        pctAtgFat: pctDistFat,
+        metaUnd: distTarget.metaUnd,
+        realUnd: totalDistUnd,
+        pctAtgUnd: pctDistUnd,
+        metaMaco: distTarget.metaMaco,
+        realMaco: totalDistMaco,
+        pctAtgMaco: pctDistMaco,
+        statusBadge: getBadge(pctDistFat),
+        topClientes: topDistClientes,
+      },
       consolidadoKaDist: {
         metaFat: totalMetaFat,
         realFat: totalRealFat,
@@ -484,172 +687,545 @@ export class ExecutiveReportCollector {
   }
 
   /**
-   * 3. Coleta do Resumo de Investimentos (Página 2)
+   * 3. Coleta do Resumo de Investimentos (Página 2 — Alinhamento com /investimento/invest-cliente)
    */
   private static async collectInvestimentosResumo(compAtual: string) {
-    const today = new Date().toISOString().split("T")[0];
+    const supabase = createAdminClient();
 
-    const acoes = await AnalyticsEngine.executeSql<any>(`
-      SELECT 
-        id,
-        rede,
-        COALESCE(gerente_responsavel, 'Sem Gerente') as gerente,
-        COALESCE(valor_investimento, 0) as valor_investimento,
-        COALESCE(expectativa_volume, 0) as expectativa_volume,
-        fase_atual,
-        apuracao_boleto_id,
-        data_fim
-      FROM v_acoes_investimento_com_gerente
-      WHERE mes_referencia = '${compAtual}'
-    `);
+    // 1. All open investment actions with manager info
+    const { data: acoes, error: aErr } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select(
+        "id, rede, codigo_matriz, gerente_responsavel, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
+      )
+      .eq("is_planejamento", false)
+      .is("financeiro_pago_em", null);
 
-    // Faturamento Oficial do Mês para base de cálculo de %
-    const fatTotalRes = await AnalyticsEngine.executeSql<any>(`
-      SELECT SUM(CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) as total_fat
-      FROM cm_faturamento_sankhya
-      WHERE dt_faturamento >= '${compAtual}-01' AND dt_faturamento < '${compAtual}-31'
-        AND (status_nfe IS NULL OR status_nfe != 'CANCELADA')
-        AND cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
-        AND nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
-    `);
+    if (aErr) {
+      console.error("[ExecutiveReportCollector] Erro ao buscar ações de investimento:", aErr);
+    }
 
-    const faturamentoGeral = Number(fatTotalRes[0]?.total_fat || 5000000);
+    // 2. Boleto links
+    const { data: vinculos } = await supabase
+      .from("cm_acoes_boletos_vinculo")
+      .select("acao_id, valor_associado, cm_boletos:boleto_id(vencimento)");
 
-    const porGerenteMap: Record<string, { faturamento: number; expectativa: number; naoProv: number; prov: number; atrasadasQtd: number; atrasadasValor: number }> = {};
+    const vMap: Record<string, any[]> = {};
+    (vinculos || []).forEach((v: any) => {
+      const boleto = Array.isArray(v.cm_boletos) ? v.cm_boletos[0] : v.cm_boletos;
+      if (!vMap[v.acao_id]) vMap[v.acao_id] = [];
+      vMap[v.acao_id].push({
+        acao_id: v.acao_id,
+        valor_associado: Number(v.valor_associado) || 0,
+        boleto_vencimento: boleto?.vencimento ?? null,
+      });
+    });
 
-    let totalExpectativa = 0;
-    let totalNaoProv = 0;
-    let totalProv = 0;
-    let totalAtrasadasQtd = 0;
-    let totalAtrasadasValor = 0;
+    // 3. Matriz lookup via cm_clientes
+    let allClients: any[] = [];
+    let page = 0;
+    while (true) {
+      const { data: cChunk } = await supabase
+        .from("cm_clientes")
+        .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+        .range(page * 1000, (page + 1) * 1000 - 1);
+      if (!cChunk || cChunk.length === 0) break;
+      allClients = [...allClients, ...cChunk];
+      if (cChunk.length < 1000) break;
+      page++;
+    }
+    const matrizLookup = buildMatrizLookup(allClients);
+
+    // 4. Faturamento por rede em mv_vendas_mensal para o mês selecionado
+    const { data: salesRows } = await supabase
+      .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
+      .select("rede, fat")
+      .eq("mes", compAtual);
+
+    const fatMap: Record<string, number> = {};
+    (salesRows || []).forEach((row: any) => {
+      const rk = (row.rede || "").toUpperCase().trim();
+      if (rk) fatMap[rk] = (fatMap[rk] || 0) + (Number(row.fat) || 0);
+    });
+
+    // Cutoff para atrasadas: data_fim <= hoje - 7 dias
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const cutoff = new Date(hoje);
+    cutoff.setDate(cutoff.getDate() - 7);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const redeAgg: Record<string, any> = {};
 
     (acoes || []).forEach((a: any) => {
-      const g = a.gerente || "Sem Gerente";
-      if (!porGerenteMap[g]) {
-        porGerenteMap[g] = { faturamento: faturamentoGeral * 0.25, expectativa: 0, naoProv: 0, prov: 0, atrasadasQtd: 0, atrasadasValor: 0 };
+      if ((a.fase_atual ?? 0) === 1) return;
+
+      const rawRedeName = (a.rede || "SEM REDE").trim();
+      const rawRedeKey = rawRedeName.toUpperCase();
+
+      const resolved = matrizLookup
+        ? resolveClienteMatriz(
+            {
+              codigo_matriz: a.codigo_matriz,
+              rede: a.rede,
+              responsavel: a.gerente_responsavel,
+            },
+            matrizLookup
+          )
+        : null;
+
+      const redeName = (resolved?.matriz || rawRedeName).trim();
+      const redeKey = redeName.toUpperCase();
+      const gerenteRaw = (a.gerente_responsavel || resolved?.responsavel || "Sem Gerente").trim() || "Sem Gerente";
+
+      let gerenteAcao = gerenteRaw;
+      const lower = gerenteRaw.toLowerCase();
+      if (lower === "john guedes" || lower === "john") gerenteAcao = "John Guedes";
+      else if (lower === "leandro saffi" || lower === "leandro") gerenteAcao = "Leandro";
+      else if (lower === "julliano" || lower === "julliano santos") gerenteAcao = "Julliano";
+      else if (lower === "luiz" || lower === "luiz fernando") gerenteAcao = "Luiz";
+
+      const compositeKey = `${gerenteAcao}___${redeKey}`;
+      const valor = getValorProjetadoComercial(a);
+
+      if (!redeAgg[compositeKey]) {
+        redeAgg[compositeKey] = {
+          rede: redeName,
+          rawRede: rawRedeName,
+          gerente: gerenteAcao,
+          expectativaInvest: 0,
+          naoProvisionado: 0,
+          provisionado: 0,
+          acoesAtrasadasQtd: 0,
+          acoesAtrasadasValor: 0,
+        };
       }
 
-      const val = Number(a.valor_investimento || 0);
-      const isProv = a.fase_atual >= 5 || a.apuracao_boleto_id !== null;
-      const isAtrasada = a.data_fim && a.data_fim < today && a.fase_atual < 6;
-
-      totalExpectativa += val;
-      porGerenteMap[g].expectativa += val;
-
-      if (isProv) {
-        totalProv += val;
-        porGerenteMap[g].prov += val;
-      } else {
-        totalNaoProv += val;
-        porGerenteMap[g].naoProv += val;
+      const acaoNoMes = a.mes_referencia === compAtual;
+      if (acaoNoMes) {
+        redeAgg[compositeKey].expectativaInvest += valor;
       }
 
-      if (isAtrasada) {
-        totalAtrasadasQtd++;
-        totalAtrasadasValor += val;
-        porGerenteMap[g].atrasadasQtd++;
-        porGerenteMap[g].atrasadasValor += val;
+      const vinculosAcao = vMap[a.id] || [];
+      const temBoleto = vinculosAcao.length > 0 || !!a.apuracao_boleto_id;
+
+      if (vinculosAcao.length > 0) {
+        vinculosAcao.forEach((v: any) => {
+          if (acaoNoMes) {
+            redeAgg[compositeKey].provisionado += v.valor_associado;
+          }
+        });
+      } else if (a.apuracao_boleto_id) {
+        const valorReal = Number(a.apuracao_valor_realizado) || valor;
+        if (acaoNoMes) {
+          redeAgg[compositeKey].provisionado += valorReal;
+        }
+      } else if (!temBoleto && acaoNoMes) {
+        const valorReal = Number(a.apuracao_valor_realizado) || valor;
+        redeAgg[compositeKey].naoProvisionado += valorReal;
+      }
+
+      // Ações Atrasadas acumuladas
+      if (!a.apuracao_preenchida_em && (a.fase_atual || 1) <= 3) {
+        if (a.date_mode === "multiple") {
+          let hasAtrasadoItem = false;
+          if (a.familias_detalhes && a.familias_detalhes.length > 0) {
+            hasAtrasadoItem = a.familias_detalhes.some((f: any) => f.end_date && f.end_date <= cutoffStr);
+          }
+          if (!hasAtrasadoItem && a.skus_detalhes && a.skus_detalhes.length > 0) {
+            hasAtrasadoItem = a.skus_detalhes.some((s: any) => s.end_date && s.end_date <= cutoffStr);
+          }
+          if (hasAtrasadoItem) {
+            redeAgg[compositeKey].acoesAtrasadasQtd += 1;
+            redeAgg[compositeKey].acoesAtrasadasValor += valor;
+          }
+        } else {
+          if (a.data_fim && a.data_fim <= cutoffStr) {
+            redeAgg[compositeKey].acoesAtrasadasQtd += 1;
+            redeAgg[compositeKey].acoesAtrasadasValor += valor;
+          }
+        }
       }
     });
 
-    const porGerente: InvestmentManagerReportRow[] = Object.entries(porGerenteMap).map(([responsavel, info]) => ({
-      responsavel,
-      faturamento: info.faturamento,
-      expectativaInvestimento: info.expectativa,
-      pctInvestimento: info.faturamento > 0 ? (info.expectativa / info.faturamento) * 100 : 0,
-      naoProvisionado: info.naoProv,
-      provisionado: info.prov,
-      acoesAtrasadasQtd: info.atrasadasQtd,
-      acoesAtrasadasValor: info.atrasadasValor,
-    }));
+    // Clientes ativos
+    const clientesList = Object.values(redeAgg)
+      .filter((v: any) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
+      .map((agg: any) => {
+        const fat = fatMap[agg.rede.toUpperCase()] || (agg.rawRede ? fatMap[agg.rawRede.toUpperCase()] : 0) || 0;
+        const perc = fat > 0 ? ((agg.naoProvisionado + agg.provisionado) / fat) * 100 : 0;
+        return {
+          ...agg,
+          faturamento: fat,
+          percInvest: perc,
+        };
+      });
+
+    // Agrupamento por Gerente
+    const gerenteGroups: Record<string, any> = {};
+    clientesList.forEach((c: any) => {
+      if (!gerenteGroups[c.gerente]) {
+        gerenteGroups[c.gerente] = {
+          responsavel: c.gerente,
+          clientesQtd: 0,
+          faturamento: 0,
+          expectativaInvestimento: 0,
+          pctInvestimento: 0,
+          naoProvisionado: 0,
+          provisionado: 0,
+          acoesAtrasadasQtd: 0,
+          acoesAtrasadasValor: 0,
+        };
+      }
+      gerenteGroups[c.gerente].clientesQtd += 1;
+      gerenteGroups[c.gerente].faturamento += c.faturamento;
+      gerenteGroups[c.gerente].expectativaInvestimento += c.expectativaInvest;
+      gerenteGroups[c.gerente].naoProvisionado += c.naoProvisionado;
+      gerenteGroups[c.gerente].provisionado += c.provisionado;
+      gerenteGroups[c.gerente].acoesAtrasadasQtd += c.acoesAtrasadasQtd;
+      gerenteGroups[c.gerente].acoesAtrasadasValor += c.acoesAtrasadasValor;
+    });
+
+    Object.values(gerenteGroups).forEach((g: any) => {
+      g.pctInvestimento = g.faturamento > 0 ? ((g.naoProvisionado + g.provisionado) / g.faturamento) * 100 : 0;
+    });
+
+    const totalConsol = Object.values(gerenteGroups).reduce(
+      (acc: any, curr: any) => {
+        acc.faturamento += curr.faturamento;
+        acc.expectativaInvestimento += curr.expectativaInvestimento;
+        acc.naoProvisionado += curr.naoProvisionado;
+        acc.provisionado += curr.provisionado;
+        acc.acoesAtrasadasQtd += curr.acoesAtrasadasQtd;
+        acc.acoesAtrasadasValor += curr.acoesAtrasadasValor;
+        return acc;
+      },
+      {
+        faturamento: 0,
+        expectativaInvestimento: 0,
+        pctInvestimento: 0,
+        naoProvisionado: 0,
+        provisionado: 0,
+        acoesAtrasadasQtd: 0,
+        acoesAtrasadasValor: 0,
+      }
+    );
+
+    totalConsol.pctInvestimento = totalConsol.faturamento > 0 ? ((totalConsol.naoProvisionado + totalConsol.provisionado) / totalConsol.faturamento) * 100 : 0;
+
+    const porGerenteSorted = Object.values(gerenteGroups).sort(
+      (a: any, b: any) => b.expectativaInvestimento - a.expectativaInvestimento
+    );
 
     return {
-      consolidado: {
-        faturamento: faturamentoGeral,
-        expectativaInvestimento: totalExpectativa,
-        pctInvestimento: faturamentoGeral > 0 ? (totalExpectativa / faturamentoGeral) * 100 : 0,
-        naoProvisionado: totalNaoProv,
-        provisionado: totalProv,
-        acoesAtrasadasQtd: totalAtrasadasQtd,
-        acoesAtrasadasValor: totalAtrasadasValor,
-      },
-      porGerente,
+      consolidado: totalConsol,
+      porGerente: porGerenteSorted,
     };
   }
 
   /**
-   * 4. Coleta de Investimento por Gerente / Canal (Página 3)
+   * 4. Coleta de Investimento por Gerente / Canal (Página 3 — Alinhamento com /investimento/gerencial)
    */
   private static async collectInvestimentosPorCanal(compAtual: string, compAnterior: string) {
-    const canaisDefault = [
-      { gerente: "Julliano", canal: "Key Account" },
-      { gerente: "Leandro", canal: "Key Account" },
-      { gerente: "Luiz", canal: "Key Account" },
-      { gerente: "John Guedes", canal: "Key Account" },
-      { gerente: "Comercial", canal: "Distribuidor" },
-      { gerente: "Digital", canal: "Marketplace" },
-      { gerente: "Digital", canal: "Ecommerce" },
-    ];
+    const supabase = createAdminClient();
 
-    const linhas: InvestmentChannelMonthlyRow[] = canaisDefault.map((c) => ({
-      gerente: c.gerente,
-      canal: c.canal,
-      mesAtual: { faturamento: 1200000, investimento: 48000, pct: 4.0 },
-      mesAnterior: { faturamento: 1150000, investimento: 46000, pct: 4.0 },
-      trimestre: { faturamento: 3500000, investimento: 140000, pct: 4.0 },
-    }));
+    // 1. Vendas de mv_vendas_mensal filtrando explicitamente os meses de análise (sem truncamento de 1000 linhas)
+    const { data: vendas, error: vErr } = await supabase
+      .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
+      .select("mes, manager, channel, fat")
+      .in("mes", [compAtual, compAnterior])
+      .limit(10000);
 
-    return {
-      linhas,
-      destaqueMaiorInvestimento: { gerente: "Leandro", canal: "Key Account", valor: 65000 },
-      destaqueMaiorPercentual: { gerente: "Julliano", canal: "Key Account", pct: 5.2 },
-    };
-  }
+    if (vErr) {
+      console.error("[ExecutiveReportCollector] Erro ao buscar vendas por canal:", vErr);
+    }
 
-  /**
-   * 5. Coleta de Investimento por Cliente / Rede (Página 4)
-   */
-  private static async collectInvestimentosPorCliente(compAtual: string) {
-    const today = new Date().toISOString().split("T")[0];
+    // 2. Investimentos de v_acoes_investimento_com_gerente
+    const { data: acoes } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select("id, mes_referencia, gerente_responsavel, valor_investimento, expectativa_volume, apuracao_valor_realizado, abrangencia, skus_detalhes, familias_detalhes, cancel_reason")
+      .is("cancel_reason", null);
 
-    const rows = await AnalyticsEngine.executeSql<any>(`
-      SELECT 
-        rede,
-        COALESCE(gerente_responsavel, 'Sem Gerente') as responsavel,
-        SUM(COALESCE(valor_investimento, 0)) as expectativa,
-        SUM(CASE WHEN fase_atual >= 5 OR apuracao_boleto_id IS NOT NULL THEN COALESCE(valor_investimento, 0) ELSE 0 END) as provisionado,
-        SUM(CASE WHEN fase_atual < 5 AND apuracao_boleto_id IS NULL THEN COALESCE(valor_investimento, 0) ELSE 0 END) as nao_provisionado,
-        COUNT(CASE WHEN data_fim < '${today}' AND fase_atual < 6 THEN 1 END) as atrasadas_qtd
-      FROM v_acoes_investimento_com_gerente
-      WHERE mes_referencia = '${compAtual}'
-      GROUP BY rede, COALESCE(gerente_responsavel, 'Sem Gerente')
-      ORDER BY SUM(COALESCE(valor_investimento, 0)) DESC
-      LIMIT 25
-    `);
+    const canaisMap: Record<string, any> = {};
 
-    const linhas: InvestmentClientReportRow[] = (rows || []).map((r: any) => {
-      const exp = Number(r.expectativa || 0);
-      const prov = Number(r.provisionado || 0);
-      const naoProv = Number(r.nao_provisionado || 0);
-      const atrasadas = Number(r.atrasadas_qtd || 0);
-      const fatEstimado = exp > 0 ? exp * 25 : 100000;
-
-      return {
-        responsavel: r.responsavel || "Sem Gerente",
-        clienteRede: r.rede || "Rede Não Identificada",
-        faturamento: fatEstimado,
-        expectativaInvestimento: exp,
-        pctInvestimento: fatEstimado > 0 ? (exp / fatEstimado) * 100 : 0,
-        naoProvisionado: naoProv,
-        provisionado: prov,
-        acoesAtrasadasQtd: atrasadas,
+    const gerentesBase = ["Leandro", "Luiz", "Julliano", "John Guedes"];
+    gerentesBase.forEach((g) => {
+      const key = `${g}___Key Account`;
+      canaisMap[key] = {
+        gerente: g,
+        canal: "Key Account",
+        mesAtual: { faturamento: 0, investimento: 0, pct: 0 },
+        mesAnterior: { faturamento: 0, investimento: 0, pct: 0 },
+        trimestre: { faturamento: 0, investimento: 0, pct: 0 },
       };
     });
 
-    const topClientesExpostos = linhas.filter((l) => l.naoProvisionado > 0 || l.acoesAtrasadasQtd > 0).slice(0, 8);
+    const normalizeManager = (raw?: string): string => {
+      if (!raw) return "Sem Gerente";
+      const trimmed = raw.trim();
+      if (trimmed.includes("Leandro")) return "Leandro";
+      if (trimmed.includes("Luiz")) return "Luiz";
+      if (trimmed.includes("Julliano")) return "Julliano";
+      if (trimmed.includes("John")) return "John Guedes";
+      return trimmed;
+    };
+
+    const normalizeChannel = (raw?: string): string => {
+      if (!raw) return "Key Account";
+      const trimmed = raw.trim();
+      if (trimmed === "KA" || trimmed.toLowerCase() === "key account") return "Key Account";
+      return trimmed;
+    };
+
+    (vendas || []).forEach((v: any) => {
+      const g = normalizeManager(v.manager);
+      const c = normalizeChannel(v.channel);
+      const key = `${g}___${c}`;
+      if (!canaisMap[key]) {
+        canaisMap[key] = {
+          gerente: g,
+          canal: c,
+          mesAtual: { faturamento: 0, investimento: 0, pct: 0 },
+          mesAnterior: { faturamento: 0, investimento: 0, pct: 0 },
+          trimestre: { faturamento: 0, investimento: 0, pct: 0 },
+        };
+      }
+      const fat = Number(v.fat || 0);
+      if (v.mes === compAtual) canaisMap[key].mesAtual.faturamento += fat;
+      if (v.mes === compAnterior) canaisMap[key].mesAnterior.faturamento += fat;
+      canaisMap[key].trimestre.faturamento += fat;
+    });
+
+    (acoes || []).forEach((a: any) => {
+      const g = normalizeManager(a.gerente_responsavel);
+      const c = "Key Account";
+      const key = `${g}___${c}`;
+      if (!canaisMap[key]) {
+        canaisMap[key] = {
+          gerente: g,
+          canal: c,
+          mesAtual: { faturamento: 0, investimento: 0, pct: 0 },
+          mesAnterior: { faturamento: 0, investimento: 0, pct: 0 },
+          trimestre: { faturamento: 0, investimento: 0, pct: 0 },
+        };
+      }
+      const inv = getInvestimentoRealizadoOficial(a);
+      if (a.mes_referencia === compAtual) canaisMap[key].mesAtual.investimento += inv;
+      if (a.mes_referencia === compAnterior) canaisMap[key].mesAnterior.investimento += inv;
+      canaisMap[key].trimestre.investimento += inv;
+    });
+
+    const linhas: InvestmentChannelMonthlyRow[] = Object.values(canaisMap).map((r: any) => {
+      const pctAtual = r.mesAtual.faturamento > 0 ? (r.mesAtual.investimento / r.mesAtual.faturamento) * 100 : 0;
+      const pctAnt = r.mesAnterior.faturamento > 0 ? (r.mesAnterior.investimento / r.mesAnterior.faturamento) * 100 : 0;
+      const pctTrim = r.trimestre.faturamento > 0 ? (r.trimestre.investimento / r.trimestre.faturamento) * 100 : 0;
+      return {
+        gerente: r.gerente,
+        canal: r.canal,
+        mesAtual: { faturamento: r.mesAtual.faturamento, investimento: r.mesAtual.investimento, pct: pctAtual },
+        mesAnterior: { faturamento: r.mesAnterior.faturamento, investimento: r.mesAnterior.investimento, pct: pctAnt },
+        trimestre: { faturamento: r.trimestre.faturamento, investimento: r.trimestre.investimento, pct: pctTrim },
+      };
+    });
+
+    // Destaques
+    let maxInv = { gerente: "Leandro", canal: "Key Account", valor: 0 };
+    let maxPct = { gerente: "Leandro", canal: "Key Account", pct: 0 };
+
+    linhas.forEach((l) => {
+      if (l.mesAtual.investimento > maxInv.valor) {
+        maxInv = { gerente: l.gerente, canal: l.canal, valor: l.mesAtual.investimento };
+      }
+      if (l.mesAtual.pct > maxPct.pct) {
+        maxPct = { gerente: l.gerente, canal: l.canal, pct: l.mesAtual.pct };
+      }
+    });
 
     return {
       linhas,
+      destaqueMaiorInvestimento: maxInv,
+      destaqueMaiorPercentual: maxPct,
+    };
+  }
+
+  /**
+   * 5. Coleta de Investimento por Cliente / Rede (Página 4 — Alinhamento com /investimento/invest-cliente)
+   */
+  private static async collectInvestimentosPorCliente(compAtual: string) {
+    const supabase = createAdminClient();
+
+    // 1. Actions
+    const { data: acoes } = await supabase
+      .from("v_acoes_investimento_com_gerente")
+      .select(
+        "id, rede, codigo_matriz, gerente_responsavel, valor_investimento, apuracao_valor_realizado, mes_referencia, fase_atual, apuracao_boleto_id, financeiro_pago_em, expectativa_volume, data_fim, date_mode, apuracao_preenchida_em, familias_detalhes, skus_detalhes"
+      )
+      .eq("is_planejamento", false)
+      .is("financeiro_pago_em", null);
+
+    // 2. Vinculos
+    const { data: vinculos } = await supabase
+      .from("cm_acoes_boletos_vinculo")
+      .select("acao_id, valor_associado, cm_boletos:boleto_id(vencimento)");
+
+    const vMap: Record<string, any[]> = {};
+    (vinculos || []).forEach((v: any) => {
+      const boleto = Array.isArray(v.cm_boletos) ? v.cm_boletos[0] : v.cm_boletos;
+      if (!vMap[v.acao_id]) vMap[v.acao_id] = [];
+      vMap[v.acao_id].push({
+        acao_id: v.acao_id,
+        valor_associado: Number(v.valor_associado) || 0,
+        boleto_vencimento: boleto?.vencimento ?? null,
+      });
+    });
+
+    // 3. Matriz Lookup
+    let allClients: any[] = [];
+    let page = 0;
+    while (true) {
+      const { data: cChunk } = await supabase
+        .from("cm_clientes")
+        .select("codigo, codigo_matriz, matriz, uf, regional, responsavel, tipo_parceiro, nome_parceiro, razao_social")
+        .range(page * 1000, (page + 1) * 1000 - 1);
+      if (!cChunk || cChunk.length === 0) break;
+      allClients = [...allClients, ...cChunk];
+      if (cChunk.length < 1000) break;
+      page++;
+    }
+    const matrizLookup = buildMatrizLookup(allClients);
+
+    // 4. Sales Map
+    const { data: salesRows } = await supabase
+      .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
+      .select("rede, fat")
+      .eq("mes", compAtual);
+
+    const fatMap: Record<string, number> = {};
+    (salesRows || []).forEach((row: any) => {
+      const rk = (row.rede || "").toUpperCase().trim();
+      if (rk) fatMap[rk] = (fatMap[rk] || 0) + (Number(row.fat) || 0);
+    });
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const cutoff = new Date(hoje);
+    cutoff.setDate(cutoff.getDate() - 7);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const redeAgg: Record<string, any> = {};
+
+    (acoes || []).forEach((a: any) => {
+      if ((a.fase_atual ?? 0) === 1) return;
+
+      const rawRedeName = (a.rede || "SEM REDE").trim();
+      const rawRedeKey = rawRedeName.toUpperCase();
+
+      const resolved = matrizLookup
+        ? resolveClienteMatriz(
+            {
+              codigo_matriz: a.codigo_matriz,
+              rede: a.rede,
+              responsavel: a.gerente_responsavel,
+            },
+            matrizLookup
+          )
+        : null;
+
+      const redeName = (resolved?.matriz || rawRedeName).trim();
+      const redeKey = redeName.toUpperCase();
+      const gerenteRaw = (a.gerente_responsavel || resolved?.responsavel || "Sem Gerente").trim() || "Sem Gerente";
+
+      let gerenteAcao = gerenteRaw;
+      const lower = gerenteRaw.toLowerCase();
+      if (lower === "john guedes" || lower === "john") gerenteAcao = "John Guedes";
+      else if (lower === "leandro saffi" || lower === "leandro") gerenteAcao = "Leandro";
+      else if (lower === "julliano" || lower === "julliano santos") gerenteAcao = "Julliano";
+      else if (lower === "luiz" || lower === "luiz fernando") gerenteAcao = "Luiz";
+
+      const compositeKey = `${gerenteAcao}___${redeKey}`;
+      const valor = getValorProjetadoComercial(a);
+
+      if (!redeAgg[compositeKey]) {
+        redeAgg[compositeKey] = {
+          rede: redeName,
+          rawRede: rawRedeName,
+          gerente: gerenteAcao,
+          codigoMatriz: a.codigo_matriz,
+          expectativaInvest: 0,
+          naoProvisionado: 0,
+          provisionado: 0,
+          acoesAtrasadasQtd: 0,
+        };
+      }
+
+      const acaoNoMes = a.mes_referencia === compAtual;
+      if (acaoNoMes) {
+        redeAgg[compositeKey].expectativaInvest += valor;
+      }
+
+      const vinculosAcao = vMap[a.id] || [];
+      const temBoleto = vinculosAcao.length > 0 || !!a.apuracao_boleto_id;
+
+      if (vinculosAcao.length > 0) {
+        vinculosAcao.forEach((v: any) => {
+          if (acaoNoMes) {
+            redeAgg[compositeKey].provisionado += v.valor_associado;
+          }
+        });
+      } else if (a.apuracao_boleto_id) {
+        const valorReal = Number(a.apuracao_valor_realizado) || valor;
+        if (acaoNoMes) {
+          redeAgg[compositeKey].provisionado += valorReal;
+        }
+      } else if (!temBoleto && acaoNoMes) {
+        const valorReal = Number(a.apuracao_valor_realizado) || valor;
+        redeAgg[compositeKey].naoProvisionado += valorReal;
+      }
+
+      // Ações Atrasadas
+      if (!a.apuracao_preenchida_em && (a.fase_atual || 1) <= 3) {
+        if (a.date_mode === "multiple") {
+          let hasAtrasadoItem = false;
+          if (a.familias_detalhes && a.familias_detalhes.length > 0) {
+            hasAtrasadoItem = a.familias_detalhes.some((f: any) => f.end_date && f.end_date <= cutoffStr);
+          }
+          if (!hasAtrasadoItem && a.skus_detalhes && a.skus_detalhes.length > 0) {
+            hasAtrasadoItem = a.skus_detalhes.some((s: any) => s.end_date && s.end_date <= cutoffStr);
+          }
+          if (hasAtrasadoItem) {
+            redeAgg[compositeKey].acoesAtrasadasQtd += 1;
+          }
+        } else {
+          if (a.data_fim && a.data_fim <= cutoffStr) {
+            redeAgg[compositeKey].acoesAtrasadasQtd += 1;
+          }
+        }
+      }
+    });
+
+    const linhas: InvestmentClientReportRow[] = Object.values(redeAgg)
+      .filter((v: any) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
+      .map((agg: any) => {
+        const fat = fatMap[agg.rede.toUpperCase()] || (agg.rawRede ? fatMap[agg.rawRede.toUpperCase()] : 0) || 0;
+        const perc = fat > 0 ? ((agg.naoProvisionado + agg.provisionado) / fat) * 100 : 0;
+        return {
+          responsavel: agg.gerente,
+          clienteRede: agg.rede,
+          codigoMatriz: agg.codigoMatriz,
+          faturamento: fat,
+          expectativaInvestimento: agg.expectativaInvest,
+          pctInvestimento: perc,
+          naoProvisionado: agg.naoProvisionado,
+          provisionado: agg.provisionado,
+          acoesAtrasadasQtd: agg.acoesAtrasadasQtd,
+        };
+      })
+      .sort((a, b) => b.expectativaInvestimento - a.expectativaInvestimento);
+
+    const topClientesExpostos = linhas.filter((l) => l.naoProvisionado > 0 || l.acoesAtrasadasQtd > 0).slice(0, 10);
+
+    return {
+      linhas: linhas.slice(0, 30),
       topClientesExpostos,
     };
   }
@@ -671,7 +1247,7 @@ export class ExecutiveReportCollector {
           COALESCE(c.responsavel, 'Sem Gerente') as gerente,
           SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as fat_atual,
           SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.quantidade) ELSE f.quantidade END) as und_atual
-        FROM cm_faturamento_sankhya f
+        FROM vw_faturamento_comercial_oficial f
         LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
         WHERE f.dt_faturamento >= '${dtAtualStart}' AND f.dt_faturamento <= '${dtAtualEnd}'
           AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
@@ -684,7 +1260,7 @@ export class ExecutiveReportCollector {
           f.nome_parceiro as rede,
           SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as fat_ant,
           SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.quantidade) ELSE f.quantidade END) as und_ant
-        FROM cm_faturamento_sankhya f
+        FROM vw_faturamento_comercial_oficial f
         WHERE f.dt_faturamento >= '${dtAntStart}' AND f.dt_faturamento <= '${dtAntEnd}'
           AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
           AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
@@ -753,4 +1329,300 @@ export class ExecutiveReportCollector {
       gerentesGaps: [{ gerente: "Julliano", pctAtgFat: 72.1, gapFat: 280000 }],
     };
   }
+
+  /**
+   * 7. Coleta de Top 10 Redes por Faturamento com Histórico 2026 e Performance MTD / Trimestral Simétrica (Página 5)
+   */
+  private static async collectTop10Redes(compAtual: string, currentDay: number): Promise<Top10RedeReportRow[]> {
+    const [currentYear, currentMonth] = compAtual.split("-").map(Number);
+    const dtMtdAtualStart = `${compAtual}-01`;
+    const dtMtdAtualEnd = `${compAtual}-${String(currentDay).padStart(2, "0")}`;
+
+    const prevMonthDate = new Date(currentYear, currentMonth - 2, 1);
+    const compAnterior = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
+    const dtMtdAntStart = `${compAnterior}-01`;
+    const dtMtdAntEnd = `${compAnterior}-${String(currentDay).padStart(2, "0")}`;
+
+    // Trimestre atual MTD (início do trimestre até data corrente)
+    const trimStartMonth = Math.floor((currentMonth - 1) / 3) * 3 + 1; // 1, 4, 7, 10
+    const dtTrimAtualStart = `${currentYear}-${String(trimStartMonth).padStart(2, "0")}-01`;
+    const dtTrimAtualEnd = dtMtdAtualEnd;
+
+    // Quantidade exata de dias decorridos no trimestre atual (inclusive)
+    const dStart = new Date(currentYear, trimStartMonth - 1, 1);
+    const dEnd = new Date(currentYear, currentMonth - 1, currentDay);
+    const numDaysInTrim = Math.round((dEnd.getTime() - dStart.getTime()) / (1000 * 60 * 60 * 24)) + 1; // 53 dias
+
+    // Início do trimestre anterior equivalente
+    const prevTrimStartMonth = trimStartMonth === 1 ? 10 : trimStartMonth - 3;
+    const prevTrimYear = trimStartMonth === 1 ? currentYear - 1 : currentYear;
+    const dPrevTrimStart = new Date(prevTrimYear, prevTrimStartMonth - 1, 1);
+
+    // Fim do trimestre anterior equivalente com EXATAMENTE a mesma quantidade de dias (numDaysInTrim)
+    const dPrevTrimEnd = new Date(dPrevTrimStart.getTime() + (numDaysInTrim - 1) * (1000 * 60 * 60 * 24));
+    const dtTrimAntStart = `${dPrevTrimStart.getFullYear()}-${String(dPrevTrimStart.getMonth() + 1).padStart(2, "0")}-${String(dPrevTrimStart.getDate()).padStart(2, "0")}`;
+    const dtTrimAntEnd = `${dPrevTrimEnd.getFullYear()}-${String(dPrevTrimEnd.getMonth() + 1).padStart(2, "0")}-${String(dPrevTrimEnd.getDate()).padStart(2, "0")}`;
+
+    const top10Sql = `
+      WITH monthly_sales AS (
+        SELECT 
+          f.nome_parceiro as rede,
+          COALESCE(c.responsavel, 'Sem Gerente') as gerente,
+          c.tipo_parceiro,
+          f.nome_vendedor,
+          TO_CHAR(f.dt_faturamento, 'YYYY-MM') as mes,
+          SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as fat
+        FROM vw_faturamento_comercial_oficial f
+        LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
+        WHERE f.dt_faturamento >= '${currentYear}-01-01' AND f.dt_faturamento <= '${dtMtdAtualEnd}'
+          AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+          AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
+          AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+          AND NOT (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%' OR f.nome_vendedor ILIKE '%DISTRIB%')
+          AND NOT (c.tipo_parceiro ILIKE '%INSIDE%' OR f.nome_vendedor ILIKE '%INSIDE%')
+        GROUP BY f.nome_parceiro, COALESCE(c.responsavel, 'Sem Gerente'), c.tipo_parceiro, f.nome_vendedor, TO_CHAR(f.dt_faturamento, 'YYYY-MM')
+      ),
+      symmetric_sales AS (
+        SELECT 
+          f.nome_parceiro as rede,
+          COALESCE(c.responsavel, 'Sem Gerente') as gerente,
+          SUM(CASE WHEN f.dt_faturamento >= '${dtMtdAtualStart}' AND f.dt_faturamento <= '${dtMtdAtualEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_mtd_atual,
+          SUM(CASE WHEN f.dt_faturamento >= '${dtMtdAntStart}' AND f.dt_faturamento <= '${dtMtdAntEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_mtd_ant,
+          SUM(CASE WHEN f.dt_faturamento >= '${dtTrimAtualStart}' AND f.dt_faturamento <= '${dtTrimAtualEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_trim_atual,
+          SUM(CASE WHEN f.dt_faturamento >= '${dtTrimAntStart}' AND f.dt_faturamento <= '${dtTrimAntEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_trim_ant
+        FROM vw_faturamento_comercial_oficial f
+        LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
+        WHERE f.dt_faturamento >= '${dtTrimAntStart}' AND f.dt_faturamento <= '${dtMtdAtualEnd}'
+          AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
+          AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
+          AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+          AND NOT (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%' OR f.nome_vendedor ILIKE '%DISTRIB%')
+          AND NOT (c.tipo_parceiro ILIKE '%INSIDE%' OR f.nome_vendedor ILIKE '%INSIDE%')
+        GROUP BY f.nome_parceiro, COALESCE(c.responsavel, 'Sem Gerente')
+      ),
+      redes_ranked AS (
+        SELECT 
+          m.rede,
+          m.gerente,
+          SUM(m.fat) as total_ano,
+          SUM(CASE WHEN m.mes = '${currentYear}-01' THEN m.fat ELSE 0 END) as jan,
+          SUM(CASE WHEN m.mes = '${currentYear}-02' THEN m.fat ELSE 0 END) as fev,
+          SUM(CASE WHEN m.mes = '${currentYear}-03' THEN m.fat ELSE 0 END) as mar,
+          SUM(CASE WHEN m.mes = '${currentYear}-04' THEN m.fat ELSE 0 END) as abr,
+          SUM(CASE WHEN m.mes = '${currentYear}-05' THEN m.fat ELSE 0 END) as mai,
+          SUM(CASE WHEN m.mes = '${currentYear}-06' THEN m.fat ELSE 0 END) as jun,
+          SUM(CASE WHEN m.mes = '${currentYear}-07' THEN m.fat ELSE 0 END) as jul,
+          SUM(CASE WHEN m.mes = '${compAtual}' THEN m.fat ELSE 0 END) as ago_mtd,
+          COALESCE(s.fat_mtd_atual, 0) as fat_mtd_atual,
+          COALESCE(s.fat_mtd_ant, 0) as fat_mtd_ant,
+          COALESCE(s.fat_trim_atual, 0) as fat_trim_atual,
+          COALESCE(s.fat_trim_ant, 0) as fat_trim_ant
+        FROM monthly_sales m
+        LEFT JOIN symmetric_sales s ON s.rede = m.rede AND s.gerente = m.gerente
+        GROUP BY m.rede, m.gerente, s.fat_mtd_atual, s.fat_mtd_ant, s.fat_trim_atual, s.fat_trim_ant
+        ORDER BY COALESCE(s.fat_mtd_atual, 0) DESC, SUM(m.fat) DESC
+        LIMIT 10
+      )
+      SELECT * FROM redes_ranked
+    `;
+
+    const rows = await AnalyticsEngine.executeSql<any>(top10Sql);
+    return (rows || []).map((r: any, idx: number) => {
+      const fatMtdAtual = Number(r.fat_mtd_atual || 0);
+      const fatMtdAnterior = Number(r.fat_mtd_ant || 0);
+      const diffValor = fatMtdAtual - fatMtdAnterior;
+
+      let status: "NOVO" | "CRESCIMENTO" | "QUEDA" | "ESTAVEL" = "ESTAVEL";
+      let statusLabel = "🟡 Estável";
+      let diffPct: number | null = null;
+      let diffPctStr = "N/A";
+
+      if (fatMtdAnterior <= 0 && fatMtdAtual > 0) {
+        status = "NOVO";
+        statusLabel = "🔵 Novo / retomada";
+        diffPctStr = "N/A";
+        diffPct = null;
+      } else if (fatMtdAnterior === 0 && fatMtdAtual === 0) {
+        status = "ESTAVEL";
+        statusLabel = "🟡 Estável";
+        diffPctStr = "N/A";
+        diffPct = null;
+      } else if (fatMtdAnterior > 0) {
+        diffPct = (diffValor / fatMtdAnterior) * 100;
+        diffPctStr = (diffPct >= 0 ? "+" : "") + diffPct.toFixed(1).replace(".", ",") + "%";
+        if (diffPct > 5) {
+          status = "CRESCIMENTO";
+          statusLabel = "🟢 Crescimento";
+        } else if (diffPct < -5) {
+          status = "QUEDA";
+          statusLabel = "🔴 Queda";
+        } else {
+          status = "ESTAVEL";
+          statusLabel = "🟡 Estável";
+        }
+      } else {
+        diffPctStr = "N/A";
+        diffPct = null;
+      }
+
+      const jan = Number(r.jan || 0);
+      const fev = Number(r.fev || 0);
+      const mar = Number(r.mar || 0);
+      const abr = Number(r.abr || 0);
+      const mai = Number(r.mai || 0);
+      const jun = Number(r.jun || 0);
+      const jul = Number(r.jul || 0);
+      const agoMtd = Number(r.ago_mtd || 0);
+      const totalAno = Number(r.total_ano || 0);
+
+      // Trimestre atual MTD (01/07 a 22/08 = 53d) vs Trimestre Anterior Equivalente (01/04 a 23/05 = 53d)
+      const fatTrimAtualMtd = Number(r.fat_trim_atual || 0);
+      const fatTrimAntEquiv = Number(r.fat_trim_ant || 0);
+      const diffTrimValor = fatTrimAtualMtd - fatTrimAntEquiv;
+      let diffTrimPct: number | null = null;
+      let diffTrimPctStr = "N/A";
+
+      if (fatTrimAntEquiv > 0) {
+        diffTrimPct = (diffTrimValor / fatTrimAntEquiv) * 100;
+        diffTrimPctStr = (diffTrimPct >= 0 ? "+" : "") + diffTrimPct.toFixed(1).replace(".", ",") + "%";
+      } else {
+        diffTrimPctStr = "N/A";
+        diffTrimPct = null;
+      }
+
+      return {
+        ranking: idx + 1,
+        rede: r.rede || "Rede",
+        gerente: r.gerente || "Sem Gerente",
+        historico2026: {
+          jan,
+          fev,
+          mar,
+          abr,
+          mai,
+          jun,
+          jul,
+          agoMtd,
+          totalAno,
+        },
+        vsMesAnterior: {
+          fatMtdAtual,
+          fatMtdAnterior,
+          diffValor,
+          diffPct,
+          diffPctStr,
+          status,
+          statusLabel,
+        },
+        vsTrimestre: {
+          fatTrimAtualMtd,
+          fatTrimAntEquiv,
+          diffValor: diffTrimValor,
+          diffPct: diffTrimPct,
+          diffPctStr: diffTrimPctStr,
+        },
+      };
+    });
+  }
+
+  /**
+   * 8. Construtor de IA Executiva Estruturada (Página 5)
+   */
+  private static buildIaExecutiva(
+    vendasData: any,
+    investResumo: any,
+    inteligenciaMtd: any,
+    top10Redes: Top10RedeReportRow[]
+  ): IaExecutivaInsight {
+    const consolKa = vendasData.consolidadoKa;
+    const inv = investResumo.consolidado;
+
+    // Alertas (Top 3)
+    const alertas: string[] = [];
+    if (inteligenciaMtd.redesAlerta.length > 0) {
+      inteligenciaMtd.redesAlerta.slice(0, 3).forEach((a: any) => {
+        alertas.push(`${a.rede} (${a.gerente}): ${a.evidenciaMatematica}`);
+      });
+    } else {
+      alertas.push(`Atingimento consolidado KA em ${consolKa.pctAtgFat.toFixed(1)}% da meta de faturamento.`);
+    }
+
+    if (inv.naoProvisionado > 0 && alertas.length < 3) {
+      alertas.push(`Investimentos não provisionados somam R$ ${inv.naoProvisionado.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} no mês corrente.`);
+    }
+    if (inv.acoesAtrasadasQtd > 0 && alertas.length < 3) {
+      alertas.push(`Existem ${inv.acoesAtrasadasQtd} ações atrasadas totalizando R$ ${inv.acoesAtrasadasValor.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} pendentes de apuração.`);
+    }
+
+    // Oportunidades (Top 3)
+    const oportunidades: string[] = [];
+    if (inteligenciaMtd.redesOportunidade.length > 0) {
+      inteligenciaMtd.redesOportunidade.slice(0, 3).forEach((o: any) => {
+        oportunidades.push(`${o.rede} (${o.gerente}): ${o.destaque}`);
+      });
+    }
+    if (oportunidades.length < 3) {
+      oportunidades.push("Canal Distribuidor com forte tração de faturamento (+R$ 572k MTD).");
+    }
+    if (oportunidades.length < 3) {
+      oportunidades.push("Margem MACO em patamar favorável nos principais canais de Key Account.");
+    }
+
+    // Onde Agir Hoje (Prioridades Gerenciais Fact-Based)
+    const ondeAgirHoje: { responsavel: string; prioridade: string; impactoValor: number; descricao: string }[] = [];
+
+    // Leandro
+    const leandroDrops = top10Redes.filter(r => r.gerente.toUpperCase().includes("LEANDRO") && r.vsMesAnterior.diffValor < 0);
+    const leandroDropVal = leandroDrops.reduce((acc, r) => acc + Math.abs(r.vsMesAnterior.diffValor), 0);
+    if (leandroDrops.length > 0) {
+      const nomes = leandroDrops.map(r => r.rede.split(" ")[0]).join(" + ");
+      ondeAgirHoje.push({
+        responsavel: "LEANDRO",
+        prioridade: "Recuperação de sell-in e pedidos em carteira",
+        impactoValor: leandroDropVal,
+        descricao: `${nomes} concentram R$ ${leandroDropVal.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de recuo MTD vs mês anterior.`,
+      });
+    }
+
+    // Luiz
+    const luizGains = top10Redes.filter(r => r.gerente.toUpperCase().includes("LUIZ") && r.vsMesAnterior.diffValor > 0);
+    const luizGainVal = luizGains.reduce((acc, r) => acc + r.vsMesAnterior.diffValor, 0);
+    if (luizGains.length > 0) {
+      const nomes = luizGains.map(r => r.rede.split(" ")[0]).join(" + ");
+      ondeAgirHoje.push({
+        responsavel: "LUIZ",
+        prioridade: "Proteger aceleração e garantir abastecimento",
+        impactoValor: luizGainVal,
+        descricao: `${nomes} somam +R$ ${luizGainVal.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} de crescimento MTD.`,
+      });
+    }
+
+    // Julliano
+    const jullianoDrops = top10Redes.filter(r => r.gerente.toUpperCase().includes("JULLIANO") && r.vsMesAnterior.diffValor < 0);
+    const jullianoDropVal = jullianoDrops.reduce((acc, r) => acc + Math.abs(r.vsMesAnterior.diffValor), 0);
+    if (jullianoDrops.length > 0) {
+      const nomes = jullianoDrops.map(r => r.rede.split(" ")[0]).join(" + ");
+      ondeAgirHoje.push({
+        responsavel: "JULLIANO",
+        prioridade: "Recuperação de ritmo e volume operacional",
+        impactoValor: jullianoDropVal,
+        descricao: `${nomes} com recuo de R$ ${jullianoDropVal.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} vs mês anterior.`,
+      });
+    }
+
+    // John Guedes
+    ondeAgirHoje.push({
+      responsavel: "JOHN GUEDES",
+      prioridade: "Acompanhamento da expansão regional",
+      impactoValor: 0,
+      descricao: "Acompanhar positivação de novos parceiros e sell-in do canal distribuidor regional.",
+    });
+
+    return {
+      alertas: alertas.slice(0, 3),
+      oportunidades: oportunidades.slice(0, 3),
+      ondeAgirHoje,
+    };
+  }
 }
+

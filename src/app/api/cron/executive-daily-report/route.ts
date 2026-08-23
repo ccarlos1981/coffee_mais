@@ -84,8 +84,8 @@ async function handleExecutiveReportCron(request: NextRequest) {
     console.log("[ExecutiveReportCron] Gerando resumo analítico com IA Gemini...");
     const emailHtml = await ExecutiveAiAnalyst.generateEmailSummary(reportData);
 
-    // 7. Geração do Buffer PDF de 4 Páginas
-    console.log("[ExecutiveReportCron] Construindo PDF executivo de 4 páginas com pdfMake...");
+    // 7. Geração do Buffer PDF de 5 Páginas
+    console.log("[ExecutiveReportCron] Construindo PDF executivo de 5 páginas com pdfMake...");
     const pdfBuffer = await ExecutivePdfBuilder.buildPdfBuffer(reportData);
     console.log(`[ExecutiveReportCron] PDF gerado com sucesso (${(pdfBuffer.length / 1024).toFixed(1)} KB).`);
 
