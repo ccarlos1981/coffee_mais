@@ -4135,6 +4135,35 @@ STATUS = CPV_GOVERNANCE_BASELINE_REGISTERED
 
 Status Arquitetural: `CPV_GOVERNANCE = LOCKED` & `CPV_SANKHYA_STATUS = NOT_SUITABLE` & `CPV_MASTER_DATA_SPECIFICATION = HOMOLOGATED` & `MACO_FORMULA = PRESERVED` & `BASELINE = PERMANENTE`.
 
+---
+
+## 125. Baseline Oficial — Relatório Executivo Diário Automático por E-mail (Demanda 085)
+
+A partir de 22/08/2026, a infraestrutura e rotinas de geração do **Relatório Executivo Diário do Coffee++** tornam-se o baseline permanente e oficial do ecossistema executivo da plataforma.
+
+### Diretrizes Mandatórias:
+1. **Destinatário e Periodicidade**:
+   - Destinatário oficial: `cristiano.santos@coffeemais.com`.
+   - Frequência: Segunda a Sábado, às 07:30 (horário de Brasília / Timezone `America/Sao_Paulo`).
+   - Bloqueio de Domingos: Execução é estritamente bloqueada aos domingos (`dayOfWeek === 0`).
+2. **Dependência Crítica da Ingestão**:
+   - O relatório só pode ser gerado após a confirmação de sucesso da rotina diária de importação do Import Hub (`cm_sync_logs`).
+   - Se a importação do dia estiver pendente ou com erro, o envio do relatório principal é bloqueado e substituído pelo alerta institucional *"⚠️ Coffee++ — Relatório Executivo não gerado"*.
+3. **Consumo Exclusivo das Fontes Oficiais**:
+   - **Página 1 (Vendas KA + Distribuidor)**: Consome exclusivamente `vw_faturamento_comercial_oficial` e `public.targets`, aplicando a segregação estrita de Inside Sales (Baseline 077).
+   - **Página 2 (Resumo de Investimentos)**: Consome `v_acoes_investimento_com_gerente` e faturamento oficial.
+   - **Página 3 (Investimento por Gerente/Canal)**: Consome `v_acoes_investimento_com_gerente` em visão temporal e matricial.
+   - **Página 4 (Investimento por Cliente/Rede)**: Consome `v_acoes_investimento_com_gerente` com detalhamento operacional.
+4. **Motor de Inteligência Artificial Fact-Based (Google Gemini 2.5 Flash)**:
+   - Alimentado estritamente com dados numéricos pré-calculados e estruturados em JSON.
+   - Proibição absoluta de alucinação de causas causais externas não fundamentadas em dados.
+   - Comparações históricas MTD simétricas ($D_1 \dots D_{\text{atual}}$ no mês corrente vs $D_1 \dots D_{\text{atual}}$ no mês anterior).
+5. **Geração e Formato do PDF de 4 Páginas**:
+   - Construção server-side via `pdfmake` estruturada em 4 páginas A4 corporativas com semáforo de performance (<80% crítico, 80-99,9% atenção, $\ge 100\%$ atingido).
+
+Status Arquitetural: `EXECUTIVE_DAILY_REPORT = LOCKED` & `REPORT_AUTOMATION = HOMOLOGATED` & `BASELINE = PERMANENTE`.
+
+
 
 
 

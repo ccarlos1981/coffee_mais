@@ -3,29 +3,40 @@ import { ExecutiveReportData } from "./executive-report-collector";
 
 export class ExecutiveAiAnalyst {
   /**
-   * Gera a Análise Executiva da IA em HTML profissional para o corpo do e-mail
+   * Gera o corpo institucional limpo do e-mail executivo conforme Demanda 091
    */
   static async generateEmailSummary(data: ExecutiveReportData): Promise<string> {
-    const geminiKey = process.env.GEMINI_API_KEY;
+    return this.generateInstitutionalEmail(data);
+  }
 
-    if (!geminiKey) {
-      console.warn("[ExecutiveAiAnalyst] GEMINI_API_KEY não configurada. Gerando fallback determinístico.");
-      return this.generateDeterministicFallback(data);
-    }
-
-    try {
-      const genAI = new GoogleGenerativeAI(geminiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
-      const prompt = this.buildPrompt(data);
-      const result = await model.generateContent(prompt);
-      const aiResponse = result.response.text();
-
-      return this.formatHtmlEmail(aiResponse, data);
-    } catch (err: any) {
-      console.error("[ExecutiveAiAnalyst] Erro na chamada do Gemini:", err.message);
-      return this.generateDeterministicFallback(data);
-    }
+  /**
+   * Retorna o corpo institucional padronizado do e-mail
+   */
+  static generateInstitutionalEmail(data: ExecutiveReportData): string {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #111827; line-height: 1.6; margin: 0; padding: 24px; background-color: #f9fafb; }
+    .card { background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 24px; max-width: 580px; margin: 0 auto; }
+    p { margin: 0 0 16px 0; font-size: 14px; color: #374151; }
+    .footer { font-size: 11px; color: #9ca3af; border-top: 1px solid #f3f4f6; padding-top: 12px; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <p>Cristiano,</p>
+    <p>Segue o <strong>Relatório Executivo Diário Coffee++</strong> em anexo (${data.dataReferencia}).</p>
+    <p>Abs.</p>
+    <div class="footer">
+      Coffee++ Plataforma de Inteligência Comercial &bull; Envio Automático Diário
+    </div>
+  </div>
+</body>
+</html>
+    `.trim();
   }
 
   /**

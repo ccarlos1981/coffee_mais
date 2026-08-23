@@ -1688,3 +1688,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    0e3bd36..4a7e915  main -> main
 [22/08/2026 15:20] ✅ Alterações enviadas com sucesso para o GitHub.
+[main c4d361b] auto-save: 22/08/2026 18:25
+ 12 files changed, 2047 insertions(+), 64 deletions(-)
+ create mode 100644 scratch_test_relatorio_executivo.pdf
+ create mode 100644 src/app/api/cron/executive-daily-report/route.ts
+ create mode 100644 src/lib/services/executive-ai-analyst.ts
+ create mode 100644 src/lib/services/executive-pdf-builder.ts
+ create mode 100644 src/lib/services/executive-report-collector.ts
+To https://github.com/ccarlos1981/coffee_mais.git
+   4a7e915..c4d361b  main -> main
+[22/08/2026 18:25] ✅ Alterações enviadas com sucesso para o GitHub.
