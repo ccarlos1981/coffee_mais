@@ -33,7 +33,9 @@ import { isSameManager } from "@/lib/domain/canonical";
 
 // Roles com acesso total ao RDM (enxergam todos os gerentes e configuram % desafio)
 const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Gerente Nacional", "Diretor"];
-const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+const GERENTE_NACIONAL_EMAILS = [
+  "cristiano.santos@coffeemais.com"
+];
 
 export function checkIsGerenteNacionalAdmin(role?: string | null, email?: string | null): boolean {
   if (role && FULL_ACCESS_ROLES.includes(role)) {

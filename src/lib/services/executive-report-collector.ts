@@ -85,6 +85,7 @@ export interface NetworkOpportunityMetric {
 export interface Top10RedeReportRow {
   ranking: number;
   rede: string;
+  uf: string;
   gerente: string;
   historico2026: {
     jan: number;
@@ -215,6 +216,7 @@ export interface ExecutiveReportData {
 
   // PÁGINA 5: TOP 10 REDES E HISTÓRICO 2026
   top10Redes: Top10RedeReportRow[];
+  gerenteFoco?: string;
 
   // DADOS DE INTELIGÊNCIA EXECUTIVA (MTD)
   inteligenciaMtd: {
@@ -232,7 +234,7 @@ export class ExecutiveReportCollector {
   /**
    * Coleta todos os blocos de dados oficiais em regime 100% READ-ONLY
    */
-  static async collect(dateOverride?: Date): Promise<ExecutiveReportData> {
+  static async collect(dateOverride?: Date, managerFilter?: string): Promise<ExecutiveReportData> {
     const nowSp = dateOverride || new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const currentYear = nowSp.getFullYear();
     const currentMonth = nowSp.getMonth() + 1;
@@ -260,7 +262,7 @@ export class ExecutiveReportCollector {
     const inteligenciaMtd = await this.collectInteligenciaMtd(compAtual, compAnterior, currentDay);
 
     // 5. Coleta de Top 10 Redes e Histórico 2026 (Página 5)
-    const top10Redes = await this.collectTop10Redes(compAtual, currentDay);
+    const top10Redes = await this.collectTop10Redes(compAtual, currentDay, managerFilter);
 
     // 6. Construção da IA Executiva Estruturada (Página 5)
     const iaExecutiva = this.buildIaExecutiva(vendasData, investResumo, inteligenciaMtd, top10Redes);
@@ -272,6 +274,7 @@ export class ExecutiveReportCollector {
       competenciaAnterior: compAnterior,
       diaDoMes: currentDay,
       diasUteisDecorridos: 18, // Indicador de dias úteis
+      gerenteFoco: managerFilter,
       diasUteisTotais: 22,
       ultimaImportacao: importStatus,
       vendas: vendasData,
@@ -1333,7 +1336,11 @@ export class ExecutiveReportCollector {
   /**
    * 7. Coleta de Top 10 Redes por Faturamento com Histórico 2026 e Performance MTD / Trimestral Simétrica (Página 5)
    */
-  private static async collectTop10Redes(compAtual: string, currentDay: number): Promise<Top10RedeReportRow[]> {
+  private static async collectTop10Redes(
+    compAtual: string,
+    currentDay: number,
+    managerFilter?: string
+  ): Promise<Top10RedeReportRow[]> {
     const [currentYear, currentMonth] = compAtual.split("-").map(Number);
     const dtMtdAtualStart = `${compAtual}-01`;
     const dtMtdAtualEnd = `${compAtual}-${String(currentDay).padStart(2, "0")}`;
@@ -1363,16 +1370,32 @@ export class ExecutiveReportCollector {
     const dtTrimAntStart = `${dPrevTrimStart.getFullYear()}-${String(dPrevTrimStart.getMonth() + 1).padStart(2, "0")}-${String(dPrevTrimStart.getDate()).padStart(2, "0")}`;
     const dtTrimAntEnd = `${dPrevTrimEnd.getFullYear()}-${String(dPrevTrimEnd.getMonth() + 1).padStart(2, "0")}-${String(dPrevTrimEnd.getDate()).padStart(2, "0")}`;
 
+    let mgrSqlFilter = "";
+    if (managerFilter) {
+      const mf = managerFilter.trim().toLowerCase();
+      if (mf.includes("leandro")) {
+        mgrSqlFilter = "AND (c.responsavel ILIKE '%Leandro%')";
+      } else if (mf.includes("luiz")) {
+        mgrSqlFilter = "AND (c.responsavel ILIKE '%Luiz%')";
+      } else if (mf.includes("julliano")) {
+        mgrSqlFilter = "AND (c.responsavel ILIKE '%Julliano%')";
+      } else if (mf.includes("john") || mf.includes("guedes")) {
+        mgrSqlFilter = "AND (c.responsavel ILIKE '%John%' OR c.responsavel ILIKE '%Guedes%')";
+      }
+    }
+
     const top10Sql = `
-      WITH monthly_sales AS (
+      WITH base_data AS (
         SELECT 
-          f.nome_parceiro as rede,
-          COALESCE(c.responsavel, 'Sem Gerente') as gerente,
-          c.tipo_parceiro,
-          f.nome_vendedor,
-          TO_CHAR(f.dt_faturamento, 'YYYY-MM') as mes,
-          SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) as fat
-        FROM vw_faturamento_comercial_oficial f
+          f.cod_parceiro,
+          f.nome_parceiro,
+          f.dt_faturamento,
+          f.vlr_total_liq,
+          f.cod_top,
+          COALESCE(NULLIF(TRIM(c.matriz), ''), f.nome_parceiro) as raw_matriz,
+          COALESCE(NULLIF(TRIM(c.uf), ''), 'SEM UF') as uf,
+          COALESCE(c.responsavel, 'Sem Gerente') as gerente
+        FROM cm_faturamento f
         LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
         WHERE f.dt_faturamento >= '${currentYear}-01-01' AND f.dt_faturamento <= '${dtMtdAtualEnd}'
           AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
@@ -1380,30 +1403,35 @@ export class ExecutiveReportCollector {
           AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
           AND NOT (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%' OR f.nome_vendedor ILIKE '%DISTRIB%')
           AND NOT (c.tipo_parceiro ILIKE '%INSIDE%' OR f.nome_vendedor ILIKE '%INSIDE%')
-        GROUP BY f.nome_parceiro, COALESCE(c.responsavel, 'Sem Gerente'), c.tipo_parceiro, f.nome_vendedor, TO_CHAR(f.dt_faturamento, 'YYYY-MM')
+          ${mgrSqlFilter}
+      ),
+      monthly_sales AS (
+        SELECT 
+          REGEXP_REPLACE(raw_matriz, '\\s*\\([A-Z]{2}\\)$', '') as rede,
+          uf,
+          MODE() WITHIN GROUP (ORDER BY gerente) as gerente,
+          TO_CHAR(dt_faturamento, 'YYYY-MM') as mes,
+          SUM(CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) as fat
+        FROM base_data
+        GROUP BY REGEXP_REPLACE(raw_matriz, '\\s*\\([A-Z]{2}\\)$', ''), uf, TO_CHAR(dt_faturamento, 'YYYY-MM')
       ),
       symmetric_sales AS (
         SELECT 
-          f.nome_parceiro as rede,
-          COALESCE(c.responsavel, 'Sem Gerente') as gerente,
-          SUM(CASE WHEN f.dt_faturamento >= '${dtMtdAtualStart}' AND f.dt_faturamento <= '${dtMtdAtualEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_mtd_atual,
-          SUM(CASE WHEN f.dt_faturamento >= '${dtMtdAntStart}' AND f.dt_faturamento <= '${dtMtdAntEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_mtd_ant,
-          SUM(CASE WHEN f.dt_faturamento >= '${dtTrimAtualStart}' AND f.dt_faturamento <= '${dtTrimAtualEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_trim_atual,
-          SUM(CASE WHEN f.dt_faturamento >= '${dtTrimAntStart}' AND f.dt_faturamento <= '${dtTrimAntEnd}' THEN (CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) ELSE 0 END) as fat_trim_ant
-        FROM vw_faturamento_comercial_oficial f
-        LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(f.cod_parceiro AS TEXT)
-        WHERE f.dt_faturamento >= '${dtTrimAntStart}' AND f.dt_faturamento <= '${dtMtdAtualEnd}'
-          AND (f.status_nfe IS NULL OR f.status_nfe != 'CANCELADA')
-          AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
-          AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
-          AND NOT (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%' OR f.nome_vendedor ILIKE '%DISTRIB%')
-          AND NOT (c.tipo_parceiro ILIKE '%INSIDE%' OR f.nome_vendedor ILIKE '%INSIDE%')
-        GROUP BY f.nome_parceiro, COALESCE(c.responsavel, 'Sem Gerente')
+          REGEXP_REPLACE(raw_matriz, '\\s*\\([A-Z]{2}\\)$', '') as rede,
+          uf,
+          SUM(CASE WHEN dt_faturamento >= '${dtMtdAtualStart}' AND dt_faturamento <= '${dtMtdAtualEnd}' THEN (CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) ELSE 0 END) as fat_mtd_atual,
+          SUM(CASE WHEN dt_faturamento >= '${dtMtdAntStart}' AND dt_faturamento <= '${dtMtdAntEnd}' THEN (CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) ELSE 0 END) as fat_mtd_ant,
+          SUM(CASE WHEN dt_faturamento >= '${dtTrimAtualStart}' AND dt_faturamento <= '${dtTrimAtualEnd}' THEN (CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) ELSE 0 END) as fat_trim_atual,
+          SUM(CASE WHEN dt_faturamento >= '${dtTrimAntStart}' AND dt_faturamento <= '${dtTrimAntEnd}' THEN (CASE WHEN cod_top IN ('1200', '1201') THEN -ABS(vlr_total_liq) ELSE vlr_total_liq END) ELSE 0 END) as fat_trim_ant
+        FROM base_data
+        WHERE dt_faturamento >= '${dtTrimAntStart}' AND dt_faturamento <= '${dtMtdAtualEnd}'
+        GROUP BY REGEXP_REPLACE(raw_matriz, '\\s*\\([A-Z]{2}\\)$', ''), uf
       ),
-      redes_ranked AS (
+      all_rede_uf AS (
         SELECT 
           m.rede,
-          m.gerente,
+          m.uf,
+          MODE() WITHIN GROUP (ORDER BY m.gerente) as gerente,
           SUM(m.fat) as total_ano,
           SUM(CASE WHEN m.mes = '${currentYear}-01' THEN m.fat ELSE 0 END) as jan,
           SUM(CASE WHEN m.mes = '${currentYear}-02' THEN m.fat ELSE 0 END) as fev,
@@ -1418,13 +1446,24 @@ export class ExecutiveReportCollector {
           COALESCE(s.fat_trim_atual, 0) as fat_trim_atual,
           COALESCE(s.fat_trim_ant, 0) as fat_trim_ant
         FROM monthly_sales m
-        LEFT JOIN symmetric_sales s ON s.rede = m.rede AND s.gerente = m.gerente
-        GROUP BY m.rede, m.gerente, s.fat_mtd_atual, s.fat_mtd_ant, s.fat_trim_atual, s.fat_trim_ant
-        ORDER BY COALESCE(s.fat_mtd_atual, 0) DESC, SUM(m.fat) DESC
-        LIMIT 10
+        LEFT JOIN symmetric_sales s ON s.rede = m.rede AND s.uf = m.uf
+        GROUP BY m.rede, m.uf, s.fat_mtd_atual, s.fat_mtd_ant, s.fat_trim_atual, s.fat_trim_ant
       )
-      SELECT * FROM redes_ranked
+      SELECT * FROM all_rede_uf
+      ORDER BY fat_mtd_atual DESC, total_ano DESC
+      LIMIT 20
     `;
+
+    const normalizeManager = (raw?: string): string => {
+      if (!raw) return "Sem Gerente";
+      const trimmed = raw.trim();
+      const lower = trimmed.toLowerCase();
+      if (lower.includes("leandro")) return "Leandro";
+      if (lower.includes("luiz")) return "Luiz";
+      if (lower.includes("julliano")) return "Julliano";
+      if (lower.includes("john")) return "John Guedes";
+      return trimmed;
+    };
 
     const rows = await AnalyticsEngine.executeSql<any>(top10Sql);
     return (rows || []).map((r: any, idx: number) => {
@@ -1439,7 +1478,7 @@ export class ExecutiveReportCollector {
 
       if (fatMtdAnterior <= 0 && fatMtdAtual > 0) {
         status = "NOVO";
-        statusLabel = "🔵 Novo / retomada";
+        statusLabel = "↗ Novo / retomada";
         diffPctStr = "N/A";
         diffPct = null;
       } else if (fatMtdAnterior === 0 && fatMtdAtual === 0) {
@@ -1452,10 +1491,10 @@ export class ExecutiveReportCollector {
         diffPctStr = (diffPct >= 0 ? "+" : "") + diffPct.toFixed(1).replace(".", ",") + "%";
         if (diffPct > 5) {
           status = "CRESCIMENTO";
-          statusLabel = "🟢 Crescimento";
+          statusLabel = "↑ Crescimento";
         } else if (diffPct < -5) {
           status = "QUEDA";
-          statusLabel = "🔴 Queda";
+          statusLabel = "↓ Queda";
         } else {
           status = "ESTAVEL";
           statusLabel = "🟡 Estável";
@@ -1475,7 +1514,7 @@ export class ExecutiveReportCollector {
       const agoMtd = Number(r.ago_mtd || 0);
       const totalAno = Number(r.total_ano || 0);
 
-      // Trimestre atual MTD (01/07 a 22/08 = 53d) vs Trimestre Anterior Equivalente (01/04 a 23/05 = 53d)
+      // Trimestre atual MTD (01/07 a 23/08 = 54d) vs Trimestre Anterior Equivalente (01/04 a 24/05 = 54d)
       const fatTrimAtualMtd = Number(r.fat_trim_atual || 0);
       const fatTrimAntEquiv = Number(r.fat_trim_ant || 0);
       const diffTrimValor = fatTrimAtualMtd - fatTrimAntEquiv;
@@ -1493,7 +1532,8 @@ export class ExecutiveReportCollector {
       return {
         ranking: idx + 1,
         rede: r.rede || "Rede",
-        gerente: r.gerente || "Sem Gerente",
+        uf: r.uf || "SEM UF",
+        gerente: normalizeManager(r.gerente),
         historico2026: {
           jan,
           fev,

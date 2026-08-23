@@ -56,7 +56,9 @@ function consolidateProjectionsByCanonicalManager(rawProjections: any[]): any[] 
 
 // Roles com acesso total (enxergam todos os gerentes)
 const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional", "Admin Master"];
-const GERENTE_NACIONAL_EMAILS = ["cristiano@coffeemais.com", "cristiano.santos@coffeemais.com"];
+const GERENTE_NACIONAL_EMAILS = [
+  "cristiano.santos@coffeemais.com"
+];
 
 export function checkIsGerenteNacionalAdmin(role?: string | null, email?: string | null): boolean {
   if (role && FULL_ACCESS_ROLES.includes(role)) {

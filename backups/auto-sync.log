@@ -1698,3 +1698,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    4a7e915..c4d361b  main -> main
 [22/08/2026 18:25] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 2f897af] auto-save: 23/08/2026 08:32
+ 10 files changed, 21537 insertions(+), 398 deletions(-)
+ create mode 100644 Relatorio_Executivo_Coffee++_22-08-2026_FINAL_TESTE.pdf
+ delete mode 100644 scratch_test_relatorio_executivo.pdf
+remote: warning: See https://gh.io/lfs for more information.        
+remote: warning: File backups/backup.log is 80.44 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/ccarlos1981/coffee_mais.git
+   c4d361b..2f897af  main -> main
+[23/08/2026 08:32] ✅ Alterações enviadas com sucesso para o GitHub.

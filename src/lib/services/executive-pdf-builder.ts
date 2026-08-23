@@ -471,8 +471,15 @@ export class ExecutivePdfBuilder {
     });
 
     // ════════════════════════════════════════════════════════════════════════
-    // PÁGINA 5 — TOP 10 REDES E ANÁLISE EXECUTIVA IA
+    // PÁGINA 5 — TOP 20 REDES (GLOBAL OU PERSONALIZADO POR GERENTE)
     // ════════════════════════════════════════════════════════════════════════
+    const page5Title = data.gerenteFoco
+      ? `PÁGINA 5 — TOP 20 REDES | ${data.gerenteFoco.toUpperCase()}`
+      : "PÁGINA 5 — TOP 20 REDES | PERFORMANCE EXECUTIVA";
+    const page5Subtitle = data.gerenteFoco
+      ? "Performance da carteira do Gerente"
+      : "Histórico Mensal + Evolução MTD + Performance Trimestral";
+
     content.push(
       {
         columns: [
@@ -480,20 +487,19 @@ export class ExecutivePdfBuilder {
           { text: `Data: ${data.dataReferencia}`, style: "docHeaderDate", alignment: "right" },
         ],
       },
-      { text: "PÁGINA 5 — TOP 10 REDES E ANÁLISE EXECUTIVA", style: "pageTitle", margin: [0, 4, 0, 2] },
+      { text: page5Title, style: "pageTitle", margin: [0, 4, 0, 2] },
       {
-        text: `Histórico Mensal 2026, Performance Simétrica MTD e Orientações Executivas`,
+        text: page5Subtitle,
         style: "pageSubtitle",
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 8],
       }
     );
 
-    // Tabela A: Histórico Mensal 2026
-    content.push({ text: "HISTÓRICO MENSAL 2026 (TOP 10 REDES)", style: "sectionHeader", margin: [0, 0, 0, 2] });
-    const tableTop10Hist: any[] = [
+    // Tabela Única: Top 20 Redes por UF + Performance Executiva
+    const tableTop20Body: any[] = [
       [
         { text: "#", style: "th", alignment: "center" },
-        { text: "Rede / Cliente", style: "th" },
+        { text: "Rede / UF", style: "th" },
         { text: "Gerente", style: "th" },
         { text: "JAN", style: "th", alignment: "right" },
         { text: "FEV", style: "th", alignment: "right" },
@@ -503,14 +509,24 @@ export class ExecutivePdfBuilder {
         { text: "JUN", style: "th", alignment: "right" },
         { text: "JUL", style: "th", alignment: "right" },
         { text: "AGO MTD", style: "th", alignment: "right" },
+        { text: "Δ MTD %", style: "th", alignment: "center" },
+        { text: "Δ TRIM %", style: "th", alignment: "center" },
+        { text: "Performance", style: "th", alignment: "center" },
       ],
     ];
 
     data.top10Redes.forEach((r) => {
       const h = r.historico2026;
-      tableTop10Hist.push([
+      const v = r.vsMesAnterior;
+      const t = r.vsTrimestre;
+
+      const mtdColor = v.diffPct === null ? "#6B7280" : v.diffPct > 0 ? "#059669" : v.diffPct < 0 ? "#DC2626" : "#4B5563";
+      const trimColor = t.diffPct === null ? "#6B7280" : t.diffPct > 0 ? "#059669" : t.diffPct < 0 ? "#DC2626" : "#4B5563";
+      const statusColor = v.status === "NOVO" ? "#2563EB" : v.status === "CRESCIMENTO" ? "#059669" : v.status === "QUEDA" ? "#DC2626" : "#D97706";
+
+      tableTop20Body.push([
         { text: String(r.ranking), style: "td", alignment: "center" },
-        { text: r.rede, style: "tdBold" },
+        { text: `${r.rede} / ${r.uf}`, style: "tdBold" },
         { text: r.gerente, style: "td" },
         { text: this.formatCurrencyK(h.jan), style: "td", alignment: "right" },
         { text: this.formatCurrencyK(h.fev), style: "td", alignment: "right" },
@@ -520,92 +536,19 @@ export class ExecutivePdfBuilder {
         { text: this.formatCurrencyK(h.jun), style: "td", alignment: "right" },
         { text: this.formatCurrencyK(h.jul), style: "td", alignment: "right" },
         { text: this.formatCurrencyK(h.agoMtd), style: "tdBold", alignment: "right", color: "#1E40AF" },
-      ]);
-    });
-
-    content.push({
-      table: {
-        widths: ["4%", "26%", "14%", "7%", "7%", "7%", "7%", "7%", "7%", "7%", "7%"],
-        body: tableTop10Hist,
-      },
-      layout: "lightHorizontalLines",
-      margin: [0, 0, 0, 6],
-    });
-
-    // Tabela B: Performance MTD Simétrica e Trimestral Equivalente
-    content.push({ text: "PERFORMANCE SIMÉTRICA (MTD ATUAL × MTD ANTERIOR) E TRIMESTRAL EQUIVALENTE", style: "sectionHeader", margin: [0, 2, 0, 2] });
-    const tableTop10Perf: any[] = [
-      [
-        { text: "Rede / Cliente", style: "th" },
-        { text: `AGO (1 a ${data.diaDoMes})`, style: "th", alignment: "right" },
-        { text: `JUL (1 a ${data.diaDoMes})`, style: "th", alignment: "right" },
-        { text: "Δ MTD (R$)", style: "th", alignment: "right" },
-        { text: "Δ MTD (%)", style: "th", alignment: "center" },
-        { text: "Trim. atual MTD", style: "th", alignment: "right" },
-        { text: "Trim. ant. equiv.", style: "th", alignment: "right" },
-        { text: "Δ Trim (%)", style: "th", alignment: "center" },
-        { text: "Status", style: "th", alignment: "center" },
-      ],
-    ];
-
-    data.top10Redes.forEach((r) => {
-      const v = r.vsMesAnterior;
-      const t = r.vsTrimestre;
-      const statusColor = v.status === "NOVO" ? "#2563EB" : v.status === "CRESCIMENTO" ? "#059669" : v.status === "QUEDA" ? "#DC2626" : "#D97706";
-
-      tableTop10Perf.push([
-        { text: r.rede, style: "tdBold" },
-        { text: this.formatCurrencyK(v.fatMtdAtual), style: "td", alignment: "right" },
-        { text: this.formatCurrencyK(v.fatMtdAnterior), style: "td", alignment: "right" },
-        { text: this.formatCurrencyK(v.diffValor), style: "tdBold", alignment: "right", color: statusColor },
-        { text: this.formatPercent(v.diffPct), style: "tdPct", alignment: "center", color: statusColor },
-        { text: this.formatCurrencyK(t.fatTrimAtualMtd), style: "td", alignment: "right" },
-        { text: this.formatCurrencyK(t.fatTrimAntEquiv), style: "td", alignment: "right" },
-        { text: this.formatPercent(t.diffPct), style: "tdPct", alignment: "center" },
+        { text: v.diffPctStr || "N/A", style: "tdPct", alignment: "center", color: mtdColor },
+        { text: t.diffPctStr || "N/A", style: "tdPct", alignment: "center", color: trimColor },
         { text: v.statusLabel || "🟡 Estável", style: "tdPct", alignment: "center", color: statusColor },
       ]);
     });
 
     content.push({
       table: {
-        widths: ["22%", "10%", "10%", "11%", "8%", "11%", "11%", "7%", "10%"],
-        body: tableTop10Perf,
+        widths: ["3%", "20%", "9%", "5.5%", "5.5%", "5.5%", "5.5%", "5.5%", "5.5%", "5.5%", "6.5%", "7.5%", "7.5%", "8.5%"],
+        body: tableTop20Body,
       },
       layout: "lightHorizontalLines",
       margin: [0, 0, 0, 6],
-    });
-
-    // Seção C: IA Executiva ("HOJE, O QUE EU PRECISO SABER?")
-    const ia = data.iaExecutiva;
-    const alertItems = ia.alertas.map(a => ({ text: `• ${a}`, style: "iaBulletText", color: "#B91C1C" }));
-    const oppItems = ia.oportunidades.map(o => ({ text: `• ${o}`, style: "iaBulletText", color: "#047857" }));
-    const actionItems = ia.ondeAgirHoje.map(act => ({
-      text: [
-        { text: `🎯 ${act.responsavel}: `, bold: true, color: "#111827" },
-        { text: `${act.prioridade}. `, bold: true, color: "#1E40AF" },
-        { text: `${act.descricao}`, color: "#374151" },
-      ],
-      style: "iaBulletText",
-    }));
-
-    content.push({
-      table: {
-        widths: ["33%", "33%", "34%"],
-        body: [
-          [
-            { text: "🔴 3 PRINCIPAIS ALERTAS", style: "iaCardHeader", fillColor: "#FEE2E2" },
-            { text: "🟢 3 PRINCIPAIS OPORTUNIDADES", style: "iaCardHeader", fillColor: "#DCFCE7" },
-            { text: "🎯 ONDE AGIR HOJE", style: "iaCardHeader", fillColor: "#E0E7FF" },
-          ],
-          [
-            { stack: alertItems, fillColor: "#FFF5F5" },
-            { stack: oppItems, fillColor: "#F0FDF4" },
-            { stack: actionItems, fillColor: "#F8FAFC" },
-          ],
-        ],
-      },
-      layout: "lightHorizontalLines",
-      margin: [0, 2, 0, 0],
     });
 
     // Definição Geral do Documento
