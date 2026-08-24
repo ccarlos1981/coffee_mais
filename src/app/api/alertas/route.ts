@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = 'nodejs';
-
-function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey);
-}
+export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/alertas
@@ -15,19 +11,23 @@ function getSupabaseClient() {
  */
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Alertas");
+
     const { searchParams } = new URL(request.url);
     const manager = searchParams.get('manager');
     const month = searchParams.get('month'); // Ex: "2026-04"
 
-    const supabase = getSupabaseClient();
+    const supabase = createAdminClient();
     let query = supabase.from('cm_client_alerts').select(`
       *,
       cm_action_notes(id, note, created_at, created_by)
     `);
 
-    // Busca apenas o mês requisitado ou o mês atual como fallback (opcional mas bom para performance)
+    // Busca apenas o mês requisitado ou o mês atual como fallback
     if (month) {
-        query = query.eq('alert_month', month);
+      query = query.eq('alert_month', month);
     }
 
     if (manager && manager !== 'all') {
@@ -46,9 +46,8 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ success: true, alerts: sortedAlerts });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }
 
@@ -58,21 +57,25 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Alertas");
+
     const body = await request.json();
-    const { alert_id, client_name, note, created_by, status_update } = body;
+    const { alert_id, client_name, note, status_update } = body;
 
     if (!alert_id || !note) {
       return NextResponse.json({ success: false, error: "Missing body params" }, { status: 400 });
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = createAdminClient();
 
     // 1. Inserir a Action Note
     const { error: noteError } = await supabase.from('cm_action_notes').insert({
       alert_id,
       client_name,
       note,
-      created_by: created_by || 'Unknown'
+      created_by: profile.name || profile.manager_name || user.email || 'Usuário'
     });
 
     if (noteError) throw noteError;
@@ -89,8 +92,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, message: "Action registered" });
 
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  } catch (error: any) {
+    return handleAuthError(error);
   }
 }

@@ -440,15 +440,15 @@ export class ExecutiveReportCollector {
       metaMaco: distMetaMaco,
     });
 
-    // Inside Sales target
+    // Inside Sales target oficial de public.targets
     const insideTargetRow = (targetsRows || []).find((t: any) => t.manager_id === '1004' || (t.manager || '').toLowerCase().includes('inside'));
     const insideMetaFat = Number(insideTargetRow?.meta_fat || 0);
     const insideMetaUnd = Number(insideTargetRow?.meta_und || 0);
-    const insideMetaMaco = insideMetaFat > 0 ? Math.round((insideMetaFat * 0.31) / 1000) * 1000 : 20000;
+    const insideMetaMaco = insideMetaFat > 0 ? Math.round((insideMetaFat * 0.31) / 1000) * 1000 : 0;
     targetsMap.set("INSIDE SALES", {
-      metaFat: insideMetaFat || 307838,
-      metaUnd: insideMetaUnd || 9000,
-      metaMaco: insideMetaMaco || 20000,
+      metaFat: insideMetaFat,
+      metaUnd: insideMetaUnd,
+      metaMaco: insideMetaMaco,
     });
 
     const normalizeManager = (raw?: string): string => {
@@ -623,7 +623,7 @@ export class ExecutiveReportCollector {
     const consolPctMaco = totalMetaMaco > 0 ? (totalRealMaco / totalMetaMaco) * 100 : 0;
 
     // Linha Segregada de Inside Sales
-    const insideTarget = targetsMap.get("INSIDE SALES") || { metaFat: 120000, metaUnd: 9000, metaMaco: 20000 };
+    const insideTarget = targetsMap.get("INSIDE SALES") || { metaFat: 0, metaUnd: 0, metaMaco: 0 };
     const pctInsideFat = insideTarget.metaFat > 0 ? (totalInsideFat / insideTarget.metaFat) * 100 : 0;
     const pctInsideUnd = insideTarget.metaUnd > 0 ? (totalInsideUnd / insideTarget.metaUnd) * 100 : 0;
     const pctInsideMaco = insideTarget.metaMaco > 0 ? (totalInsideMaco / insideTarget.metaMaco) * 100 : 0;

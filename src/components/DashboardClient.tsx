@@ -64,8 +64,8 @@ export function DashboardClient({
             if (item.href.startsWith("/trade") && (role === "Trade" || role === "Admin" || role === "Supervisor" || role === "CEO")) return true;
             // Treinamento e manuais são públicos por padrão
             if (item.href.startsWith("/treinamento")) return true;
-            // Módulos da Plataforma Comercial e Governança Enterprise (visíveis por padrão quando não há tabela de permissões customizada)
-            if (item.href.startsWith("/crm-enterprise") || item.href.startsWith("/execucao-comercial") || item.href.startsWith("/assistente-decisao") || item.href.startsWith("/simulacao-estrategica") || item.href.startsWith("/planejamento-comercial") || item.href.startsWith("/health")) return true;
+            // Módulos da Plataforma Comercial e Governança (visíveis por padrão quando não há tabela de permissões customizada)
+            if (item.href.startsWith("/inovacoes") || item.href.startsWith("/inteligencia") || item.href.startsWith("/forecast") || item.href.startsWith("/simulador") || item.href.startsWith("/assistente") || item.href.startsWith("/health")) return true;
           }
           
           return false;

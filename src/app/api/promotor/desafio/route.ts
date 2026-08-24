@@ -148,23 +148,17 @@ export async function GET(request: Request) {
       const agoFactor = calculateProportionalFactor(8, currentYear, p.data_admissao, null);
       const setFactor = calculateProportionalFactor(9, currentYear, p.data_admissao, null);
 
-      // Hash for mock fallback if no stored record
-      const hash = p.id.charCodeAt(0);
+      // Jul Atingimento: derivado estritamente do registro oficial salvo em cm_promotor_remuneracao
+      const julAch = rems?.has(7) ? rems.get(7)! : 0;
+      const julReal = julMeta > 0 && julAch > 0 ? Math.round(julMeta * (julAch / 100) * julFactor) : 0;
 
-      // Jul Atingimento
-      const julMockAch = (julFactor === 0 || julMeta === 0) ? 0 : (95 + ((hash + 7) % 12));
-      const julAch = rems?.has(7) ? rems.get(7)! : julMockAch;
-      const julReal = Math.round(julMeta * (julAch / 100) * julFactor);
+      // Ago Atingimento: derivado estritamente do registro oficial salvo em cm_promotor_remuneracao
+      const agoAch = rems?.has(8) ? rems.get(8)! : 0;
+      const agoReal = agoMeta > 0 && agoAch > 0 ? Math.round(agoMeta * (agoAch / 100) * agoFactor) : 0;
 
-      // Ago Atingimento
-      const agoMockAch = (agoFactor === 0 || agoMeta === 0) ? 0 : (95 + ((hash + 8) % 12));
-      const agoAch = rems?.has(8) ? rems.get(8)! : agoMockAch;
-      const agoReal = Math.round(agoMeta * (agoAch / 100) * agoFactor);
-
-      // Set Atingimento
-      const setMockAch = (setFactor === 0 || setMeta === 0) ? 0 : (95 + ((hash + 9) % 12));
-      const setAch = rems?.has(9) ? rems.get(9)! : setMockAch;
-      const setReal = Math.round(setMeta * (setAch / 100) * setFactor);
+      // Set Atingimento: derivado estritamente do registro oficial salvo em cm_promotor_remuneracao
+      const setAch = rems?.has(9) ? rems.get(9)! : 0;
+      const setReal = setMeta > 0 && setAch > 0 ? Math.round(setMeta * (setAch / 100) * setFactor) : 0;
 
       return {
         ...p,

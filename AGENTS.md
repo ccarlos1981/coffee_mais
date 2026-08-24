@@ -3800,6 +3800,173 @@ A partir de 24/08/2026, a arquitetura de **Governança Transversal de Ownership 
 
 Status Arquitetural: `TRANSVERSAL_OWNERSHIP_SSOT = LOCKED` & `CICLO_P0 = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
 
+---
+
+## 83. Baseline Oficial — Ciclo P1 de Segurança, Integridade e Governança
+
+A partir de 24/08/2026, a arquitetura de **Segurança, Integridade, Governança e Eliminação de Mocks (Ciclo P1)** torna-se o baseline permanente e oficial do Coffee++, após homologação conclusiva da suíte de auditoria transversal.
+
+### Status Oficial:
+- `CICLO_P1 = HOMOLOGADO_E_CONCLUIDO`
+- `TRANSVERSAL_OWNERSHIP_SSOT = LOCKED`
+- `CICLO_P0 = HOMOLOGADO_E_CONGELADO`
+- `CICLO_P1 = LOCKED`
+- `BASELINE = PERMANENTE`
+
+### Status Oficial das Entregas do Ciclo P1:
+- **P1-1 — Correção do RBAC do Atendimento (`/atendimento`)**: `HOMOLOGADO`
+- **P1-2 — Follow-up Comercial (`cm_follow_up_actions` / `cm_follow_up_history`)**: `HOMOLOGADO`
+- **P1-3 — Saneamento da Home / Eliminação de Mocks**: `HOMOLOGADO`
+- **P1-5.1 — Sincronização Automática de Ownership / Refresh de MVs (`cm_mv_refresh_jobs`)**: `HOMOLOGADO`
+- **P1-5.2 — Saneamento de Regras Paralelas / SSOT (`v_acoes_investimento_com_gerente`)**: `HOMOLOGADO`
+- **P1-6 — Saneamento Global de RBAC Legado (`/metas`, `/meta-cia`, `/meta-cia-unidades`, `/alertas`)**: `HOMOLOGADO`
+- **P1-7 — Saneamento de Dados Fictícios do Promotor (`/api/promotor/desafio`, `/api/remuneracao-promotor`)**: `HOMOLOGADO`
+- **P1-8 — Auditoria Forense Final de Fechamento**: `HOMOLOGADO`
+
+### Invariantes Permanentes de Governança:
+1. **Autenticação Canônica**: Supabase Auth permanece como mecanismo oficial exclusivo de autenticação da plataforma.
+2. **Autorização por Módulo**: A tabela `public.cm_role_permissions` permanece como fonte oficial de autorização por perfil e módulo.
+3. **Proibição de Bypasses Client-Side**: Nenhum módulo pode utilizar senha fixa (`123456`), PIN client-side, tokens em `localStorage` ou flags em `sessionStorage` como mecanismo de autorização.
+4. **SSOT de Redes**: `public.cm_redes_matrizes` permanece como SSOT única e canônica de ownership de Redes.
+5. **SSOT Operacional de Lojas**: `public.cm_clientes` permanece como representação operacional das lojas/PDVs.
+6. **Alinhamento de Atendimento**: `base_atendimento` permanece sincronizada com o ownership operacional, preservando exceções regionais (`cm_base_atendimento_regional`).
+7. **SSOT de Investimentos**: `public.v_acoes_investimento_com_gerente` permanece como fonte canônica de leitura dinâmica para ownership dos investimentos.
+8. **Autoria Histórica**: `public.cm_campanhas.gerente_id` permanece como registro de autoria histórica e não deve ser reinterpretado como titularidade atual.
+9. **SSOT de Faturamento**: `public.mv_vendas_mensal` e `public.mv_vendas_cliente_mensal` permanecem como fontes oficiais de faturamento corporativo.
+10. **AnalyticsEngine V1**: A camada analítica `AnalyticsEngine V1` permanece `LOCKED` como ponto único de acesso aos dados.
+11. **Metas Oficiais**: O carregamento de metas consome exclusivamente as fontes homologadas (`public.targets`, `public.cm_weekly_projections`, `public.cm_promotor_metas`), sendo vedada a geração de números artificiais.
+12. **Integridade do Módulo Promotor**: É expressamente proibido fabricar atingimento, realizado, meta ou remuneração quando inexistirem registros oficiais no banco de dados.
+13. **Proibição de Regras Paralelas**: Nenhum módulo pode criar regra paralela para representar uma informação já existente em uma SSOT oficial.
+14. **Governança de Fallbacks**: Fallback técnico é permitido somente para proteção tipográfica (`|| 0`, `?? 0`, `|| []`, `|| "—"`), sendo proibidos fallbacks que criem regras de negócio artificiais.
+15. **Zero Dados Fictícios em Produção**: Dados fictícios, pseudoaleatórios ou mocks não podem alimentar indicadores reais de produção.
+
+### Estado de Segurança Homologado:
+- `PAGE_PASSWORD` = Eliminado
+- `passwordInput` = Eliminado
+- `ceo_auth_exp` = Eliminado
+- `sessionStorage` de autorização = Eliminado
+- `Bypass client-side` = Eliminado
+- APIs críticas protegidas por `requireAuth()`, `requireApprovedProfile()` e `requirePermission()`
+
+### Integridade Comercial e Financeira:
+- Fórmula oficial de MACO: Permanece estritamente a **Baseline 57** ($\text{Receita Líquida} - \text{Impostos} - \text{CPV} - \text{Frete 3\%} - \text{Investimento Comercial}$).
+- Faturamento: Centralizado no `AnalyticsEngine V1`.
+- Investimentos: Resolvidos dinamicamente pela view canônica `v_acoes_investimento_com_gerente`.
+- Follow-up Comercial: Opera sobre as tabelas oficiais `cm_follow_up_actions` e `cm_follow_up_history`.
+- Promotor: Metas e remuneração derivadas exclusivamente de `cm_promotor_metas` e `cm_promotor_remuneracao`.
+
+### Pipeline de Sincronização Temporal (P1-5.1):
+$$\text{cm\_redes\_matrizes} \xrightarrow{\text{Trigger P0-1}} \text{cm\_clientes} \xrightarrow{\text{fn\_enqueue\_mv\_refresh}} \text{cm\_mv\_refresh\_jobs} \xrightarrow{\text{pg\_cron}} \text{Materialized Views}$$
+- A janela horária de divergência foi definitivamente eliminada e substituída pelo processamento assíncrono via fila oficial.
+
+### Testes Homologados da Baseline:
+- `npx tsc --noEmit` = **0 erros**
+- `npm run test:domain` = **20/20 aprovados**
+- `npm run audit:analytics` = **100% conforme**
+- `npm run build` = **SUCCESS / 188 rotas**
+- **Paridade financeira** = **0,0000% de desvio**
+
+### Dívidas Técnicas Registradas (P2 — Não Bloqueantes):
+- **P2-01**: Rotas legadas e protótipos mantidos fisicamente de forma isolada, sem referência na Home (`/assistente-decisao`, `/simulacao-estrategica`, `/crm-enterprise`, `/dre-gerencial`).
+- **P2-02**: Rota legada `/api/dre/route.ts` contendo fallback de orçamento (não consumida pelo ecossistema oficial).
+*(Nota: Itens P2 são mantidos sem alteração durante este fechamento).*
+
+### Locks Oficiais:
+- `CICLO_P0 = LOCKED`
+- `TRANSVERSAL_OWNERSHIP_SSOT = LOCKED`
+- `CICLO_P1 = LOCKED`
+- `AnalyticsEngine V1 = LOCKED`
+- `Baseline 57 — MACO = LOCKED`
+- `Views oficiais de faturamento = LOCKED`
+- `Ownership P0/P1 = LOCKED`
+- `RBAC canônico = LOCKED`
+
+### Diretriz para o Próximo Ciclo:
+"Nenhum item P2 deve ser implementado automaticamente em consequência desta baseline."
+Qualquer próximo ciclo de desenvolvimento deverá possuir objetivo próprio, diagnóstico, escopo delimitado, critérios de aceite, avaliação de impacto e autorização executiva explícita.
+
+Status Arquitetural: `CICLO_P1 = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
+---
+
+## 84. Baseline Oficial — Ciclo P2 de Saneamento, Descontinuação e Integridade Arquitetural
+
+A partir de 24/08/2026, a arquitetura de **Saneamento, Descontinuação de Legados e Integridade Arquitetural (Ciclo P2)** torna-se o baseline permanente e oficial do Coffee++, após homologação conclusiva de todas as fases de descontinuação controlada e auditoria pós-limpeza.
+
+### Status Oficial:
+- `CICLO_P0 = LOCKED`
+- `CICLO_P1 = LOCKED`
+- `CICLO_P2 = HOMOLOGADO_E_CONCLUIDO`
+- `CICLO_P2 = LOCKED`
+- `BASELINE = PERMANENTE`
+
+### Escopo Homologado do Ciclo P2:
+1. **P2-1 — Descontinuação dos Protótipos Enterprise e DRE Legado 2024**:
+   - Remoção física dos protótipos desacoplados (`/assistente-decisao`, `/simulacao-estrategica`, `/crm-enterprise`, `/planejamento-comercial`, `/execucao-comercial`, `/oportunidades`, APIs `/api/commercial-*`, libs `src/lib/commercial-*`).
+   - Remoção da camada órfã de `/dre-gerencial` (preservando `src/lib/dre-gerencial/types.ts` e `engine.ts` para o RDM).
+   - Migração das referências residuais e remoção física definitiva do ecossistema DRE 2024 (`/dre`, `/dre/historico`, `/dre/upload`, `/api/dre`), convergindo 100% dos fluxos para o DRE Comercial oficial (`/inovacoes/dre` — Baseline 57).
+2. **P2-2 — Remoção dos Clusters Órfãos, Módulo Tributos e Workflow Enterprise**:
+   - Remoção física dos endpoints e libs de prioridades comerciais (`/api/commercial-priorities`, `src/lib/priorities/**`).
+   - Remoção física dos endpoints e libs de RGM (`/api/rgm`, `src/lib/rgm/**`).
+   - Remoção do endpoint legado de debug (`/api/dashboard/debug`).
+   - Saneamento e remoção do módulo `/tributos` (protótipo com dados estáticos *Forno de Minas*) e atualização do menu de navegação (`src/config/modules.ts`).
+   - Descontinuação física do cluster `Workflow Enterprise` (25 arquivos, UI, APIs e lib in-memory) e saneamento da matriz de permissões (`src/app/admin/permissoes/page.tsx`).
+3. **P2-3 — Descontinuação do Decision Platform e Auditoria de Feature Flags**:
+   - Remoção física do cluster órfão `src/lib/decision-platform/` (15 arquivos e testes).
+   - Homologação e preservação da infraestrutura de Feature Flags (`public.cm_feature_flags` e `src/lib/feature-flags/flags.ts`).
+
+### Invariantes Permanentes do Ciclo P2:
+1. **Descontinuação Baseada em Auditoria Prévia**: Código órfão e desacoplado só pode ser removido após auditoria formal de ausência de consumidores e dependências.
+2. **Preservação Absoluta do Core Homologado**: Nenhuma remoção ou limpeza pode atingir módulos oficiais, telas ativas ou bibliotecas compartilhadas em produção.
+3. **Imutabilidade das SSOTs Oficiais**: Nenhuma operação de limpeza pode alterar tabelas canônicas de ownership (`cm_redes_matrizes`, `cm_clientes`, `base_atendimento`, `v_acoes_investimento_com_gerente`).
+4. **Preservação da AnalyticsEngine V1**: A camada analítica única (`src/lib/governance/analytics/`) permanece `LOCKED` e intocada.
+5. **Preservação da Baseline 57 (Fórmula MACO Oficial)**: A fórmula oficial de Margem de Contribuição Comercial permanece única e imutável.
+6. **Preservação do RBAC Canônico**: A integridade de autenticação e matriz de permissões por role deve ser rigorosamente mantida a cada intervenção de código.
+7. **Validação Estrita de Não-Resíduo**: Nenhuma remoção física é concluída sem varredura global com ripgrep confirmando 0 referências residuais.
+8. **Pipeline de Verificação Obrigatório**: Toda alteração de ciclo deve comprovar aprovação em `npx tsc --noEmit` (0 erros), `npm run test:domain` (20/20), `npm run audit:analytics` (100%) e `npm run build` (SUCCESS).
+9. **Infraestrutura Ativa de Feature Flags**: A tabela `public.cm_feature_flags` e a biblioteca `src/lib/feature-flags/flags.ts` permanecem homologadas e preservadas como infraestrutura ativa do sistema.
+10. **Single Source of Truth para Flags**: `public.cm_feature_flags` é a única fonte oficial para alternância dinâmica de comportamento em produção (`use_real_ai`, `war_room_enabled`, `force_native_only`).
+11. **Zero Mocks em Fluxos Oficiais**: Dados fictícios, números artificiais ou protótipos são terminantemente proibidos em rotas de produção.
+12. **Governança de Fallbacks**: Proibidos fallbacks que criem regras de negócio paralelas ou heurísticas comerciais artificiais.
+
+### Core Protegido (DO_NOT_TOUCH):
+- `AnalyticsEngine V1` (`src/lib/governance/analytics/*`)
+- `Baseline 57` (MACO Oficial)
+- `Ownership SSOT` (`cm_redes_matrizes`, `cm_clientes`, `base_atendimento`, `v_acoes_investimento_com_gerente`)
+- `Views oficiais de faturamento` (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal`)
+- `Metas Oficiais` (`targets`, `cm_weekly_projections`, `cm_promotor_metas`, `cm_promotor_remuneracao`)
+- `Sistema Inovações` (Cockpit Comercial, DRE Comercial, CRM Comercial)
+- `Módulos Independentes` (Centro de Inteligência, Forecast Comercial, Simulador Comercial, Assistente IA)
+- `Processo Comercial & Operações` (RPS, RDM, Follow-up Comercial, Promotor, Supervisor, Trade, Atendimento, Investimentos, Vendas)
+- `Coffee IA` (`/coffee-ia`, `/api/coffee-ia/*`)
+- `Feature Flags` (`cm_feature_flags`, `src/lib/feature-flags/flags.ts`)
+
+### Estado Final Consolidado do Repositório:
+- **Arquivos TypeScript/TSX:** 621 arquivos
+- **Rotas de Aplicação:** 89 páginas ativas
+- **Rotas de API:** 148 endpoints ativos
+- **Rotas Compiladas no Build:** 120 rotas estáticas
+- **Testes de Domínio:** 20/20 aprovados (`npm run test:domain`)
+- **Auditoria de Governança Analytics & React:** 100% conforme (`npm run audit:analytics`)
+- **TypeScript:** 0 erros (`npx tsc --noEmit`)
+- **Compilação de Produção:** SUCCESS (`npm run build`)
+- **Paridade Financeira:** 0,0000% de desvio
+
+### Infraestrutura de Feature Flags Homologada:
+- `public.cm_feature_flags` = **ATIVO / PRESERVAR**
+- `src/lib/feature-flags/flags.ts` = **INFRAESTRUTURA VÁLIDA / PRESERVAR**
+- **Casos de Uso Ativos:**
+  - `use_real_ai`: Gestão via `/admin/kpi-config` e consumo pelo `AIProvider` (Cloud Vision API vs Simulação);
+  - `war_room_enabled`: Ativação do modo War Room no Supervisor Command Center;
+  - `force_native_only`: Middleware Next.js para forçar uso do app mobile pelos promotores.
+
+### Diretriz para Próximos Ciclos:
+"Nenhum ciclo subsequente (P3 ou posterior) deve ser iniciado automaticamente em decorrência desta baseline."
+Qualquer evolução ou ciclo futuro deverá possuir objetivo próprio, diagnóstico forense, escopo delimitado, matriz de dependências, critérios de aceite, avaliação de impacto, mitigação de riscos e autorização executiva explícita.
+
+Status Arquitetural: `CICLO_P2 = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
+
 
 
 

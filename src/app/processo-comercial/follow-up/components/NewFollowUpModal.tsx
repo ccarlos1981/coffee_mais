@@ -4,10 +4,27 @@ import React, { useState, useEffect, useCallback } from "react";
 import { X, Search, Loader2, Plus, Calendar, AlertTriangle, Building2, Check } from "lucide-react";
 import type { FollowUpOrigem, FollowUpPrioridade, FollowUpTipo } from "@/lib/services/follow-up-service";
 
-interface NewFollowUpModalProps {
+export interface FollowUpInitialContext {
+  cliente_id?: string;
+  clienteNome?: string;
+  rede?: string | null;
+  codigo?: string;
+  responsavel?: string | null;
+  tipo_acao?: FollowUpTipo;
+  motivo?: string;
+  descricao?: string;
+  prazo?: string;
+  prioridade?: FollowUpPrioridade;
+  origem?: FollowUpOrigem;
+  origem_ref?: string;
+  manager_id?: string;
+}
+
+export interface NewFollowUpModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  initialContext?: FollowUpInitialContext | null;
 }
 
 interface ClientOption {
@@ -43,7 +60,7 @@ const ORIGEM_OPTIONS: { value: FollowUpOrigem; label: string }[] = [
   { value: "RPS_COMPROMISSO", label: "RPS Compromisso" },
 ];
 
-export function NewFollowUpModal({ isOpen, onClose, onCreated }: NewFollowUpModalProps) {
+export function NewFollowUpModal({ isOpen, onClose, onCreated, initialContext }: NewFollowUpModalProps) {
   // Form State
   const [selectedClient, setSelectedClient] = useState<ClientOption | null>(null);
   const [tipoAcao, setTipoAcao] = useState<FollowUpTipo>("REATIVACAO_CLIENTE");
@@ -74,9 +91,12 @@ export function NewFollowUpModal({ isOpen, onClose, onCreated }: NewFollowUpModa
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
         setClientOptions(json.data);
+        return json.data as ClientOption[];
       }
+      return [];
     } catch (err) {
       console.error("Erro ao buscar clientes:", err);
+      return [];
     } finally {
       setSearchingClients(false);
     }
@@ -84,9 +104,37 @@ export function NewFollowUpModal({ isOpen, onClose, onCreated }: NewFollowUpModa
 
   useEffect(() => {
     if (isOpen) {
-      fetchClients("");
+      if (initialContext) {
+        if (initialContext.cliente_id) {
+          setSelectedClient({
+            id: initialContext.cliente_id,
+            nome: initialContext.clienteNome || "Cliente Selecionado",
+            rede: initialContext.rede || null,
+            codigo: initialContext.codigo || "",
+            responsavel: initialContext.responsavel || null,
+          });
+        } else if (initialContext.clienteNome) {
+          fetchClients(initialContext.clienteNome).then((opts) => {
+            if (opts && opts.length > 0) {
+              const exact = opts.find(c => c.nome.toLowerCase() === initialContext.clienteNome?.toLowerCase());
+              setSelectedClient(exact || opts[0]);
+            }
+          });
+        } else {
+          fetchClients("");
+        }
+
+        if (initialContext.tipo_acao) setTipoAcao(initialContext.tipo_acao);
+        if (initialContext.motivo) setMotivo(initialContext.motivo);
+        if (initialContext.descricao) setDescricao(initialContext.descricao);
+        if (initialContext.prazo) setPrazo(initialContext.prazo);
+        if (initialContext.prioridade) setPrioridade(initialContext.prioridade);
+        if (initialContext.origem) setOrigem(initialContext.origem);
+      } else {
+        fetchClients("");
+      }
     }
-  }, [isOpen, fetchClients]);
+  }, [isOpen, initialContext, fetchClients]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -124,6 +172,8 @@ export function NewFollowUpModal({ isOpen, onClose, onCreated }: NewFollowUpModa
           prazo,
           prioridade,
           origem,
+          origem_ref: initialContext?.origem_ref || undefined,
+          manager_id: initialContext?.manager_id || undefined,
         }),
       });
 

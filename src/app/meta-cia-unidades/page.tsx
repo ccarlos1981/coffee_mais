@@ -12,6 +12,8 @@ import {
   LayoutGrid,
   ChevronDown,
   Building,
+  Lock,
+  RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatNumber } from "@/lib/formatters";
@@ -53,8 +55,9 @@ const PROGRESS_FORECAST_COLOR = "bg-blue-500 shadow-blue-500/50";
 const PROGRESS_INTERNAL_COLOR = "bg-violet-500 shadow-violet-500/50";
 
 export default function AcompAnualPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -98,17 +101,67 @@ export default function AcompAnualPage() {
   }, []);
 
   useEffect(() => {
-    const authExp = localStorage.getItem("ceo_auth_exp");
-    if (authExp && parseInt(authExp) > Date.now()) {
-      setIsAuthenticated(true);
-    }
+    const checkAuthAndPermissions = async () => {
+      try {
+        setAuthLoading(true);
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role, approved")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile || !profile.approved) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const role = profile.role;
+        setUserRole(role);
+
+        // Super-usuários possuem acesso total
+        if (role === "Admin" || role === "CEO" || role === "Admin Master" || role === "TI" || role === "Diretoria" || role === "Presidência" || role === "Gerente Nacional") {
+          setHasAccess(true);
+          setAuthLoading(false);
+          return;
+        }
+
+        // Validação da permissão do módulo 'Meta Cia' na matriz de permissões
+        const { data: perm } = await supabase
+          .from("cm_role_permissions")
+          .select("has_access")
+          .eq("role", role)
+          .eq("module_name", "Meta Cia")
+          .maybeSingle();
+
+        if (perm && perm.has_access) {
+          setHasAccess(true);
+        } else {
+          setHasAccess(false);
+        }
+      } catch (err) {
+        console.error("Erro na verificação de permissões do módulo Meta Cia (Unidades):", err);
+        setHasAccess(false);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    checkAuthAndPermissions();
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (hasAccess) {
       loadData();
     }
-  }, [isAuthenticated, loadData]);
+  }, [hasAccess, loadData]);
 
   const handleUpdateMeta = async (month: number, channel: string, field: "target_forecast_qty" | "target_internal_qty", valueStr: string) => {
     const value = parseFloat(valueStr || "0");
@@ -170,41 +223,32 @@ export default function AcompAnualPage() {
   };
 
   // Auth gate
-  if (!isAuthenticated) {
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
-        <div className="glass-card p-10 w-full max-w-md text-center shadow-2xl relative overflow-hidden">
-          {/* Subtle gradient orb behind */}
-          <div className="absolute -top-32 -left-32 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
-          <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-violet-500/10 rounded-full blur-3xl" />
-          
-          <div className="relative z-10">
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-800 mx-auto mb-6 shadow-lg shadow-blue-900/30">
-              <Building className="w-8 h-8 text-white" />
-            </div>
-            <h2 className="text-2xl font-bold mb-2">Painel do CEO</h2>
-            <p className="text-muted text-sm mb-8">Acompanhamento estratégico anual. Digite a credencial executiva.</p>
-            
-              <form onSubmit={(e) => {
-              e.preventDefault();
-              if (passwordInput === "123456") {
-                setIsAuthenticated(true);
-                localStorage.setItem("ceo_auth_exp", (Date.now() + 2 * 60 * 60 * 1000).toString());
-              }
-            }}>
-              <input
-                type="password"
-                autoFocus
-                placeholder="••••••"
-                value={passwordInput}
-                onChange={e => setPasswordInput(e.target.value)}
-                className="w-full bg-background/50 border border-border rounded-xl px-4 py-4 text-center text-lg tracking-[0.5em] focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all mb-4"
-              />
-              <button type="submit" className="w-full py-4 rounded-xl bg-foreground text-background font-bold hover:bg-muted transition-colors">
-                Entrar
-              </button>
-            </form>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground gap-4">
+        <RefreshCw className="w-8 h-8 text-blue-500 animate-spin" />
+        <p className="text-sm text-muted">Verificando credenciais e permissões de acesso...</p>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-foreground">
+        <div className="glass-card p-8 max-w-md w-full text-center relative overflow-hidden shadow-2xl border border-border">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-500">
+            <Lock className="w-7 h-7" />
           </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Acesso Não Autorizado</h2>
+          <p className="text-sm text-muted mb-6">
+            Seu perfil ({userRole || "Não autenticado"}) não possui permissão para acessar o módulo Meta Cia Unidades (Painel do CEO).
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent/80 text-foreground text-sm font-medium transition-colors border border-border"
+          >
+            <ArrowLeft className="w-4 h-4" /> Voltar ao Menu Inicial
+          </Link>
         </div>
       </div>
     );

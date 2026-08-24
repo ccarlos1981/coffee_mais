@@ -269,6 +269,21 @@ export class FollowUpService {
       created_by: userId,
     };
 
+    // 3. Idempotency check: if origem and origem_ref are provided, check for existing active action
+    if (input.origem && input.origem_ref) {
+      const { data: existingActive } = await adminClient
+        .from('cm_follow_up_actions')
+        .select('*')
+        .eq('origem', input.origem)
+        .eq('origem_ref', input.origem_ref)
+        .in('status', ['PENDENTE', 'EM_ANDAMENTO'])
+        .maybeSingle();
+
+      if (existingActive) {
+        return existingActive as FollowUpActionRecord;
+      }
+    }
+
     const { data: created, error: createErr } = await adminClient
       .from('cm_follow_up_actions')
       .insert(recordPayload)

@@ -20,10 +20,16 @@ import {
   Layers,
   Package,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  Lock,
+  RefreshCw,
+  ArrowLeft,
+  Plus
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 interface Alert {
   id: string;
@@ -40,9 +46,9 @@ interface Alert {
 }
 
 export default function SmartActionHub() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,6 +56,25 @@ export default function SmartActionHub() {
   const [managersList, setManagersList] = useState<string[]>([]);
   const [actionInput, setActionInput] = useState<{ [key: string]: string }>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+
+  // Estados da Modal de Follow-up (OP-04)
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpContext, setFollowUpContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
+
+  const handleOpenFollowUpAlert = (alert: Alert) => {
+    setFollowUpContext({
+      clienteNome: alert.client_name,
+      manager_id: alert.manager,
+      origem: "ALERTA_QUEDA",
+      origem_ref: alert.id,
+      tipo_acao: "RECUPERACAO_VOLUME",
+      motivo: `Tratamento de Queda de Faturamento: ${alert.client_name}`,
+      descricao: `Alerta: Queda de ${formatPercent(alert.drop_pct)} no mês ${alert.alert_month}.\nFaturamento Anterior: ${formatCurrency(alert.fat_previous)} | Faturamento Atual: ${formatCurrency(alert.fat_current)} | Gap: ${formatCurrency(alert.fat_previous - alert.fat_current)}.`,
+      prioridade: alert.drop_pct >= 60 ? "CRITICA" : alert.drop_pct >= 40 ? "ALTA" : "MEDIA",
+    });
+    setIsFollowUpModalOpen(true);
+  };
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -76,8 +101,67 @@ export default function SmartActionHub() {
   }, [selectedManager]);
 
   useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
+    const checkAuthAndPermissions = async () => {
+      try {
+        setAuthLoading(true);
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role, approved")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile || !profile.approved) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const role = profile.role;
+        setUserRole(role);
+
+        // Super-usuários possuem acesso total
+        if (role === "Admin" || role === "CEO" || role === "Admin Master" || role === "TI" || role === "Diretoria" || role === "Presidência" || role === "Gerente Nacional") {
+          setHasAccess(true);
+          setAuthLoading(false);
+          return;
+        }
+
+        // Validação da permissão do módulo 'Alertas' na matriz de permissões
+        const { data: perm } = await supabase
+          .from("cm_role_permissions")
+          .select("has_access")
+          .eq("role", role)
+          .eq("module_name", "Alertas")
+          .maybeSingle();
+
+        if (perm && perm.has_access) {
+          setHasAccess(true);
+        } else {
+          setHasAccess(false);
+        }
+      } catch (err) {
+        console.error("Erro na verificação de permissões do módulo Alertas:", err);
+        setHasAccess(false);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    checkAuthAndPermissions();
+  }, []);
+
+  useEffect(() => {
+    if (hasAccess) {
+      fetchAlerts();
+    }
+  }, [hasAccess, fetchAlerts]);
 
   const handleRegisterAction = async (alert: Alert) => {
     const note = actionInput[alert.id];
@@ -120,51 +204,32 @@ export default function SmartActionHub() {
     setSavingId(null);
   };
 
-  if (!isAuthenticated) {
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
-        <div className="glass-card p-8 w-full max-w-sm text-center relative overflow-hidden shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-amber-500/5 z-0" />
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 mb-6 shadow-lg shadow-violet-500/30">
-              <Bell className="w-6 h-6 text-white" />
-            </div>
-            
-            <h2 className="text-xl font-bold text-foreground mb-2">Acesso Restrito</h2>
-            <p className="text-sm text-muted mb-6">Por favor, digite a senha para acessar o Smart Action Hub.</p>
-            
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (passwordInput === "123456") {
-                setIsAuthenticated(true);
-                setError(null);
-              } else {
-                setError("Senha incorreta");
-              }
-            }} className="w-full flex flex-col gap-4">
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Senha"
-                className="w-full bg-background border border-border-light rounded-xl px-4 py-3 text-center tracking-widest text-foreground placeholder:tracking-normal placeholder:text-dim focus:outline-none focus:border-violet-500"
-                autoFocus
-              />
-              
-              {error && <p className="text-xs text-red-400 -mt-2">{error}</p>}
-              
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white font-medium transition-all shadow-lg shadow-violet-500/20"
-              >
-                Acessar
-              </button>
-            </form>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground gap-4">
+        <RefreshCw className="w-8 h-8 text-violet-500 animate-spin" />
+        <p className="text-sm text-muted">Verificando credenciais e permissões de acesso...</p>
+      </div>
+    );
+  }
 
-            <Link href="/" className="mt-8 flex items-center gap-2 text-sm text-muted hover:text-foreground transition-colors">
-              <Home className="w-4 h-4" /> Voltar ao Menu Inicial
-            </Link>
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-foreground">
+        <div className="glass-card p-8 max-w-md w-full text-center relative overflow-hidden shadow-2xl border border-border">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-500">
+            <Lock className="w-7 h-7" />
           </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Acesso Não Autorizado</h2>
+          <p className="text-sm text-muted mb-6">
+            Seu perfil ({userRole || "Não autenticado"}) não possui permissão para acessar o Painel de Alertas.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent/80 text-foreground text-sm font-medium transition-colors border border-border"
+          >
+            <ArrowLeft className="w-4 h-4" /> Voltar ao Menu Inicial
+          </Link>
         </div>
       </div>
     );
@@ -268,8 +333,8 @@ export default function SmartActionHub() {
                    </div>
                 )}
 
-                {/* Input Ação */}
-                <div style={{ display: "flex", gap: 8 }}>
+                {/* Input Ação e Botão de Follow-up */}
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                    <input 
                       type="text" 
                       placeholder="Registrar visita, feedback ou ação..."
@@ -283,8 +348,19 @@ export default function SmartActionHub() {
                       className="cm-btn-clear"
                       style={{ background: "var(--accent-gold)", color: "#000", padding: "10px", height: "auto", border: "none" }}
                       disabled={savingId === alert.id || !actionInput[alert.id]}
+                      title="Salvar nota rápida"
                    >
                      <Send style={{ width: 14, height: 14 }} />
+                   </button>
+                   <button
+                      type="button"
+                      onClick={() => handleOpenFollowUpAlert(alert)}
+                      className="cm-btn-clear"
+                      style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--accent-gold)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "10px 14px", height: "auto", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                      title="Gerar Ação Oficial de Follow-up"
+                   >
+                     <Plus style={{ width: 13, height: 13 }} />
+                     <span>Follow-up</span>
                    </button>
                 </div>
 
@@ -292,6 +368,28 @@ export default function SmartActionHub() {
             );
           })}
         </div>
+
+        {/* Toast Feedback */}
+        {followUpToast && (
+          <div style={{ position: "fixed", bottom: 70, right: 20, zIndex: 9999, padding: "12px 18px", background: "rgba(16, 185, 129, 0.95)", color: "#fff", fontWeight: 700, fontSize: "0.8rem", borderRadius: 10, boxShadow: "0 10px 25px rgba(0,0,0,0.3)" }}>
+            {followUpToast}
+          </div>
+        )}
+
+        {/* Modal Canônica de Criação de Follow-up (Alertas) */}
+        {isFollowUpModalOpen && (
+          <NewFollowUpModal
+            isOpen={isFollowUpModalOpen}
+            onClose={() => setIsFollowUpModalOpen(false)}
+            onCreated={() => {
+              setIsFollowUpModalOpen(false);
+              setFollowUpToast("Ação de Follow-up registrada com sucesso!");
+              setTimeout(() => setFollowUpToast(null), 4000);
+              fetchAlerts();
+            }}
+            initialContext={followUpContext}
+          />
+        )}
       </main>
 
       {/* ═══ BOTTOM TAB BAR ═══ */}

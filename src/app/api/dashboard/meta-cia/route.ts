@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { AnalyticsEngine, parseAnalyticsFiltersFromParams } from "@/lib/governance/analytics";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Meta Cia");
+
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
     const type = searchParams.get("type") || "revenue";
@@ -38,6 +43,6 @@ export async function GET(request: Request) {
       totals,
     });
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return handleAuthError(error);
   }
 }

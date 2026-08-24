@@ -2557,16 +2557,16 @@ export class AnalyticsEngine {
     `;
     const vendasRows = await this.executeSql<{ rede: string; tipo_produto: string; fat: number }>(sqlVendas);
 
-    // 3. Fetch Ações de Investimento da tabela cm_acoes_investimento
+    // 3. Fetch Ações de Investimento da view canônica v_acoes_investimento_com_gerente (SSOT de Investimentos)
     const supabase = getSupabaseClient();
     let queryInvs = supabase
-      .from("cm_acoes_investimento")
+      .from("v_acoes_investimento_com_gerente")
       .select(`
         id, rede, mes_referencia, familia_produto, abrangencia,
         valor_investimento, preco_flat, preco_acao, expectativa_volume,
         apuracao_preenchida_em, apuracao_qtd_vendida, apuracao_valor_realizado,
         fase_atual, is_planejamento, familias_detalhes, skus_detalhes,
-        rejection_reason
+        rejection_reason, gerente_responsavel
       `)
       .eq("is_planejamento", false)
       .gte("mes_referencia", curStartMonth)
