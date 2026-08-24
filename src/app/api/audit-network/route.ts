@@ -202,7 +202,7 @@ export async function GET(request: Request) {
     }
     if (acoesOrs.length > 0) {
       const { data: acs } = await supabase
-        .from('cm_acoes_investimento')
+        .from('v_acoes_investimento_com_gerente')
         .select('*')
         .or(acoesOrs.join(','));
       if (acs) acoes = acs;

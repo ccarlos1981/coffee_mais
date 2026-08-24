@@ -1400,55 +1400,6 @@ function SlideDreRede({
   );
 }
 
-// ─── Helper: Multi-manager network resolution ─────────────────────────
-function getManagerInfoForRede(
-  rKey: string,
-  cKey: string,
-  targetManager: string,
-  matrizes: any[]
-): { isMatch: boolean; gerente: string; canal: string } {
-  const normRKey = (rKey || "").toUpperCase().trim();
-  const normCKey = (cKey || "").trim();
-
-  const matches = (matrizes || []).filter((m: any) => {
-    const mNome = (m.nome || "").toUpperCase().trim();
-    const mCodigo = String(m.codigo || "").trim();
-    return (mNome && mNome === normRKey) || (mCodigo && normCKey && mCodigo === normCKey);
-  });
-
-  if (matches.length === 0) {
-    return {
-      isMatch: targetManager === "CRISTIANO",
-      gerente: "Sem Gerente",
-      canal: "KA",
-    };
-  }
-
-  if (targetManager === "CRISTIANO") {
-    return {
-      isMatch: true,
-      gerente: matches[0].gerente || "Sem Gerente",
-      canal: matches[0].canal || "KA",
-    };
-  }
-
-  const specificMatch = matches.find((m: any) => isSameManager(m.gerente, targetManager));
-
-  if (specificMatch) {
-    return {
-      isMatch: true,
-      gerente: specificMatch.gerente || targetManager,
-      canal: specificMatch.canal || "KA",
-    };
-  }
-
-  return {
-    isMatch: false,
-    gerente: matches[0].gerente || "Sem Gerente",
-    canal: matches[0].canal || "KA",
-  };
-}
-
 // ─── Slide: Investimentos — Resumo das Fases ──────────────────────────────────
 function SlideInvestFases({
   monthName,
@@ -1475,24 +1426,15 @@ function SlideInvestFases({
     setLoading(true);
     try {
       const { data: acoes, error } = await supabase
-        .from("cm_acoes_investimento")
-        .select("id, rede, codigo_matriz, valor_investimento, expectativa_volume, fase_atual, data_fim")
+        .from("v_acoes_investimento_com_gerente")
+        .select("id, rede, codigo_matriz, valor_investimento, expectativa_volume, fase_atual, data_fim, gerente_responsavel")
         .eq("is_planejamento", false);
 
       if (error) throw error;
 
       let filtered = acoes || [];
       if (manager !== "CRISTIANO") {
-        const { data: matrizes } = await supabase
-          .from("v_redes_matrizes_detalhes")
-          .select("nome, gerente, codigo");
-
-        filtered = filtered.filter((a: any) => {
-          const rKey = (a.rede || "").toUpperCase().trim();
-          const cKey = String(a.codigo_matriz || "").trim();
-          const info = getManagerInfoForRede(rKey, cKey, manager, matrizes || []);
-          return info.isMatch;
-        });
+        filtered = filtered.filter((a: any) => isSameManager(a.gerente_responsavel, manager));
       }
 
       const fasesMap: Record<number, { count: number; val: number }> = {
@@ -1641,30 +1583,23 @@ function SlideInvestCliente({
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const { data: acoes } = await supabase
-        .from("cm_acoes_investimento")
-        .select("id, rede, valor_investimento, mes_referencia, fase_atual, expectativa_volume, data_fim")
+      const { data: acoes, error } = await supabase
+        .from("v_acoes_investimento_com_gerente")
+        .select("id, rede, codigo_matriz, valor_investimento, mes_referencia, fase_atual, expectativa_volume, data_fim, gerente_responsavel")
         .eq("is_planejamento", false)
         .is("financeiro_pago_em", null);
 
-      const { data: matrizes } = await supabase
-        .from("v_redes_matrizes_detalhes")
-        .select("nome, gerente, codigo");
-
-      const gMap: Record<string, string> = {};
-      (matrizes || []).forEach((m: any) => {
-        if (m.nome) gMap[m.nome.toUpperCase().trim()] = m.gerente || "Sem Gerente";
-        if (m.codigo) gMap[String(m.codigo).trim()] = m.gerente || "Sem Gerente";
-      });
+      if (error) throw error;
 
       const { data: salesRows } = await supabase
         .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
-        .select("rede, fat")
+        .select("rede, fat, manager")
         .eq("mes", mesKey)
         .limit(10000);
 
       const fMap: Record<string, number> = {};
       (salesRows || []).forEach((r: any) => {
+        if (manager !== "CRISTIANO" && !isSameManager(r.manager, manager)) return;
         const rk = (r.rede || "").toUpperCase().trim();
         if (rk) fMap[rk] = (fMap[rk] || 0) + (Number(r.fat) || 0);
       });
@@ -1681,13 +1616,10 @@ function SlideInvestCliente({
 
       (acoes || []).forEach((a: any) => {
         if ((a.fase_atual ?? 0) === 1) return;
+        if (manager !== "CRISTIANO" && !isSameManager(a.gerente_responsavel, manager)) return;
+
         const redeKey = (a.rede || "SEM REDE").toUpperCase().trim();
-        const cKey = String(a.codigo_matriz || "").trim();
-        const info = getManagerInfoForRede(redeKey, cKey, manager, matrizes || []);
-
-        if (!info.isMatch) return;
-
-        const gName = info.gerente;
+        const gName = a.gerente_responsavel || "Sem Gerente";
         const val = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
         const isRefMonth = a.mes_referencia === mesKey;
         const isAtrasada = a.fase_atual === 3 && a.data_fim && a.data_fim < todayStr;
@@ -1896,18 +1828,16 @@ function SlideInvestRede({
     try {
       const { data: salesRows } = await supabase
         .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
-        .select("rede, tipo_produto, fat, qty")
+        .select("rede, tipo_produto, fat, qty, manager, canal")
         .eq("mes", mesKey)
         .limit(10000);
 
-      const { data: acoes } = await supabase
-        .from("cm_acoes_investimento")
-        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, familias_detalhes, mes_referencia, codigo_matriz, familia_produto, preco_flat, preco_acao")
+      const { data: acoes, error } = await supabase
+        .from("v_acoes_investimento_com_gerente")
+        .select("id, rede, valor_investimento, expectativa_volume, fase_atual, familias_detalhes, mes_referencia, codigo_matriz, familia_produto, preco_flat, preco_acao, gerente_responsavel")
         .eq("is_planejamento", false);
 
-      const { data: matrizes } = await supabase
-        .from("v_redes_matrizes_detalhes")
-        .select("nome, gerente, canal, codigo");
+      if (error) throw error;
 
       const redeMap: Record<string, {
         gerente: string;
@@ -1929,12 +1859,11 @@ function SlideInvestRede({
       let countAcoes = 0;
 
       (salesRows || []).forEach((s: any) => {
+        if (manager !== "CRISTIANO" && !isSameManager(s.manager, manager)) return;
         const rKey = (s.rede || "SEM REDE").toUpperCase().trim();
-        const info = getManagerInfoForRede(rKey, "", manager, matrizes || []);
-        if (!info.isMatch) return;
 
         if (!redeMap[rKey]) {
-          redeMap[rKey] = { gerente: info.gerente, canal: info.canal, fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
+          redeMap[rKey] = { gerente: s.manager || "Sem Gerente", canal: s.canal || "KA", fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
         }
 
         const fat = Number(s.fat) || 0;
@@ -1954,14 +1883,12 @@ function SlideInvestRede({
 
       (acoes || []).forEach((a: any) => {
         if (a.mes_referencia !== mesKey) return;
+        if (manager !== "CRISTIANO" && !isSameManager(a.gerente_responsavel, manager)) return;
 
         const rKey = (a.rede || "SEM REDE").toUpperCase().trim();
-        const cKey = String(a.codigo_matriz || "").trim();
-        const info = getManagerInfoForRede(rKey, cKey, manager, matrizes || []);
-        if (!info.isMatch) return;
 
         if (!redeMap[rKey]) {
-          redeMap[rKey] = { gerente: info.gerente, canal: info.canal, fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
+          redeMap[rKey] = { gerente: a.gerente_responsavel || "Sem Gerente", canal: "KA", fat: 0, invest: 0, qty: 0, sumFlatWeighted: 0, sumAcaoWeighted: 0, sumVolWeighted: 0, familias: {} };
         }
 
         const actionVol = Number(a.expectativa_volume) || 1;

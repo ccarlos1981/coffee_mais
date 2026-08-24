@@ -44,14 +44,14 @@ const MANAGERS_MAP: Record<string, ManagerInfo> = {
   "JULIANO (SPC)": { managerId: "1000", managerName: "Julliano", canonicalKey: "JULLIANO" },
 
   // Leandro Saffi / Leandro (1001)
-  "1001": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "1001-KA": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "1001-DIST": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "LEANDRO": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "LEANDRO (KA)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "LEANDRO (DIST)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "LEANDRO SAFFI": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
-  "LEANDRO (SUL)": { managerId: "1001", managerName: "Leandro", canonicalKey: "LEANDRO" },
+  "1001": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "1001-KA": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "1001-DIST": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "LEANDRO": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "LEANDRO (KA)": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "LEANDRO (DIST)": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "LEANDRO SAFFI": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
+  "LEANDRO (SUL)": { managerId: "1001", managerName: "Leandro Saffi", canonicalKey: "LEANDRO SAFFI" },
 
   // Luiz (1002)
   "1002": { managerId: "1002", managerName: "Luiz", canonicalKey: "LUIZ" },

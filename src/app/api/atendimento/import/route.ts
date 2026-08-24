@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { CommercialDomainService } from "@/lib/domain";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
@@ -39,6 +40,10 @@ function findHeaderRange(sheet: XLSX.WorkSheet, expectedKeys: string[]): number 
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Atendimento");
+
     const formData = await request.formData();
     const file = formData.get("file") as File;
 
@@ -166,7 +171,10 @@ export async function POST(request: NextRequest) {
       totalProcessed: records.length,
       totalUpserted: upserted,
     });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED" || err.message === "PERMISSION_DENIED" || err.message === "PROFILE_NOT_APPROVED" || err.message === "PROFILE_NOT_FOUND") {
+      return handleAuthError(err);
+    }
     console.error("Import clientes error:", err);
     const message = err instanceof Error ? err.message : "Erro no processamento";
     return Response.json({ error: message }, { status: 500 });

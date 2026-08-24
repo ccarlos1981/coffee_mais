@@ -3286,7 +3286,7 @@ export class AnalyticsEngine {
           a.status,
           a.created_at::date as created_date,
           a.concluded_at::date as concluded_date,
-          c.codigo as cod_parceiro
+          c.codigo::text as cod_parceiro
         FROM public.cm_follow_up_actions a
         JOIN public.cm_clientes c ON c.id = a.cliente_id
         WHERE a.status = 'CONCLUIDA'
@@ -3363,7 +3363,7 @@ export class AnalyticsEngine {
         a.manager_name,
         a.origem,
         a.created_at::date as created_date,
-        c.codigo as cod_parceiro
+        c.codigo::text as cod_parceiro
       FROM public.cm_follow_up_actions a
       JOIN public.cm_clientes c ON c.id = a.cliente_id
       WHERE a.status = 'CONCLUIDA'
