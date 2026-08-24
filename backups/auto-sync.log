@@ -1741,3 +1741,10 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    9221625..2c08024  main -> main
 [24/08/2026 04:00] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 5b5fdce] auto-save: 24/08/2026 09:10
+ 4 files changed, 607 insertions(+), 87 deletions(-)
+ create mode 100644 src/lib/services/executive-report-dispatcher.ts
+ create mode 100644 supabase/migrations/20260824_create_executive_report_idempotency.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   2c08024..5b5fdce  main -> main
+[24/08/2026 09:10] ✅ Alterações enviadas com sucesso para o GitHub.
