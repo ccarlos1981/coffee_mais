@@ -6,6 +6,7 @@ import { logGovernanceError } from "@/lib/governance/logging";
 import { ERROR_CODES } from "@/lib/governance/constants";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CommercialDomainService } from "@/lib/domain";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 
 export async function GET(req: NextRequest) {
   try {
@@ -40,6 +41,9 @@ export async function POST(req: NextRequest) {
     }
 
     const adminClient = createAdminClient();
+    const canonical = resolveCanonicalManager(manager);
+    const resolvedManagerName = canonical.managerName || manager;
+    const resolvedManagerId = manager_id || (canonical.managerId !== "9999" ? canonical.managerId : null);
 
     // 1. Insert into official cm_redes_matrizes
     const { data: rede, error: insertErr } = await adminClient
@@ -48,8 +52,8 @@ export async function POST(req: NextRequest) {
         codigo,
         nome,
         canal: (await CommercialDomainService.resolveChannel(canal)).dbValue,
-        manager_id: manager_id || null,
-        manager
+        manager_id: resolvedManagerId,
+        manager: resolvedManagerName
       })
       .select()
       .single();
@@ -120,14 +124,24 @@ export async function PATCH(req: NextRequest) {
       return errorResponse(404, ERROR_CODES.NOT_FOUND, "Rede não encontrada.");
     }
 
+    let resolvedManager = manager || oldVal.manager;
+    let resolvedManagerId = manager_id !== undefined ? manager_id : oldVal.manager_id;
+    if (manager) {
+      const canonical = resolveCanonicalManager(manager);
+      resolvedManager = canonical.managerName || manager;
+      if (manager_id === undefined && canonical.managerId !== "9999") {
+        resolvedManagerId = canonical.managerId;
+      }
+    }
+
     // 1. Update official cm_redes_matrizes
     const { data: rede, error: updateErr } = await adminClient
       .from("cm_redes_matrizes")
       .update({
         nome: nome || oldVal.nome,
         canal: canal || oldVal.canal,
-        manager_id: manager_id !== undefined ? manager_id : oldVal.manager_id,
-        manager: manager || oldVal.manager
+        manager_id: resolvedManagerId,
+        manager: resolvedManager
       })
       .eq("codigo", codigo)
       .select()

@@ -42,13 +42,10 @@ interface PdvMapping {
 
 import { CommercialDomainService } from "@/lib/domain";
 
-const PAGE_PASSWORD = "123456";
-
 export default function AtendimentoPage() {
-  const [authenticated, setAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [passwordError, setPasswordError] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,26 +55,63 @@ export default function AtendimentoPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
 
-  // Check sessionStorage on mount
+  // Verificação Canônica de Autenticação e RBAC
   useEffect(() => {
-    if (typeof window !== "undefined" && sessionStorage.getItem("atendimento_auth") === "true") {
-      setAuthenticated(true);
-    }
-  }, []);
+    const checkAuthAndPermissions = async () => {
+      try {
+        setAuthLoading(true);
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
 
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (passwordInput === PAGE_PASSWORD) {
-      setAuthenticated(true);
-      setPasswordError(false);
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("atendimento_auth", "true");
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role, approved")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile || !profile.approved) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const role = profile.role;
+        setUserRole(role);
+
+        // Super-usuários possuem acesso total
+        if (role === "Admin" || role === "CEO" || role === "Admin Master" || role === "TI") {
+          setHasAccess(true);
+          setAuthLoading(false);
+          return;
+        }
+
+        // Validação da permissão do módulo 'Atendimento' na matriz de permissões
+        const { data: perm } = await supabase
+          .from("cm_role_permissions")
+          .select("has_access")
+          .eq("role", role)
+          .eq("module_name", "Atendimento")
+          .maybeSingle();
+
+        if (perm && perm.has_access) {
+          setHasAccess(true);
+        } else {
+          setHasAccess(false);
+        }
+      } catch (err) {
+        console.error("Erro na verificação de permissões do módulo Atendimento:", err);
+        setHasAccess(false);
+      } finally {
+        setAuthLoading(false);
       }
-    } else {
-      setPasswordError(true);
-      setPasswordInput("");
-    }
-  };
+    };
+
+    checkAuthAndPermissions();
+  }, []);
 
   // Dados
   const [pdvData, setPdvData] = useState<PdvMapping[]>([]);
@@ -370,66 +404,49 @@ export default function AtendimentoPage() {
 
   const hasChanges = Object.keys(modifiedPdvs).length > 0 || deletedPdvs.size > 0;
 
-  // PASSWORD GATE
-  if (!authenticated) {
+  // Validação de Autenticação e RBAC
+  if (authLoading) {
     return (
-      <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ textAlign: "center", maxWidth: 380, width: "100%", padding: "0 24px" }}>
+      <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+        <RefreshCw style={{ width: 32, height: 32, color: "var(--accent-gold)" }} className="animate-spin" />
+        <p style={{ fontSize: "0.85rem", color: "var(--foreground-muted)", fontWeight: 500 }}>
+          Verificando permissões de acesso...
+        </p>
+      </div>
+    );
+  }
+
+  if (!hasAccess) {
+    return (
+      <div style={{ minHeight: "100vh", background: "var(--background)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ textAlign: "center", maxWidth: 420, width: "100%", padding: "32px 24px", borderRadius: 16, border: "1px solid var(--border)", background: "var(--card-bg, var(--background))", boxShadow: "0 10px 25px rgba(0,0,0,0.1)" }}>
           <div style={{
-            width: 64, height: 64, borderRadius: "50%",
-            background: "linear-gradient(135deg, rgba(184,134,11,0.15), rgba(184,134,11,0.05))",
+            width: 60, height: 60, borderRadius: "50%",
+            background: "rgba(239, 68, 68, 0.1)",
+            border: "1px solid rgba(239, 68, 68, 0.2)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 20px", border: "1px solid rgba(184,134,11,0.2)"
+            margin: "0 auto 16px", color: "#ef4444"
           }}>
-            <Lock style={{ width: 28, height: 28, color: "var(--accent-gold)" }} />
+            <Lock style={{ width: 28, height: 28 }} />
           </div>
-          <h2 style={{ fontSize: "1.2rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", marginBottom: 6 }}>
-            Área Restrita
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, color: "var(--foreground)", fontFamily: "var(--font-heading)", marginBottom: 8 }}>
+            Acesso Não Autorizado
           </h2>
-          <p style={{ fontSize: "0.8rem", color: "var(--foreground-muted)", marginBottom: 24 }}>
-            Configuração de Atendimento requer autenticação.
+          <p style={{ fontSize: "0.85rem", color: "var(--foreground-muted)", marginBottom: 24, lineHeight: 1.5 }}>
+            Seu perfil ({userRole || "Não autenticado"}) não possui permissão para acessar o módulo de Atendimento.
           </p>
-          <form onSubmit={handlePasswordSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ position: "relative" }}>
-              <input
-                type={showPassword ? "text" : "password"}
-                value={passwordInput}
-                onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
-                placeholder="Digite a senha"
-                autoFocus
-                style={{
-                  width: "100%", padding: "12px 44px 12px 16px", fontSize: "0.95rem",
-                  borderRadius: 10, border: `1px solid ${passwordError ? "rgba(200,80,80,0.5)" : "var(--border)"}`,
-                  background: "var(--card-bg, var(--background))", color: "var(--foreground)",
-                  outline: "none", transition: "border-color 0.2s",
-                  boxSizing: "border-box"
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--foreground-muted)", padding: 4 }}
-              >
-                {showPassword ? <EyeOff style={{ width: 18, height: 18 }} /> : <Eye style={{ width: 18, height: 18 }} />}
-              </button>
-            </div>
-            {passwordError && (
-              <p style={{ fontSize: "0.8rem", color: "#c85050", margin: 0 }}>
-                Senha incorreta. Tente novamente.
-              </p>
-            )}
-            <button
-              type="submit"
-              style={{
-                padding: "12px", borderRadius: 10, border: "none",
-                background: "var(--accent-gold)", color: "#fff",
-                fontSize: "0.9rem", fontWeight: 600, cursor: "pointer",
-                transition: "opacity 0.2s"
-              }}
-            >
-              Entrar
-            </button>
-          </form>
+          <Link
+            href="/"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "10px 20px", borderRadius: 10,
+              background: "var(--accent-gold)", color: "#fff",
+              fontSize: "0.85rem", fontWeight: 600, textDecoration: "none",
+              transition: "opacity 0.2s"
+            }}
+          >
+            <Home style={{ width: 16, height: 16 }} /> Voltar ao Início
+          </Link>
         </div>
       </div>
     );

@@ -4163,6 +4163,46 @@ A partir de 22/08/2026, a infraestrutura e rotinas de geração do **Relatório 
 
 Status Arquitetural: `EXECUTIVE_DAILY_REPORT = LOCKED` & `REPORT_AUTOMATION = HOMOLOGATED` & `BASELINE = PERMANENTE`.
 
+---
+
+## 126. Baseline Oficial — Governança Transversal de Ownership e Contrato de SSOT (Ciclo P0)
+
+A partir de 24/08/2026, a arquitetura de **Governança Transversal de Ownership e Verdade Única de Negócio (SSOT)** torna-se o baseline permanente e oficial do Coffee++, após homologação conclusiva do Ciclo P0.
+
+### Status Oficial das Entregas do Ciclo P0:
+- **P0-1 — Hierarquia e Propagação Segura**: `HOMOLOGADO`
+- **P0-2 — Resolução Dinâmica de Investimentos**: `HOMOLOGADO`
+- **P0-3.1 — Unificação SSOT do RDM**: `HOMOLOGADO`
+- **P0-5 — Teste Controlado de Integridade Transversal**: `HOMOLOGADO`
+- **P0-6 — Contrato Transversal de SSOT (ADR-009)**: `HOMOLOGADO`
+- **P0-8 — Correção do ACH-01**: `HOMOLOGADO`
+- **P0-FINAL — Homologação Final do Ciclo SSOT**: `HOMOLOGADO`
+
+### Invariantes Permanentes de Governança:
+1. `cm_redes_matrizes` é a origem canônica de ownership de Redes.
+2. `cm_clientes` é a representação operacional do ownership das lojas/PDVs.
+3. `base_atendimento` deve permanecer sincronizada com o ownership operacional.
+4. `v_acoes_investimento_com_gerente` é a fonte canônica de leitura para ownership dos investimentos.
+5. `cm_campanhas.gerente_id` permanece como autoria histórica e não deve ser reinterpretado como ownership atual.
+6. `mv_vendas_mensal` e `mv_vendas_cliente_mensal` permanecem como fontes oficiais de faturamento.
+7. `AnalyticsEngine V1` permanece `LOCKED`.
+8. Nenhum módulo pode criar regra paralela de gerente, lookup alternativo, gerente hardcoded ou fallback silencioso de ownership.
+9. Alterações realizadas no Cadastro Mestre devem refletir transversalmente nos módulos consumidores por meio das fontes oficiais, sem edição manual de módulos secundários.
+10. Novas funcionalidades devem consumir as SSOTs oficiais existentes e não criar uma segunda verdade para a mesma informação.
+
+### Evidência Conclusiva da Homologação Final:
+- **P0 (Crítico):** 0
+- **P1 (Divergência Relevante):** 0
+- **P2 (Bloqueante):** 0
+- **P3 (Relevante):** 0
+- **Desvio Financeiro Global:** 0,0000%
+- **Tipagem TypeScript:** 0 erros (`npx tsc --noEmit`)
+- **Testes de Domínio Comercial:** 20/20 Aprovados (`npm run test:domain`)
+- **Auditoria de Governança Analytics & React:** 100% Conforme (`npm run audit:analytics`)
+- **Compilação de Produção Next.js:** SUCCESS / 188 rotas compiladas (`npm run build`)
+
+Status Arquitetural: `TRANSVERSAL_OWNERSHIP_SSOT = LOCKED` & `CICLO_P0 = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
+
 
 
 

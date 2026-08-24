@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 
@@ -11,6 +12,10 @@ function getSupabaseClient() {
 
 export async function POST() {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Atendimento");
+
     const supabase = getSupabaseClient();
     
     // 1. Fetching base mapping data from sales table in batches
@@ -106,7 +111,10 @@ export async function POST() {
       pdv_count: pdvSuccess
     });
 
-  } catch (error: unknown) {
+  } catch (error: any) {
+    if (error.message === "UNAUTHENTICATED" || error.message === "PERMISSION_DENIED" || error.message === "PROFILE_NOT_APPROVED" || error.message === "PROFILE_NOT_FOUND") {
+      return handleAuthError(error);
+    }
     console.error('[ATENDIMENTO SEED API Error]', error);
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
