@@ -54,14 +54,15 @@ export interface NavigationGroup {
 
 export const allModules: NavigationGroup[] = [
   {
-    category: "Plataforma Comercial Enterprise",
+    category: "Plataforma Comercial & Inteligência",
     items: [
-      { key: "crm_enterprise", title: "CRM Enterprise", description: "Gestão 360º da carteira comercial", href: "/crm-enterprise", icon: Building2, color: "from-indigo-600 to-indigo-800", ready: true, permission: "CRM Enterprise" },
-      { key: "execucao_comercial", title: "Execução Comercial", description: "Agenda e visitas inteligentes", href: "/execucao-comercial", icon: CheckSquare, color: "from-emerald-600 to-emerald-800", ready: true, permission: "Execução Comercial" },
-      { key: "assistente_decisao", title: "Assistente de Decisão", description: "Inteligência e recomendações", href: "/assistente-decisao", icon: Brain, color: "from-amber-500 to-yellow-600", ready: true, permission: "Assistente de Decisão" },
-      { key: "simulacao_estrategica", title: "Simulação Estratégica", description: "Cenários prospectivos", href: "/simulacao-estrategica", icon: Sliders, color: "from-purple-600 to-purple-800", ready: true, permission: "Simulação Estratégica" },
-      { key: "planejamento_comercial", title: "S&OP Comercial", description: "Planejamento comercial integrado", href: "/planejamento-comercial", icon: Compass, color: "from-blue-600 to-blue-800", ready: true, permission: "S&OP Comercial" },
-      { key: "dre_comercial", title: "DRE Comercial", description: "Demonstrativo de Resultados Comercial", href: "/inovacoes/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
+      { key: "cockpit_comercial", title: "Cockpit Comercial", description: "Visão executiva e saúde da carteira", href: "/inovacoes/cockpit", icon: Activity, color: "from-blue-600 to-indigo-800", ready: true, permission: "Cockpit Comercial" },
+      { key: "crm_comercial", title: "CRM Comercial", description: "Oportunidades e inteligência prescritiva", href: "/inovacoes/crm", icon: Building2, color: "from-indigo-600 to-indigo-800", ready: true, permission: "CRM Enterprise" },
+      { key: "inteligencia_comercial", title: "Centro de Inteligência", description: "Diagnóstico e radar estratégico", href: "/inteligencia", icon: Brain, color: "from-amber-500 to-yellow-600", ready: true, permission: "Assistente de Decisão" },
+      { key: "forecast_comercial", title: "Forecast Comercial", description: "Projeções preditivas de fechamento", href: "/forecast", icon: Compass, color: "from-purple-600 to-purple-800", ready: true, permission: "Simulação Estratégica" },
+      { key: "simulador_comercial", title: "Simulador Comercial", description: "Simulação de cenários e ROI", href: "/simulador", icon: Sliders, color: "from-cyan-600 to-blue-800", ready: true, permission: "S&OP Comercial" },
+      { key: "assistente_comercial", title: "Assistente IA", description: "Consultas analíticas executivas", href: "/assistente", icon: Sparkles, color: "from-amber-500 to-orange-600", ready: true, permission: "Coffee_IA" },
+      { key: "dre_comercial", title: "DRE Comercial", description: "Demonstrativo MACO por dimensão", href: "/inovacoes/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
     ],
   },
   {
@@ -73,9 +74,8 @@ export const allModules: NavigationGroup[] = [
       { key: "historico_por_rede", title: "Hist. p/ Rede", permission: "Hist. p/ Matriz", description: "Top 10 Redes YoY", href: "/historico-por-matriz", icon: BarChart3, color: "from-sky-600 to-sky-800", ready: true },
       { key: "preco", title: "Preço", description: "R$/Kg análise", href: "/preco", icon: TrendingUp, color: "from-orange-600 to-orange-800", ready: true },
       { key: "dia", title: "Dia", description: "Análise diária", href: "/dia", icon: Calendar, color: "from-cyan-600 to-cyan-800", ready: true },
-      { key: "maco", title: "MaCo", description: "Margem contribuição", href: "/vendas?tab=maco", icon: DollarSign, color: "from-green-600 to-green-800", ready: false },
-      { key: "dre", title: "DRE", description: "Demonstrativo de Resultados", href: "/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
-      { key: "dre_historico", title: "DRE Hist.", description: "Histórico anual", href: "/dre/historico", icon: DollarSign, color: "from-teal-700 to-teal-900", ready: true },
+      { key: "maco", title: "MaCo", description: "Margem contribuição", href: "/inovacoes/dre", icon: DollarSign, color: "from-green-600 to-green-800", ready: true },
+      { key: "dre", title: "DRE", description: "Demonstrativo de Resultados", href: "/inovacoes/dre", icon: DollarSign, color: "from-teal-600 to-teal-800", ready: true },
     ],
   },
   {
@@ -143,7 +143,6 @@ export const allModules: NavigationGroup[] = [
       { key: "coffee_ia", title: "Coffee_IA", description: "Pergunte aos dados", href: "/coffee-ia", icon: Sparkles, color: "from-amber-500 to-yellow-600", ready: true },
       { key: "atendimento", title: "Atendimento", description: "Regras PDV e UFs", href: "/atendimento", icon: Users, color: "from-fuchsia-600 to-fuchsia-800", ready: true },
       { key: "upload", title: "Upload", description: "Importar planilhas", href: "/upload", icon: Upload, color: "from-rose-600 to-rose-800", ready: true },
-      { key: "tributos", title: "Tributos", description: "Tributação SKU", href: "/tributos", icon: Receipt, color: "from-sky-600 to-sky-800", ready: true },
       { key: "bonif", title: "Bonif.", description: "Bonificações", href: "/bonif", icon: Package, color: "from-indigo-600 to-indigo-800", ready: false },
       { key: "devol", title: "Devol.", description: "Devoluções", href: "/devol", icon: Layers, color: "from-slate-600 to-slate-800", ready: false },
     ],
@@ -176,7 +175,6 @@ export const allModules: NavigationGroup[] = [
     category: "Governança & Health",
     items: [
       { key: "health_center", title: "Health Center", description: "Governança & Observabilidade", href: "/health", icon: Activity, color: "from-emerald-600 to-teal-800", ready: true, permission: "Health Center" },
-      { key: "workflow_enterprise", title: "Workflow Enterprise", description: "Infraestrutura de Workflows", href: "/workflow-enterprise", icon: Network, color: "from-amber-600 to-amber-800", ready: true, permission: "Workflow Enterprise" },
     ],
   },
   {

@@ -25,6 +25,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { OpportunityRecommendation, SuggestedSku } from "@/lib/services/opportunity-recommendation-service";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 interface CrmClienteDrawerProps {
   oportunidade: OpportunityRecommendation | any;
@@ -34,17 +35,14 @@ interface CrmClienteDrawerProps {
 export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade: rawOp, onClose }) => {
   const [copied, setCopied] = useState(false);
   const [activeActionToast, setActiveActionToast] = useState<string | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
 
   if (!rawOp) return null;
 
   const router = useRouter();
 
   const handleGerarFollowUp = () => {
-    onClose();
-    const params = new URLSearchParams();
-    if (oportunidade.nomeParceiro) params.set("searchCliente", oportunidade.nomeParceiro);
-    params.set("origem", "COCKPIT_PRESCRITIVO");
-    router.push(`/processo-comercial/follow-up?${params.toString()}`);
+    setIsFollowUpModalOpen(true);
   };
   
   // Normalização do objeto caso venha no formato legado CrmOportunidade
@@ -431,6 +429,31 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
           </button>
         </div>
       </div>
+
+      {/* Modal Canônica de Criação de Follow-up Prescritivo em 1 Clique */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setActiveActionToast("Ação de Follow-up registrada com sucesso no sistema!");
+            setTimeout(() => setActiveActionToast(null), 4000);
+          }}
+          initialContext={{
+            cliente_id: oportunidade.clienteId,
+            clienteNome: oportunidade.nomeParceiro,
+            rede: oportunidade.rede,
+            manager_id: oportunidade.gerenteId || undefined,
+            origem: "COCKPIT_PRESCRITIVO",
+            origem_ref: `CRM-${oportunidade.clienteId}-${new Date().toISOString().slice(0, 10)}`,
+            tipo_acao: oportunidade.classificacaoRisco === "CRITICO" ? "REATIVACAO_CLIENTE" : "RECUPERACAO_VOLUME",
+            motivo: `Oportunidade Prescritiva: ${oportunidade.nomeParceiro} (${oportunidade.classificacaoRisco})`,
+            descricao: `Score: ${oportunidade.scoreOportunidade}/100 | Dias sem compra: ${oportunidade.diasSemCompra} | Impacto Estimado: ${formatCur(oportunidade.impactoFinanceiroTotal || oportunidade.faturamentoPerdidoEstimado)}.\nJustificativa: ${oportunidade.justificativaRecomendacao}`,
+            prioridade: oportunidade.classificacaoRisco === "CRITICO" ? "CRITICA" : oportunidade.classificacaoRisco === "ALTO" ? "ALTA" : "MEDIA",
+          }}
+        />
+      )}
     </div>
   );
 };

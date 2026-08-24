@@ -38,6 +38,7 @@ import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntelligenceEngine";
 import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 interface ClientRow {
   client: string;
@@ -166,6 +167,30 @@ export default function RpsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [mondays, setMondays] = useState<string[]>([]);
+
+  // Estados da Modal de Compromisso de Follow-up (OP-02)
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpContext, setFollowUpContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
+
+  const handleOpenCompromissoRps = (managerName: string, cli: ClientRow, cliDisp: number) => {
+    const prevProj = cli.prev_month_projection || 0;
+    const realMesA = cli.mes_a || 0;
+    const gap = realMesA - prevProj;
+    const targetMonth = `${filterYear}-${String(filterMonth).padStart(2, "0")}`;
+
+    setFollowUpContext({
+      clienteNome: cli.client,
+      manager_id: managerName,
+      origem: "RPS_COMPROMISSO",
+      origem_ref: `RPS-${targetMonth}-${cli.client}`,
+      tipo_acao: "RECUPERACAO_VOLUME",
+      motivo: `Compromisso RPS: Recuperação de dispersão de ${cli.client} (${formatPercent(cliDisp)})`,
+      descricao: `Reunião RPS - Mês: ${targetMonth} | Gerente: ${getManagerDisplayName(managerName)}\nProjeção Anterior: ${formatCurrency(prevProj)} | Realizado Mês A: ${formatCurrency(realMesA)} | Desvio/Gap: ${formatCurrency(gap)}.`,
+      prioridade: cliDisp <= -20 ? "CRITICA" : "ALTA",
+    });
+    setIsFollowUpModalOpen(true);
+  };
 
   // Identifica se a segunda-feira selecionada corresponde à semana corrente
   const isCurrentWeek = useCallback((weekMondayStr: string, idx: number) => {
@@ -1380,7 +1405,21 @@ export default function RpsPage() {
                                   );
                                 })}
 
-                                <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>{formatPercent(cliDisp)}</td>
+                                <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>
+                                  <div className="flex items-center justify-center gap-1">
+                                    <span>{formatPercent(cliDisp)}</span>
+                                    {cliDisp < 0 && (cli.prev_month_projection || 0) > 0 && (
+                                      <button
+                                        type="button"
+                                        title={`Registrar Compromisso de Recuperação para ${cli.client}`}
+                                        onClick={() => handleOpenCompromissoRps(row.manager, cli, cliDisp)}
+                                        className="p-0.5 rounded hover:bg-rose-500/20 text-rose-300 hover:text-rose-100 transition-colors cursor-pointer"
+                                      >
+                                        <Plus className="w-3 h-3 inline" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("AA", cliAA, cli.ano_a, true)}>{cli.ano_a > 0 ? formatPercent(cliAA) : "—"}</td>
                                 <td className="font-mono text-xs py-1.5 border-r-2 border-accent-gold/70" style={getPctCellStyle("MT", cliMT, cli.media_trimestre || 0, true)}>{(cli.media_trimestre || 0) > 0 ? formatPercent(cliMT) : "—"}</td>
@@ -1693,6 +1732,27 @@ export default function RpsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Toast Feedback */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
+
+      {/* Modal Canônica de Criação de Compromisso RPS (Follow-up) */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Compromisso RPS registrado com sucesso no Follow-up!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpContext}
+        />
       )}
 
     </div>

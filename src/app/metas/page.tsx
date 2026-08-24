@@ -10,6 +10,8 @@ import {
   Calendar,
   ChevronDown,
   Loader2,
+  Lock,
+  RefreshCw,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatNumber, formatCurrency } from "@/lib/formatters";
@@ -87,8 +89,9 @@ interface ActualSalesData {
 }
 
 export default function MetasPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
+  const [authLoading, setAuthLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<Tab>("metas");
   const [businessDays, setBusinessDays] = useState<BusinessDay[]>([]);
@@ -282,18 +285,68 @@ export default function MetasPage() {
   }, [loadBusinessDays]);
 
   useEffect(() => {
-    const authExp = localStorage.getItem("ceo_auth_exp");
-    if (authExp && parseInt(authExp) > Date.now()) {
-      setIsAuthenticated(true);
-    }
+    const checkAuthAndPermissions = async () => {
+      try {
+        setAuthLoading(true);
+        const { data: { user }, error: authErr } = await supabase.auth.getUser();
+        if (authErr || !user) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("cm_user_profiles")
+          .select("role, approved")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile || !profile.approved) {
+          setHasAccess(false);
+          setAuthLoading(false);
+          return;
+        }
+
+        const role = profile.role;
+        setUserRole(role);
+
+        // Super-usuários possuem acesso total
+        if (role === "Admin" || role === "CEO" || role === "Admin Master" || role === "TI" || role === "Diretoria" || role === "Presidência" || role === "Gerente Nacional") {
+          setHasAccess(true);
+          setAuthLoading(false);
+          return;
+        }
+
+        // Validação da permissão do módulo 'Metas' na matriz de permissões
+        const { data: perm } = await supabase
+          .from("cm_role_permissions")
+          .select("has_access")
+          .eq("role", role)
+          .eq("module_name", "Metas")
+          .maybeSingle();
+
+        if (perm && perm.has_access) {
+          setHasAccess(true);
+        } else {
+          setHasAccess(false);
+        }
+      } catch (err) {
+        console.error("Erro na verificação de permissões do módulo Metas:", err);
+        setHasAccess(false);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    checkAuthAndPermissions();
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (hasAccess) {
       loadActualSales(selectedChannel, selectedManager, selectedYear);
       loadTargetsData(selectedChannel, selectedManager, selectedYear);
     }
-  }, [isAuthenticated, selectedChannel, selectedManager, selectedYear, loadActualSales, loadTargetsData]);
+  }, [hasAccess, selectedChannel, selectedManager, selectedYear, loadActualSales, loadTargetsData]);
 
 
   const handleChannelChange = (val: string) => {
@@ -522,52 +575,32 @@ export default function MetasPage() {
     );
   };
 
-  if (!isAuthenticated) {
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground">
-        <div className="glass-card p-8 w-full max-w-sm text-center relative overflow-hidden shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-br from-violet-500/5 to-amber-500/5 z-0" />
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-violet-700 mb-6 shadow-lg shadow-violet-500/30">
-              <Target className="w-6 h-6 text-white" />
-            </div>
-            
-            <h2 className="text-xl font-bold text-foreground mb-2">Acesso Restrito</h2>
-            <p className="text-sm text-muted mb-6">Por favor, digite a senha para acessar a gestão de metas.</p>
-            
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (passwordInput === "123456") {
-                setIsAuthenticated(true);
-                localStorage.setItem("ceo_auth_exp", (Date.now() + 2 * 60 * 60 * 1000).toString());
-                setError(null);
-              } else {
-                setError("Senha incorreta");
-              }
-            }} className="w-full flex flex-col gap-4">
-              <input
-                type="password"
-                value={passwordInput}
-                onChange={(e) => setPasswordInput(e.target.value)}
-                placeholder="Senha"
-                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-center tracking-widest text-foreground placeholder:tracking-normal placeholder:text-dim focus:outline-none focus:border-violet-500"
-                autoFocus
-              />
-              
-              {error && <p className="text-xs text-red-400 -mt-2">{error}</p>}
-              
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-400 hover:to-violet-500 text-white font-medium transition-all shadow-lg shadow-violet-500/20"
-              >
-                Acessar
-              </button>
-            </form>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground gap-4">
+        <RefreshCw className="w-8 h-8 text-amber-500 animate-spin" />
+        <p className="text-sm text-muted">Verificando permissões de acesso...</p>
+      </div>
+    );
+  }
 
-            <Link href="/" className="mt-8 flex items-center gap-2 text-sm text-muted hover:text-foreground transition-colors">
-              <ArrowLeft className="w-4 h-4" /> Voltar ao Menu Inicial
-            </Link>
+  if (!hasAccess) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-foreground">
+        <div className="glass-card p-8 max-w-md w-full text-center relative overflow-hidden shadow-2xl border border-border">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4 text-red-500">
+            <Lock className="w-7 h-7" />
           </div>
+          <h2 className="text-xl font-bold text-foreground mb-2">Acesso Não Autorizado</h2>
+          <p className="text-sm text-muted mb-6">
+            Seu perfil ({userRole || "Não autenticado"}) não possui permissão para acessar a gestão de Metas.
+          </p>
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:bg-accent/80 text-foreground text-sm font-medium transition-colors border border-border"
+          >
+            <ArrowLeft className="w-4 h-4" /> Voltar ao Menu Inicial
+          </Link>
         </div>
       </div>
     );

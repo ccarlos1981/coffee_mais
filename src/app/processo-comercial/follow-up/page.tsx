@@ -28,7 +28,7 @@ import {
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { CommercialDomainService } from "@/lib/domain";
 import { FollowUpDrawer } from "./components/FollowUpDrawer";
-import { NewFollowUpModal } from "./components/NewFollowUpModal";
+import { NewFollowUpModal, FollowUpInitialContext } from "./components/NewFollowUpModal";
 import type {
   FollowUpActionRecord,
   FollowUpKpis,
@@ -98,11 +98,30 @@ export default function FollowUpPage() {
   // ── Modals & Drawers State ──
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
+  const [initialContext, setInitialContext] = useState<FollowUpInitialContext | null>(null);
 
-  // Load manager options from SSOT
+  // Load manager options from SSOT and detect query params
   useEffect(() => {
     const opts = CommercialDomainService.getManagerOptions();
     setManagerOptions(opts);
+
+    if (typeof window !== "undefined") {
+      const sp = new URLSearchParams(window.location.search);
+      const searchCli = sp.get("searchCliente") || sp.get("q");
+      const origemParam = sp.get("origem") as FollowUpOrigem | null;
+      const autoNew = sp.get("new") === "true";
+
+      if (searchCli) setSearchQuery(searchCli);
+      if (origemParam) setFilterOrigem(origemParam);
+
+      if (autoNew || (searchCli && origemParam)) {
+        setInitialContext({
+          clienteNome: searchCli || undefined,
+          origem: origemParam || undefined,
+        });
+        setIsNewModalOpen(true);
+      }
+    }
   }, []);
 
   // Fetch list and KPIs from backend APIs
@@ -564,8 +583,16 @@ export default function FollowUpPage() {
 
       <NewFollowUpModal
         isOpen={isNewModalOpen}
-        onClose={() => setIsNewModalOpen(false)}
-        onCreated={fetchData}
+        onClose={() => {
+          setIsNewModalOpen(false);
+          setInitialContext(null);
+        }}
+        onCreated={() => {
+          setIsNewModalOpen(false);
+          setInitialContext(null);
+          fetchData();
+        }}
+        initialContext={initialContext}
       />
     </div>
   );

@@ -1752,3 +1752,12 @@ To https://github.com/ccarlos1981/coffee_mais.git
  2 files changed, 50 insertions(+), 6 deletions(-)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [24/08/2026 13:43] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main c23238c] auto-save: 24/08/2026 17:41
+ 16 files changed, 812 insertions(+), 188 deletions(-)
+ create mode 100644 docs/adr/ADR-009-Transversal-Ownership-and-SSOT-Governance.md
+ create mode 100644 docs/governance/TRANSVERSAL_OWNERSHIP_SSOT_CONTRACT.md
+ create mode 100644 supabase/migrations/20260824_p0_1_hierarchical_ownership_governance.sql
+ create mode 100644 supabase/migrations/20260824_p0_2_dynamic_investment_ownership.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   5b5fdce..c23238c  main -> main
+[24/08/2026 17:41] ✅ Alterações enviadas com sucesso para o GitHub.

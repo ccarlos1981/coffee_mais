@@ -151,8 +151,7 @@ const CATEGORIZED_MODULES = [
   {
     category: "Governança & Health",
     modules: [
-      "Health Center",
-      "Workflow Enterprise"
+      "Health Center"
     ]
   },
   {
