@@ -95,6 +95,16 @@ export const HOMOLOGATED_EXECUTIVE_RECIPIENTS: readonly ExecutiveReportRecipient
 
 export class ExecutiveReportDispatcher {
   /**
+   * Helper para auditoria de quantidade de páginas A4 no buffer PDF
+   */
+  static countPdfPages(buffer: Buffer): number {
+    if (!buffer || buffer.length === 0) return 0;
+    const str = buffer.toString("binary");
+    const matches = str.match(/\/Type\s*\/Page\b/g);
+    return matches ? matches.length : 0;
+  }
+
+  /**
    * Validação Estrita Pré-Envio:
    * Garante normalização, ausência de duplicidades e que a lista contenha EXATAMENTE 7 destinatários distintos.
    */
@@ -192,6 +202,7 @@ export class ExecutiveReportDispatcher {
 
   /**
    * Pipeline Completo de Geração e Disparo Homologado dos 7 Relatórios
+   * Incorpora Barreira Absoluta Pré-Envio (Validações 100% concluídas antes do primeiro sendMail)
    */
   static async dispatchHomologatedReports(options: {
     reportData: ExecutiveReportData;
@@ -203,13 +214,20 @@ export class ExecutiveReportDispatcher {
     const { reportData, executionId, dryRun = false, customTransporter } = options;
     const reportDateIso = reportData.dataReferenciaIso;
 
-    // 1. Validação Absoluta dos 7 Destinatários
+    // 1. Barreira Pré-Envio: Validação Absoluta dos 7 Destinatários
     const recipients = this.validateRecipients(HOMOLOGATED_EXECUTIVE_RECIPIENTS);
 
-    // 2. Compilação Otimizada dos PDFs (1 Global + 4 Gerentes = 5 Buffers)
+    // 2. Barreira Pré-Envio: Compilação Otimizada dos 5 PDFs
     console.log("[ExecutiveReportDispatcher] Construindo PDF Global (Páginas 1 a 5 Top 20 Global)...");
     const pdfBufferGlobal = await ExecutivePdfBuilder.buildPdfBuffer(reportData);
     const pdfSizeKbGlobal = Number((pdfBufferGlobal.length / 1024).toFixed(1));
+
+    const pagesGlobal = this.countPdfPages(pdfBufferGlobal);
+    if (pagesGlobal !== 5) {
+      const errMsg = `Barreira Pré-Envio Violada: PDF Global possui ${pagesGlobal} páginas em vez de 5. Nenhum e-mail foi disparado.`;
+      await this.completeReport(reportDateIso, executionId, "FAILED", 0, 7, [], errMsg);
+      throw new Error(errMsg);
+    }
 
     const managerPdfCache: Record<string, { buffer: Buffer; sizeKb: number }> = {};
     const managers = ["Leandro", "Luiz", "Julliano", "John Guedes"] as const;
@@ -218,13 +236,32 @@ export class ExecutiveReportDispatcher {
       console.log(`[ExecutiveReportDispatcher] Construindo PDF Personalizado para ${mgr}...`);
       const managerReportData = await ExecutiveReportCollector.collect(undefined, mgr);
       const managerBuffer = await ExecutivePdfBuilder.buildPdfBuffer(managerReportData);
+      const pagesMgr = this.countPdfPages(managerBuffer);
+
+      if (pagesMgr !== 5) {
+        const errMsg = `Barreira Pré-Envio Violada: PDF do gerente ${mgr} possui ${pagesMgr} páginas em vez de 5. Nenhum e-mail foi disparado.`;
+        await this.completeReport(reportDateIso, executionId, "FAILED", 0, 7, [], errMsg);
+        throw new Error(errMsg);
+      }
+
       managerPdfCache[mgr] = {
         buffer: managerBuffer,
         sizeKb: Number((managerBuffer.length / 1024).toFixed(1)),
       };
     }
 
-    // 3. Configuração do Transporter SMTP
+    // 3. Barreira Pré-Envio: Validar que todos os 7 destinatários possuem PDF válido associado
+    for (const rc of recipients) {
+      const isGlobal = rc.role === "GLOBAL";
+      const buffer = isGlobal ? pdfBufferGlobal : managerPdfCache[rc.managerFilter!]?.buffer;
+      if (!buffer || buffer.length === 0) {
+        const errMsg = `Barreira Pré-Envio Violada: Destinatário ${rc.email} não possui buffer PDF gerado. Nenhum e-mail foi disparado.`;
+        await this.completeReport(reportDateIso, executionId, "FAILED", 0, 7, [], errMsg);
+        throw new Error(errMsg);
+      }
+    }
+
+    // 4. Configuração do Transporter SMTP
     let transporter: any = customTransporter;
     const hasSmtpCredentials = Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 
@@ -241,7 +278,7 @@ export class ExecutiveReportDispatcher {
       });
     }
 
-    // 4. Execução dos 7 Disparos Rastreáveis
+    // 5. Execução dos 7 Disparos Rastreáveis
     const details: DispatchDetail[] = [];
     let totalSent = 0;
     let totalFailed = 0;
@@ -313,9 +350,9 @@ export class ExecutiveReportDispatcher {
     }
 
     const durationSeconds = (Date.now() - startTime) / 1000;
-    const finalStatus = totalFailed === 0 ? "SUCCESS" : totalSent > 0 ? "FAILED" : "FAILED";
+    const finalStatus = totalFailed === 0 ? "SUCCESS" : "FAILED";
 
-    // 5. Persistência do Log Final no Banco
+    // 6. Persistência do Log Final no Banco de Dados
     await this.completeReport(
       reportDateIso,
       executionId,
