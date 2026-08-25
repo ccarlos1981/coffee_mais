@@ -4464,6 +4464,29 @@ A partir de 25/08/2026, a homologação e o fechamento formal dos 8 bugs residua
 
 Status Arquitetural: `P4_6C_POST_STABILIZATION = LOCKED` | `BUG_RES_01_TO_08 = CLOSED` | `SYSTEM_STABILITY = CONFIRMED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 72. Baseline Oficial — Cadastro Único como SSOT e Canonical Network Engine (P4.11 / P4.12)
+
+A partir de 25/08/2026, a arquitetura de **Cadastro Único (`public.cm_clientes`) como Single Source of Truth (SSOT)** e a **Canonical Network Engine** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias:
+1. **Single Source of Truth (SSOT)**: A tabela `public.cm_clientes` é a única fonte primária da verdade para identidade, nomenclatura, regionalidade e titularidade de redes comerciais em todo o ecossistema.
+2. **Resolução Canônica Dinâmica**: A resolução de redes deve ocorrer exclusivamente através da arquitetura canônica implementada em `src/lib/domain/canonical.ts` e `CommercialDomainService.resolveNetwork()`.
+3. **Proibição Absoluta de Aliases Hardcoded**: É expressamente proibida a criação de mapas estáticos de nomes de redes, tabelas em memória ou regras específicas por rede no TypeScript ou SQL.
+4. **Proibição de Heurísticas Inseguras**: É proibido o uso de `startsWith`, `substring`, regex aproximativo ou fuzzy matching para resolução de redes.
+5. **Ordem Estrita de Precedência**:
+   1. `network_id` (quando disponível)
+   2. `cod_parceiro` (quando disponível)
+   3. `(codigo_matriz, manager_id, uf)` com unicidade 1:1 comprovada
+   4. Discriminador operacional comprovado
+   5. Correspondência exata na view oficial `vw_redes_planejaveis_oficiais`
+6. **Ambiguity Guard Ativo**: Quando múltiplos candidatos coexistirem sem discriminador unívoco suficiente, o sistema deve retornar `status = CANONICALIZACAO_AMBIGUA`, preservando o registro intacto e bloqueando adivinhação automática.
+7. **Propagação Sistêmica**: Qualquer alteração de `cm_clientes.matriz` reflete automaticamente nos consumidores dinâmicos (RPS, Metas por Rede, Investimentos, Cockpit, CRM, DRE e APIs), respeitando snapshots históricos imutáveis (ex: Cartas de Anuência).
+8. **Paridade Financeira Absoluta**: A resolução canônica jamais altera ou duplica projeções financeiras, preservando estritamente o FAT consolidado do gerente (`FAT_CONSOLIDADO_GERENTE_SEMANA[w] = SUM(FAT_PROJECAO_REDE[w])` com $\Delta = \text{R\$} 0,00$).
+
+Status Arquitetural: `CADASTRO_UNICO_SSOT = LOCKED` | `CANONICAL_NETWORK_ENGINE = LOCKED` | `AMBIGUITY_GUARD = ACTIVE` | `BASELINE = PERMANENTE`.
+
 
 
 
