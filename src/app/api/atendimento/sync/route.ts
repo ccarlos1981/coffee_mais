@@ -10,30 +10,40 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
+import { createAdminClient } from "@/lib/supabase/admin";
+
 export async function POST() {
   try {
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
     await requirePermission(profile.role, "Atendimento");
 
-    const supabase = getSupabaseClient();
+    const supabase = createAdminClient();
     
-    console.log('[SYNC] Starting historical synchronization (ler para trás)...');
+    console.log('[SYNC] Starting customer ownership and historical synchronization...');
     
-    // Calling the RPC function created in the database migration
-    const { data: rowsAffected, error } = await supabase.rpc('sync_historical_sales');
+    // 1. Executar recalculo oficial dos responsáveis pelos clientes
+    const { data: rowsAffected, error: rpcError } = await supabase.rpc('recalcular_responsaveis_clientes');
     
-    if (error) {
-      console.error('[SYNC RPC Error]', error);
-      throw error;
+    if (rpcError) {
+      console.error('[SYNC RPC Error]', rpcError);
+      throw rpcError;
     }
 
-    console.log(`[SYNC] Success! Affected historical rows: ${rowsAffected}`);
+    // 2. Enfileirar refresh oficial das materialized views analíticas
+    try {
+      await supabase.rpc('fn_enqueue_mv_refresh');
+    } catch (enqueueErr) {
+      console.warn('[SYNC MV Enqueue Warning]', enqueueErr);
+    }
+
+    const totalAffected = typeof rowsAffected === 'number' ? rowsAffected : 0;
+    console.log(`[SYNC] Success! Affected customer rows: ${totalAffected}`);
     
     return NextResponse.json({ 
       success: true, 
       message: "Sincronização histórica concluída com sucesso!",
-      rowsAffected: rowsAffected 
+      rowsAffected: totalAffected 
     });
 
   } catch (error: any) {

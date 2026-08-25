@@ -30,6 +30,7 @@ export interface FollowUpActionRecord {
   created_at: string;
   updated_at: string;
   concluded_at: string | null;
+  gap_original_reais?: number | null;
   is_atrasada?: boolean;
 }
 
@@ -45,8 +46,11 @@ export interface FollowUpHistoryRecord {
 
 export interface FollowUpListFilters {
   managerId?: string;
+  clienteId?: string;
   status?: FollowUpStatus | 'ALL';
   origem?: FollowUpOrigem | 'ALL';
+  origemRef?: string;
+  origemRefs?: string[];
   prioridade?: FollowUpPrioridade | 'ALL';
   searchCliente?: string;
   dataInicio?: string;
@@ -85,6 +89,7 @@ export interface CreateFollowUpInput {
   origem?: FollowUpOrigem;
   origem_ref?: string;
   manager_id?: string;
+  gap_original_reais?: number | null;
 }
 
 export interface UpdateFollowUpInput {
@@ -125,12 +130,24 @@ export class FollowUpService {
       query = query.eq('manager_id', filters.managerId);
     }
 
+    if (filters.clienteId) {
+      query = query.eq('cliente_id', filters.clienteId);
+    }
+
     if (filters.status && filters.status !== 'ALL') {
       query = query.eq('status', filters.status);
     }
 
     if (filters.origem && filters.origem !== 'ALL') {
       query = query.eq('origem', filters.origem);
+    }
+
+    if (filters.origemRef) {
+      query = query.eq('origem_ref', filters.origemRef);
+    }
+
+    if (filters.origemRefs && filters.origemRefs.length > 0) {
+      query = query.in('origem_ref', filters.origemRefs);
     }
 
     if (filters.prioridade && filters.prioridade !== 'ALL') {
@@ -234,7 +251,7 @@ export class FollowUpService {
     // 1. Validate client in cm_clientes
     const { data: cliente, error: cliErr } = await adminClient
       .from('cm_clientes')
-      .select('id, nome, matriz, manager_id, responsavel')
+      .select('id, nome_parceiro, razao_social, matriz, manager_id, responsavel')
       .eq('id', input.cliente_id)
       .single();
 
@@ -252,14 +269,19 @@ export class FollowUpService {
     const managerName = resolvedManager.managerName || targetManagerId || 'Gerente Não Atribuído';
     const managerId = resolvedManager.managerId || targetManagerId || '9999';
 
+    const gapOriginalReais = (input.origem === 'RPS_COMPROMISSO' || input.gap_original_reais !== undefined) && input.gap_original_reais !== null && !isNaN(Number(input.gap_original_reais))
+      ? Math.abs(Number(input.gap_original_reais))
+      : null;
+
     const recordPayload = {
       cliente_id: cliente.id,
-      cliente_nome: cliente.nome || 'Cliente sem nome',
+      cliente_nome: cliente.nome_parceiro || cliente.razao_social || 'Cliente sem nome',
       rede: cliente.matriz || null,
       manager_id: managerId,
       manager_name: managerName,
       origem: input.origem || 'MANUAL',
       origem_ref: input.origem_ref || null,
+      gap_original_reais: gapOriginalReais,
       tipo_acao: input.tipo_acao || 'OUTRO',
       motivo: input.motivo.trim(),
       descricao: input.descricao ? input.descricao.trim() : null,
@@ -291,6 +313,25 @@ export class FollowUpService {
       .single();
 
     if (createErr || !created) {
+      // Tratamento de concorrência atômica: se outra requisição simultânea inseriu antes
+      if (
+        (createErr?.code === '23505' || createErr?.message?.includes('duplicate key') || createErr?.message?.includes('uq_idx_follow_up_active_origem_ref')) &&
+        input.origem &&
+        input.origem_ref
+      ) {
+        const { data: existingActive } = await adminClient
+          .from('cm_follow_up_actions')
+          .select('*')
+          .eq('origem', input.origem)
+          .eq('origem_ref', input.origem_ref)
+          .in('status', ['PENDENTE', 'EM_ANDAMENTO'])
+          .maybeSingle();
+
+        if (existingActive) {
+          return existingActive as FollowUpActionRecord;
+        }
+      }
+
       console.error('Error creating follow-up:', createErr);
       throw new Error(`Erro ao criar follow-up: ${createErr?.message}`);
     }

@@ -1,4 +1,4 @@
-import { AnalyticsEngine, AnalyticsFilters } from "@/lib/governance/analytics";
+import { AnalyticsEngine, AnalyticsFilters, CockpitComercialData, FollowUpEfetividadeAnalyticsData } from "@/lib/governance/analytics";
 import { CommercialPlanningService, MetasRedeViewModel } from "@/lib/planning/commercial-planning-service";
 
 export interface CockpitMetadata {
@@ -141,6 +141,15 @@ export interface CockpitViewModel {
   simulator: CockpitSimulator;
   telemetry: CockpitTelemetry;
 
+  // Efetividade do Follow-up Comercial Oficial (AnalyticsEngine)
+  followUpEfetividade?: FollowUpEfetividadeAnalyticsData;
+
+  // Propriedades Diretas de Analytics para compatibilidade
+  metrics?: CockpitComercialData["metrics"];
+  saudeCarteira?: CockpitComercialData["saudeCarteira"];
+  ranking?: CockpitComercialData["ranking"];
+  oportunidades?: CockpitComercialData["oportunidades"];
+
   // Backward-compatible properties
   executiveSummary: CockpitExecutiveSummary;
   nationalKPIs: CockpitNationalKPIs;
@@ -164,17 +173,24 @@ export class CockpitService {
   ): Promise<CockpitViewModel> {
     const cStart = performance.now();
 
-    // 1. Consume AnalyticsEngine (Baseline Financeira)
+    // 1. Consume AnalyticsEngine (Baseline Financeira) & Follow-up Efetividade in parallel
     const aStart = performance.now();
-    const analyticsData = await AnalyticsEngine.getCockpitComercial(filters);
+    const [analyticsData, planningVM, followUpEfetividade] = await Promise.all([
+      AnalyticsEngine.getCockpitComercial(filters),
+      CommercialPlanningService.getMetasRedeViewModel(year, month),
+      AnalyticsEngine.getFollowUpEfetividadeAnalytics(filters.manager_id || undefined).catch(() => ({
+        clientesRecuperadosCount: 0,
+        totalElegiveisCount: 0,
+        taxaEfetividade: 0,
+        faturamentoRecuperadoTotal: 0,
+        recuperadosMap: [],
+        rankingGerentesEfetividade: [],
+        efetividadePorOrigem: [],
+      })),
+    ]);
     const aEnd = performance.now();
     const analyticsTimeMs = Number((aEnd - aStart).toFixed(2));
-
-    // 2. Consume CommercialPlanningService (Metas e Planejamento)
-    const pStart = performance.now();
-    const planningVM: MetasRedeViewModel = await CommercialPlanningService.getMetasRedeViewModel(year, month);
-    const pEnd = performance.now();
-    const planningTimeMs = Number((pEnd - pStart).toFixed(2));
+    const planningTimeMs = analyticsTimeMs;
 
     // 3. Consolidate DTO metrics
     const med3MNacional = planningVM.grandTotalMed3M;
@@ -347,6 +363,15 @@ export class CockpitService {
         month,
         parityDeviationPct: 0.0
       },
+
+      // Efetividade do Follow-up Comercial Oficial
+      followUpEfetividade,
+
+      // Propriedades Diretas para compatibilidade com CockpitComercialData
+      metrics: analyticsData.metrics,
+      saudeCarteira: analyticsData.saudeCarteira,
+      ranking: analyticsData.ranking,
+      oportunidades: analyticsData.oportunidades,
 
       // Backward-compatible properties
       executiveSummary,

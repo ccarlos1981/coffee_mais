@@ -39,6 +39,8 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntelligenceEngine";
 import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
+import { FollowUpStatusBadge } from "@/app/processo-comercial/follow-up/components/FollowUpStatusBadge";
+import type { FollowUpActionRecord } from "@/lib/services/follow-up-service";
 
 interface ClientRow {
   client: string;
@@ -172,11 +174,31 @@ export default function RpsPage() {
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [followUpContext, setFollowUpContext] = useState<FollowUpInitialContext | null>(null);
   const [followUpToast, setFollowUpToast] = useState<string | null>(null);
+  const [rpsFollowUps, setRpsFollowUps] = useState<Record<string, FollowUpActionRecord>>({});
+
+  const fetchRpsFollowUps = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/follow-up?origem=RPS_COMPROMISSO&pageSize=100`, { cache: "no-store" });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const map: Record<string, FollowUpActionRecord> = {};
+        for (const act of json.data) {
+          if (act.origem_ref) {
+            map[act.origem_ref] = act;
+          }
+        }
+        setRpsFollowUps(map);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar compromissos do RPS:", err);
+    }
+  }, []);
 
   const handleOpenCompromissoRps = (managerName: string, cli: ClientRow, cliDisp: number) => {
     const prevProj = cli.prev_month_projection || 0;
     const realMesA = cli.mes_a || 0;
     const gap = realMesA - prevProj;
+    const gapAbs = Math.abs(gap);
     const targetMonth = `${filterYear}-${String(filterMonth).padStart(2, "0")}`;
 
     setFollowUpContext({
@@ -184,6 +206,7 @@ export default function RpsPage() {
       manager_id: managerName,
       origem: "RPS_COMPROMISSO",
       origem_ref: `RPS-${targetMonth}-${cli.client}`,
+      gap_original_reais: gapAbs,
       tipo_acao: "RECUPERACAO_VOLUME",
       motivo: `Compromisso RPS: Recuperação de dispersão de ${cli.client} (${formatPercent(cliDisp)})`,
       descricao: `Reunião RPS - Mês: ${targetMonth} | Gerente: ${getManagerDisplayName(managerName)}\nProjeção Anterior: ${formatCurrency(prevProj)} | Realizado Mês A: ${formatCurrency(realMesA)} | Desvio/Gap: ${formatCurrency(gap)}.`,
@@ -312,7 +335,8 @@ export default function RpsPage() {
   useEffect(() => {
     loadBusinessDays(filterYear, filterMonth);
     loadProjectionsData(filterYear, filterMonth);
-  }, [filterYear, filterMonth, loadBusinessDays, loadProjectionsData]);
+    fetchRpsFollowUps();
+  }, [filterYear, filterMonth, loadBusinessDays, loadProjectionsData, fetchRpsFollowUps]);
 
   // Handler para input de faturamento do cliente
   const handleClientProjChange = (mIdx: number, cIdx: number, wIdx: number, val: number) => {
@@ -1406,18 +1430,39 @@ export default function RpsPage() {
                                 })}
 
                                 <td className="font-mono text-xs border-l-0 py-1.5" style={getPctCellStyle("DISPERSAO", cliDisp, cli.prev_month_projection || 0)}>
-                                  <div className="flex items-center justify-center gap-1">
+                                  <div className="flex items-center justify-center gap-1 flex-wrap">
                                     <span>{formatPercent(cliDisp)}</span>
-                                    {cliDisp < 0 && (cli.prev_month_projection || 0) > 0 && (
-                                      <button
-                                        type="button"
-                                        title={`Registrar Compromisso de Recuperação para ${cli.client}`}
-                                        onClick={() => handleOpenCompromissoRps(row.manager, cli, cliDisp)}
-                                        className="p-0.5 rounded hover:bg-rose-500/20 text-rose-300 hover:text-rose-100 transition-colors cursor-pointer"
-                                      >
-                                        <Plus className="w-3 h-3 inline" />
-                                      </button>
-                                    )}
+                                    {(() => {
+                                      const targetMonth = `${filterYear}-${String(filterMonth).padStart(2, "0")}`;
+                                      const refKey = `RPS-${targetMonth}-${cli.client}`;
+                                      const existingAction = rpsFollowUps[refKey];
+
+                                      if (existingAction) {
+                                        return (
+                                          <FollowUpStatusBadge
+                                            status={existingAction.status}
+                                            isAtrasada={existingAction.is_atrasada}
+                                            size="xs"
+                                            title={`Compromisso RPS: ${existingAction.status} (${existingAction.motivo})`}
+                                          />
+                                        );
+                                      }
+
+                                      if (cliDisp < 0 && (cli.prev_month_projection || 0) > 0) {
+                                        return (
+                                          <button
+                                            type="button"
+                                            title={`Registrar Compromisso de Recuperação para ${cli.client}`}
+                                            onClick={() => handleOpenCompromissoRps(row.manager, cli, cliDisp)}
+                                            className="p-0.5 rounded hover:bg-rose-500/20 text-rose-300 hover:text-rose-100 transition-colors cursor-pointer"
+                                          >
+                                            <Plus className="w-3 h-3 inline" />
+                                          </button>
+                                        );
+                                      }
+
+                                      return null;
+                                    })()}
                                   </div>
                                 </td>
                                 <td className="font-mono text-xs py-1.5" style={getPctCellStyle("META", cliMetaPct, cli.meta, true)}>{cli.meta > 0 ? formatPercent(cliMetaPct) : "—"}</td>
@@ -1750,6 +1795,7 @@ export default function RpsPage() {
             setIsFollowUpModalOpen(false);
             setFollowUpToast("Compromisso RPS registrado com sucesso no Follow-up!");
             setTimeout(() => setFollowUpToast(null), 4000);
+            fetchRpsFollowUps();
           }}
           initialContext={followUpContext}
         />

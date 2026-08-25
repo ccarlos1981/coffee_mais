@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -24,7 +25,7 @@ const DAY_NAMES = ["Seg", "Ter", "Qua", "Qui", "Sex"];
 const MANAGER_OPTIONS = [
   { value: "ALL", label: "Todos os Gerentes" },
   { value: "Julliano", label: "Julliano (SPC)" },
-  { value: "Leandro", label: "Leandro (Sul)" },
+  { value: "Leandro Saffi", label: "Leandro Saffi (Sul)" },
   { value: "Luiz", label: "Luiz (Nordeste/Sudeste)" },
   { value: "John Guedes", label: "John Guedes (CO+NO)" },
   { value: "Cristiano", label: "Cristiano" },
@@ -40,7 +41,15 @@ const MANAGER_COLORS: Record<string, { bg: string; border: string; text: string;
     badge: "rgba(37, 99, 235, 0.85)",
     badgeText: "#ffffff"
   },
-  Leandro:  { 
+  "Leandro Saffi": { 
+    bg: "rgba(16, 185, 129, 0.08)", 
+    border: "rgba(16, 185, 129, 0.25)", 
+    text: "#34d399", 
+    dot: "#10b981",
+    badge: "rgba(5, 150, 105, 0.85)",
+    badgeText: "#ffffff"
+  },
+  Leandro: { 
     bg: "rgba(16, 185, 129, 0.08)", 
     border: "rgba(16, 185, 129, 0.25)", 
     text: "#34d399", 
@@ -305,7 +314,7 @@ export default function AgendaPage() {
       // Para cada gerente visível, enviar todas as datas dos dias úteis
       managers.forEach(mgr => {
         // Apenas enviar as do próprio gerente se não for Admin
-        if (!isFullAccess && mgr !== currentUserManagerName) return;
+        if (!isFullAccess && !isSameManager(mgr, currentUserManagerName)) return;
 
         const mgrRoutes = routesByManager[mgr] || {};
         weekdays.forEach(date => {

@@ -11,6 +11,7 @@ import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 const MONTHS_NAMES = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
@@ -244,10 +245,12 @@ export default function DashGerencialPage() {
     const grouped: Record<string, GerenteRow> = {};
 
     const getOrCreateGerente = (gerenteRaw: string) => {
-      const gerenteKey = (gerenteRaw || "N/I").toUpperCase().trim();
+      const canonical = resolveCanonicalManager(gerenteRaw);
+      const canonicalName = canonical.managerName || (gerenteRaw || "N/I").trim();
+      const gerenteKey = canonical.canonicalKey || canonicalName.toUpperCase().trim();
       if (!grouped[gerenteKey]) {
         grouped[gerenteKey] = {
-          gerente: gerenteRaw || "N/I",
+          gerente: canonicalName,
           canais: {},
           months: {},
           total: { fat: 0, inv: 0 }
@@ -273,7 +276,9 @@ export default function DashGerencialPage() {
       const mes = v.mes;
       if (!monthsInRange.includes(mes)) return;
 
-      const gerente = v.manager || "Sem Gerente";
+      const rawGerente = v.manager || "Sem Gerente";
+      const canonical = resolveCanonicalManager(rawGerente);
+      const gerente = canonical.managerName || rawGerente;
       const canal = v.channel || "N/I";
       const uf = v.uf || "N/I";
       const rede = v.rede || "N/I";
@@ -285,7 +290,7 @@ export default function DashGerencialPage() {
       mapOptions.matrizes.add(rede);
       mapOptions.familias.add(familia);
 
-      if (filterManager.length > 0 && !filterManager.includes(gerente)) return;
+      if (filterManager.length > 0 && !filterManager.some(fm => isSameManager(fm, gerente) || fm === gerente)) return;
       if (filterUf.length > 0 && !filterUf.includes(uf)) return;
       if (filterChannel.length > 0 && !filterChannel.includes(canal)) return;
       if (filterMatriz.length > 0 && !filterMatriz.includes(rede)) return;
@@ -323,7 +328,9 @@ export default function DashGerencialPage() {
         responsavel: v.gerente_responsavel,
       }, matrizLookup) : null;
 
-      const gerente = v.gerente_responsavel || resolved?.responsavel || redeInfo.gerente || "Sem Gerente";
+      const rawGerente = v.gerente_responsavel || resolved?.responsavel || redeInfo.gerente || "Sem Gerente";
+      const canonical = resolveCanonicalManager(rawGerente);
+      const gerente = canonical.managerName || rawGerente;
       const canal = redeInfo.canal || "N/I";
       const uf = resolved?.uf || redeInfo.uf || "N/I";
       const rede = resolved?.matriz || v.rede || "N/I";
@@ -333,7 +340,7 @@ export default function DashGerencialPage() {
       mapOptions.channels.add(canal);
       mapOptions.matrizes.add(rede);
 
-      if (filterManager.length > 0 && !filterManager.includes(gerente)) return;
+      if (filterManager.length > 0 && !filterManager.some(fm => isSameManager(fm, gerente) || fm === gerente)) return;
       if (filterUf.length > 0 && !filterUf.includes(uf)) return;
       if (filterChannel.length > 0 && !filterChannel.includes(canal)) return;
       if (filterMatriz.length > 0 && !filterMatriz.includes(rede)) return;

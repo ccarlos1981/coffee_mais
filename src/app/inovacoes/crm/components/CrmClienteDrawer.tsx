@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   X,
@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { OpportunityRecommendation, SuggestedSku } from "@/lib/services/opportunity-recommendation-service";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
+import { FollowUpStatusBadge } from "@/app/processo-comercial/follow-up/components/FollowUpStatusBadge";
+import type { FollowUpActionRecord } from "@/lib/services/follow-up-service";
 
 interface CrmClienteDrawerProps {
   oportunidade: OpportunityRecommendation | any;
@@ -36,6 +38,7 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
   const [copied, setCopied] = useState(false);
   const [activeActionToast, setActiveActionToast] = useState<string | null>(null);
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [existingFollowUp, setExistingFollowUp] = useState<FollowUpActionRecord | null>(null);
 
   if (!rawOp) return null;
 
@@ -155,6 +158,27 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
 
   const trendInfo = getTrendBadge(oportunidade.tendenciaConsumo);
 
+  const fetchFollowUpStatus = useCallback(async (clienteId: string) => {
+    if (!clienteId) return;
+    try {
+      const res = await fetch(`/api/follow-up?clienteId=${encodeURIComponent(clienteId)}&pageSize=1`, { cache: "no-store" });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        setExistingFollowUp(json.data[0]);
+      } else {
+        setExistingFollowUp(null);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar status do follow-up:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (oportunidade.clienteId) {
+      fetchFollowUpStatus(oportunidade.clienteId);
+    }
+  }, [oportunidade.clienteId, fetchFollowUpStatus]);
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-md transition-all animate-in fade-in">
       <div className="w-full max-w-2xl bg-card border-l border-border h-full p-6 shadow-2xl flex flex-col justify-between overflow-y-auto space-y-6">
@@ -162,7 +186,7 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
           {/* Header Executivo */}
           <div className="flex items-start justify-between border-b border-border pb-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
                 <span className="bg-gold/10 text-gold text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border border-gold/20">
                   ID #{oportunidade.clienteId}
                 </span>
@@ -172,6 +196,14 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
                 <span className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
                   {oportunidade.canal} | {oportunidade.uf}
                 </span>
+                {existingFollowUp && (
+                  <FollowUpStatusBadge
+                    status={existingFollowUp.status}
+                    isAtrasada={existingFollowUp.is_atrasada}
+                    size="xs"
+                    title={`Ação de Follow-up vinculada: ${existingFollowUp.motivo}`}
+                  />
+                )}
               </div>
               <h2 className="text-xl font-black text-foreground leading-tight">
                 {oportunidade.nomeParceiro}
@@ -439,6 +471,9 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
             setIsFollowUpModalOpen(false);
             setActiveActionToast("Ação de Follow-up registrada com sucesso no sistema!");
             setTimeout(() => setActiveActionToast(null), 4000);
+            if (oportunidade.clienteId) {
+              fetchFollowUpStatus(oportunidade.clienteId);
+            }
           }}
           initialContext={{
             cliente_id: oportunidade.clienteId,

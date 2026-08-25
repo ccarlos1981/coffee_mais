@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 import { CommercialDomainService } from "@/lib/domain";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,10 @@ function getSupabaseAdminClient() {
 
 // Roles com acesso total
 const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional"];
-const ALL_MANAGERS = [...CommercialDomainService.getFieldManagerList(), "Cristiano"];
+const ALL_MANAGERS = [
+  ...CommercialDomainService.getFieldManagerList().map(m => resolveCanonicalManager(m).managerName),
+  "Cristiano"
+].filter((v, i, a) => a.indexOf(v) === i);
 
 // Helper para obter dias úteis (seg-sex) de um mês
 function getWeekdaysOfMonth(year: number, month: number): string[] {
@@ -45,7 +49,7 @@ export async function GET(request: Request) {
     await requirePermission(profile.role, "Agenda");
 
     const userRole = profile.role || '';
-    const userManagerName = profile.manager_name || null;
+    const userManagerName = profile.manager_name ? resolveCanonicalManager(profile.manager_name).managerName : null;
     const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
 
     // Todos veem a de todos
@@ -55,7 +59,7 @@ export async function GET(request: Request) {
     if (managerFilter === 'ALL') {
       queryManagers = visibleManagers;
     } else {
-      queryManagers = visibleManagers.filter(m => m === managerFilter);
+      queryManagers = visibleManagers.filter(m => isSameManager(m, managerFilter) || m === managerFilter);
     }
 
     // Dias úteis do mês
@@ -79,7 +83,11 @@ export async function GET(request: Request) {
 
     // --- Buscar rotas via RPC execute_readonly_query (mesmo padrão do RPS) ---
     const supabase = getSupabaseAdminClient();
-    const managersIn = queryManagers.map(m => `'${m}'`).join(',');
+    const managersIn = queryManagers
+      .flatMap(m => [m, resolveCanonicalManager(m).managerName])
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .map(m => `'${m}'`)
+      .join(',');
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
     const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
@@ -105,8 +113,10 @@ export async function GET(request: Request) {
     queryManagers.forEach(m => { routesByManager[m] = {}; });
 
     ((routes || []) as any[]).forEach((r) => {
-      if (!routesByManager[r.manager]) routesByManager[r.manager] = {};
-      routesByManager[r.manager][r.route_date] = r.description;
+      const canonicalMgr = resolveCanonicalManager(r.manager).managerName;
+      const targetMgr = queryManagers.find(m => isSameManager(m, canonicalMgr)) || canonicalMgr;
+      if (!routesByManager[targetMgr]) routesByManager[targetMgr] = {};
+      routesByManager[targetMgr][r.route_date] = r.description;
     });
 
     return NextResponse.json({
@@ -133,7 +143,7 @@ export async function POST(request: Request) {
     await requirePermission(profile.role, "Agenda");
 
     const userRole = profile.role || '';
-    const userManagerName = profile.manager_name || null;
+    const userManagerName = profile.manager_name || profile.name || null;
     const isFullAccess = FULL_ACCESS_ROLES.includes(userRole);
 
     const supabaseServer = await createClient();
@@ -145,11 +155,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Parâmetros inválidos." }, { status: 400 });
     }
 
-    // Filtrar por permissão
+    // Filtrar por permissão com comparação canônica
     let filteredRoutes = routes;
     if (!isFullAccess) {
       if (userManagerName) {
-        filteredRoutes = routes.filter((r: any) => r.manager === userManagerName);
+        filteredRoutes = routes.filter((r: any) => isSameManager(r.manager, userManagerName));
       } else {
         filteredRoutes = []; // Se não for Admin e não tiver manager_name, não pode salvar nada
       }
@@ -168,11 +178,11 @@ export async function POST(request: Request) {
 
     filteredRoutes = filteredRoutes.filter((r: any) => r.route_date >= todayStr);
 
-    // Separar upserts e deletes
+    // Separar upserts e deletes garantindo normalização canônica do managerName
     const routesToUpsert = filteredRoutes
       .filter((r: any) => r.description && r.description.trim() !== '')
       .map((r: any) => ({
-        manager: r.manager,
+        manager: resolveCanonicalManager(r.manager).managerName,
         route_date: r.route_date,
         description: r.description.trim(),
         updated_by: user.id,
@@ -195,13 +205,14 @@ export async function POST(request: Request) {
     }
 
     if (routesToDelete.length > 0) {
-      // Agrupar deleções por gerente para reduzir o número de requisições ao banco
+      // Agrupar deleções por gerente canônico para reduzir o número de requisições ao banco
       const deletesByManager: Record<string, string[]> = {};
       routesToDelete.forEach((r: any) => {
-        if (!deletesByManager[r.manager]) {
-          deletesByManager[r.manager] = [];
+        const canonicalMgr = resolveCanonicalManager(r.manager).managerName;
+        if (!deletesByManager[canonicalMgr]) {
+          deletesByManager[canonicalMgr] = [];
         }
-        deletesByManager[r.manager].push(r.route_date);
+        deletesByManager[canonicalMgr].push(r.route_date);
       });
 
       // Executar as deleções em paralelo para máxima performance

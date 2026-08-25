@@ -7,6 +7,7 @@ import Link from "next/link";
 import { CockpitComercialData } from "@/lib/governance/analytics/engine";
 import { CockpitFilterBar, CockpitFiltersState } from "./components/CockpitFilterBar";
 import { ExecutiveKpis } from "./components/ExecutiveKpis";
+import { FollowUpEfetividadeCard } from "./components/FollowUpEfetividadeCard";
 import { SaudeCarteiraGrid } from "./components/SaudeCarteiraGrid";
 import { RankingComercialTabs } from "./components/RankingComercialTabs";
 import { OportunidadesEngine } from "./components/OportunidadesEngine";
@@ -156,6 +157,9 @@ export default function CockpitComercialPage() {
 
       {/* Seção 1: KPIs Executivos */}
       <ExecutiveKpis metrics={defaultMetrics} loading={loading} />
+
+      {/* Seção 1.5: Card Executivo de Efetividade do Follow-up Comercial */}
+      <FollowUpEfetividadeCard data={(data as any)?.followUpEfetividade} loading={loading} />
 
       {/* Seção 2: Saúde da Carteira e Ranking Comercial */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

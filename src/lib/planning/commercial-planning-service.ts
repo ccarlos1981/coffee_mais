@@ -464,11 +464,18 @@ export class CommercialPlanningService {
       managerGroupMap.get(mgrKey)!.networks.push(r);
     });
 
-    // Mapa da Meta Oficial do Gerente vinda da tabela `targets`
+    // Mapa da Meta Oficial do Gerente vinda da tabela `targets` (Soma de todos os canais: KA + Distribuidor)
     const officialManagerTargetMap = new Map<string, number>();
     payload.managerMetas.forEach(mm => {
-      if (mm.manager_id) officialManagerTargetMap.set(mm.manager_id, mm.value);
-      if (mm.manager) officialManagerTargetMap.set(mm.manager.trim(), mm.value);
+      if (mm.manager_id) {
+        const current = officialManagerTargetMap.get(mm.manager_id) || 0;
+        officialManagerTargetMap.set(mm.manager_id, current + mm.value);
+      }
+      if (mm.manager) {
+        const key = mm.manager.trim();
+        const current = officialManagerTargetMap.get(key) || 0;
+        officialManagerTargetMap.set(key, current + mm.value);
+      }
     });
 
     let grandTotalFat = 0;
