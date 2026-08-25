@@ -20,7 +20,14 @@ import {
   OFFICIAL_COMMERCIAL_ROLES,
   getCommercialManagerRoleOptions,
 } from "./commercial-structure";
-import { resolveCanonicalManager, canonicalizeKey } from "./canonical";
+import {
+  resolveCanonicalManager,
+  canonicalizeKey,
+  resolveCanonicalNetwork,
+  type CanonicalNetworkIdentity,
+  type CanonicalNetworkResult,
+  type OfficialNetworkRecord,
+} from "./canonical";
 import type {
   DomainChannel,
   DomainSegment,
@@ -49,6 +56,7 @@ const CK = {
   REGIONS: "domain:regions",
   ROLES: "domain:roles",
   STATES: "domain:states",
+  OFFICIAL_NETWORKS: "domain:official_networks",
   NORMALIZATION: "domain:normalization",
   VERSION: "domain:version",
 } as const;
@@ -231,6 +239,28 @@ export class CommercialDomainService {
   static async getNetworkOptions(filters?: NetworkFilter): Promise<SelectOption[]> {
     const networks = await this.getNetworks(filters);
     return networks.map((n) => ({ value: n.codigo, label: n.nome }));
+  }
+
+  /** Retorna redes planejáveis oficiais do Cadastro Único (vw_redes_planejaveis_oficiais) */
+  static async getOfficialNetworks(): Promise<OfficialNetworkRecord[]> {
+    const cached = CommercialDomainCache.get<OfficialNetworkRecord[]>(CK.OFFICIAL_NETWORKS);
+    if (cached) return cached;
+
+    const data = await CommercialDomainRepository.fetchOfficialNetworks();
+    CommercialDomainCache.set(CK.OFFICIAL_NETWORKS, data);
+    return data;
+  }
+
+  /**
+   * Resolve a identidade canônica de uma rede dinamicamente a partir do Cadastro Único.
+   * Regras P4.11: Precedência determinística, ZERO hardcode, Ambiguity Guard ativo.
+   */
+  static async resolveNetwork(
+    identity: CanonicalNetworkIdentity,
+    providedOfficialNetworks?: OfficialNetworkRecord[]
+  ): Promise<CanonicalNetworkResult> {
+    const officialNetworks = providedOfficialNetworks || (await this.getOfficialNetworks());
+    return resolveCanonicalNetwork(identity, officialNetworks);
   }
 
   // ============================================================

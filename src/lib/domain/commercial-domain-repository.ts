@@ -231,6 +231,28 @@ export class CommercialDomainRepository {
     }));
   }
 
+  static async fetchOfficialNetworks(): Promise<import("./canonical").OfficialNetworkRecord[]> {
+    const supabase = this.getClient();
+    const { data, error } = await supabase
+      .from("vw_redes_planejaveis_oficiais")
+      .select("rede, manager, manager_id, codigo_matriz, uf, total_pdvs_vinculados")
+      .eq("is_rede_planejavel", true);
+
+    if (error) {
+      console.error("[CommercialDomainRepository] fetchOfficialNetworks error:", error.message);
+      return [];
+    }
+
+    return (data || []).map((row) => ({
+      rede: row.rede,
+      manager: row.manager,
+      managerId: String(row.manager_id || ""),
+      codigoMatriz: String(row.codigo_matriz || ""),
+      uf: row.uf || null,
+      totalPdvsVinculados: row.total_pdvs_vinculados,
+    }));
+  }
+
   // ============================================================
   // ESTADOS / UFs (abstração sobre manager_uf_mapping — DA2)
   // ============================================================

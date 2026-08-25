@@ -3,7 +3,7 @@ import { OFFICIAL_ANALYTICS_SOURCES } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError, logAuditAction } from "@/lib/supabase/auth-helpers";
-import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
+import { resolveCanonicalManager, isSameManager, resolveCanonicalNetwork } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
 import { resolveSupabaseTableName } from '@/lib/governance/analytics/sources';
 import { getInvestimentoRealizadoOficial } from '@/lib/investimento/getValorTotal';
@@ -201,7 +201,9 @@ export async function GET(request: Request) {
       SELECT 
         manager,
         manager_id,
-        TRIM(rede) as client
+        TRIM(rede) as client,
+        codigo_matriz,
+        uf
       FROM vw_redes_planejaveis_oficiais
       WHERE is_rede_planejavel = TRUE
     `;
@@ -465,19 +467,39 @@ export async function GET(request: Request) {
       const clientProjs = dbProjections.filter((p: any) => isSameManager(p.manager, mName) && p.client_matrix !== '_TOTAL_');
       const managerCustomCarteira = customCarteiraRows.filter((r: any) => isSameManager(r.manager, mName));
 
-      // Montar conjunto de redes base + customizadas ativas
+      // Base oficial estruturada de redes do gerente
+      const managerOfficialRecords = managerBaseCli.map((b: any) => ({
+        rede: b.client,
+        manager: b.manager,
+        managerId: b.manager_id,
+        codigoMatriz: b.codigo_matriz,
+        uf: b.uf,
+      }));
+
+      // Montar conjunto de redes base + customizadas ativas com canonicalização dinâmica
       const redeSet = new Set<string>(managerBaseCli.map((b: any) => b.client));
 
       // Adicionar redes ativas na customizacao
       managerCustomCarteira.forEach((r: any) => {
         if (!r.is_excluded && r.client_matrix) {
-          redeSet.add(r.client_matrix);
+          const res = resolveCanonicalNetwork(
+            { rawName: r.client_matrix, managerName: mName },
+            managerOfficialRecords
+          );
+          const nameToAdd = res.status === "SUCCESS" && res.canonicalName ? res.canonicalName : r.client_matrix;
+          redeSet.add(nameToAdd);
         }
       });
 
       // Remover redes excluídas manualmente na carteira dinâmica
       managerCustomCarteira.forEach((r: any) => {
         if (r.is_excluded && r.client_matrix) {
+          const res = resolveCanonicalNetwork(
+            { rawName: r.client_matrix, managerName: mName },
+            managerOfficialRecords
+          );
+          const nameToDelete = res.status === "SUCCESS" && res.canonicalName ? res.canonicalName : r.client_matrix;
+          redeSet.delete(nameToDelete);
           redeSet.delete(r.client_matrix);
         }
       });
@@ -491,7 +513,15 @@ export async function GET(request: Request) {
       const redeRollingMap = new Map<string, number>();
       Array.from(redeSet).forEach(cName => {
         const r3m = managerCliHist
-          .filter((c: any) => c.client === cName && closedMonths.includes(c.mes))
+          .filter((c: any) => {
+            if (c.client === cName) return true;
+            const res = resolveCanonicalNetwork(
+              { rawName: c.client, managerName: mName },
+              managerOfficialRecords
+            );
+            return res.status === "SUCCESS" && res.canonicalName === cName;
+          })
+          .filter((c: any) => closedMonths.includes(c.mes))
           .reduce((acc: number, c: any) => acc + Number(c.fat || 0), 0);
         redeRollingMap.set(cName, r3m);
       });
@@ -500,6 +530,12 @@ export async function GET(request: Request) {
       const customOrderMap = new Map<string, number>();
       managerCustomCarteira.forEach((r: any) => {
         if (!r.is_excluded && r.display_order !== undefined && r.display_order !== null) {
+          const res = resolveCanonicalNetwork(
+            { rawName: r.client_matrix, managerName: mName },
+            managerOfficialRecords
+          );
+          const canonicalKey = res.status === "SUCCESS" && res.canonicalName ? res.canonicalName.trim().toUpperCase() : r.client_matrix.trim().toUpperCase();
+          customOrderMap.set(canonicalKey, Number(r.display_order));
           customOrderMap.set(r.client_matrix.trim().toUpperCase(), Number(r.display_order));
         }
       });
@@ -524,7 +560,15 @@ export async function GET(request: Request) {
 
       // Mapear cada rede comercial pertencente ao gerente com dados oficiais carregados automaticamente
       const clientsList = sortedRedeNames.map((cName, idx) => {
-        const cProj = clientProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase());
+        const cProj = clientProjs.filter((p: any) => {
+          const pRaw = p.client_matrix.trim().toUpperCase();
+          if (pRaw === cName.trim().toUpperCase()) return true;
+          const res = resolveCanonicalNetwork(
+            { rawName: p.client_matrix, codigoMatriz: p.codigo_matriz, managerName: mName },
+            managerOfficialRecords
+          );
+          return res.status === "SUCCESS" && res.canonicalName?.trim().toUpperCase() === cName.trim().toUpperCase();
+        });
         
         const curSales = managerCliHist.find((c: any) => c.client === cName && c.mes === curMonthKey);
         const pmSales = managerCliHist.find((c: any) => c.client === cName && c.mes === prevMonthKey);
