@@ -322,18 +322,24 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
               Histórico Resumido dos Últimos Pedidos
             </h3>
             <div className="bg-background border border-border rounded-2xl overflow-hidden divide-y divide-border font-mono text-xs">
-              {oportunidade.historicoPedidosResumido.map((ped, idx) => (
-                <div key={idx} className="p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-foreground">{ped.data}</span>
+              {oportunidade.historicoPedidosResumido && oportunidade.historicoPedidosResumido.length > 0 ? (
+                oportunidade.historicoPedidosResumido.map((ped, idx) => (
+                  <div key={idx} className="p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="text-foreground">{ped.data}</span>
+                    </div>
+                    <span className="font-bold text-foreground">{formatCur(ped.valor)}</span>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                      {ped.status}
+                    </span>
                   </div>
-                  <span className="font-bold text-foreground">{formatCur(ped.valor)}</span>
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                    {ped.status}
-                  </span>
+                ))
+              ) : (
+                <div className="p-4 text-center text-muted-foreground text-xs italic">
+                  Histórico granular de pedidos em consolidação.
                 </div>
-              ))}
+              )}
             </div>
           </div>
 
@@ -344,14 +350,20 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
               Evolução de Faturamento (Últimos Meses)
             </h3>
             <div className="bg-background border border-border rounded-2xl p-4 font-mono text-xs">
-              <div className="grid grid-cols-5 gap-2 text-center">
-                {oportunidade.evolucaoFaturamentoMeses.map((item, idx) => (
-                  <div key={idx} className="space-y-1">
-                    <span className="text-[10px] text-muted-foreground block">{item.mes}</span>
-                    <div className="font-bold text-foreground text-xs">{formatCur(item.valor)}</div>
-                  </div>
-                ))}
-              </div>
+              {oportunidade.evolucaoFaturamentoMeses && oportunidade.evolucaoFaturamentoMeses.length > 0 ? (
+                <div className="grid grid-cols-5 gap-2 text-center">
+                  {oportunidade.evolucaoFaturamentoMeses.map((item, idx) => (
+                    <div key={idx} className="space-y-1">
+                      <span className="text-[10px] text-muted-foreground block">{item.mes}</span>
+                      <div className="font-bold text-foreground text-xs">{formatCur(item.valor)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center text-muted-foreground text-xs italic">
+                  Evolução mensal em consolidação no Analytics.
+                </div>
+              )}
             </div>
           </div>
 

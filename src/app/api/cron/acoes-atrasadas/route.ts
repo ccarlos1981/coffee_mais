@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = "nodejs";
 
@@ -190,10 +191,10 @@ export async function GET(request: Request) {
       }
     }
 
-    // 4. Buscar e mapear os e-mails dos gerentes
+    // 4. Buscar e mapear os e-mails dos gerentes (com resolução canônica de nomes)
     const { data: perfis, error: perfisError } = await supabase
       .from("cm_user_profiles")
-      .select("manager_name, id")
+      .select("manager_name, name, id")
       .eq("role", "Gerente Regional");
 
     if (perfisError) throw perfisError;
@@ -201,15 +202,24 @@ export async function GET(request: Request) {
     const gerenteEmailMap: Record<string, string> = {};
     if (perfis && perfis.length > 0) {
       for (const p of perfis) {
-        if (!p.manager_name) continue;
         const { data: userData } = await supabase.auth.admin.getUserById(p.id);
-        if (userData?.user?.email) {
-          gerenteEmailMap[p.manager_name] = userData.user.email;
+        const userEmail = userData?.user?.email;
+        if (userEmail) {
+          if (p.manager_name) {
+            gerenteEmailMap[p.manager_name] = userEmail;
+            const canonMgr = resolveCanonicalManager(p.manager_name).managerName;
+            if (canonMgr) gerenteEmailMap[canonMgr] = userEmail;
+          }
+          if (p.name) {
+            gerenteEmailMap[p.name] = userEmail;
+            const canonName = resolveCanonicalManager(p.name).managerName;
+            if (canonName) gerenteEmailMap[canonName] = userEmail;
+          }
         }
       }
     }
 
-    // 5. Agrupar alertas e lembretes por gerente
+    // 5. Agrupar alertas e lembretes por gerente canônico
     const porGerente: Record<
       string,
       {
@@ -222,14 +232,15 @@ export async function GET(request: Request) {
     const todayMs = hoje.getTime();
 
     for (const item of notificationItems) {
-      const email = gerenteEmailMap[item.gerente];
+      const canonGerente = resolveCanonicalManager(item.gerente).managerName || item.gerente;
+      const email = gerenteEmailMap[canonGerente] || gerenteEmailMap[item.gerente];
       if (!email) {
-        console.warn(`[acoes-atrasadas] Sem email mapeado para o gerente: ${item.gerente}`);
+        console.warn(`[acoes-atrasadas] Sem email mapeado para o gerente: ${item.gerente} (canônico: ${canonGerente})`);
         continue;
       }
 
-      if (!porGerente[item.gerente]) {
-        porGerente[item.gerente] = { email, reminders: [], overdues: [] };
+      if (!porGerente[canonGerente]) {
+        porGerente[canonGerente] = { email, reminders: [], overdues: [] };
       }
 
       // Lembrete de início: hoje <= start_date <= hoje + 2d
@@ -240,7 +251,7 @@ export async function GET(request: Request) {
         const reminderKey = `${item.acao_id}|${item.item_type}|${item.item_key}|start_reminder`;
 
         if (shouldRemind && !trackingSet.has(reminderKey)) {
-          porGerente[item.gerente].reminders.push(item);
+          porGerente[canonGerente].reminders.push(item);
         }
       }
 
@@ -251,7 +262,7 @@ export async function GET(request: Request) {
         const overdueKey = `${item.acao_id}|${item.item_type}|${item.item_key}|overdue_alert`;
 
         if (isOverdue && !trackingSet.has(overdueKey)) {
-          porGerente[item.gerente].overdues.push(item);
+          porGerente[canonGerente].overdues.push(item);
         }
       }
     }

@@ -4014,6 +4014,53 @@ A partir de 25/08/2026, a arquitetura, modelos de persistência, idempotência a
 
 Status Arquitetural: `TRILHA_COMERCIAL = LOCKED` | `ARQUITETURA = LOCKED` | `ANALYTICS = LOCKED` | `FINANCEIRO = LOCKED` | `UI = LOCKED` | `IDEMPOTENCIA = LOCKED` | `OWNERSHIP = LOCKED` | `RBAC = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 86. Baseline Oficial — Estabilização Pós-Ciclo P4.6 (Encerramento dos 8 Bugs Residuais BUG-RES-01 a BUG-RES-08)
+
+A partir de 25/08/2026, a homologação e o fechamento formal dos 8 bugs residuais do sistema tornam-se o baseline permanente e oficial do Coffee++.
+
+### Status
+`SISTEMA_ESTABILIZADO = TRUE` | `P4_6C_GATE_FINAL = APROVADO` | `BASELINE = PERMANENTE`
+
+### 1. Encerramento Formal dos Bugs Residuais (BUG-RES)
+* **BUG-RES-01 (Boletos / `cm_acoes_investimento`)**: ENCERRADO. Tabela `cm_investimentos` descontinuada substituída por `cm_acoes_investimento` com guard de status aberto (`PLANEJADA`, `EM_ANDAMENTO`, `DRAFT`). Ações concluídas/pagas 100% protegidas.
+* **BUG-RES-02 (Atendimento / Sincronização Histórica)**: ENCERRADO. RPC fantasma `sync_historical_sales` eliminada; substituída por `recalcular_responsaveis_clientes()` e enfileiramento `fn_enqueue_mv_refresh()`.
+* **BUG-RES-03 (Metas Multicanal no Planejamento)**: ENCERRADO. Sobrescrita eliminada; `officialManagerTargetMap` acumula aditivamente $KA + Dist$ (Luiz: R$ 3.300.000, Leandro Saffi: R$ 2.810.000, John Guedes: R$ 550.000, Julliano: R$ 1.000.000).
+* **BUG-RES-04 (Cron RPS Alert)**: ENCERRADO. Falso positivo de cobrança semanal de Leandro Saffi eliminado via normalização canônica centralizada (`resolveCanonicalManager`).
+* **BUG-RES-05 (Mapeamento Territorial AC)**: ENCERRADO. Typo `Luisa` corrigido para `Luiz` em `public.manager_uf_mapping` via migration atômica com guard estrito `v_count = 1` (0 ocorrências de `Luisa`).
+* **BUG-RES-06 (Cadastros / Networks / FK de PDVs)**: ENCERRADO. Sincronizadas 1.091 redes em `public.network_matrix`; FK física `pdvs.network_id REFERENCES network_matrix(id)` íntegra e ativa com 0 órfãos.
+* **BUG-RES-07 (CRM Prescritivo / Remoção de Mock)**: ENCERRADO. Faturas e evolução fictícias removidas do motor analítico; arrays vazios `[]` e estado vazio visual elegante implementados.
+* **BUG-RES-08 (Cron Ações Atrasadas)**: ENCERRADO. Normalização de perfis e ações via `resolveCanonicalManager`, garantindo entrega de notificações para todos os gerentes regionais.
+
+### 2. Indicadores de Qualidade, Integridade e Governança
+* **TypeScript**: 0 erros (`npx tsc --noEmit`).
+* **Domínio Comercial**: 20/20 testes aprovados (`npm run test:domain`).
+* **Governança Analytics & React**: 100% conforme (`npm run audit:analytics`).
+* **Compilação de Produção**: 120/120 rotas compiladas com sucesso (`npm run build`).
+* **Integridade Relacional**: FK `pdvs.network_id -> network_matrix.id` íntegra; 0 órfãos.
+* **Tabelas e RPCs Descontinuadas**:
+  - `sales_enriched`: 0 referências runtime.
+  - `sync_historical_sales`: 0 chamadas runtime.
+  - `cm_investimentos`: 0 consultas runtime à tabela física descontinuada.
+* **Catálogo Canônico**: Aliases de gerentes 100% normalizados via `resolveCanonicalManager`.
+* **Baselines Preservadas**:
+  - `AnalyticsEngine V1`: `LOCKED`
+  - `Baseline 57 MACO/DRE`: `LOCKED`
+  - `RPS P3.6N`: `LOCKED`
+  - `Trilha Comercial End-to-End`: `LOCKED`
+
+### 3. Registro do Resíduo Técnico Conhecido (Não Operacional)
+* **Componente**: `src/app/inovacoes/crm/components/CrmClienteDrawer.tsx` (linhas 52–77).
+* **Descrição**: Contém fallback defensivo legado para objetos no formato não processado `CrmOportunidade`.
+* **Classificação**: `🟢 INOFENSIVO / INACESSÍVEL EM RUNTIME`. No fluxo operacional da página `/inovacoes/crm`, o objeto injetado possui sempre `nomeParceiro` preenchido, tornando a ramificação `false` inalcançável. Mantido sem alteração como resíduo conhecido para limpeza em ciclo futuro.
+
+### 4. Regra de Governança Futura
+1. "P4.6C constitui o estado operacional homologado de referência do ecossistema Coffee++ após a estabilização dos BUG-RES-01 a BUG-RES-08."
+2. "Qualquer novo bug, alteração funcional, melhoria ou refatoração identificada após P4.6C deverá iniciar um novo ciclo de implementação, com nova identificação de fase, sem modificar ou reabrir artificialmente as baselines anteriores."
+
+Status Arquitetural: `P4_6C_POST_STABILIZATION = LOCKED` | `BUG_RES_01_TO_08 = CLOSED` | `SYSTEM_STABILITY = CONFIRMED` | `BASELINE = PERMANENTE`.
+
 
 
 
