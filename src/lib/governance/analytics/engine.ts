@@ -3284,6 +3284,7 @@ export class AnalyticsEngine {
           a.manager_name,
           a.origem,
           a.status,
+          a.gap_original_reais,
           a.created_at::date as created_date,
           a.concluded_at::date as concluded_date,
           c.codigo::text as cod_parceiro
@@ -3298,7 +3299,7 @@ export class AnalyticsEngine {
           fu.action_id,
           MAX(f.dt_faturamento) as ultima_compra_antes_criacao
         FROM follow_ups fu
-        LEFT JOIN vw_faturamento_comercial_oficial f ON (f.cod_parceiro = fu.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(fu.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+        LEFT JOIN vw_faturamento_comercial_oficial f ON f.cod_parceiro = fu.cod_parceiro
           AND f.dt_faturamento < fu.created_date
           AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
           AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
@@ -3324,6 +3325,7 @@ export class AnalyticsEngine {
           el.manager_id,
           el.manager_name,
           el.origem,
+          el.gap_original_reais,
           el.concluded_date,
           el.dias_sem_comprar_na_criacao,
           f.id as nfe_id,
@@ -3334,13 +3336,13 @@ export class AnalyticsEngine {
             ORDER BY el.concluded_date DESC, el.action_id DESC
           ) as rnk_anti_duplicidade
         FROM elegibilidade el
-        JOIN vw_faturamento_comercial_oficial f ON (f.cod_parceiro = el.cod_parceiro OR translate(upper(f.nome_parceiro), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY') = translate(upper(el.cliente_nome), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇÑÝŸ', 'AAAAAEEEEIIIIOOOOOUUUUCNYY'))
+        JOIN vw_faturamento_comercial_oficial f ON f.cod_parceiro = el.cod_parceiro
           AND f.dt_faturamento >= el.concluded_date
           AND f.dt_faturamento <= (el.concluded_date + INTERVAL '30 days')
           AND f.status_nfe IS DISTINCT FROM 'CANCELADA'
           AND f.cod_top IN ('1100', '1117', '1200', '1201', '1703', '1713', '1723')
           AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
-        WHERE el.dias_sem_comprar_na_criacao > 90
+        WHERE (el.origem = 'RPS_COMPROMISSO' OR el.dias_sem_comprar_na_criacao > 90)
       )
       SELECT
         action_id,
@@ -3349,19 +3351,22 @@ export class AnalyticsEngine {
         manager_id,
         manager_name,
         origem,
+        gap_original_reais,
         dias_sem_comprar_na_criacao,
         SUM(CASE WHEN rnk_anti_duplicidade = 1 THEN vlr_total_liq ELSE 0 END) as faturamento_recuperado
       FROM compras_pos_conclusao
-      GROUP BY action_id, cliente_id, cliente_nome, manager_id, manager_name, origem, dias_sem_comprar_na_criacao
+      GROUP BY action_id, cliente_id, cliente_nome, manager_id, manager_name, origem, gap_original_reais, dias_sem_comprar_na_criacao
     `;
 
     const sqlElegiveisTotal = `
       SELECT
         a.id as action_id,
         a.cliente_id,
+        a.cliente_nome,
         a.manager_id,
         a.manager_name,
         a.origem,
+        a.gap_original_reais,
         a.created_at::date as created_date,
         c.codigo::text as cod_parceiro
       FROM public.cm_follow_up_actions a
@@ -3383,15 +3388,18 @@ export class AnalyticsEngine {
           manager_id: string;
           manager_name: string;
           origem: string;
+          gap_original_reais: number | null;
           dias_sem_comprar_na_criacao: number;
           faturamento_recuperado: number;
         }>(sqlEfetividade),
         this.executeSql<{
           action_id: string;
           cliente_id: string;
+          cliente_nome: string;
           manager_id: string;
           manager_name: string;
           origem: string;
+          gap_original_reais: number | null;
           created_date: string;
           cod_parceiro: string;
         }>(sqlElegiveisTotal),
@@ -3408,9 +3416,20 @@ export class AnalyticsEngine {
         recuperadosMap: [],
         rankingGerentesEfetividade: [],
         efetividadePorOrigem: [],
+        gapOriginalTotal: 0,
+        gapRecuperadoTotal: 0,
+        gapRemanescenteTotal: 0,
+        taxaRecuperacaoGapPct: 0,
+        rpsGapRecovery: {
+          gapOriginalTotal: 0,
+          gapRecuperadoTotal: 0,
+          gapRemanescenteTotal: 0,
+          taxaRecuperacaoGapPct: 0,
+          acoesCount: 0,
+          detalhesAcoes: [],
+        },
       };
     }
-
 
     // Aggregate results
     const recuperadosMap = new Map<string, { faturamento: number; actionId: string; managerName: string; origem: string }>();
@@ -3466,6 +3485,60 @@ export class AnalyticsEngine {
       ? Number(((totalRecuperadosCount / totalElegiveisCount) * 100).toFixed(1))
       : 0;
 
+    // RPS Gap Recovery (P3.6C.2)
+    const fatRecuperadoByActionId = new Map<string, number>();
+    for (const r of recuperadosRows) {
+      fatRecuperadoByActionId.set(r.action_id, Number(r.faturamento_recuperado || 0));
+    }
+
+    const rpsActionDetails: RpsGapRecoveryActionDetail[] = [];
+    let rpsGapOriginalTotal = 0;
+    let rpsGapRecuperadoTotal = 0;
+    let rpsGapRemanescenteTotal = 0;
+
+    for (const el of elegiveisRows) {
+      if (el.origem === 'RPS_COMPROMISSO') {
+        const gapOriginal = el.gap_original_reais !== null && el.gap_original_reais !== undefined && !isNaN(Number(el.gap_original_reais))
+          ? Number(el.gap_original_reais)
+          : 0;
+        const fatRec = fatRecuperadoByActionId.get(el.action_id) || 0;
+        const gapRemanescente = gapOriginal > 0 ? Math.max(0, gapOriginal - fatRec) : 0;
+        const taxaRecPct = gapOriginal > 0
+          ? Math.min(100, Number(((fatRec / gapOriginal) * 100).toFixed(1)))
+          : (fatRec > 0 ? 100 : 0);
+
+        if (gapOriginal > 0) {
+          rpsGapOriginalTotal += gapOriginal;
+        }
+        rpsGapRecuperadoTotal += fatRec;
+        rpsGapRemanescenteTotal += gapRemanescente;
+
+        rpsActionDetails.push({
+          actionId: el.action_id,
+          clienteId: el.cliente_id,
+          clienteNome: el.cliente_nome || 'Cliente',
+          managerName: el.manager_name || 'Gerente',
+          gapOriginal: Number(gapOriginal.toFixed(2)),
+          faturamentoRecuperado: Number(fatRec.toFixed(2)),
+          gapRemanescente: Number(gapRemanescente.toFixed(2)),
+          taxaRecuperacaoPct: taxaRecPct,
+        });
+      }
+    }
+
+    const taxaRecuperacaoGapPct = rpsGapOriginalTotal > 0
+      ? Math.min(100, Number(((rpsGapRecuperadoTotal / rpsGapOriginalTotal) * 100).toFixed(1)))
+      : 0;
+
+    const rpsGapRecovery: RpsGapRecoveryAnalyticsData = {
+      gapOriginalTotal: Number(rpsGapOriginalTotal.toFixed(2)),
+      gapRecuperadoTotal: Number(rpsGapRecuperadoTotal.toFixed(2)),
+      gapRemanescenteTotal: Number(rpsGapRemanescenteTotal.toFixed(2)),
+      taxaRecuperacaoGapPct,
+      acoesCount: rpsActionDetails.length,
+      detalhesAcoes: rpsActionDetails,
+    };
+
     return {
       clientesRecuperadosCount: totalRecuperadosCount,
       totalElegiveisCount,
@@ -3492,6 +3565,13 @@ export class AnalyticsEngine {
         taxaEfetividade: o.elegiveisCount > 0 ? Number(((o.recuperadosCount / o.elegiveisCount) * 100).toFixed(1)) : 0,
         faturamentoRecuperado: Number(o.faturamentoRecuperado.toFixed(2)),
       })).sort((a, b) => b.faturamentoRecuperado - a.faturamentoRecuperado),
+
+      // RPS Gap Recovery (P3.6C.2)
+      gapOriginalTotal: rpsGapRecovery.gapOriginalTotal,
+      gapRecuperadoTotal: rpsGapRecovery.gapRecuperadoTotal,
+      gapRemanescenteTotal: rpsGapRecovery.gapRemanescenteTotal,
+      taxaRecuperacaoGapPct: rpsGapRecovery.taxaRecuperacaoGapPct,
+      rpsGapRecovery,
     };
   }
 }
@@ -3695,6 +3775,26 @@ export interface ManagerPerformanceDetailData {
   concentracaoTop3: { posicao: number; nome: string; rede: string; fat: number; participacaoPct: number }[];
 }
 
+export interface RpsGapRecoveryActionDetail {
+  actionId: string;
+  clienteId: string;
+  clienteNome: string;
+  managerName: string;
+  gapOriginal: number;
+  faturamentoRecuperado: number;
+  gapRemanescente: number;
+  taxaRecuperacaoPct: number;
+}
+
+export interface RpsGapRecoveryAnalyticsData {
+  gapOriginalTotal: number;
+  gapRecuperadoTotal: number;
+  gapRemanescenteTotal: number;
+  taxaRecuperacaoGapPct: number;
+  acoesCount: number;
+  detalhesAcoes: RpsGapRecoveryActionDetail[];
+}
+
 export interface FollowUpEfetividadeAnalyticsData {
   clientesRecuperadosCount: number;
   totalElegiveisCount: number;
@@ -3703,5 +3803,12 @@ export interface FollowUpEfetividadeAnalyticsData {
   recuperadosMap: { clienteId: string; actionId: string; managerName: string; origem: string; faturamento: number }[];
   rankingGerentesEfetividade: { managerName: string; elegiveisCount: number; recuperadosCount: number; taxaEfetividade: number; faturamentoRecuperado: number }[];
   efetividadePorOrigem: { origem: string; elegiveisCount: number; recuperadosCount: number; taxaEfetividade: number; faturamentoRecuperado: number }[];
+  
+  // RPS Gap Recovery (P3.6C.2)
+  gapOriginalTotal?: number;
+  gapRecuperadoTotal?: number;
+  gapRemanescenteTotal?: number;
+  taxaRecuperacaoGapPct?: number;
+  rpsGapRecovery?: RpsGapRecoveryAnalyticsData;
 }
 

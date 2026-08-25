@@ -6,14 +6,48 @@ import { ProdutoConversaoService } from "@/lib/services/produto-conversao-servic
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// Helper para calcular os últimos 6 meses fechados anteriores à competência de referência
+export function getPast6ClosedMonths(referenceDate: Date = new Date()): Array<{ ano: number; mes: number }> {
+  const currentYear = referenceDate.getFullYear();
+  const currentMonth = referenceDate.getMonth() + 1; // 1-12
+  const closedMonths: Array<{ ano: number; mes: number }> = [];
+
+  for (let i = 6; i >= 1; i--) {
+    let m = currentMonth - i;
+    let y = currentYear;
+    while (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+    closedMonths.push({ ano: y, mes: m });
+  }
+
+  return closedMonths;
+}
+
+export function buildPast6ClosedMonthsSqlClause(closedMonths: Array<{ ano: number; mes: number }>): string {
+  return closedMonths
+    .map(p => `(s.ano = ${p.ano} AND s.mes = ${p.mes})`)
+    .join(' OR ');
+}
+
 // Helper to compute weighted average conversion factor (unidades/caixa) for a specific network based on history
-async function obterFatorConversaoRede(adminClient: any, conversaoService: ProdutoConversaoService, rede: string, uf: string): Promise<number> {
+async function obterFatorConversaoRede(
+  adminClient: any, 
+  conversaoService: ProdutoConversaoService, 
+  rede: string, 
+  uf: string,
+  referenceDate: Date = new Date()
+): Promise<number> {
+  const closedMonths = getPast6ClosedMonths(referenceDate);
+  const periodCondition = buildPast6ClosedMonthsSqlClause(closedMonths);
+
   const sql = `
     SELECT p.id as product_id,
            SUM(s.quantity)::numeric as volume_boxes
     FROM sales s
     JOIN products p ON UPPER(TRIM(s.product)) = UPPER(TRIM(p.name))
-    WHERE s.ano = 2026 AND s.mes BETWEEN 1 AND 6 
+    WHERE (${periodCondition})
       AND UPPER(TRIM(s.rede)) = UPPER(TRIM($1))
       AND UPPER(TRIM(s.uf)) = UPPER(TRIM($2))
     GROUP BY p.id
@@ -107,21 +141,24 @@ export async function GET(request: Request) {
       metaNetworksMap.get(row.promotor_id)!.push({ rede: row.rede, uf: row.uf });
     });
 
-    // 4. Fetch sales history (Jan-Jun 2026) at SKU level to perform deterministic conversions
+    // 4. Fetch sales history for past 6 closed months at SKU level to perform deterministic conversions
+    const closedMonths = getPast6ClosedMonths(new Date());
+    const periodCondition = buildPast6ClosedMonthsSqlClause(closedMonths);
+
     const sqlHistory = `
-      SELECT s.rede, s.uf, s.mes, p.id as product_id,
+      SELECT s.rede, s.uf, s.ano, s.mes, p.id as product_id,
              SUM(s.net_value)::numeric as faturamento,
              SUM(s.quantity)::numeric as volume_boxes
       FROM sales s
       JOIN products p ON UPPER(TRIM(s.product)) = UPPER(TRIM(p.name))
-      WHERE s.ano = 2026 AND s.mes BETWEEN 1 AND 6 
-      GROUP BY s.rede, s.uf, s.mes, p.id
+      WHERE (${periodCondition})
+      GROUP BY s.rede, s.uf, s.ano, s.mes, p.id
     `;
     const { data: salesHistoryRes, error: rpcErr } = await adminClient.rpc("execute_readonly_query", { query_text: sqlHistory });
     if (rpcErr) console.error("History query error:", rpcErr.message);
     const salesHistory = salesHistoryRes || [];
 
-    const historyMap = new Map<string, Record<number, { faturamento: number; volume: number }>>();
+    const historyMap = new Map<string, Record<string, { faturamento: number; volume: number }>>();
     const networkTotalsMap = new Map<string, { totalBoxes: number; totalUnits: number }>();
 
     salesHistory.forEach((row: any) => {
@@ -146,11 +183,12 @@ export async function GET(request: Request) {
         }
       }
 
-      if (!historyMap.get(key)![row.mes]) {
-        historyMap.get(key)![row.mes] = { faturamento: 0, volume: 0 };
+      const monthKey = `${row.ano}_${row.mes}`;
+      if (!historyMap.get(key)![monthKey]) {
+        historyMap.get(key)![monthKey] = { faturamento: 0, volume: 0 };
       }
-      historyMap.get(key)![row.mes].faturamento += faturamento;
-      historyMap.get(key)![row.mes].volume += volume;
+      historyMap.get(key)![monthKey].faturamento += faturamento;
+      historyMap.get(key)![monthKey].volume += volume;
 
       // Accumulate for network-level factor
       const totals = networkTotalsMap.get(key)!;
@@ -190,15 +228,15 @@ export async function GET(request: Request) {
         const networksList = metaNetworksMap.get(prof.id) || [];
         const promoterSavedGoals = savedMetasMap.get(prof.id) || [];
 
-        // Map networks to include history (Jan-Jun) and goals (Jul, Ago, Set)
+        // Map networks to include history for the 6 closed months and goals
         const networks = networksList.map(net => {
           const netKey = `${net.rede.toUpperCase()}_${net.uf.toUpperCase()}`;
           const histData = historyMap.get(netKey) || {};
 
-          const history: number[] = [];
-          for (let m = 1; m <= 6; m++) {
-            history.push(histData[m]?.volume || 0);
-          }
+          const history: number[] = closedMonths.map(p => {
+            const mKey = `${p.ano}_${p.mes}`;
+            return histData[mKey]?.volume || 0;
+          });
 
           const goals: number[] = [0, 0, 0];
           let status = "DRAFT";

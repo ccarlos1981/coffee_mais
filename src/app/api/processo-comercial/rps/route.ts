@@ -42,12 +42,16 @@ function consolidateProjectionsByCanonicalManager(rawProjections: any[]): any[] 
     const clientMatrixKey = (p.client_matrix || '').trim().toUpperCase();
     const key = `${canonicalName}|${clientMatrixKey}|${p.week_start_date}|${p.kpi}`;
 
+    const normalized = { ...p, manager: canonicalName };
     if (!map.has(key)) {
-      map.set(key, { ...p, manager: canonicalName });
+      map.set(key, normalized);
     } else {
       const existing = map.get(key);
-      if (Number(p.projection_value) > 0 && Number(existing.projection_value) === 0) {
-        map.set(key, { ...p, manager: canonicalName });
+      const existingTime = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+      const newTime = p.updated_at ? new Date(p.updated_at).getTime() : 0;
+      // Precedência soberana para o registro com updated_at mais recente
+      if (newTime > existingTime) {
+        map.set(key, normalized);
       }
     }
   });
@@ -247,15 +251,17 @@ export async function GET(request: Request) {
 
     // SQL - Projeções semanais gravadas no banco (cm_weekly_projections)
     const sqlWeeklyProjections = `
-      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value
+      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value, updated_at
       FROM cm_weekly_projections
       WHERE year = ${year} AND month = ${month}
+      ORDER BY updated_at DESC
     `;
 
     const sqlPrevWeeklyProjections = `
-      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value
+      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value, updated_at
       FROM cm_weekly_projections
       WHERE year = ${prevMonthYear} AND month = ${prevMonthVal}
+      ORDER BY updated_at DESC
     `;
 
     // Executar consultas via RPC

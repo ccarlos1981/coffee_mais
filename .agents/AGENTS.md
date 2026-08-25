@@ -4369,6 +4369,54 @@ Qualquer evolução ou ciclo futuro deverá possuir objetivo próprio, diagnóst
 
 Status Arquitetural: `CICLO_P2 = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`.
 
+---
+
+## 118. Baseline Oficial — Trilha Comercial End-to-End (Follow-up Prescritivo, RPS Gap Recovery, CRM, Alertas & Cockpit)
+
+A partir de 25/08/2026, a arquitetura, modelos de persistência, idempotência atômica, reconciliação analítica e componentes da **Trilha Comercial End-to-End** tornam-se o baseline permanente e oficial do Coffee++.
+
+### 1. Arquitetura Homologada:
+1. **Trilha CRM / Cockpit Prescritivo**: `CrmClienteDrawer` → `NewFollowUpModal` → `POST /api/follow-up` → `FollowUpService.create` → `cm_follow_up_actions` (`origem = 'COCKPIT_PRESCRITIVO'`, `origem_ref = 'CRM-{clienteId}-{YYYY-MM-DD}'`) → `AnalyticsEngine V1` → `CockpitService` → `FollowUpEfetividadeCard`.
+2. **Trilha RPS (Dispersão Negativa)**: `rps/page.tsx` → `handleOpenCompromissoRps` → `NewFollowUpModal` (`gap_original_reais = Math.abs(gap)`, `origem = 'RPS_COMPROMISSO'`, `origem_ref = 'RPS-{targetMonth}-{client}'`) → `cm_follow_up_actions` → Conclusão da Ação → Janela de 30 Dias → `vw_faturamento_comercial_oficial` → `AnalyticsEngine.getFollowUpEfetividadeAnalytics` (`rpsGapRecovery`) → `FollowUpEfetividadeCard`.
+3. **Trilha Alertas**: `alertas/page.tsx` → `handleOpenFollowUpAlert` → `NewFollowUpModal` (`origem = 'ALERTA_QUEDA'`, `origem_ref = alert.id`) → `FollowUpStatusBadge` → `AnalyticsEngine V1` → `Cockpit Comercial`.
+
+### 2. Idempotência Atômica Canônica:
+- **Índice Físico no PostgreSQL**: `uq_idx_follow_up_active_origem_ref` em `(origem, origem_ref) WHERE status IN ('PENDENTE', 'EM_ANDAMENTO') AND origem IS NOT NULL AND origem_ref IS NOT NULL`.
+- **Tratamento de Concorrência**: `SELECT` preventivo + barreira física única + captura de erro `23505` convergindo deterministicamente para o registro ativo existente.
+- Ações manuais sem `origem_ref` continuam permitidas; ações encerradas (`CONCLUIDA`, `NAO_EFETIVA`, `CANCELADA`) liberam a criação de novos ciclos.
+
+### 3. Persistência Estruturada do GAP RPS:
+- **Coluna Oficial**: `public.cm_follow_up_actions.gap_original_reais NUMERIC NULL`.
+- **Proibição Absoluta**: É expressamente proibido qualquer parsing textual do campo `descricao` para finalidades financeiras ou de reconciliação de gap. O campo `descricao` é estritamente de contexto operacional humano.
+
+### 4. Reconciliação Financeira Oficial do GAP RPS:
+- **GAP Original Total**: `SUM(gap_original_reais)` para ações com `gap_original_reais > 0`.
+- **Faturamento Recuperado**: Soma das notas fiscais comerciais emitidas na janela `[concluded_at, concluded_at + 30 dias]`.
+- **GAP Remanescente por Ação**: `MAX(0, gap_original_reais - faturamento_recuperado)`.
+- **Taxa de Recuperação por Ação**: `MIN(100, faturamento_recuperado / gap_original_reais * 100)` quando `gap_original_reais > 0`.
+- **Superávit**: O faturamento recuperado real nunca é truncado; apenas o saldo remanescente é limitado a `R$ 0,00` e a taxa a `100,0%`.
+
+### 5. Single Source of Truth Financeira & Anti-Duplicidade:
+- **Fonte Financeira Única**: `vw_faturamento_comercial_oficial` com TOPs homologadas e expurgo de canceladas/parceiros não comerciais.
+- **Join Relacional Canônico**: `vw_faturamento_comercial_oficial f ON f.cod_parceiro = el.cod_parceiro` (via `cliente_id` → `cm_clientes.id` → `cm_clientes.codigo`). É expressamente proibido cruzamento por nome, rede ou texto livre.
+- **Máquina Anti-Duplicidade**: `ROW_NUMBER() OVER (PARTITION BY f.id ORDER BY el.concluded_date DESC, el.action_id DESC)`. Nenhuma NFe pode contribuir para duas ações comerciais simultaneamente.
+
+### 6. Evidência Operacional Real da Homologação (P3.6F):
+- **Cliente**: `MUNDIALMIX COMÉRCIO DE ALIMENTOS LTDA` (Código: `70563`, ID: `b4cf0180-e7fb-4701-92f9-977d7c2ced4e`, Rede: `IMPERATRIZ`, Gerente: `Leandro Saffi` - ID: `1001`).
+- **Ação Real**: `Action ID: 6cb7448a-daa4-494a-865c-1aaaebcf36d3` (`origem = 'RPS_COMPROMISSO'`, `origem_ref = 'RPS-2026-08-IMPERATRIZ'`).
+- **GAP Original Homologado**: `R$ 535.360,00` (Dispersão RPS de `-53,54%`).
+- **Status da Janela Operacional**: Ação concluída em `25/08/2026`. Janela de reconciliação aberta até `24/09/2026` (`JANELA 30D ABERTA`).
+
+### 7. Auditoria Técnica e Não-Regressão:
+- TypeScript: `npx tsc --noEmit` = 0 erros
+- Domínio Comercial: `npm run test:domain` = 20/20 aprovados
+- Governança Analytics & React: `npm run audit:analytics` = 100% conforme
+- Compilação de Produção: `npm run build` = SUCCESS
+- Baseline 57 (MACO): 100% PRESERVADA
+- Zero cálculos financeiros no React / Frontend.
+
+Status Arquitetural: `TRILHA_COMERCIAL = LOCKED` | `ARQUITETURA = LOCKED` | `ANALYTICS = LOCKED` | `FINANCEIRO = LOCKED` | `UI = LOCKED` | `IDEMPOTENCIA = LOCKED` | `OWNERSHIP = LOCKED` | `RBAC = LOCKED` | `BASELINE = PERMANENTE`.
+
 
 
 

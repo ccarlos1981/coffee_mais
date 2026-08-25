@@ -199,13 +199,14 @@ export async function GET(request: Request) {
         .in('manager', KA_MANAGERS)
         .order('week_start_date', { ascending: false }),
 
-      // 4. Comentários dos slides deste gerente/mês
+      // 4. Comentários dos slides deste gerente/mês (com suporte canônico e ordenação por updated_at)
       supabaseServer
         .from('cm_rdm_comments')
         .select('slide_key, comment, updated_at')
         .eq('year', year)
         .eq('month', month)
-        .eq('manager', manager),
+        .in('manager', Array.from(new Set([manager, resolveCanonicalManager(manager).managerName, ...(isSameManager(manager, 'Leandro Saffi') ? ['Leandro', 'Leandro Saffi'] : [])])))
+        .order('updated_at', { ascending: false }),
 
       // 5. Vendas por família (tipo_produto) — para slide 6 e 7
       supabase.rpc('execute_readonly_query', {
@@ -603,10 +604,12 @@ export async function GET(request: Request) {
           },
     };
 
-    // ── Mapa de comentários ──
+    // ── Mapa de comentários (preservando o mais recente por slide_key) ──
     const commentsMap: Record<string, string> = {};
     for (const c of comments) {
-      commentsMap[c.slide_key] = c.comment;
+      if (!commentsMap[c.slide_key]) {
+        commentsMap[c.slide_key] = c.comment;
+      }
     }
 
     // ── Dados mensais de faturamento para o gráfico (slide 4) ──
@@ -852,10 +855,12 @@ export async function POST(request: Request) {
       }
     }
 
+    const canonicalManagerName = resolveCanonicalManager(manager).managerName;
+
     const { error } = await supabaseServer
       .from('cm_rdm_comments')
       .upsert(
-        { manager, year, month, slide_key, comment: comment ?? '', updated_at: new Date().toISOString(), updated_by: user.id },
+        { manager: canonicalManagerName, year, month, slide_key, comment: comment ?? '', updated_at: new Date().toISOString(), updated_by: user.id },
         { onConflict: 'manager,year,month,slide_key' }
       );
 

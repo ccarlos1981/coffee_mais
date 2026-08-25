@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 
 export const runtime = 'nodejs';
 
@@ -18,8 +19,8 @@ export async function POST() {
 
     const supabase = getSupabaseClient();
     
-    // 1. Fetching base mapping data from sales table in batches
-    console.log('[SEED] Fetching historical sales mapping...');
+    // 1. Fetching base mapping data from official monthly client sales view in batches
+    console.log('[SEED] Fetching historical sales mapping from mv_vendas_cliente_mensal...');
     interface SalesRow {
       uf: string | null;
       manager: string | null;
@@ -34,7 +35,7 @@ export async function POST() {
     
     while (true) {
       const { data, error } = await supabase
-        .from('sales_enriched')
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL))
         .select('uf, manager, cod_parceiro, nome_parceiro, rede, channel')
         .range(from, from + batchSize - 1);
         

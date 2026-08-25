@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 
 export const runtime = 'nodejs';
 
@@ -15,10 +16,7 @@ interface SaleRow {
   manager: string | null;
   rede: string | null;
   nome_parceiro: string | null;
-  net_value: number | string;
-  imposto: number | string;
-  custo_total: number | string;
-  custo_frete: number | string;
+  fat: number | string;
 }
 
 /**
@@ -38,33 +36,25 @@ export async function GET(request: Request) {
     // 1. Determina as janelas de tempo
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    
-    // Mês Atual (1º ao dia de hoje)
-    const stCurrent = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-    const enCurrent = now.toISOString().split("T")[0];
-
-    // Mês Anterior Completo
     const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const stPrev = new Date(prevDate.getFullYear(), prevDate.getMonth(), 1).toISOString().split("T")[0];
-    const enPrev = new Date(prevDate.getFullYear(), prevDate.getMonth() + 1, 0).toISOString().split("T")[0];
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
-    // 2. Busca TODAS as vendas do mês anterior e agrupa por cliente
+    // 2. Busca TODAS as vendas do mês anterior na fonte oficial homologada (mv_vendas_cliente_mensal)
     const prevSalesMap = new Map<string, { manager: string; fat: number }>();
     let from = 0;
     while (true) {
       const { data, error } = await supabase
-        .from('sales_enriched')
-        .select('manager, rede, nome_parceiro, net_value')
-        .gte('invoice_date', stPrev)
-        .lte('invoice_date', enPrev)
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL))
+        .select('manager, rede, nome_parceiro, fat')
+        .eq('mes', prevMonth)
         .range(from, from + 999);
       if (error) throw error;
       if (!data || data.length === 0) break;
 
       console.log(`[Generate Alerts] Processando lote de vendas do Mês Anterior: ${from} a ${from + 999}...`);
-      for (const row of (data as unknown as SaleRow[])) {
+      for (const row of (data as any[])) {
         const clientName = row.rede || row.nome_parceiro || 'Não Mapeado';
-        const fat = parseFloat(row.net_value as string) || 0;
+        const fat = parseFloat(row.fat || 0);
         if (!row.manager) continue; // Ignorar vendas sem gerente
         const manager = row.manager;
         
@@ -85,24 +75,23 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. Busca TODAS as vendas do mês ATUAL para cruzar os dados
+    // 3. Busca TODAS as vendas do mês ATUAL na fonte oficial homologada para cruzar os dados
     from = 0;
     let pagesCurrProcessed = 0;
     while (pagesCurrProcessed < 100) {
       pagesCurrProcessed++;
       console.log(`[Generate Alerts] Buscando Mês Atual: offset ${from}...`);
       const { data, error } = await supabase
-        .from('sales_enriched')
-        .select('manager, rede, nome_parceiro, net_value')
-        .gte('invoice_date', stCurrent)
-        .lte('invoice_date', enCurrent)
+        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL))
+        .select('manager, rede, nome_parceiro, fat')
+        .eq('mes', currentMonth)
         .range(from, from + 999);
       if (error) throw error;
       if (!data || data.length === 0) break;
 
-      for (const row of (data as unknown as SaleRow[])) {
+      for (const row of (data as any[])) {
         const clientName = row.rede || row.nome_parceiro || 'Não Mapeado';
-        const fat = parseFloat(row.net_value as string) || 0;
+        const fat = parseFloat(row.fat || 0);
         
         if (expressivosMap.has(clientName)) {
            const existing = expressivosMap.get(clientName)!;

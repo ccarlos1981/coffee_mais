@@ -32,8 +32,11 @@ export async function GET(request: Request) {
     const pageSize = parseInt(searchParams.get("pageSize") || "20", 10);
 
     const filters: FollowUpListFilters = {
+      clienteId: searchParams.get("clienteId") || searchParams.get("cliente_id") || undefined,
       status: (searchParams.get("status") || "ALL") as FollowUpStatus | "ALL",
       origem: (searchParams.get("origem") || "ALL") as FollowUpOrigem | "ALL",
+      origemRef: searchParams.get("origemRef") || searchParams.get("origem_ref") || undefined,
+      origemRefs: searchParams.get("origemRefs") ? searchParams.get("origemRefs")!.split(",").map(s => s.trim()).filter(Boolean) : undefined,
       prioridade: (searchParams.get("prioridade") || "ALL") as FollowUpPrioridade | "ALL",
       searchCliente: searchParams.get("searchCliente") || searchParams.get("q") || undefined,
       dataInicio: searchParams.get("dataInicio") || undefined,
@@ -91,6 +94,7 @@ export async function POST(request: Request) {
         origem: body.origem,
         origem_ref: body.origem_ref,
         manager_id: body.manager_id,
+        gap_original_reais: body.gap_original_reais !== undefined ? body.gap_original_reais : null,
       },
       user.id,
       profile.role,

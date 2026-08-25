@@ -18,6 +18,7 @@ export interface FollowUpInitialContext {
   origem?: FollowUpOrigem;
   origem_ref?: string;
   manager_id?: string;
+  gap_original_reais?: number | null;
 }
 
 export interface NewFollowUpModalProps {
@@ -174,6 +175,7 @@ export function NewFollowUpModal({ isOpen, onClose, onCreated, initialContext }:
           origem,
           origem_ref: initialContext?.origem_ref || undefined,
           manager_id: initialContext?.manager_id || undefined,
+          gap_original_reais: initialContext?.gap_original_reais !== undefined ? initialContext.gap_original_reais : undefined,
         }),
       });
 

@@ -30,6 +30,8 @@ import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
+import { FollowUpStatusBadge } from "@/app/processo-comercial/follow-up/components/FollowUpStatusBadge";
+import type { FollowUpActionRecord } from "@/lib/services/follow-up-service";
 
 interface Alert {
   id: string;
@@ -61,6 +63,25 @@ export default function SmartActionHub() {
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [followUpContext, setFollowUpContext] = useState<FollowUpInitialContext | null>(null);
   const [followUpToast, setFollowUpToast] = useState<string | null>(null);
+  const [alertFollowUps, setAlertFollowUps] = useState<Record<string, FollowUpActionRecord>>({});
+
+  const fetchAlertFollowUps = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/follow-up?origem=ALERTA_QUEDA&pageSize=100`, { cache: "no-store" });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        const map: Record<string, FollowUpActionRecord> = {};
+        for (const act of json.data) {
+          if (act.origem_ref) {
+            map[act.origem_ref] = act;
+          }
+        }
+        setAlertFollowUps(map);
+      }
+    } catch (err) {
+      console.error("Erro ao buscar follow-ups de alertas:", err);
+    }
+  }, []);
 
   const handleOpenFollowUpAlert = (alert: Alert) => {
     setFollowUpContext({
@@ -83,7 +104,10 @@ export default function SmartActionHub() {
         ? `/api/alertas?manager=${selectedManager}`
         : `/api/alertas`;
 
-      const res = await fetch(url);
+      const [res] = await Promise.all([
+        fetch(url),
+        fetchAlertFollowUps(),
+      ]);
       const json = await res.json();
 
       if (json.success) {
@@ -98,7 +122,7 @@ export default function SmartActionHub() {
       console.error(e);
     }
     setLoading(false);
-  }, [selectedManager]);
+  }, [selectedManager, fetchAlertFollowUps]);
 
   useEffect(() => {
     const checkAuthAndPermissions = async () => {
@@ -289,15 +313,33 @@ export default function SmartActionHub() {
                     </span>
                     <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", lineHeight: 1.2 }}>{alert.client_name}</h3>
                   </div>
-                  {alert.status === 'PENDING' ? (
-                    <span style={{ padding: "4px 8px", background: "rgba(239, 68, 68, 0.1)", color: "var(--danger)", borderRadius: 12, fontSize: "0.6rem", fontWeight: 700 }}>
-                      PENDENTE
-                    </span>
-                  ) : (
-                    <span style={{ padding: "4px 8px", background: "rgba(34, 197, 94, 0.1)", color: "var(--success)", borderRadius: 12, fontSize: "0.6rem", fontWeight: 700 }}>
-                      AÇÃO Mapeada
-                    </span>
-                  )}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {(() => {
+                      const existingAction = alertFollowUps[alert.id];
+                      if (existingAction) {
+                        return (
+                          <FollowUpStatusBadge
+                            status={existingAction.status}
+                            isAtrasada={existingAction.is_atrasada}
+                            size="sm"
+                            title={`Follow-up Vinculado: ${existingAction.status} (${existingAction.motivo})`}
+                          />
+                        );
+                      }
+                      if (alert.status === 'PENDING') {
+                        return (
+                          <span style={{ padding: "4px 8px", background: "rgba(239, 68, 68, 0.1)", color: "var(--danger)", borderRadius: 12, fontSize: "0.6rem", fontWeight: 700 }}>
+                            PENDENTE
+                          </span>
+                        );
+                      }
+                      return (
+                        <span style={{ padding: "4px 8px", background: "rgba(34, 197, 94, 0.1)", color: "var(--success)", borderRadius: 12, fontSize: "0.6rem", fontWeight: 700 }}>
+                          AÇÃO Mapeada
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16, background: "rgba(0,0,0,0.1)", padding: 12, borderRadius: 8 }}>
@@ -326,7 +368,7 @@ export default function SmartActionHub() {
                                <p style={{ fontSize: "0.75rem", color: "var(--foreground)" }}>&quot;{note.note}&quot;</p>
                                <span style={{ fontSize: "0.6rem", color: "var(--foreground-dim)", display: "block", marginTop: 4 }}>
                                   {new Date(note.created_at).toLocaleDateString()} — {note.created_by}
-                               </span>
+                                </span>
                             </div>
                          ))}
                       </div>
@@ -352,16 +394,43 @@ export default function SmartActionHub() {
                    >
                      <Send style={{ width: 14, height: 14 }} />
                    </button>
-                   <button
-                      type="button"
-                      onClick={() => handleOpenFollowUpAlert(alert)}
-                      className="cm-btn-clear"
-                      style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--accent-gold)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "10px 14px", height: "auto", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
-                      title="Gerar Ação Oficial de Follow-up"
-                   >
-                     <Plus style={{ width: 13, height: 13 }} />
-                     <span>Follow-up</span>
-                   </button>
+                   {(() => {
+                      const existingAction = alertFollowUps[alert.id];
+                      if (existingAction) {
+                        return (
+                          <span
+                            style={{
+                              background: "rgba(56, 189, 248, 0.1)",
+                              color: "#38bdf8",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                              padding: "10px 14px",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              borderRadius: 6,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6
+                            }}
+                            title={`Ação de Follow-up vinculada (${existingAction.status})`}
+                          >
+                            <CheckCircle2 style={{ width: 13, height: 13 }} />
+                            <span>Ação Ativa</span>
+                          </span>
+                        );
+                      }
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFollowUpAlert(alert)}
+                          className="cm-btn-clear"
+                          style={{ background: "rgba(245, 158, 11, 0.15)", color: "var(--accent-gold)", border: "1px solid rgba(245, 158, 11, 0.3)", padding: "10px 14px", height: "auto", fontSize: "0.75rem", fontWeight: 700, borderRadius: 6, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+                          title="Gerar Ação Oficial de Follow-up"
+                        >
+                          <Plus style={{ width: 13, height: 13 }} />
+                          <span>Follow-up</span>
+                        </button>
+                      );
+                   })()}
                 </div>
 
               </div>

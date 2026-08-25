@@ -221,7 +221,7 @@ export async function POST(request: Request) {
       console.error('Failed to update client payment conditions:', clientUpdateError);
     }
 
-    // Upsert prazo de pagamento (dias) em cm_investimentos para manter sempre atualizado
+    // Upsert prazo de pagamento (dias) em cm_acoes_investimento para manter sempre atualizado (somente ações abertas)
     try {
       // Montar mapa: rede -> prazo (usa o boleto mais recente da rede que tenha prazo)
       const redePrazoMap: { [rede: string]: string } = {};
@@ -235,16 +235,17 @@ export async function POST(request: Request) {
         // Para cada rede com prazo, busca as ações abertas e atualiza condicao_pagamento
         const upsertPromises = Object.entries(redePrazoMap).map(async ([rede, prazo]) => {
           return supabase
-            .from('cm_investimentos')
+            .from('cm_acoes_investimento')
             .update({ condicao_pagamento: prazo })
-            .ilike('rede', `%${rede}%`);
+            .ilike('rede', `%${rede}%`)
+            .in('status', ['PLANEJADA', 'EM_ANDAMENTO', 'DRAFT']);
         });
 
         await Promise.all(upsertPromises);
-        console.log(`Prazo de pagamento atualizado em cm_investimentos para ${Object.keys(redePrazoMap).length} redes.`);
+        console.log(`Prazo de pagamento atualizado em cm_acoes_investimento para ${Object.keys(redePrazoMap).length} redes.`);
       }
     } catch (investimentoUpdateError) {
-      console.error('Failed to update investimentos prazo:', investimentoUpdateError);
+      console.error('Failed to update acoes investimento prazo:', investimentoUpdateError);
       // Não falha o import principal se o upsert de prazo falhar
     }
 
