@@ -342,7 +342,7 @@ export default function InvestimentoPage() {
   const [rawExcelRows, setRawExcelRows] = useState<any[][]>([]);
   const [isSimulating, setIsSimulating] = useState(false);
   const [isImportPending, startImportTransition] = useTransition();
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "", condicao_pagamento: "" });
   const [boletosAbertos, setBoletosAbertos] = useState<any[]>([]);
   const [boletoSearchTerm, setBoletoSearchTerm] = useState("");
@@ -355,6 +355,7 @@ export default function InvestimentoPage() {
   const [clientHasBoletoCondition, setClientHasBoletoCondition] = useState(false);
   const [modalPrazo, setModalPrazo] = useState<string | null>(null);
   const boletoDropdownRef = useRef<HTMLDivElement>(null);
+  const actionModalIdRef = useRef<string | null>(null);
   const [uploadingBoletoFinanceiro, setUploadingBoletoFinanceiro] = useState(false);
   const [showOnlyWithoutActions, setShowOnlyWithoutActions] = useState(false);
   const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
@@ -790,177 +791,183 @@ export default function InvestimentoPage() {
 
   useEffect(() => {
     if (selectedAction) {
-      setTradeChecklist({ 
-        comunicacao: selectedAction.checklist_comunicacao || false, 
-        logistica: selectedAction.checklist_logistica || false, 
-        auditoria: selectedAction.checklist_auditoria || false, 
-        garantia: selectedAction.checklist_garantia || false,
-        conferencia: selectedAction.checklist_conferencia || false,
-        sem_auditoria: selectedAction.checklist_sem_auditoria || false
-      });
-      // Sincronizar divergência de calendário
-      setTradeDivergencia({
-        possui: selectedAction.possui_divergencia_calendario || false,
-        motivo: (selectedAction.motivo_divergencia_calendario as MotivoDivergencia) || '',
-        observacao: selectedAction.observacao_divergencia || '',
-      });
-      setApuracaoForm({
-        numero_acordo: selectedAction.apuracao_numero_acordo || "",
-        qtd_vendida: selectedAction.apuracao_qtd_vendida?.toString() || "",
-        valor_realizado: selectedAction.apuracao_valor_realizado?.toString() || "",
-        evidencias_url: selectedAction.apuracao_evidencias_url || "",
-        boleto_id: selectedAction.apuracao_boleto_id || "",
-        condicao_pagamento: selectedAction.condicao_pagamento || ""
-      });
-      setSemBoleto(selectedAction.sem_boleto || false);
+      const isNewAction = actionModalIdRef.current !== selectedAction.id;
+      actionModalIdRef.current = selectedAction.id;
 
-      const checkBoletoCondition = async () => {
-        const actionIsBoleto = selectedAction.tipo_pagamento?.toLowerCase().includes('boleto') || 
-                              selectedAction.tipo_pagamento?.toLowerCase().includes('abatimento') ||
-                              selectedAction.condicao_pagamento?.toLowerCase().includes('boleto');
-                              
-        if (actionIsBoleto) {
-          setClientHasBoletoCondition(true);
-          return;
-        }
+      if (isNewAction) {
+        setTradeChecklist({ 
+          comunicacao: selectedAction.checklist_comunicacao || false, 
+          logistica: selectedAction.checklist_logistica || false, 
+          auditoria: selectedAction.checklist_auditoria || false, 
+          garantia: selectedAction.checklist_garantia || false,
+          conferencia: selectedAction.checklist_conferencia || false,
+          sem_auditoria: selectedAction.checklist_sem_auditoria || false
+        });
+        // Sincronizar divergência de calendário
+        setTradeDivergencia({
+          possui: selectedAction.possui_divergencia_calendario || false,
+          motivo: (selectedAction.motivo_divergencia_calendario as MotivoDivergencia) || '',
+          observacao: selectedAction.observacao_divergencia || '',
+        });
+        setApuracaoForm({
+          numero_acordo: selectedAction.apuracao_numero_acordo || "",
+          qtd_vendida: selectedAction.apuracao_qtd_vendida?.toString() || "",
+          valor_realizado: selectedAction.apuracao_valor_realizado?.toString() || "",
+          evidencias_url: selectedAction.apuracao_evidencias_url || "",
+          boleto_id: selectedAction.apuracao_boleto_id || "",
+          condicao_pagamento: selectedAction.condicao_pagamento || ""
+        });
+        setSemBoleto(selectedAction.sem_boleto || false);
 
-        try {
-          const { data: clients } = await supabase
-            .from("cm_clientes")
-            .select("condicao_pagamento")
-            .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
-            .not("condicao_pagamento", "is", null)
-            .limit(1);
-
-          if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
-            const cond = clients[0].condicao_pagamento.trim().toLowerCase();
-            if (cond.includes("boleto")) {
-              setClientHasBoletoCondition(true);
-              return;
-            }
+        const checkBoletoCondition = async () => {
+          const actionIsBoleto = selectedAction.tipo_pagamento?.toLowerCase().includes('boleto') || 
+                                selectedAction.tipo_pagamento?.toLowerCase().includes('abatimento') ||
+                                selectedAction.condicao_pagamento?.toLowerCase().includes('boleto');
+                                
+          if (actionIsBoleto) {
+            setClientHasBoletoCondition(true);
+            return;
           }
-        } catch (err) {
-          console.error("Erro ao verificar condição de pagamento:", err);
-        }
-        
-        setClientHasBoletoCondition(false);
-      };
 
-      // Buscar prazo do cliente via cm_boletos e salvar na ação
-      const fetchModalPrazo = async () => {
-        let foundPrazo: string | null = selectedAction.condicao_pagamento || null;
-        try {
-          // 1. Tenta via boleto da rede (mais preciso)
-          const { data: boletos } = await supabase
-            .from("cm_boletos")
-            .select("prazo")
-            .ilike("rede", `%${selectedAction.rede}%`)
-            .not("prazo", "is", null)
-            .limit(1);
-          if (boletos && boletos.length > 0 && boletos[0].prazo) {
-            foundPrazo = boletos[0].prazo;
-          } else {
-            // 2. Fallback: condicao_pagamento do cm_clientes
+          try {
             const { data: clients } = await supabase
               .from("cm_clientes")
               .select("condicao_pagamento")
               .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
               .not("condicao_pagamento", "is", null)
               .limit(1);
+
             if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
-              foundPrazo = clients[0].condicao_pagamento;
-            }
-          }
-        } catch { /* mantém o valor anterior */ }
-
-        setModalPrazo(foundPrazo);
-
-        // Persistir prazo na ação se encontrou e o campo estava vazio
-        if (foundPrazo && !selectedAction.condicao_pagamento && selectedAction.id) {
-          await supabase
-            .from("cm_acoes_investimento")
-            .update({ condicao_pagamento: foundPrazo })
-            .eq("id", selectedAction.id);
-        }
-      };
-
-
-      checkBoletoCondition();
-      fetchModalPrazo();
-      
-      if ((selectedAction.fase_atual || 1) >= 3) {
-        fetchBoletosDaRede(
-          selectedAction.rede, 
-          selectedAction.codigo_matriz,
-          (selectedAction as any).gerente_responsavel || (selectedAction as any).gerente_nome || (selectedAction as any).gerente || (selectedAction as any).manager_name || (selectedAction as any).responsavel || (selectedAction as any).user_name,
-          (selectedAction as any).uf || (selectedAction as any).estado,
-          (selectedAction as any).regional || (selectedAction as any).regiao
-        );
-        
-        // Buscar boletos vinculados na tabela de relações
-        supabase
-          .from('cm_acoes_boletos_vinculo')
-          .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, parceiro_codigo, valor_total, vencimento, status, tipo_titulo, prazo)')
-          .eq('acao_id', selectedAction.id)
-          .then(({ data: vinculosData, error }: any) => {
-            if (!error && vinculosData && vinculosData.length > 0) {
-              const parsed = vinculosData.map((v: any) => {
-                const b = v.cm_boletos;
-                const info = getBoletoMatrizInfo(b);
-                return {
-                  boleto_id: b.id,
-                  valor_associado: v.valor_associado.toString(),
-                  label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
-                  numero_boleto: b.numero_boleto,
-                  valor_total: b.valor_total,
-                  tipo_titulo: b.tipo_titulo,
-                  vencimento: b.vencimento,
-                  rede: info.matriz,
-                  parceiro_nome: b.rede,
-                  parceiro_codigo: b.parceiro_codigo,
-                  prazo: b.prazo
-                };
-              });
-              setVinculosBoletos(parsed);
-            } else {
-              // Fallback para boletos legados (vinculo individual na coluna apuracao_boleto_id)
-              if (selectedAction.apuracao_boleto_id) {
-                supabase
-                  .from('cm_boletos')
-                  .select('*')
-                  .eq('id', selectedAction.apuracao_boleto_id)
-                  .single()
-                  .then(({ data: b }: { data: any }) => {
-                    if (b) {
-                      const info = getBoletoMatrizInfo(b);
-                      setVinculosBoletos([{
-                        boleto_id: b.id,
-                        valor_associado: (selectedAction.apuracao_valor_realizado || getValorTotal(selectedAction)).toString(),
-                        label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
-                        numero_boleto: b.numero_boleto,
-                        valor_total: b.valor_total,
-                        tipo_titulo: b.tipo_titulo,
-                        vencimento: b.vencimento,
-                        rede: info.matriz,
-                        parceiro_nome: b.rede,
-                        parceiro_codigo: b.parceiro_codigo,
-                        prazo: b.prazo
-                      }]);
-                    } else {
-                      setVinculosBoletos([]);
-                    }
-                  });
-              } else {
-                setVinculosBoletos([]);
+              const cond = clients[0].condicao_pagamento.trim().toLowerCase();
+              if (cond.includes("boleto")) {
+                setClientHasBoletoCondition(true);
+                return;
               }
             }
-          });
-      } else {
-        setVinculosBoletos([]);
+          } catch (err) {
+            console.error("Erro ao verificar condição de pagamento:", err);
+          }
+          
+          setClientHasBoletoCondition(false);
+        };
+
+        // Buscar prazo do cliente via cm_boletos e salvar na ação
+        const fetchModalPrazo = async () => {
+          let foundPrazo: string | null = selectedAction.condicao_pagamento || null;
+          try {
+            // 1. Tenta via boleto da rede (mais preciso)
+            const { data: boletos } = await supabase
+              .from("cm_boletos")
+              .select("prazo")
+              .ilike("rede", `%${selectedAction.rede}%`)
+              .not("prazo", "is", null)
+              .limit(1);
+            if (boletos && boletos.length > 0 && boletos[0].prazo) {
+              foundPrazo = boletos[0].prazo;
+            } else {
+              // 2. Fallback: condicao_pagamento do cm_clientes
+              const { data: clients } = await supabase
+                .from("cm_clientes")
+                .select("condicao_pagamento")
+                .or(`codigo_matriz.eq.${selectedAction.codigo_matriz},codigo.eq.${parseInt(selectedAction.codigo_matriz || '', 10) || 0}`)
+                .not("condicao_pagamento", "is", null)
+                .limit(1);
+              if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
+                foundPrazo = clients[0].condicao_pagamento;
+              }
+            }
+          } catch { /* mantém o valor anterior */ }
+
+          setModalPrazo(foundPrazo);
+
+          // Persistir prazo na ação se encontrou e o campo estava vazio
+          if (foundPrazo && !selectedAction.condicao_pagamento && selectedAction.id) {
+            await supabase
+              .from("cm_acoes_investimento")
+              .update({ condicao_pagamento: foundPrazo })
+              .eq("id", selectedAction.id);
+          }
+        };
+
+        checkBoletoCondition();
+        fetchModalPrazo();
+        
+        if ((selectedAction.fase_atual || 1) >= 3) {
+          fetchBoletosDaRede(
+            selectedAction.rede, 
+            selectedAction.codigo_matriz,
+            (selectedAction as any).gerente_responsavel || (selectedAction as any).gerente_nome || (selectedAction as any).gerente || (selectedAction as any).manager_name || (selectedAction as any).responsavel || (selectedAction as any).user_name,
+            (selectedAction as any).uf || (selectedAction as any).estado,
+            (selectedAction as any).regional || (selectedAction as any).regiao
+          );
+          
+          // Buscar boletos vinculados na tabela de relações
+          supabase
+            .from('cm_acoes_boletos_vinculo')
+            .select('valor_associado, cm_boletos:boleto_id(id, numero_boleto, rede, parceiro_codigo, valor_total, vencimento, status, tipo_titulo, prazo)')
+            .eq('acao_id', selectedAction.id)
+            .then(({ data: vinculosData, error }: any) => {
+              if (!error && vinculosData && vinculosData.length > 0) {
+                const parsed = vinculosData.map((v: any) => {
+                  const b = v.cm_boletos;
+                  const info = getBoletoMatrizInfo(b);
+                  return {
+                    boleto_id: b.id,
+                    valor_associado: v.valor_associado.toString(),
+                    label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                    numero_boleto: b.numero_boleto,
+                    valor_total: b.valor_total,
+                    tipo_titulo: b.tipo_titulo,
+                    vencimento: b.vencimento,
+                    rede: info.matriz,
+                    parceiro_nome: b.rede,
+                    parceiro_codigo: b.parceiro_codigo,
+                    prazo: b.prazo
+                  };
+                });
+                setVinculosBoletos(parsed);
+              } else {
+                // Fallback para boletos legados (vinculo individual na coluna apuracao_boleto_id)
+                if (selectedAction.apuracao_boleto_id) {
+                  supabase
+                    .from('cm_boletos')
+                    .select('*')
+                    .eq('id', selectedAction.apuracao_boleto_id)
+                    .single()
+                    .then(({ data: b }: { data: any }) => {
+                      if (b) {
+                        const info = getBoletoMatrizInfo(b);
+                        setVinculosBoletos([{
+                          boleto_id: b.id,
+                          valor_associado: (selectedAction.apuracao_valor_realizado || getValorTotal(selectedAction)).toString(),
+                          label: `${info.matriz} — Nº ${b.numero_boleto} [${b.tipo_titulo || 'BOLETO'}] — Total: ${formatCurrency(b.valor_total)} — Venc: ${new Date(b.vencimento).toLocaleDateString('pt-BR', {timeZone: 'UTC'})}`,
+                          numero_boleto: b.numero_boleto,
+                          valor_total: b.valor_total,
+                          tipo_titulo: b.tipo_titulo,
+                          vencimento: b.vencimento,
+                          rede: info.matriz,
+                          parceiro_nome: b.rede,
+                          parceiro_codigo: b.parceiro_codigo,
+                          prazo: b.prazo
+                        }]);
+                      } else {
+                        setVinculosBoletos([]);
+                      }
+                    });
+                } else {
+                  setVinculosBoletos([]);
+                }
+              }
+            });
+        } else {
+          setVinculosBoletos([]);
+        }
+        setDetailsExpanded(true);
       }
-      setDetailsExpanded(false);
+    } else {
+      actionModalIdRef.current = null;
     }
-  }, [selectedAction, matrizLookup]);
+  }, [selectedAction?.id, matrizLookup]);
 
   const allTradeChecked = Object.values(tradeChecklist).every(Boolean);
 
@@ -2274,18 +2281,28 @@ export default function InvestimentoPage() {
     const currentScrollTop = modalScrollRef.current?.scrollTop;
 
     // Atualização otimista imediata da interface visual
-    setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: checked }));
+    const keyMap: Record<string, keyof typeof tradeChecklist> = {
+      checklist_comunicacao: 'comunicacao',
+      checklist_logistica: 'logistica',
+      checklist_auditoria: 'auditoria',
+      checklist_conferencia: 'conferencia',
+      checklist_sem_auditoria: 'sem_auditoria',
+    };
+    const propKey = keyMap[fieldName];
+    if (propKey) {
+      setTradeChecklist(prev => ({ ...prev, [propKey]: checked }));
+    }
     setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
     setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
 
     try {
       const updatedChecklist = {
-        comunicacao: fieldName === 'checklist_comunicacao' ? checked : (selectedAction.checklist_comunicacao || false),
-        logistica: fieldName === 'checklist_logistica' ? checked : (selectedAction.checklist_logistica || false),
-        auditoria: fieldName === 'checklist_auditoria' ? checked : (selectedAction.checklist_auditoria || false),
+        comunicacao: fieldName === 'checklist_comunicacao' ? checked : (tradeChecklist.comunicacao ?? selectedAction.checklist_comunicacao ?? false),
+        logistica: fieldName === 'checklist_logistica' ? checked : (tradeChecklist.logistica ?? selectedAction.checklist_logistica ?? false),
+        auditoria: fieldName === 'checklist_auditoria' ? checked : (tradeChecklist.auditoria ?? selectedAction.checklist_auditoria ?? false),
         garantia: selectedAction.checklist_garantia || false,
-        conferencia: fieldName === 'checklist_conferencia' ? checked : (selectedAction.checklist_conferencia || false),
-        sem_auditoria: fieldName === 'checklist_sem_auditoria' ? checked : (selectedAction.checklist_sem_auditoria || false),
+        conferencia: fieldName === 'checklist_conferencia' ? checked : (tradeChecklist.conferencia ?? selectedAction.checklist_conferencia ?? false),
+        sem_auditoria: fieldName === 'checklist_sem_auditoria' ? checked : (tradeChecklist.sem_auditoria ?? selectedAction.checklist_sem_auditoria ?? false),
         divergencia: {
           possui: tradeDivergencia.possui,
           motivo: (tradeDivergencia.motivo as MotivoDivergencia) || null,
@@ -2297,7 +2314,9 @@ export default function InvestimentoPage() {
     } catch (err: any) {
       console.error(err);
       // Reverte o estado visual em caso de falha na gravação
-      setTradeChecklist(prev => ({ ...prev, [fieldName.replace('checklist_', '')]: !checked }));
+      if (propKey) {
+        setTradeChecklist(prev => ({ ...prev, [propKey]: !checked }));
+      }
       setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: !checked } : prev);
       setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: !checked } : item));
       alert("Erro ao salvar checklist: " + err.message);

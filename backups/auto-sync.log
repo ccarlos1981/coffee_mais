@@ -1924,3 +1924,10 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    ad04e09..4bb4243  main -> main
 [25/08/2026 06:12] ✅ Alterações enviadas com sucesso para o GitHub.
+[main cca0528] auto-save: 25/08/2026 09:18
+ 8 files changed, 734 insertions(+), 8 deletions(-)
+ create mode 100644 supabase/migrations/20260825_canonicalize_all_networks_systemic.sql
+ create mode 100644 supabase/migrations/20260825_canonicalize_rede_oba_projections.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   4bb4243..cca0528  main -> main
+[25/08/2026 09:18] ✅ Alterações enviadas com sucesso para o GitHub.
