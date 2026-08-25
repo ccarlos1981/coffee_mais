@@ -1909,3 +1909,13 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    b18daab..a372d61  main -> main
 [24/08/2026 23:41] ✅ Alterações enviadas com sucesso para o GitHub.
+[main ad04e09] auto-save: 25/08/2026 03:12
+ 12 files changed, 20028 insertions(+), 79 deletions(-)
+ create mode 100644 supabase/migrations/20260825_correct_acre_territory_manager.sql
+ create mode 100644 supabase/migrations/20260825_sync_cm_redes_to_network_matrix.sql
+remote: warning: See https://gh.io/lfs for more information.        
+remote: warning: File backups/backup.log is 84.68 MB; this is larger than GitHub's recommended maximum file size of 50.00 MB        
+remote: warning: GH001: Large files detected. You may want to try Git Large File Storage - https://git-lfs.github.com.        
+To https://github.com/ccarlos1981/coffee_mais.git
+   a372d61..ad04e09  main -> main
+[25/08/2026 03:12] ✅ Alterações enviadas com sucesso para o GitHub.
