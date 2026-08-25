@@ -45,6 +45,14 @@ export {
   resolveCanonicalManager,
   isSameManager,
   canonicalizeKey,
+  resolveCanonicalNetwork,
 } from "./canonical";
 
-export type { ManagerInfo } from "./canonical";
+export type {
+  ManagerInfo,
+  CanonicalResolutionStatus,
+  CanonicalNetworkIdentity,
+  OfficialNetworkRecord,
+  CanonicalNetworkResult,
+} from "./canonical";
+

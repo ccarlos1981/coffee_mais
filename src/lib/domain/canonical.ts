@@ -160,3 +160,280 @@ export function isSameManager(managerA: string | null | undefined, managerB: str
   // 2. Fallback pela chave canônica normalizada
   return infoA.canonicalKey === infoB.canonicalKey;
 }
+
+// ============================================================
+// CANONICALIZAÇÃO DE REDES COMERCIAIS (P4.11)
+// ============================================================
+
+export type CanonicalResolutionStatus =
+  | "SUCCESS"
+  | "CANONICALIZACAO_AMBIGUA"
+  | "NAO_ENCONTRADA";
+
+export interface CanonicalNetworkIdentity {
+  rawName?: string | null;
+  codigoMatriz?: string | null;
+  managerId?: string | null;
+  managerName?: string | null;
+  uf?: string | null;
+  codParceiro?: number | string | null;
+  networkId?: number | string | null;
+}
+
+export interface OfficialNetworkRecord {
+  rede: string;
+  manager: string;
+  managerId: string;
+  codigoMatriz: string;
+  uf?: string | null;
+  totalPdvsVinculados?: number;
+  codigosParceiros?: (number | string)[];
+}
+
+export interface CanonicalNetworkResult {
+  status: CanonicalResolutionStatus;
+  canonicalName: string | null;
+  codigoMatriz: string | null;
+  managerId: string | null;
+  uf: string | null;
+  candidates?: string[];
+  auditReason?: string;
+}
+
+/**
+ * Resolução Canônica Dinâmica de Redes do Coffee++
+ * 
+ * Regras Obrigatórias de Governança (P4.11):
+ * 1. O Cadastro Único (vw_redes_planejaveis_oficiais / cm_clientes) é a SSOT.
+ * 2. PROIBIDO o uso de startsWith(), substring(), regex ou fuzzy matching quando houver múltiplos candidatos.
+ * 3. Precedência estrita por identificadores físicos estáveis:
+ *    - networkId
+ *    - codParceiro
+ *    - (codigoMatriz + managerId + uf), com validação 1:1 inequívoca
+ *    - Match exato case-insensitive no nome oficial para o mesmo gerente
+ * 4. Se houver ambiguidade (múltiplos candidatos sem discriminador unívoco):
+ *    - Retorna CANONICALIZACAO_AMBIGUA com lista de candidatos e auditReason.
+ *    - NÃO adivinha e NÃO altera o registro.
+ */
+export function resolveCanonicalNetwork(
+  identity: CanonicalNetworkIdentity,
+  officialNetworks: OfficialNetworkRecord[]
+): CanonicalNetworkResult {
+  if (!identity) {
+    return {
+      status: "NAO_ENCONTRADA",
+      canonicalName: null,
+      codigoMatriz: null,
+      managerId: null,
+      uf: null,
+      auditReason: "Identidade não informada",
+    };
+  }
+
+  const rawNameClean = (identity.rawName || "").trim();
+  const rawKey = canonicalizeKey(rawNameClean);
+
+  // 1. Identificar o Gerente Canônico
+  const canonicalMgr = resolveCanonicalManager(identity.managerId || identity.managerName);
+  const filterByManager = canonicalMgr.managerId !== "9999";
+
+  // Filtrar base oficial para o escopo do gerente (se identificado)
+  const scopedNetworks = filterByManager
+    ? officialNetworks.filter(
+        (n) => isSameManager(n.manager, canonicalMgr.managerName) || n.managerId === canonicalMgr.managerId
+      )
+    : officialNetworks;
+
+  // ------------------------------------------------------------
+  // PRECEDÊNCIA 1: networkId
+  // ------------------------------------------------------------
+  if (identity.networkId !== undefined && identity.networkId !== null && String(identity.networkId).trim() !== "") {
+    const netIdStr = String(identity.networkId).trim();
+    const match = scopedNetworks.find(
+      (n) =>
+        String(n.codigoMatriz).replace(/\.0$/, "") === netIdStr.replace(/\.0$/, "") ||
+        (n.codigosParceiros && n.codigosParceiros.some((cp) => String(cp) === netIdStr))
+    );
+    if (match) {
+      return {
+        status: "SUCCESS",
+        canonicalName: match.rede,
+        codigoMatriz: match.codigoMatriz,
+        managerId: match.managerId,
+        uf: match.uf || identity.uf || null,
+      };
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PRECEDÊNCIA 2: codParceiro
+  // ------------------------------------------------------------
+  if (identity.codParceiro !== undefined && identity.codParceiro !== null && String(identity.codParceiro).trim() !== "") {
+    const codStr = String(identity.codParceiro).trim();
+    const matches = scopedNetworks.filter(
+      (n) => n.codigosParceiros && n.codigosParceiros.some((cp) => String(cp) === codStr)
+    );
+    if (matches.length === 1) {
+      return {
+        status: "SUCCESS",
+        canonicalName: matches[0].rede,
+        codigoMatriz: matches[0].codigoMatriz,
+        managerId: matches[0].managerId,
+        uf: matches[0].uf || identity.uf || null,
+      };
+    }
+    if (matches.length > 1) {
+      return {
+        status: "CANONICALIZACAO_AMBIGUA",
+        canonicalName: null,
+        codigoMatriz: matches[0].codigoMatriz,
+        managerId: canonicalMgr.managerId,
+        uf: identity.uf || null,
+        candidates: matches.map((m) => m.rede),
+        auditReason: `Múltiplas redes encontradas para o cod_parceiro ${codStr}`,
+      };
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PRECEDÊNCIA 3: (codigoMatriz + managerId + UF)
+  // ------------------------------------------------------------
+  if (identity.codigoMatriz) {
+    const codMatrizClean = String(identity.codigoMatriz).trim();
+    const codMatrizNorm = codMatrizClean.replace(/\.0$/, "");
+
+    let candidates = scopedNetworks.filter(
+      (n) =>
+        String(n.codigoMatriz).trim() === codMatrizClean ||
+        String(n.codigoMatriz).trim().replace(/\.0$/, "") === codMatrizNorm
+    );
+
+    if (identity.uf && candidates.length > 1) {
+      const ufNorm = identity.uf.trim().toUpperCase();
+      const ufCandidates = candidates.filter((n) => (n.uf || "").trim().toUpperCase() === ufNorm);
+      if (ufCandidates.length > 0) {
+        candidates = ufCandidates;
+      }
+    }
+
+    if (candidates.length === 1) {
+      return {
+        status: "SUCCESS",
+        canonicalName: candidates[0].rede,
+        codigoMatriz: candidates[0].codigoMatriz,
+        managerId: candidates[0].managerId,
+        uf: candidates[0].uf || identity.uf || null,
+      };
+    }
+
+    if (candidates.length > 1) {
+      // Se houver nome exato entre os candidatos, desambigua determinísticamente
+      if (rawKey) {
+        const exactCandidate = candidates.find((c) => canonicalizeKey(c.rede) === rawKey);
+        if (exactCandidate) {
+          return {
+            status: "SUCCESS",
+            canonicalName: exactCandidate.rede,
+            codigoMatriz: exactCandidate.codigoMatriz,
+            managerId: exactCandidate.managerId,
+            uf: exactCandidate.uf || identity.uf || null,
+          };
+        }
+      }
+
+      return {
+        status: "CANONICALIZACAO_AMBIGUA",
+        canonicalName: null,
+        codigoMatriz: identity.codigoMatriz,
+        managerId: canonicalMgr.managerId,
+        uf: identity.uf || null,
+        candidates: candidates.map((c) => c.rede),
+        auditReason: `Código de matriz ${identity.codigoMatriz} possui ${candidates.length} redes oficiais para o gerente ${canonicalMgr.managerName} sem discriminador unívoco`,
+      };
+    }
+  }
+
+  // ------------------------------------------------------------
+  // PRECEDÊNCIA 4: Correspondência EXATA case-insensitive na view oficial
+  // ------------------------------------------------------------
+  if (rawKey) {
+    const exactMatches = scopedNetworks.filter((n) => canonicalizeKey(n.rede) === rawKey);
+    if (exactMatches.length === 1) {
+      return {
+        status: "SUCCESS",
+        canonicalName: exactMatches[0].rede,
+        codigoMatriz: exactMatches[0].codigoMatriz,
+        managerId: exactMatches[0].managerId,
+        uf: exactMatches[0].uf || identity.uf || null,
+      };
+    }
+    if (exactMatches.length > 1) {
+      return {
+        status: "CANONICALIZACAO_AMBIGUA",
+        canonicalName: null,
+        codigoMatriz: exactMatches[0].codigoMatriz,
+        managerId: canonicalMgr.managerId,
+        uf: identity.uf || null,
+        candidates: exactMatches.map((m) => m.rede),
+        auditReason: `Múltiplas redes encontradas com o mesmo nome exato "${rawNameClean}"`,
+      };
+    }
+
+    // ------------------------------------------------------------
+    // PRECEDÊNCIA 5: Identidade Equivalente Derivada da View Oficial (Desambiguação de Raiz com Guarda Estrita)
+    // Se o nome legado for a raiz base sem sufixo regional (ex: "FORT" -> "FORT (SP)"):
+    // Só é resolvido SE E SOMENTE SE existir EXATAMENTE 1 candidato oficial sob aquele gerente.
+    // Se houver mais de 1 candidato (ex: "ZAFFARI" sob Leandro Saffi -> "ZAFFARI (RS)" e "ZAFFARI (CESTO)"):
+    // RETORNA OBRIGATORIAMENTE CANONICALIZACAO_AMBIGUA sem adivinhação.
+    // ------------------------------------------------------------
+    const rootMatches = scopedNetworks.filter((n) => {
+      const canonicalRede = canonicalizeKey(n.rede);
+      const rootWithoutParens = canonicalRede.replace(/\s*\([^)]*\)$/, "").trim();
+      const rootWithoutUf = canonicalRede.replace(/\s+(SP|SC|RS|PR|MG|RJ|DF|GO|BA|PE|CE)$/, "").trim();
+      return rootWithoutParens === rawKey || rootWithoutUf === rawKey;
+    });
+
+    if (rootMatches.length === 1) {
+      return {
+        status: "SUCCESS",
+        canonicalName: rootMatches[0].rede,
+        codigoMatriz: rootMatches[0].codigoMatriz,
+        managerId: rootMatches[0].managerId,
+        uf: rootMatches[0].uf || identity.uf || null,
+      };
+    }
+
+    if (rootMatches.length > 1) {
+      return {
+        status: "CANONICALIZACAO_AMBIGUA",
+        canonicalName: null,
+        codigoMatriz: rootMatches[0].codigoMatriz,
+        managerId: canonicalMgr.managerId,
+        uf: identity.uf || null,
+        candidates: rootMatches.map((m) => m.rede),
+        auditReason: `Nome base "${rawNameClean}" possui ${rootMatches.length} redes candidatas sob o gerente ${canonicalMgr.managerName} sem discriminador operacional`,
+      };
+    }
+
+    // Se não encontrou no escopo do gerente, tentar match exato no catálogo global
+    const globalExact = officialNetworks.filter((n) => canonicalizeKey(n.rede) === rawKey);
+    if (globalExact.length === 1) {
+      return {
+        status: "SUCCESS",
+        canonicalName: globalExact[0].rede,
+        codigoMatriz: globalExact[0].codigoMatriz,
+        managerId: globalExact[0].managerId,
+        uf: globalExact[0].uf || identity.uf || null,
+      };
+    }
+  }
+
+  return {
+    status: "NAO_ENCONTRADA",
+    canonicalName: null,
+    codigoMatriz: identity.codigoMatriz || null,
+    managerId: canonicalMgr.managerId,
+    uf: identity.uf || null,
+    auditReason: `Nenhuma rede oficial encontrada para "${rawNameClean || identity.codigoMatriz || "identidade não informada"}"`,
+  };
+}
