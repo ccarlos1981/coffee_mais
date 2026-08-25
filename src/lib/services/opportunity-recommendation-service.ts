@@ -90,6 +90,8 @@ export interface RawClientAnalyticsData {
   valorFaturadoPeriodo?: number;
   valorFaturado12m?: number;
   frequenciaHistoricaDias?: number;
+  historicoPedidosResumido?: HistoricoPedidoItem[];
+  evolucaoFaturamentoMeses?: EvolucaoFaturamentoItem[];
 }
 
 export class OpportunityRecommendationService {
@@ -236,20 +238,10 @@ export class OpportunityRecommendationService {
       ];
 
       // Histórico de Pedidos Recentes
-      const historicoPedidosResumido: HistoricoPedidoItem[] = [
-        { data: "2026-06-12", valor: Math.round(faturamentoMedioMensal * 1.1), status: "CONCLUIDO" },
-        { data: "2026-05-18", valor: Math.round(faturamentoMedioMensal * 0.95), status: "CONCLUIDO" },
-        { data: "2026-04-20", valor: Math.round(faturamentoMedioMensal * 1.05), status: "CONCLUIDO" },
-      ];
+      const historicoPedidosResumido: HistoricoPedidoItem[] = raw.historicoPedidosResumido || [];
 
       // Evolução de Faturamento dos últimos meses
-      const evolucaoFaturamentoMeses: EvolucaoFaturamentoItem[] = [
-        { mes: "Mar/26", valor: Math.round(faturamentoMedioMensal * 0.9) },
-        { mes: "Abr/26", valor: Math.round(faturamentoMedioMensal * 1.05) },
-        { mes: "Mai/26", valor: Math.round(faturamentoMedioMensal * 0.95) },
-        { mes: "Jun/26", valor: Math.round(faturamentoMedioMensal * 1.1) },
-        { mes: "Jul/26", valor: Math.round(faturamentoMedioMensal * 0.4) },
-      ];
+      const evolucaoFaturamentoMeses: EvolucaoFaturamentoItem[] = raw.evolucaoFaturamentoMeses || [];
 
       return {
         clienteId: raw.clienteId,
@@ -262,7 +254,7 @@ export class OpportunityRecommendationService {
         uf: raw.uf || "MG",
         diasSemCompra,
         frequenciaHistoricaDias,
-        dataUltimaCompra: raw.dataUltimaCompra || "2026-06-12",
+        dataUltimaCompra: raw.dataUltimaCompra || null,
         faturamentoUltimaCompra: raw.valorUltimaCompra || Math.round(faturamentoMedioMensal * 1.1),
         faturamentoMedioMensal,
         faturamentoAcumulado12M: fat12m,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { CommercialDomainService } from "@/lib/domain";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,9 @@ const SUPABASE_KEY =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const CC_ALWAYS = ["trade@coffeemais.com", "cristiano.santos@coffeemais.com"];
-const OFFICIAL_MANAGERS = CommercialDomainService.getFieldManagerList();
+const OFFICIAL_MANAGERS = CommercialDomainService.getFieldManagerList()
+  .map(m => resolveCanonicalManager(m).managerName)
+  .filter((v, i, a) => a.indexOf(v) === i);
 
 function getBrazilTimeParts() {
   const formatter = new Intl.DateTimeFormat("en-US", {
@@ -79,10 +82,10 @@ export async function GET(request: Request) {
     // Segunda-feira 14:00:00 BRT = 17:00 UTC da Segunda-feira
     const windowEndBRT = new Date(Date.UTC(mondayYear, mondayMonth - 1, mondayDay, 17, 0, 0));
 
-    // 4. Buscar e mapear os e-mails dos gerentes regionais
+    // 4. Buscar e mapear os e-mails dos gerentes regionais (com resolução canônica de nomes)
     const { data: perfis, error: perfisError } = await supabase
       .from("cm_user_profiles")
-      .select("manager_name, id")
+      .select("manager_name, name, id")
       .eq("role", "Gerente Regional")
       .eq("approved", true);
 
@@ -91,10 +94,19 @@ export async function GET(request: Request) {
     const gerenteEmailMap: Record<string, string> = {};
     if (perfis && perfis.length > 0) {
       for (const p of perfis) {
-        if (!p.manager_name) continue;
         const { data: userData } = await supabase.auth.admin.getUserById(p.id);
-        if (userData?.user?.email) {
-          gerenteEmailMap[p.manager_name] = userData.user.email;
+        const userEmail = userData?.user?.email;
+        if (userEmail) {
+          if (p.manager_name) {
+            gerenteEmailMap[p.manager_name] = userEmail;
+            const canonMgr = resolveCanonicalManager(p.manager_name).managerName;
+            if (canonMgr) gerenteEmailMap[canonMgr] = userEmail;
+          }
+          if (p.name) {
+            gerenteEmailMap[p.name] = userEmail;
+            const canonName = resolveCanonicalManager(p.name).managerName;
+            if (canonName) gerenteEmailMap[canonName] = userEmail;
+          }
         }
       }
     }
@@ -112,24 +124,31 @@ export async function GET(request: Request) {
 
     if (projError) throw projError;
 
-    // Mapear os KPIs atualizados por gerente na janela oficial no _TOTAL_
+    // Mapear os KPIs atualizados por gerente canônico na janela oficial no _TOTAL_
     const managerKpiMap: Record<string, Set<string>> = {};
     (projections || []).forEach((p) => {
-      if (!managerKpiMap[p.manager]) {
-        managerKpiMap[p.manager] = new Set();
+      const canonManager = resolveCanonicalManager(p.manager).managerName || p.manager;
+      if (!managerKpiMap[canonManager]) {
+        managerKpiMap[canonManager] = new Set();
       }
-      managerKpiMap[p.manager].add(p.kpi);
+      managerKpiMap[canonManager].add(p.kpi);
+
+      // Também manter sob a chave original para retrocompatibilidade
+      if (p.manager && !managerKpiMap[p.manager]) {
+        managerKpiMap[p.manager] = managerKpiMap[canonManager];
+      }
     });
 
     // Um gerente só é considerado PREENCHIDO se possuir os 3 KPIs (FAT, VOL e INVEST) no _TOTAL_
     const updatedManagers = OFFICIAL_MANAGERS.filter((m) => {
-      const kpis = managerKpiMap[m];
+      const canonM = resolveCanonicalManager(m).managerName || m;
+      const kpis = managerKpiMap[canonM] || managerKpiMap[m];
       return kpis && kpis.has("FAT") && kpis.has("VOL") && kpis.has("INVEST");
     });
 
     // Filtrar gerentes pendentes (aqueles que não possuem o trio completo FAT + VOL + INVEST)
     const pendingManagers = OFFICIAL_MANAGERS.filter(
-      (m) => !updatedManagers.includes(m)
+      (m) => !updatedManagers.some(um => isSameManager(um, m) || um === m)
     );
 
     if (pendingManagers.length === 0) {

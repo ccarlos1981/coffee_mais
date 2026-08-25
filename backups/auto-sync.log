@@ -1898,3 +1898,14 @@ To https://github.com/ccarlos1981/coffee_mais.git
 To https://github.com/ccarlos1981/coffee_mais.git
    c23238c..b18daab  main -> main
 [24/08/2026 20:41] ✅ Alterações enviadas com sucesso para o GitHub.
+[main a372d61] auto-save: 24/08/2026 23:41
+ 29 files changed, 1513 insertions(+), 148 deletions(-)
+ create mode 100644 src/app/inovacoes/cockpit/components/FollowUpEfetividadeCard.tsx
+ create mode 100644 src/app/processo-comercial/follow-up/components/FollowUpStatusBadge.tsx
+ create mode 100644 supabase/migrations/20260824_hardening_idempotencia_follow_up.sql
+ create mode 100644 supabase/migrations/20260824_persist_gap_original_reais_follow_up.sql
+ create mode 100644 supabase/migrations/20260825_canonicalize_agenda_rdm_manager_aliases.sql
+ create mode 100644 supabase/migrations/20260825_canonicalize_distra_alimentos_manager.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   b18daab..a372d61  main -> main
+[24/08/2026 23:41] ✅ Alterações enviadas com sucesso para o GitHub.
