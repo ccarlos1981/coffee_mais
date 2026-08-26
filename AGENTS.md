@@ -4084,6 +4084,52 @@ A partir de 25/08/2026, a arquitetura de **Cadastro Único (`public.cm_clientes`
 
 Status Arquitetural: `CADASTRO_UNICO_SSOT = LOCKED` | `CANONICAL_NETWORK_ENGINE = LOCKED` | `AMBIGUITY_GUARD = ACTIVE` | `BASELINE = PERMANENTE`.
 
+---
+
+## 87. Baseline Oficial — RPS: Desacoplamento Soberano Gerente × Redes e Homologação Definitiva
+
+A partir de 26/08/2026, após a conclusão da auditoria histórica forense e restauração cirúrgica baseada na baseline homologada `a372d61` (24/08/2026 23:41), a arquitetura do módulo de **RPS (Reunião de Planejamento Semanal)** torna-se o baseline permanente e oficial do Coffee++.
+
+### 1. Desacoplamento Absoluto e Soberania do FAT Gerente
+1. **Soberania do FAT Gerente (`_TOTAL_`)**: A projeção semanal de FAT do gerente gravada em `cm_weekly_projections` com `client_matrix = '_TOTAL_'` e `kpi = 'FAT'` é um valor manual, independente e soberano.
+2. **Independência das Redes**: A projeção semanal de faturamento de cada rede é estritamente independente do cabeçalho do gerente.
+3. **Proibição de Propagação Bidirecional**:
+   - `GERENTE → REDE = PROIBIDO`: Alterar a projeção de faturamento do gerente NÃO pode alterar ou distribuir valores para as redes.
+   - `REDE → GERENTE = PROIBIDO`: Alterar a projeção de faturamento de uma rede NÃO pode somar, recalcular ou sobrescrever `mgr.kpis.FAT.projections`.
+4. **Rejeição Definitiva da Regra P4.7**: Fica expressamente proibido o uso de `clients.reduce(...)` ou `clientsList.reduce(...)` para atribuir ou sobrescrever a projeção de faturamento consolidada do gerente (`kpis.FAT.projections`). A regra P4.7 está formalmente revogada e rejeitada.
+
+### 2. Governança de DESAFIOS e Imutabilidade de Metas
+1. **Single Source of Truth para Desafios**:
+   - `RPS_DESAFIO_OVERRIDE`: `cm_weekly_projections` (`client_matrix = '_TOTAL_'`, `kpi IN ('DESAFIO_VOL', 'DESAFIO_FAT', 'DESAFIO_INVEST')`).
+   - `RPS_DESAFIO_FALLBACK`: `public.targets` (somente leitura).
+2. **Imutabilidade de `public.targets`**: É expressamente proibida qualquer operação de `INSERT`, `UPDATE`, `UPSERT` ou `DELETE` sobre a tabela `public.targets` na API ou no frontend da RPS (`RPS_PUBLIC_TARGETS_MUTATION = FORBIDDEN`).
+3. **Escala e Tipagem dos Desafios**:
+   - `DESAFIO_VOL`: Digitado e exibido em milhares na UI, persistido em unidades absolutas (`×1000`).
+   - `DESAFIO_FAT`: Digitado e exibido em milhares na UI, persistido em reais absolutos (`×1000`).
+   - `DESAFIO_INVEST`: Digitado, exibido e persistido como percentual direto (ex: `10.0` para 10%).
+
+### 3. Escala, Tipagem e Conversão das Projeções Semanais
+1. **VOL Semanal**: UI em milhares (`/1000`), banco em unidades absolutas (`×1000`).
+2. **FAT Semanal**: UI em milhares (`/1000`), banco em reais absolutos (`×1000`).
+3. **INVEST Semanal**: UI e banco em percentual direto (`10.0` para 10%).
+
+### 4. Isolamento e Segurança
+1. **Isolamento entre Gerentes**: Toda e qualquer alteração de estado no frontend e de gravação no backend restringe-se estritamente ao gerente (`mIdx`, `manager_id`, `resolveCanonicalManager`). `GERENTE_A ≠ GERENTE_B`.
+2. **Isolamento entre Semanas**: Alterações em uma segunda-feira (`wIdx`, `week_start_date`) afetam exclusivamente a referida semana. `SEMANA_A ≠ SEMANA_B`.
+3. **Autorização RLS / Perfil**:
+   - `Admin` e `Admin Master`: Podem alterar `DESAFIO`, `META` e qualquer semana de projeção.
+   - `Gerente Regional`: Pode alterar apenas projeções (`VOL`, `FAT`, `INVEST`) da semana corrente, até às 15:00 de segunda-feira (via *Server Time*). Edição de `DESAFIO` e `META` é bloqueada com HTTP 403.
+
+### 5. Regras de UX e Interação dos Inputs
+1. **Digitação Natural sem Saltos**: É proibido o uso inline de `.toFixed()` ou formatações agressivas na propriedade `value` de elementos `<input>` durante a digitação que provoquem saltos de cursor ou injeção forçada de decimais. A entrada deve permitir digitação contínua de valores inteiros e decimais (ex: `1`, `10`, `90`, `200`, `3000`, `10.5`).
+
+### 6. Automação do Alerta de Projeções (14:00 BRT)
+1. **Critério de Preenchimento**: Um gerente regional só é considerado preenchido se possuir os 3 KPIs (`FAT`, `VOL`, `INVEST`) salvos na linha consolidada `_TOTAL_` para a semana corrente.
+2. **Janela Operacional**: Domingo 00:00 BRT até Segunda-feira 14:00 BRT.
+3. **Idempotência**: Garantida mediante gravação de log corporativo em `cm_audit_logs`.
+
+Status Arquitetural: `RPS_GOVERNANCE = LOCKED` | `RPS_MANAGER_FAT_SOVEREIGN = LOCKED` | `RPS_NETWORK_FAT_INDEPENDENT = LOCKED` | `RPS_P4_7 = REJECTED` | `RPS_DESAFIO = LOCKED` | `RPS_PUBLIC_TARGETS_MUTATION = FORBIDDEN` | `RPS_MANAGER_ISOLATION = LOCKED` | `RPS_WEEK_ISOLATION = LOCKED` | `RPS_ALERT_14H = LOCKED` | `BASELINE = PERMANENTE`.
+
 
 
 
