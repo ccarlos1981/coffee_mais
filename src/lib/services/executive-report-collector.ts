@@ -250,8 +250,8 @@ export class ExecutiveReportCollector {
     // 1. Checagem da Última Importação
     const importStatus = await this.getLatestImportStatus(dataRefIso);
 
-    // 2. Coleta de Vendas KA + Distribuidor (Baseline 077)
-    const vendasData = await this.collectVendasKaDist(compAtual, currentDay);
+    // 2. Coleta de Vendas KA + Distribuidor (Baseline 077 + Fonte Transacional TOP 1100 para Realizado KA)
+    const vendasData = await this.collectVendasKaDist(compAtual, currentDay, dataRefIso);
 
     // 3. Coleta de Investimentos (Páginas 2, 3 e 4)
     const investResumo = await this.collectInvestimentosResumo(compAtual);
@@ -339,12 +339,13 @@ export class ExecutiveReportCollector {
   /**
    * 2. Coleta de Vendas KA + Distribuidor com Segregação Oficial do Inside Sales (Baseline 077)
    */
-  private static async collectVendasKaDist(compAtual: string, currentDay: number) {
+  private static async collectVendasKaDist(compAtual: string, currentDay: number, dataRefIso?: string) {
     const dtStart = `${compAtual}-01`;
+    const dtCutoff = dataRefIso || `${compAtual}-${String(currentDay).padStart(2, "0")}`;
     const [year, month] = compAtual.split("-").map(Number);
     const dtNext = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, "0")}-01`;
 
-    // Query oficial de vendas agrupada por gerente e canal na fonte reguladora oficial (mv_vendas_mensal)
+    // 1. Query oficial de vendas agrupada por gerente e canal na fonte reguladora oficial (mv_vendas_mensal) para canais Inside Sales e Distribuidor
     const mvSalesRows = await AnalyticsEngine.executeSql<any>(`
       SELECT 
         manager,
@@ -355,6 +356,42 @@ export class ExecutiveReportCollector {
       FROM mv_vendas_mensal
       WHERE mes = '${compAtual}'
       GROUP BY manager, channel
+    `);
+
+    // 2. Query dedicada oficial de Realizado Comercial Key Account (Sell-In TOP 1100)
+    const kaSalesRows = await AnalyticsEngine.executeSql<any>(`
+      SELECT 
+        CASE 
+          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+        END AS manager,
+        SUM(f.vlr_total_liq) as faturamento,
+        SUM(f.quantidade) as quantidade,
+        SUM(
+          f.vlr_total_liq 
+          - COALESCE(f.custo_total, 0) 
+          - (COALESCE(f.custo_icms, 0) + CASE WHEN ABS(COALESCE(f.vlr_total_st, 0)) >= ABS(COALESCE(f.vlr_total_liq, 0)) THEN 0 ELSE COALESCE(f.vlr_total_st, 0) END)
+          - (f.vlr_total_liq * 0.03)
+        ) as maco
+      FROM cm_faturamento_sankhya f
+      LEFT JOIN cm_clientes c ON c.codigo = f.cod_parceiro::integer
+      WHERE f.dt_faturamento >= '${dtStart}' AND f.dt_faturamento <= '${dtCutoff}'
+        AND (f.status_nfe IS NULL OR f.status_nfe <> 'CANCELADA')
+        AND f.nome_parceiro NOT IN ('CAFE UTAM S/A', 'COFFEE MAIS INDUSTRIA DE CAFE LTDA')
+        AND f.cod_top = '1100'
+        AND (c.tipo_parceiro = 'KA' OR f.nome_vendedor = 'KEYACCOUNT')
+        AND (c.responsavel IN ('Julliano', 'Leandro Saffi', 'Luiz', 'John Guedes') OR c.manager_id IN ('1000', '1001', '1002', '1003'))
+      GROUP BY 
+        CASE 
+          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+        END
     `);
 
     // Busca metas oficiais em public.targets e configurações de MACO do Desafio DRE (mesma fonte oficial do Acompanhamento)
@@ -461,7 +498,7 @@ export class ExecutiveReportCollector {
       return trimmed;
     };
 
-    // Estrutura de Agregação por Gerente KA
+    // Estrutura de Agregação por Gerente KA (Preenchida via fonte transacional TOP 1100)
     const gerentesKaData: Record<string, { fat: number; und: number; maco: number }> = {
       "Julliano": { fat: 0, und: 0, maco: 0 },
       "Leandro": { fat: 0, und: 0, maco: 0 },
@@ -469,22 +506,30 @@ export class ExecutiveReportCollector {
       "John Guedes": { fat: 0, und: 0, maco: 0 },
     };
 
+    (kaSalesRows || []).forEach((r: any) => {
+      const g = normalizeManager(r.manager);
+      const fat = Number(r.faturamento || 0);
+      const und = Number(r.quantidade || 0);
+      const maco = Number(r.maco || 0);
+
+      if (gerentesKaData[g]) {
+        gerentesKaData[g].fat += fat;
+        gerentesKaData[g].und += und;
+        gerentesKaData[g].maco += maco;
+      }
+    });
+
     let totalInsideFat = 0;
     let totalInsideUnd = 0;
     let totalInsideMaco = 0;
 
     (mvSalesRows || []).forEach((r: any) => {
       const ch = (r.channel || "").trim();
-      const g = normalizeManager(r.manager);
       const fat = Number(r.faturamento || 0);
       const und = Number(r.quantidade || 0);
       const maco = Number(r.maco || 0);
 
-      if (ch === "KA" && gerentesKaData[g]) {
-        gerentesKaData[g].fat += fat;
-        gerentesKaData[g].und += und;
-        gerentesKaData[g].maco += maco;
-      } else if (ch === "Inside Sales" || ch === "Inside inter") {
+      if (ch === "Inside Sales" || ch === "Inside inter") {
         totalInsideFat += fat;
         totalInsideUnd += und;
         totalInsideMaco += maco;
