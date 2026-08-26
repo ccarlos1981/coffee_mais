@@ -354,16 +354,11 @@ export default function RpsPage() {
       clients[cIdx] = client;
       mgr.clients = clients;
 
-      // P4.7: FAT consolidado do gerente calculado automaticamente pela soma das projeções semanais de FAT das redes do gerente
-      const fatProjections = [...mgr.kpis.FAT.projections];
-      fatProjections[wIdx] = clients.reduce((acc, c) => acc + (c.projections[wIdx] || 0), 0);
-      mgr.kpis = {
-        ...mgr.kpis,
-        FAT: {
-          ...mgr.kpis.FAT,
-          projections: fatProjections
-        }
-      };
+      // Desacoplamento Absoluto: A projeção FAT do gerente (_TOTAL_)
+      // é soberana e definida manualmente pelo Admin via handleManagerKpiChange.
+      // NÃO recalcular mgr.kpis.FAT.projections a partir das redes/clientes.
+      // Ref: Seção 12 AGENTS.md — "As alterações feitas nas células semanais
+      // de faturamento das redes NÃO devem somar ou sobrescrever os cabeçalhos dos gerentes."
 
       next[mIdx] = mgr;
       return next;
@@ -388,9 +383,8 @@ export default function RpsPage() {
     });
   };
 
-  // Handler para inputs de gerentes (VOL e INVEST; FAT é calculado automaticamente pelas redes)
+  // Handler para inputs de gerentes (VOL, FAT e INVEST)
   const handleManagerKpiChange = (mIdx: number, kpi: 'VOL' | 'FAT' | 'INVEST', wIdx: number, val: number) => {
-    if (kpi === 'FAT') return; // FAT consolidado é calculado automaticamente a partir das redes (P4.7)
     setManagers(prev => {
       const next = [...prev];
       const mgr = { ...next[mIdx] };
@@ -398,7 +392,7 @@ export default function RpsPage() {
       const kpiData = { ...kpis[kpi] };
       const projections = [...kpiData.projections];
       
-      // Armazena raw value (VOL ou percentual de INVEST)
+      // Armazena raw value (VOL, FAT absoluto ou percentual de INVEST)
       projections[wIdx] = val;
       
       kpiData.projections = projections;
@@ -483,17 +477,6 @@ export default function RpsPage() {
       const clients = [...mgr.clients];
       clients.splice(cIdx, 1);
       mgr.clients = clients;
-
-      // P4.7: Recalcular FAT consolidado após remoção de rede
-      const fatProjections = mondays.map((_, wIdx) => clients.reduce((acc, c) => acc + (c.projections[wIdx] || 0), 0));
-      mgr.kpis = {
-        ...mgr.kpis,
-        FAT: {
-          ...mgr.kpis.FAT,
-          projections: fatProjections
-        }
-      };
-
       next[mIdx] = mgr;
       return next;
     });
@@ -1251,20 +1234,26 @@ export default function RpsPage() {
 
                             <td className="font-mono font-bold text-foreground py-2.5 border-l-0">{formatCurrency(row.kpis.FAT.real / 1000, 0)}</td>
 
-                            {/* Projeções Semanais FAT (Calculado automaticamente pelas redes - Read-Only) */}
+                            {/* Projeções Semanais FAT */}
                             {mondays.map((m, wIdx) => {
+                              const isEditable = isGerenteNacionalAdmin || (canManagerEdit && m === todayStr);
                               const isCurrent = isCurrentWeek(m, wIdx);
-                              const val = row.kpis.FAT.projections[wIdx] || 0;
+                              const rawVal = row.kpis.FAT.projections[wIdx] ? Math.round(row.kpis.FAT.projections[wIdx] / 1000) : "";
                               return (
-                                <td
-                                  key={m}
-                                  className={`p-1 font-mono text-xs font-bold text-center py-2.5 ${wIdx === 0 ? "col-divider" : ""} ${
-                                    isCurrent
-                                      ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80 text-amber-200"
-                                      : "text-foreground"
-                                  }`}
-                                >
-                                  {formatCurrency(val / 1000, 0)}
+                                <td key={m} className={`p-1 ${wIdx === 0 ? "col-divider" : ""} ${isCurrent ? "bg-amber-500/15 border-l-2 border-r-2 border-amber-500/80" : ""}`}>
+                                  <input
+                                    type="number"
+                                    step="1"
+                                    disabled={!isEditable}
+                                    value={rawVal}
+                                    placeholder="0"
+                                    onChange={(e) => handleManagerKpiChange(mIdx, 'FAT', wIdx, (parseFloat(e.target.value) || 0) * 1000)}
+                                    className={`w-full text-center py-1 px-1 rounded text-xs font-mono font-bold transition-all ${
+                                      isCurrent
+                                        ? "border-2 border-amber-500/60 bg-amber-500/20 text-amber-200 font-black shadow-sm focus:border-amber-400 focus:outline-none disabled:opacity-60"
+                                        : "border border-border/40 bg-background-elevated text-foreground focus:border-accent-gold focus:outline-none disabled:opacity-60"
+                                    }`}
+                                  />
                                 </td>
                               );
                             })}

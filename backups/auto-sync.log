@@ -1954,3 +1954,8 @@ To https://github.com/ccarlos1981/coffee_mais.git
  1 file changed, 8 insertions(+)
 fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
 [26/08/2026 10:34] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
+[main 66f9b97] auto-save: 26/08/2026 13:52
+ 2 files changed, 60 insertions(+), 11 deletions(-)
+To https://github.com/ccarlos1981/coffee_mais.git
+   92fe0d0..66f9b97  main -> main
+[26/08/2026 13:52] ✅ Alterações enviadas com sucesso para o GitHub.

@@ -251,22 +251,7 @@ export async function GET(request: Request) {
         AND cancel_reason IS NULL
     `;
 
-    // SQL - Projeções semanais gravadas no banco (cm_weekly_projections)
-    const sqlWeeklyProjections = `
-      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value, updated_at
-      FROM cm_weekly_projections
-      WHERE year = ${year} AND month = ${month}
-      ORDER BY updated_at DESC
-    `;
-
-    const sqlPrevWeeklyProjections = `
-      SELECT manager, client_matrix, week_start_date::text as week_start_date, kpi, projection_value, updated_at
-      FROM cm_weekly_projections
-      WHERE year = ${prevMonthYear} AND month = ${prevMonthVal}
-      ORDER BY updated_at DESC
-    `;
-
-    // Executar consultas via RPC
+    // Executar consultas via RPC e Supabase Client
     const [
       resMgrHist, 
       resCliHist, 
@@ -285,8 +270,18 @@ export async function GET(request: Request) {
       supabase.rpc('execute_readonly_query', { query_text: sqlAllAvailableRedes }),
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerTargets }),
       supabase.rpc('execute_readonly_query', { query_text: sqlInvestmentsHistory }),
-      supabase.rpc('execute_readonly_query', { query_text: sqlWeeklyProjections }),
-      supabase.rpc('execute_readonly_query', { query_text: sqlPrevWeeklyProjections }),
+      supabase
+        .from('cm_weekly_projections')
+        .select('manager, client_matrix, week_start_date, kpi, projection_value, updated_at')
+        .eq('year', year)
+        .eq('month', month)
+        .order('updated_at', { ascending: false }),
+      supabase
+        .from('cm_weekly_projections')
+        .select('manager, client_matrix, week_start_date, kpi, projection_value, updated_at')
+        .eq('year', prevMonthYear)
+        .eq('month', prevMonthVal)
+        .order('updated_at', { ascending: false }),
     ]);
 
     if (resMgrHist.error) throw new Error("Erro buscar histórico gerentes: " + resMgrHist.error.message);
@@ -641,11 +636,6 @@ export async function GET(request: Request) {
           return date > todayStr ? 0 : metaValueOutros;
         }),
         display_order: 999999
-      });
-
-      // P4.7: FAT consolidado do gerente calculado automaticamente pela soma das projeções semanais de FAT das redes do gerente
-      kpis.FAT.projections = mondays.map((_, wIdx) => {
-        return clientsList.reduce((acc: number, cli: any) => acc + (cli.projections[wIdx] || 0), 0);
       });
 
       return {
