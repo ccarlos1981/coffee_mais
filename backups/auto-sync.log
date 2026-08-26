@@ -1950,3 +1950,7 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    bedf615..92fe0d0  main -> main
 [26/08/2026 05:05] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 140ee05] auto-save: 26/08/2026 10:34
+ 1 file changed, 8 insertions(+)
+fatal: unable to access 'https://github.com/ccarlos1981/coffee_mais.git/': Could not resolve host: github.com
+[26/08/2026 10:34] ❌ Erro ao enviar para o GitHub. Verifique a conexão.
