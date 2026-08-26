@@ -56,8 +56,8 @@ export const HOMOLOGATED_EXECUTIVE_RECIPIENTS: readonly ExecutiveReportRecipient
     role: "GLOBAL",
   },
   {
-    email: "renata.naciff@coffeemais.com",
-    name: "Renata Naciff",
+    email: "renata.nacif@coffeemais.com",
+    name: "Renata Nacif",
     role: "GLOBAL",
   },
   {
