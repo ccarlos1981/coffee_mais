@@ -1,13 +1,10 @@
 import { NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const SCHEMA_CONTEXT = `
 Você é o Coffee_IA, assistente de dados EXCLUSIVO da Coffee Mais (empresa de café gourmet).
@@ -199,7 +196,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 2: Execute sanitized SQL via Supabase
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = createAdminClient();
     const { data: queryResult, error: queryError } = await supabase.rpc(
       "execute_readonly_query",
       { query_text: rawSql }
