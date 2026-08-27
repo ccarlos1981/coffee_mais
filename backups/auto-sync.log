@@ -1972,3 +1972,9 @@ remote: warning: GH001: Large files detected. You may want to try Git Large File
 To https://github.com/ccarlos1981/coffee_mais.git
    3be0548..63cfcaf  main -> main
 [27/08/2026 08:09] ✅ Alterações enviadas com sucesso para o GitHub.
+[main 99d544c] auto-save: 27/08/2026 12:28
+ 5 files changed, 521 insertions(+), 6 deletions(-)
+ create mode 100644 supabase/migrations/20260827_wave5_database_rls_hardening.sql
+To https://github.com/ccarlos1981/coffee_mais.git
+   63cfcaf..99d544c  main -> main
+[27/08/2026 12:28] ✅ Alterações enviadas com sucesso para o GitHub.
