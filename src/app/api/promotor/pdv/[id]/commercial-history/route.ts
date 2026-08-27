@@ -4,6 +4,7 @@ import { calculateCommercialVisitPriorityScore } from "@/lib/ai/route-engine";
 import {
   requireAuth,
   requireApprovedProfile,
+  assertPdvAccess,
   handleAuthError,
 } from "@/lib/supabase/auth-helpers";
 
@@ -23,12 +24,15 @@ export async function GET(
 ) {
   try {
     const user = await requireAuth();
-    await requireApprovedProfile(user.id);
+    const profile = await requireApprovedProfile(user.id);
 
     const { id: pdvId } = await params;
     if (!pdvId) {
       return NextResponse.json({ success: false, error: "Código do PDV é obrigatório." }, { status: 400 });
     }
+
+    // Strict Object-Level Authorization: verify user's portfolio / route scope over this PDV
+    await assertPdvAccess(user.id, profile, pdvId);
 
     const supabase = createAdminClient();
 
