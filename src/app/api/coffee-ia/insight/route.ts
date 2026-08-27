@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 const SYSTEM_PROMPT = `Você é o Coffee_IA, analista de dados da Coffee Mais (empresa de café gourmet).
 
@@ -28,6 +29,9 @@ Responda em texto corrido usando markdown leve (negrito, listas curtas). O texto
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const body = await request.json();
     const { totals, managerRows, familiaData, businessDays, previousMonth, previousYear, month, year, lostVsMonth, lostVsYear, positivation } = body;
 
@@ -114,7 +118,10 @@ POSITIVAÇÃO (clientes ativos com faturamento):
     const text = result.response.text();
 
     return Response.json({ insight: text });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED" || err.message?.includes("PROFILE_")) {
+      return handleAuthError(err);
+    }
     console.error("Coffee IA Insight error:", err);
     const message = err instanceof Error ? err.message : "Erro interno";
     return Response.json({ error: message }, { status: 500 });

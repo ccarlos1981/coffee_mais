@@ -53,6 +53,26 @@ export async function requirePermission(role: string, moduleName: string) {
   throw new Error("PERMISSION_DENIED");
 }
 
+export function requireRole(
+  profile: { role?: string | null },
+  allowedRoles: string[]
+) {
+  const currentRole = (profile?.role || "").trim().toLowerCase();
+  if (!currentRole) {
+    throw new Error("ROLE_NOT_ALLOWED");
+  }
+
+  const isAllowed = allowedRoles.some(
+    (r) => r.trim().toLowerCase() === currentRole
+  );
+
+  if (!isAllowed) {
+    throw new Error("ROLE_NOT_ALLOWED");
+  }
+
+  return true;
+}
+
 export function handleAuthError(err: any) {
   const msg = err.message || "";
   if (msg === "UNAUTHENTICATED") {
@@ -61,7 +81,13 @@ export function handleAuthError(err: any) {
       headers: { "Content-Type": "application/json" }
     });
   }
-  if (msg === "PROFILE_NOT_FOUND" || msg === "PROFILE_NOT_APPROVED" || msg === "PERMISSION_DENIED") {
+  if (
+    msg === "PROFILE_NOT_FOUND" ||
+    msg === "PROFILE_NOT_APPROVED" ||
+    msg === "PERMISSION_DENIED" ||
+    msg === "ROLE_NOT_ALLOWED" ||
+    msg === "FORBIDDEN"
+  ) {
     return new Response(JSON.stringify({ success: false, error: "Acesso não autorizado." }), {
       status: 403,
       headers: { "Content-Type": "application/json" }

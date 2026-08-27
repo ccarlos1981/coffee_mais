@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 const SYSTEM_PROMPT = `Você é o Coffee_IA, auditor e analista de processos da Coffee Mais.
 
@@ -24,6 +25,9 @@ Responda de forma curta, direta e com foco no problema. Use markdown. NO MÁXIMO
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const body = await request.json();
     const { investimentos, dataAtual } = body;
 
@@ -140,7 +144,10 @@ ${JSON.stringify(acoes.slice(0, 30))}
     const text = result.response.text();
 
     return Response.json({ insight: text });
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED" || err.message?.includes("PROFILE_")) {
+      return handleAuthError(err);
+    }
     console.error("Coffee IA Investimento Insight error:", err);
     const message = err instanceof Error ? err.message : "Erro interno";
     return Response.json({ error: message }, { status: 500 });

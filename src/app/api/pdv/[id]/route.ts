@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+  logAuditAction,
+} from "@/lib/supabase/auth-helpers";
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -12,10 +20,20 @@ function getSupabaseClient() {
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, [
+      "Admin",
+      "Admin Master",
+      "Trade",
+      "Supervisor",
+      "Gerente Regional",
+      "CEO",
+    ]);
+
     const supabase = getSupabaseClient();
     const body = await request.json();
     
-    // We only extract updatable fields
     const { name, network_id, erp_code, status } = body;
     const updObj: Record<string, string | number | null> = { updated_at: new Date().toISOString() };
     
@@ -25,36 +43,64 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (status) updObj.status = status;
 
     const { data, error } = await supabase
-      .from('pdvs')
+      .from("pdvs")
       .update(updObj)
-      .eq('id', id)
+      .eq("id", id)
       .select()
       .single();
 
     if (error) throw error;
 
+    await logAuditAction(user.id, "PDV_UPDATE", "pdvs", { id, updates: updObj });
+
     return NextResponse.json({ success: true, pdv: data });
-  } catch (error: unknown) {
-    console.error('[PDV API PUT]', error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED")
+    ) {
+      return handleAuthError(error);
+    }
+    console.error("[PDV API PUT]", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["Admin", "Admin Master", "CEO"]);
+
     const supabase = getSupabaseClient();
     
     const { error } = await supabase
-      .from('pdvs')
+      .from("pdvs")
       .delete()
-      .eq('id', id);
+      .eq("id", id);
 
     if (error) throw error;
 
+    await logAuditAction(user.id, "PDV_DELETE", "pdvs", { id });
+
     return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    console.error('[PDV API DELETE]', error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED")
+    ) {
+      return handleAuthError(error);
+    }
+    console.error("[PDV API DELETE]", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
   }
 }

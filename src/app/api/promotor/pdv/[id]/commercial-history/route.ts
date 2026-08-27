@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculateCommercialVisitPriorityScore } from "@/lib/ai/route-engine";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +22,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const { id: pdvId } = await params;
     if (!pdvId) {
       return NextResponse.json({ success: false, error: "Código do PDV é obrigatório." }, { status: 400 });
@@ -266,6 +274,13 @@ export async function GET(
     });
 
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED")
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[PDV COMMERCIAL HISTORY API]", error);
     return NextResponse.json(
       { success: false, error: error?.message || "Internal Server Error" },
