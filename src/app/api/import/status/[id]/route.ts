@@ -45,7 +45,7 @@ export async function GET(
     if (!hasGlobalAccess) {
       const logMetadata = (logEntry.metadata as Record<string, unknown>) || {};
       const uploaderId = logMetadata.user_id || logMetadata.uploaded_by;
-      if (uploaderId && String(uploaderId) !== user.id) {
+      if (!uploaderId || String(uploaderId) !== user.id) {
         return NextResponse.json(
           { success: false, error: "Acesso não autorizado a este lote de importação." },
           { status: 403 }
