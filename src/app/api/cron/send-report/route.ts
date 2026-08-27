@@ -26,6 +26,13 @@ function formatDateBr(dateString: string | null) {
 
 export async function GET(request: Request) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);
 
     // 1. Validar Variáveis de Email

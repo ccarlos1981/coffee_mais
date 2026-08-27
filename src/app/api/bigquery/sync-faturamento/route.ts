@@ -11,6 +11,13 @@ import {
   sleep,
   type SyncTrigger,
 } from "@/lib/bigquery";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+  logAuditAction,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -276,9 +283,26 @@ export async function executeSyncFaturamento(params: {
   }
 }
 
-// ─── POST handler for manual sync ───
+// ─── POST handler for sync (Dual Auth: Session with Role OR Bearer CRON_SECRET) ───
 export async function POST(request: Request) {
   try {
+    const authHeader = request.headers.get("authorization");
+    const cronSecret = process.env.CRON_SECRET;
+    let actorUserId: string | null = null;
+    let triggeredBy: SyncTrigger = "manual";
+
+    // 1. Check automation / cron channel
+    if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+      triggeredBy = "cron_06";
+    } else {
+      // 2. Check user session channel
+      const user = await requireAuth();
+      const profile = await requireApprovedProfile(user.id);
+      requireRole(profile, ["Admin", "Admin Master", "Financeiro", "CEO"]);
+      actorUserId = user.id;
+      triggeredBy = "manual";
+    }
+
     const body = await request.json();
     const { startDate, endDate } = body;
 
@@ -299,15 +323,33 @@ export async function POST(request: Request) {
     const result = await executeSyncFaturamento({
       startDate,
       endDate,
-      triggeredBy: "manual",
+      triggeredBy,
       refreshMaterializedViews: true,
     });
+
+    if (actorUserId) {
+      await logAuditAction(actorUserId, "BIGQUERY_SYNC", "cm_faturamento", {
+        startDate,
+        endDate,
+        rowsFetched: result.rowsFetched,
+        rowsInserted: result.rowsInserted,
+        rowsUpdated: result.rowsUpdated,
+        rowsDeleted: result.rowsDeleted,
+      });
+    }
 
     return NextResponse.json({
       success: true,
       ...result,
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
+    if (
+      err.message === "UNAUTHENTICATED" ||
+      err.message?.includes("PROFILE_") ||
+      err.message?.includes("ROLE_NOT_ALLOWED")
+    ) {
+      return handleAuthError(err);
+    }
     console.error("[BigQuery Sync] Error:", err);
     return NextResponse.json(
       {

@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -49,7 +53,6 @@ Colunas disponíveis:
 - dia (integer): dia
 - ano_mes (text): formato "YYYY_MM"
 - weight_kg (numeric): peso vendido em kg
-- ⚠️ IMPORTANTE — net_value negativo: registros com net_value < 0 são devoluções/notas de crédito. Eles fazem parte do histórico e NÃO significam ausência de vendas. Para calcular faturamento líquido real, use SUM(net_value) que já inclui devoluções. Para buscar APENAS vendas positivas, filtre WHERE net_value > 0.
 
 ## Tabela: targets (Metas)
 Colunas disponíveis:
@@ -62,44 +65,18 @@ Colunas disponíveis:
 
 ## Regras de Query:
 1. Gere APENAS consultas SELECT
-2. Use as tabelas "sales" e/ou "targets"
+2. Use EXCLUSIVAMENTE as tabelas "sales" e/ou "targets"
 3. Faturamento = SUM(net_value)
 4. Volume = SUM(quantity) ou Volume em Toneladas = SUM(weight_kg) / 1000
 5. MaCo (Margem de Contribuição) = net_value - imposto - custo_total - custo_frete
-6. Ticket Médio = SUM(net_value) / COUNT(DISTINCT invoice_number). Preço Médio = SUM(net_value) / SUM(quantity). SEMPRE que o usuário perguntar por "preço" ou "preço médio" de um cliente, matriz ou produto, assuma RIGOROSAMENTE que ele quer a fórmula do Preço Médio em vez do faturamento total.
-7. Para meses, use invoice_date com filtros >= e <=
-8. Limite resultados a 20 linhas quando listar itens
-9. SEMPRE use ::numeric antes de ROUND. Exemplo: ROUND(SUM(net_value)::numeric, 2)
-10. Use <= para datas finais (não <)
-11. Para rankings (mais vendidos, maiores clientes), FILTRE os nulos (ex: WHERE product IS NOT NULL) e use ORDER BY DESC NULLS LAST.
-12. "Mais vendido" refere-se à quantidade (quantity). "Maior faturamento" refere-se ao valor (net_value).
-13. Positivação = COUNT(DISTINCT cod_parceiro). Corresponde ao número de pontos de vendas, lojas ou clientes únicos ativos/que compraram.
-14. Atingimento de Metas: Faturamento Realizado (sales.net_value) / Meta (targets.target_revenue). Se necessário, faça JOIN entre sales e targets ON sales.manager = targets.manager AND sales.ano = targets.year AND sales.mes = targets.month.
-15. ⚠️ BUSCA POR REDE/MATRIZ: Quando o usuário mencionar nome de uma rede, matriz ou cliente, SEMPRE busque nos dois campos simultaneamente:
-    (rede ILIKE '%nome%' OR nome_parceiro ILIKE '%nome%')
-    Exemplos:
-    - "rede Dona" → WHERE (rede ILIKE '%dona%' OR nome_parceiro ILIKE '%dona%')
-    - "cliente Pão de Açúcar" → WHERE (rede ILIKE '%pão de açucar%' OR nome_parceiro ILIKE '%pão de açucar%')
-    NUNCA busque apenas pelo nome literal exato; use ILIKE com % em ambos os campos.
-16. ⚠️ DEVOLUÇÕES: net_value negativo = devolução/nota de crédito. Não significa "sem venda". O último pedido de uma rede pode ter net_value negativo — isso é normal. Para encontrar o último PEDIDO (positivo ou não), ordene por invoice_date DESC e pegue o primeiro. Para verificar se houve VENDA, cheque SUM(net_value) > 0 ou COUNT(*) WHERE net_value > 0.
-
-## Formato de Resposta:
-Se a pergunta for sobre dados de vendas, responda em JSON:
-{
-  "sql": "SELECT ...",
-  "explanation": "Breve explicação"
-}
-
-Se a pergunta for fora do escopo, responda em JSON:
-{
-  "sql": "",
-  "explanation": "off_topic"
-}
+6. Limite resultados a 20 linhas quando listar itens
 `;
-
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const { message, history } = await request.json();
 
     if (!message) {
@@ -145,7 +122,7 @@ export async function POST(request: NextRequest) {
     );
     const sqlText = sqlResult.response.text();
 
-    // Parse JSON from response (handle markdown code blocks)
+    // Parse JSON from response
     let parsed: { sql: string; explanation: string };
     try {
       const cleanJson = sqlText
@@ -155,8 +132,7 @@ export async function POST(request: NextRequest) {
       parsed = JSON.parse(cleanJson);
     } catch {
       return Response.json({
-        answer:
-          "Desculpe, não consegui interpretar essa pergunta. Pode reformular?",
+        answer: "Desculpe, não consegui interpretar essa pergunta. Pode reformular?",
         raw: sqlText,
       });
     }
@@ -164,45 +140,76 @@ export async function POST(request: NextRequest) {
     // Handle off-topic questions
     if (parsed.explanation === "off_topic" || !parsed.sql) {
       return Response.json({
-        answer:
-          "☕ Desculpe, sou especializado apenas em dados de vendas da Coffee Mais. Posso ajudar com faturamento, volume, clientes, produtos, gerentes e mais. Faça uma pergunta sobre os dados!",
+        answer: "☕ Desculpe, sou especializado apenas em dados de vendas da Coffee Mais. Posso ajudar com faturamento, volume, clientes, produtos e metas!",
       });
     }
 
-    // Clean SQL: remove trailing semicolons and extra whitespace
-    parsed.sql = parsed.sql.replace(/;\s*$/, "").trim();
+    // Clean SQL: remove trailing semicolons and whitespace
+    let rawSql = parsed.sql.replace(/;\s*$/, "").trim();
 
-    // Validate: only SELECT queries allowed
-    const sqlUpper = parsed.sql.toUpperCase().trim();
-    if (
-      !sqlUpper.startsWith("SELECT") ||
-      sqlUpper.includes("DELETE") ||
-      sqlUpper.includes("UPDATE") ||
-      sqlUpper.includes("INSERT") ||
-      sqlUpper.includes("DROP") ||
-      sqlUpper.includes("ALTER")
-    ) {
-      return Response.json({
-        answer: "Por segurança, só posso executar consultas de leitura (SELECT).",
-      });
+    // ─── RIGOROUS SQL SANITIZATION (WAVE 1B HARDENING) ───
+    const sqlUpper = rawSql.toUpperCase();
+
+    // 1. Block statement stacking & comments
+    if (rawSql.includes(";") || rawSql.includes("--") || rawSql.includes("/*") || rawSql.includes("*/")) {
+      return Response.json(
+        { error: "Consulta inválida: caracteres não permitidos na instrução SQL." },
+        { status: 403 }
+      );
     }
 
-    // Step 2: Execute SQL via Supabase (using rpc with raw SQL)
+    // 2. Enforce SELECT only
+    if (!sqlUpper.startsWith("SELECT") && !sqlUpper.startsWith("WITH")) {
+      return Response.json(
+        { error: "Por segurança, apenas consultas analíticas de leitura (SELECT) são permitidas." },
+        { status: 403 }
+      );
+    }
+
+    // 3. Block DDL / DML / administrative commands
+    const ddlDmlForbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|EXECUTE|CREATE|REPLACE|VACUUM|REINDEX|REFRESH)\b/i;
+    if (ddlDmlForbidden.test(rawSql)) {
+      return Response.json(
+        { error: "Operação não autorizada detectada na consulta SQL." },
+        { status: 403 }
+      );
+    }
+
+    // 4. Block sensitive tables, internal schemas, and system catalogs
+    const sensitiveEntitiesForbidden = /\b(cm_user_profiles|cm_report_recipients|cm_sync_logs|cm_audit_logs|cm_role_permissions|auth\.|pg_catalog|information_schema|pg_authid|pg_shadow|pg_user|pg_proc|pg_tables)\b/i;
+    if (sensitiveEntitiesForbidden.test(rawSql)) {
+      return Response.json(
+        { error: "Acesso negado a tabelas restritas do sistema." },
+        { status: 403 }
+      );
+    }
+
+    // 5. Enforce table allowlist (must query only official analytical datasets)
+    const allowedDatasets = /\b(sales|targets|mv_vendas_mensal|mv_vendas_cliente_mensal|public\.sales|public\.targets)\b/i;
+    if (!allowedDatasets.test(rawSql)) {
+      return Response.json(
+        { error: "A consulta tenta acessar fontes de dados não homologadas." },
+        { status: 403 }
+      );
+    }
+
+    // 6. Enforce safe limit
+    if (!/\bLIMIT\s+\d+/i.test(rawSql)) {
+      rawSql += " LIMIT 50";
+    }
+
+    // Step 2: Execute sanitized SQL via Supabase
     const supabase = createClient(supabaseUrl, supabaseKey);
-    
-    // Use the Supabase REST API to run the query via a helper function
-    // We need a function that can execute arbitrary SELECT
     const { data: queryResult, error: queryError } = await supabase.rpc(
       "execute_readonly_query",
-      { query_text: parsed.sql }
+      { query_text: rawSql }
     );
 
     if (queryError) {
       console.error("Supabase RPC error:", JSON.stringify(queryError));
-      console.error("SQL was:", parsed.sql);
       return Response.json({
-        answer: `Erro ao executar consulta: ${queryError.message}`,
-        sql: parsed.sql,
+        answer: `Não foi possível obter os dados para essa pergunta.`,
+        sql: rawSql,
       });
     }
 
@@ -220,16 +227,17 @@ export async function POST(request: NextRequest) {
 
     return Response.json({
       answer,
-      sql: parsed.sql,
+      sql: rawSql,
       explanation: parsed.explanation,
       rowCount: Array.isArray(queryResult) ? queryResult.length : 0,
       queryData: queryResult,
     });
 
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED" || err.message?.includes("PROFILE_")) {
+      return handleAuthError(err);
+    }
     console.error("Coffee IA error:", err);
-    const message =
-      err instanceof Error ? err.message : "Erro interno do Coffee_IA";
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json({ error: "Erro interno no processamento da consulta" }, { status: 500 });
   }
 }
