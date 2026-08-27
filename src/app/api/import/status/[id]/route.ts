@@ -1,31 +1,56 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
+import { createAdminClient } from "@/lib/supabase/admin";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const GLOBAL_IMPORT_ROLES = ["Admin", "Admin Master", "CEO", "Trade", "Financeiro", "Diretor"];
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
     const { id } = await params;
 
-    if (!id) {
+    if (!id || id.trim() === "") {
       return NextResponse.json({ error: "Lote ID é obrigatório" }, { status: 400 });
     }
 
-    const { data: logEntry, error } = await supabase
+    const adminClient = createAdminClient();
+    const { data: logEntry, error } = await adminClient
       .from("cm_sync_logs")
       .select("*")
-      .eq("id", id)
-      .single();
+      .eq("id", id.trim())
+      .maybeSingle();
 
     if (error || !logEntry) {
       return NextResponse.json({ error: "Lote de importação não encontrado" }, { status: 404 });
+    }
+
+    // Ownership / Role Check
+    const userRole = (profile.role || "").trim();
+    const hasGlobalAccess = GLOBAL_IMPORT_ROLES.some(
+      (r) => r.toLowerCase() === userRole.toLowerCase()
+    );
+
+    if (!hasGlobalAccess) {
+      const logMetadata = (logEntry.metadata as Record<string, unknown>) || {};
+      const uploaderId = logMetadata.user_id || logMetadata.uploaded_by;
+      if (uploaderId && String(uploaderId) !== user.id) {
+        return NextResponse.json(
+          { success: false, error: "Acesso não autorizado a este lote de importação." },
+          { status: 403 }
+        );
+      }
     }
 
     return NextResponse.json({
@@ -33,11 +58,7 @@ export async function GET(
       log: logEntry,
     });
   } catch (error: unknown) {
-    console.error("[API Status] Error:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json(
-      { success: false, error: message },
-      { status: 500 }
-    );
+    return handleAuthError(error);
   }
 }
+

@@ -1,5 +1,47 @@
 import { createClient } from "./server";
 import { createAdminClient } from "./admin";
+import { timingSafeEqual } from "crypto";
+
+export function assertCronAccess(request: Request): { authorized: boolean; errorResponse?: Response } {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret || cronSecret.trim() === "") {
+    console.error("[CRON SECURITY] CRON_SECRET não configurado no ambiente. Execução bloqueada (Fail-Closed).");
+    return {
+      authorized: false,
+      errorResponse: new Response(
+        JSON.stringify({ success: false, error: "Acesso não autorizado. Chave de cron não configurada no servidor." }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return {
+      authorized: false,
+      errorResponse: new Response(
+        JSON.stringify({ success: false, error: "Acesso não autorizado. Header Authorization Bearer ausente ou inválido." }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const secretBuffer = Buffer.from(cronSecret.trim());
+  const tokenBuffer = Buffer.from(token);
+
+  if (secretBuffer.length !== tokenBuffer.length || !timingSafeEqual(secretBuffer, tokenBuffer)) {
+    return {
+      authorized: false,
+      errorResponse: new Response(
+        JSON.stringify({ success: false, error: "Acesso não autorizado. Token de cron inválido." }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  return { authorized: true };
+}
 
 export async function requireAuth() {
   const supabase = await createClient();

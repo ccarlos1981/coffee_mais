@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
+
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const formData = await req.formData();
     const dataStr = formData.get("data") as string;
     const filename = formData.get("filename") as string;
@@ -32,8 +42,8 @@ export async function POST(req: Request) {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       },
     });
-  } catch (error: any) {
-    console.error("Export error:", error);
-    return NextResponse.json({ error: "Failed to generate Excel" }, { status: 500 });
+  } catch (error: unknown) {
+    return handleAuthError(error);
   }
 }
+

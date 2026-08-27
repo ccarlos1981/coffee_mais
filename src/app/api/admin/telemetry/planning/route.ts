@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
+
+export const runtime = "nodejs";
+
+const ALLOWED_ROLES = ["Admin", "Admin Master", "CEO"];
 
 /**
  * GET /api/admin/telemetry/planning
@@ -8,12 +18,14 @@ import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
  */
 export async function GET(req: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ALLOWED_ROLES);
+
     const dashboardData = PlanningTelemetry.getDashboardData();
     return NextResponse.json(dashboardData);
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error?.message || "Failed to fetch operational telemetry dashboard data." },
-      { status: 500 }
-    );
+  } catch (error: unknown) {
+    return handleAuthError(error);
   }
 }
+
