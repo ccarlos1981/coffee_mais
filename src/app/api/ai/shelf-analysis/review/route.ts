@@ -1,88 +1,152 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { simulateAIShelfAnalysis } from "@/lib/ai/shelf-engine";
 import { simulatePriceOCR } from "@/lib/ai/price-ocr-engine";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  assertVisitaAccess,
+  logAuditAction,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const ALLOWED_REVIEW_ROLES = [
+  "Supervisor",
+  "Admin",
+  "Admin Master",
+  "CEO",
+  "Trade",
+];
+
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
+    // 1. Role verification: Only Supervisors and National Trade/Admin roles may review
+    requireRole(profile.role, ALLOWED_REVIEW_ROLES);
+
+    const body = await request.json();
+    const { analysis_id, action, planogram_score_override, review_reason } = body;
+
+    if (!analysis_id || typeof analysis_id !== "string" || !action) {
+      return NextResponse.json(
+        { success: false, error: "Parâmetros obrigatórios ausentes: analysis_id e action." },
+        { status: 400 }
+      );
     }
 
-    const { analysis_id, action, planogram_score_override, review_reason } = await request.json();
-
-    if (!analysis_id || !action) {
-      return NextResponse.json({ success: false, error: "Parâmetros obrigatórios ausentes: analysis_id e action." }, { status: 400 });
+    if (action !== "APPROVE" && action !== "REPROCESS") {
+      return NextResponse.json(
+        { success: false, error: `Ação inválida: ${action}` },
+        { status: 400 }
+      );
     }
+
+    // Validate score override if present
+    if (planogram_score_override !== undefined && planogram_score_override !== null) {
+      if (
+        typeof planogram_score_override !== "number" ||
+        !Number.isInteger(planogram_score_override) ||
+        planogram_score_override < 0 ||
+        planogram_score_override > 100
+      ) {
+        return NextResponse.json(
+          { success: false, error: "Nota sobrescrita inválida. Deve ser um número inteiro entre 0 e 100." },
+          { status: 400 }
+        );
+      }
+
+      if (!review_reason || typeof review_reason !== "string" || review_reason.trim().length === 0) {
+        return NextResponse.json(
+          { success: false, error: "Justificativa é obrigatória ao sobrescrever a nota de conformidade." },
+          { status: 400 }
+        );
+      }
+    }
+
+    const adminClient = createAdminClient();
+
+    // 2. Fetch the analysis to resolve its visita_id
+    const { data: analysis, error: selectError } = await adminClient
+      .from("cm_ai_shelf_analysis")
+      .select("id, visita_id, photo_url, planogram_score, needs_manual_review")
+      .eq("id", analysis_id)
+      .maybeSingle();
+
+    if (selectError || !analysis) {
+      return NextResponse.json({ success: false, error: "Análise de gôndola não encontrada." }, { status: 404 });
+    }
+
+    // 3. Object-Level Access: Validate user has authority over this specific visit
+    await assertVisitaAccess(user.id, profile, analysis.visita_id);
 
     if (action === "APPROVE") {
-      const updatePayload: any = {
+      const updatePayload: Record<string, unknown> = {
         needs_manual_review: false,
         reviewed_by: user.id,
         reviewed_at: new Date().toISOString(),
       };
 
       if (review_reason) {
-        updatePayload.review_reason = review_reason;
+        updatePayload.review_reason = review_reason.trim();
       }
-      
+
       if (typeof planogram_score_override === "number") {
-        updatePayload.planogram_score = Math.max(0, Math.min(100, planogram_score_override));
+        updatePayload.planogram_score = planogram_score_override;
         updatePayload.decision_reasons = [
           `Aprovado manualmente pelo supervisor com nota sobrescrita para ${planogram_score_override}.`,
-          review_reason || "Sem observações adicionais."
+          review_reason ? review_reason.trim() : "Sem observações adicionais."
         ];
       } else {
         updatePayload.decision_reasons = [
           "Aprovado manualmente pelo supervisor.",
-          review_reason || "Sem observações adicionais."
+          review_reason ? review_reason.trim() : "Sem observações adicionais."
         ];
       }
 
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await adminClient
         .from("cm_ai_shelf_analysis")
         .update(updatePayload)
-        .eq("id", analysis_id);
+        .eq("id", analysis_id)
+        .select("id, planogram_score, needs_manual_review")
+        .maybeSingle();
 
-      if (updateError) {
+      if (updateError || !updated) {
         console.error("[REVIEW APPROVE] DB update error:", updateError);
         return NextResponse.json({ success: false, error: "Erro ao aprovar a análise de prateleira." }, { status: 500 });
       }
 
-      return NextResponse.json({ success: true, message: "Análise aprovada com sucesso." });
+      await logAuditAction(user.id, "APPROVE_SHELF_ANALYSIS", "cm_ai_shelf_analysis", {
+        analysis_id,
+        visita_id: analysis.visita_id,
+        planogram_score_override: planogram_score_override ?? null,
+        review_reason: review_reason ?? null,
+        reviewer_role: profile.role
+      });
+
+      return NextResponse.json({ success: true, message: "Análise aprovada com sucesso.", data: updated });
     }
 
     if (action === "REPROCESS") {
-      const { data: analysis, error: selectError } = await supabase
-        .from("cm_ai_shelf_analysis")
-        .select(`
-          *,
-          visita:cm_promotor_visita(cod_parceiro)
-        `)
-        .eq("id", analysis_id)
-        .single();
+      const { data: visitaRecord, error: visitaFetchErr } = await adminClient
+        .from("cm_promotor_visita")
+        .select("cod_parceiro")
+        .eq("id", analysis.visita_id)
+        .maybeSingle();
 
-      if (selectError || !analysis) {
-        console.error("[REVIEW REPROCESS] DB fetch error:", selectError);
-        return NextResponse.json({ success: false, error: "Análise não encontrada." }, { status: 404 });
-      }
-
-      const visita = analysis.visita as any;
-      if (!visita || !visita.cod_parceiro) {
+      if (visitaFetchErr || !visitaRecord || !visitaRecord.cod_parceiro) {
         return NextResponse.json({ success: false, error: "Visita ou parceiro correspondente não encontrado." }, { status: 400 });
       }
 
       // Reprocess analysis by regenerating using the original image path as seed
-      const imageMd5 = analysis.photo_url.split("/").pop() || "reprocess-seed";
-      const result = await simulateAIShelfAnalysis(analysis.visita_id, visita.cod_parceiro, analysis.photo_url, imageMd5);
+      const imageMd5 = (analysis.photo_url || "").split("/").pop() || "reprocess-seed";
+      const result = await simulateAIShelfAnalysis(analysis.visita_id, visitaRecord.cod_parceiro, analysis.photo_url || "", imageMd5);
 
-      // Force compliance issues or quality score to 100 on reprocess request to override manual issues
       const updatePayload = {
         analysis_status: "DONE" as const,
         detected_products: result.detected_products,
@@ -92,7 +156,7 @@ export async function POST(request: Request) {
         rupture_status: result.rupture_status,
         planogram_score: result.planogram_score,
         ai_confidence: result.ai_confidence,
-        quality_score: 100, 
+        quality_score: 100,
         quality_status: "GOOD" as const,
         quality_issues: [] as string[],
         needs_manual_review: false,
@@ -107,7 +171,7 @@ export async function POST(request: Request) {
         ]
       };
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await adminClient
         .from("cm_ai_shelf_analysis")
         .update(updatePayload)
         .eq("id", analysis_id);
@@ -118,11 +182,11 @@ export async function POST(request: Request) {
       }
 
       // Clear previous pricing data and pricing alerts
-      await supabase.from("cm_ai_price_analysis").delete().eq("analysis_id", analysis_id);
-      await supabase.from("cm_ai_pricing_alert").delete().eq("visita_id", analysis.visita_id);
+      await adminClient.from("cm_ai_price_analysis").delete().eq("analysis_id", analysis_id);
+      await adminClient.from("cm_ai_pricing_alert").delete().eq("visita_id", analysis.visita_id);
 
       // Trigger fresh pricing OCR
-      const { data: priceLog, error: priceLogErr } = await supabase
+      const { data: priceLog, error: priceLogErr } = await adminClient
         .from("cm_ai_price_analysis")
         .insert({
           visita_id: analysis.visita_id,
@@ -137,11 +201,11 @@ export async function POST(request: Request) {
           const priceResult = await simulatePriceOCR(
             analysis.visita_id,
             analysis_id,
-            result.detected_products as any,
+            result.detected_products as never,
             imageMd5
           );
 
-          await supabase
+          await adminClient
             .from("cm_ai_price_analysis")
             .update({
               ocr_status: "DONE",
@@ -179,23 +243,39 @@ export async function POST(request: Request) {
             digit_confidence: item.digit_confidence
           }));
 
-          await supabase.from("cm_ai_price_analysis_item").insert(itemsToInsert);
-        } catch (ocrErr: any) {
+          await adminClient.from("cm_ai_price_analysis_item").insert(itemsToInsert);
+        } catch (ocrErr: unknown) {
           console.error(`[Price OCR Reprocess Error] Job ${priceLog.id}:`, ocrErr);
-          await supabase
+          await adminClient
             .from("cm_ai_price_analysis")
             .update({ ocr_status: "FAILED" })
             .eq("id", priceLog.id);
         }
       }
 
+      await logAuditAction(user.id, "REPROCESS_SHELF_ANALYSIS", "cm_ai_shelf_analysis", {
+        analysis_id,
+        visita_id: analysis.visita_id,
+        reviewer_role: profile.role
+      });
+
       return NextResponse.json({ success: true, message: "Análise reprocessada com sucesso." });
     }
 
     return NextResponse.json({ success: false, error: `Ação inválida: ${action}` }, { status: 400 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    if (
+      err.message === "UNAUTHENTICATED" ||
+      err.message === "NOT_FOUND" ||
+      err.message?.includes("PROFILE_") ||
+      err.message?.includes("ROLE_NOT_ALLOWED") ||
+      err.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[REVIEW API] Fatal error:", error);
-    return NextResponse.json({ success: false, error: error.message || "Erro interno do servidor." }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message || "Erro interno do servidor." }, { status: 500 });
   }
 }

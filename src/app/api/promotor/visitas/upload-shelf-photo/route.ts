@@ -1,31 +1,45 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { simulateAIShelfAnalysis } from "@/lib/ai/shelf-engine";
 import { simulatePriceOCR } from "@/lib/ai/price-ocr-engine";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  assertVisitaAccess,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 import crypto from "crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const ALLOWED_UPLOAD_ROLES = [
+  "Promotor",
+  "Supervisor",
+  "Admin",
+  "Admin Master",
+  "CEO",
+  "Trade",
+];
+
 export async function POST(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
+    // 1. Role verification
+    requireRole(profile.role, ALLOWED_UPLOAD_ROLES);
+
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Get promotor profile to retrieve employee_id
+    // Get promotor profile to retrieve employee_id if available
     const { data: perfil } = await supabase
       .from("cm_promotor_perfil")
       .select("employee_id")
       .eq("user_id", user.id)
       .maybeSingle();
-
-    if (!perfil) {
-      return NextResponse.json({ success: false, error: "Perfil de promotor correspondente não encontrado." }, { status: 400 });
-    }
 
     const formData = await request.formData();
     const visitaId = formData.get("visita_id") as string;
@@ -49,19 +63,11 @@ export async function POST(request: Request) {
       }
     } catch (_) {}
 
-    // 1. Fetch visit and validate if it exists and belongs to this promotor
-    const { data: visita, error: visitaError } = await supabase
-      .from("cm_promotor_visita")
-      .select("id, status, cod_parceiro")
-      .eq("id", visitaId)
-      .single();
-
-    if (visitaError || !visita) {
-      return NextResponse.json({ success: false, error: "Visita não encontrada." }, { status: 404 });
-    }
+    // 2. Strict Object-Level Authorization: verify visit exists and belongs to this user/team
+    const { visita } = await assertVisitaAccess(user.id, profile, visitaId);
 
     // Permit uploads only if visit is checked-in or in execution
-    const statusPermitidos = ["CHECKIN_REALIZADO", "EM_EXECUCAO"];
+    const statusPermitidos = ["CHECKIN_REALIZADO", "EM_EXECUCAO", "EM_ROTA"];
     if (!statusPermitidos.includes(visita.status)) {
       return NextResponse.json({
         success: false,
@@ -69,7 +75,7 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 2. Upload photo to Supabase Storage in 'promotor-ponto' bucket
+    // 3. Upload photo to Supabase Storage in 'promotor-ponto' bucket
     const arrayBuffer = await foto.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const imageMd5 = crypto.createHash("md5").update(buffer).digest("hex");
@@ -90,13 +96,14 @@ export async function POST(request: Request) {
     }
 
     const photoUrl = uploadData.path;
+    const promotorIdToStore = perfil?.employee_id || user.id;
 
-    // 3. Insert PENDING analysis log in cm_ai_shelf_analysis
+    // 4. Insert PENDING analysis log in cm_ai_shelf_analysis
     const { data: analysisLog, error: insertError } = await supabase
       .from("cm_ai_shelf_analysis")
       .insert({
         visita_id: visitaId,
-        promotor_id: perfil.employee_id,
+        promotor_id: promotorIdToStore,
         photo_url: photoUrl,
         image_width: width,
         image_height: height,
@@ -119,9 +126,9 @@ export async function POST(request: Request) {
 
     const analysisJobId = analysisLog.id;
 
-    // 4. Execute AI Engine simulation asynchronously
+    // 5. Execute AI Engine simulation asynchronously
     (async () => {
-      const db = await createClient();
+      const db = createAdminClient();
       try {
         // Set state to PROCESSING
         await db
@@ -159,7 +166,7 @@ export async function POST(request: Request) {
           })
           .eq("id", analysisJobId);
 
-        // --- Sprint 5.2: Price OCR Integration ---
+        // Price OCR Integration
         const { data: priceLog, error: priceLogErr } = await db
           .from("cm_ai_price_analysis")
           .insert({
@@ -175,7 +182,7 @@ export async function POST(request: Request) {
             const priceResult = await simulatePriceOCR(
               visitaId,
               analysisJobId,
-              result.detected_products as any,
+              result.detected_products as never,
               imageMd5
             );
 
@@ -219,7 +226,7 @@ export async function POST(request: Request) {
 
             await db.from("cm_ai_price_analysis_item").insert(itemsToInsert);
 
-          } catch (ocrErr: any) {
+          } catch (ocrErr: unknown) {
             console.error(`[Price OCR Simulation Error] Job ${priceLog.id}:`, ocrErr);
             await db
               .from("cm_ai_price_analysis")
@@ -232,13 +239,14 @@ export async function POST(request: Request) {
           console.error("[Price OCR Log Insert Error]:", priceLogErr);
         }
 
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorObj = err as { message?: string };
         console.error(`[AI Shelf Simulation Error] Job ${analysisJobId}:`, err);
         await db
           .from("cm_ai_shelf_analysis")
           .update({
             analysis_status: "FAILED",
-            error_message: err.message || "Erro durante o processamento da simulação de IA.",
+            error_message: errorObj.message || "Erro durante o processamento da simulação de IA.",
             processing_finished_at: new Date().toISOString()
           })
           .eq("id", analysisJobId);
@@ -251,8 +259,18 @@ export async function POST(request: Request) {
       analysis_job_id: analysisJobId
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    if (
+      err.message === "UNAUTHENTICATED" ||
+      err.message === "NOT_FOUND" ||
+      err.message?.includes("PROFILE_") ||
+      err.message?.includes("ROLE_NOT_ALLOWED") ||
+      err.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[UPLOAD SHELF FOTO] Fatal error:", error);
-    return NextResponse.json({ success: false, error: error.message || "Erro interno do servidor." }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message || "Erro interno do servidor." }, { status: 500 });
   }
 }

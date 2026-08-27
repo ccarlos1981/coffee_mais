@@ -81,6 +81,12 @@ export function handleAuthError(err: any) {
       headers: { "Content-Type": "application/json" }
     });
   }
+  if (msg === "NOT_FOUND") {
+    return new Response(JSON.stringify({ success: false, error: "Recurso não encontrado." }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   if (
     msg === "PROFILE_NOT_FOUND" ||
     msg === "PROFILE_NOT_APPROVED" ||
@@ -212,6 +218,150 @@ export async function assertPdvAccess(
 
       if (inManagerPortfolio) {
         return true;
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  throw new Error("FORBIDDEN");
+}
+
+export interface VisitaAgendaRecord {
+  id: string;
+  promotor_id: string;
+  data_agenda: string;
+}
+
+export interface VisitaAccessRecord {
+  id: string;
+  cod_parceiro: string;
+  status: string;
+  agenda_diaria_id: string;
+  agenda: VisitaAgendaRecord | VisitaAgendaRecord[] | null;
+}
+
+export interface VisitaAccessResult {
+  visita: VisitaAccessRecord;
+  authorized: boolean;
+}
+
+export async function assertVisitaAccess(
+  userId: string,
+  profile: { role?: string | null; manager_name?: string | null; name?: string | null },
+  visitaId: string
+): Promise<VisitaAccessResult> {
+  const currentRole = (profile?.role || "").trim().toLowerCase();
+
+  // 1. National Administrative Roles have global scope
+  const NATIONAL_ROLES = new Set([
+    "admin",
+    "admin master",
+    "ceo",
+    "trade",
+    "financeiro",
+    "diretor",
+    "gerente nacional",
+    "ti",
+  ]);
+
+  const adminClient = createAdminClient();
+
+  const { data: rawVisita, error: visitaError } = await adminClient
+    .from("cm_promotor_visita")
+    .select(`
+      id,
+      cod_parceiro,
+      status,
+      agenda_diaria_id,
+      agenda:cm_promotor_agenda_diaria(
+        id,
+        promotor_id,
+        data_agenda
+      )
+    `)
+    .eq("id", visitaId)
+    .maybeSingle();
+
+  if (visitaError || !rawVisita) {
+    throw new Error("NOT_FOUND");
+  }
+
+  const visita = rawVisita as unknown as VisitaAccessRecord;
+
+  // 1. National Administrative Roles have global scope
+  if (NATIONAL_ROLES.has(currentRole)) {
+    return { visita, authorized: true };
+  }
+
+  const agendaData: VisitaAgendaRecord | null = Array.isArray(visita.agenda)
+    ? (visita.agenda[0] ?? null)
+    : (visita.agenda ?? null);
+
+  const visitPromotorId: string | undefined = agendaData?.promotor_id;
+
+  // 2. Promotor: Must be the owner of the visit's agenda (direct auth.uid() or employee_id)
+  if (currentRole === "promotor") {
+    if (visitPromotorId && visitPromotorId === userId) {
+      return { visita, authorized: true };
+    }
+
+    const { data: perfil } = await adminClient
+      .from("cm_promotor_perfil")
+      .select("employee_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (perfil && visitPromotorId === perfil.employee_id) {
+      return { visita, authorized: true };
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  // 3. Supervisor: Promotor must be under this supervisor's mapping
+  if (currentRole === "supervisor") {
+    if (!visitPromotorId) {
+      throw new Error("FORBIDDEN");
+    }
+
+    const { data: supervised } = await adminClient
+      .from("cm_promotor_supervisor_mapping")
+      .select("promotor_id")
+      .eq("supervisor_id", userId);
+
+    if (supervised && supervised.length > 0) {
+      const promotorIds: string[] = supervised.map((s) => s.promotor_id);
+      if (promotorIds.includes(visitPromotorId)) {
+        return { visita, authorized: true };
+      }
+
+      const { data: supervisedProfiles } = await adminClient
+        .from("cm_promotor_perfil")
+        .select("employee_id")
+        .in("user_id", promotorIds);
+
+      if (supervisedProfiles && supervisedProfiles.some((p) => p.employee_id === visitPromotorId)) {
+        return { visita, authorized: true };
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  // 4. Gerente Regional: PDV must belong to this manager's portfolio in base_atendimento
+  if (currentRole === "gerente regional") {
+    const managerName = profile.manager_name || profile.name;
+    if (managerName && visita.cod_parceiro) {
+      const { data: inPortfolio } = await adminClient
+        .from("base_atendimento")
+        .select("cod_parceiro")
+        .eq("cod_parceiro", visita.cod_parceiro)
+        .eq("manager", managerName)
+        .maybeSingle();
+
+      if (inPortfolio) {
+        return { visita, authorized: true };
       }
     }
 

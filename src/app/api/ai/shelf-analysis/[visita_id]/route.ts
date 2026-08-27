@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  assertVisitaAccess,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,17 +15,18 @@ export async function GET(
   { params }: { params: Promise<{ visita_id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
     const { visita_id } = await params;
     if (!visita_id) {
       return NextResponse.json({ success: false, error: "Parâmetro visita_id não fornecido." }, { status: 400 });
     }
 
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // Strict Object-Level Authorization: verify user's portfolio / team / visit scope over this visita_id
+    await assertVisitaAccess(user.id, profile, visita_id);
 
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const supabase = createAdminClient();
 
     // Fetch the latest AI shelf analysis for this visit
     const { data: analysis, error } = await supabase
@@ -91,8 +98,18 @@ export async function GET(
       price_analysis: priceAnalysisData
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const err = error as { message?: string };
+    if (
+      err.message === "UNAUTHENTICATED" ||
+      err.message === "NOT_FOUND" ||
+      err.message?.includes("PROFILE_") ||
+      err.message?.includes("ROLE_NOT_ALLOWED") ||
+      err.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[GET SHELF ANALYSIS] Fatal error:", error);
-    return NextResponse.json({ success: false, error: error.message || "Erro interno do servidor." }, { status: 500 });
+    return NextResponse.json({ success: false, error: err.message || "Erro interno do servidor." }, { status: 500 });
   }
 }
