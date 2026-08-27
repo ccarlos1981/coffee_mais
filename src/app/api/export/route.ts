@@ -8,6 +8,9 @@ import {
 
 export const runtime = "nodejs";
 
+const MAX_EXPORT_ROWS = 50000;
+const MAX_EXPORT_COLS = 100;
+
 export async function POST(req: Request) {
   try {
     const user = await requireAuth();
@@ -20,8 +23,26 @@ export async function POST(req: Request) {
 
     const data = dataStr ? JSON.parse(dataStr) : [];
 
-    if (!data || !data.length) {
+    if (!data || !Array.isArray(data) || data.length === 0) {
       return NextResponse.json({ error: "No data provided" }, { status: 400 });
+    }
+
+    if (data.length > MAX_EXPORT_ROWS) {
+      return NextResponse.json(
+        { error: "Payload excede o limite máximo de 50.000 registros para exportação." },
+        { status: 400 }
+      );
+    }
+
+    const hasExcessiveCols = data.some(
+      (row: Record<string, unknown>) =>
+        row && typeof row === "object" && Object.keys(row).length > MAX_EXPORT_COLS
+    );
+    if (hasExcessiveCols) {
+      return NextResponse.json(
+        { error: "Payload excede o limite máximo de 100 colunas por registro." },
+        { status: 400 }
+      );
     }
 
     // Gerar Planilha

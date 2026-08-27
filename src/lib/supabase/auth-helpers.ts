@@ -141,10 +141,20 @@ export function handleAuthError(err: any) {
       headers: { "Content-Type": "application/json" }
     });
   }
-  return new Response(JSON.stringify({ success: false, error: msg || "Erro interno no servidor." }), {
-    status: 500,
-    headers: { "Content-Type": "application/json" }
-  });
+  const isDev = process.env.NODE_ENV === "development";
+  if (!isDev) {
+    console.error("[Server Error]", err);
+  }
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: isDev ? msg || "Erro interno no servidor." : "Erro interno no servidor.",
+    }),
+    {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    }
+  );
 }
 
 export async function logAuditAction(userId: string, action: string, tableName: string, details?: any) {
