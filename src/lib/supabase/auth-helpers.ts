@@ -112,3 +112,111 @@ export async function logAuditAction(userId: string, action: string, tableName: 
     console.error("Failed to write audit log:", err);
   }
 }
+
+export async function assertPdvAccess(
+  userId: string,
+  profile: { role?: string | null; manager_name?: string | null; name?: string | null },
+  pdvId: string
+): Promise<boolean> {
+  const currentRole = (profile?.role || "").trim().toLowerCase();
+
+  // 1. National Administrative Roles have global scope
+  const NATIONAL_ROLES = new Set([
+    "admin",
+    "admin master",
+    "ceo",
+    "trade",
+    "financeiro",
+    "diretor",
+    "gerente nacional",
+    "ti",
+  ]);
+
+  if (NATIONAL_ROLES.has(currentRole)) {
+    return true;
+  }
+
+  const adminClient = createAdminClient();
+
+  // 2. Promotor: PDV must be in the Promotor's assigned wallet (carteira) OR in an agenda/visit
+  if (currentRole === "promotor") {
+    // Check wallet (cm_promotor_carteira_pdv)
+    const { data: inWallet } = await adminClient
+      .from("cm_promotor_carteira_pdv")
+      .select("id")
+      .eq("promotor_id", userId)
+      .eq("cod_parceiro", pdvId)
+      .maybeSingle();
+
+    if (inWallet) {
+      return true;
+    }
+
+    // Check scheduled agenda & visits
+    const { data: agendas } = await adminClient
+      .from("cm_promotor_agenda_diaria")
+      .select("id")
+      .eq("promotor_id", userId);
+
+    if (agendas && agendas.length > 0) {
+      const agendaIds = agendas.map((a) => a.id);
+      const { data: inVisita } = await adminClient
+        .from("cm_promotor_visita")
+        .select("id")
+        .in("agenda_diaria_id", agendaIds)
+        .eq("cod_parceiro", pdvId)
+        .maybeSingle();
+
+      if (inVisita) {
+        return true;
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  // 3. Supervisor: PDV must belong to a Promotor under this supervisor
+  if (currentRole === "supervisor") {
+    const { data: supervised } = await adminClient
+      .from("cm_promotor_supervisor_mapping")
+      .select("promotor_id")
+      .eq("supervisor_id", userId);
+
+    if (supervised && supervised.length > 0) {
+      const promotorIds = supervised.map((s) => s.promotor_id);
+      const { data: inTeamWallet } = await adminClient
+        .from("cm_promotor_carteira_pdv")
+        .select("id")
+        .in("promotor_id", promotorIds)
+        .eq("cod_parceiro", pdvId)
+        .maybeSingle();
+
+      if (inTeamWallet) {
+        return true;
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  // 4. Gerente Regional: PDV must belong to this manager's portfolio in base_atendimento
+  if (currentRole === "gerente regional") {
+    const managerName = profile.manager_name || profile.name;
+    if (managerName) {
+      const { data: inManagerPortfolio } = await adminClient
+        .from("base_atendimento")
+        .select("cod_parceiro")
+        .eq("cod_parceiro", pdvId)
+        .eq("manager", managerName)
+        .maybeSingle();
+
+      if (inManagerPortfolio) {
+        return true;
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  throw new Error("FORBIDDEN");
+}
