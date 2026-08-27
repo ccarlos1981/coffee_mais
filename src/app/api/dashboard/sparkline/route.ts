@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { AnalyticsEngine, parseAnalyticsFiltersFromParams } from "@/lib/governance/analytics";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = "nodejs";
 export const dynamic = 'force-dynamic';
 
+const NATIONAL_ROLES = ["Admin", "Admin Master", "CEO", "Diretor", "Gerente Nacional", "Trade", "Financeiro"];
+
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
     const { searchParams } = new URL(request.url);
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
     const month = parseInt(searchParams.get("month") || String(new Date().getMonth() + 1));
@@ -18,6 +29,23 @@ export async function GET(request: Request) {
     const filters = parseAnalyticsFiltersFromParams(searchParams);
     filters.startMonth = startMonth;
     filters.endMonth = endMonth;
+
+    // Enforce Regional Scope for Gerente Regional
+    const userRole = (profile.role || "").trim();
+    const isNational = NATIONAL_ROLES.some(r => r.toLowerCase() === userRole.toLowerCase());
+
+    if (!isNational && userRole.toLowerCase() === "gerente regional") {
+      const canonicalUserMgr = resolveCanonicalManager(profile.manager_name || profile.name || "").managerName;
+      if (filters.manager) {
+        const managers = filters.manager.split(',').map(m => resolveCanonicalManager(m).managerName);
+        const hasOther = managers.some(m => !isSameManager(m, canonicalUserMgr));
+        if (hasOther) {
+          filters.manager = canonicalUserMgr;
+        }
+      } else {
+        filters.manager = canonicalUserMgr;
+      }
+    }
 
     const data = await AnalyticsEngine.getSparklineData(filters);
 
@@ -43,7 +71,8 @@ export async function GET(request: Request) {
     }
 
     return NextResponse.json({ success: true, series });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return handleAuthError(error);
   }
 }
+

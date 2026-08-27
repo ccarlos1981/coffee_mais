@@ -6,6 +6,7 @@ import {
   ExecutiveReportDispatcher,
   HOMOLOGATED_EXECUTIVE_RECIPIENTS,
 } from "@/lib/services/executive-report-dispatcher";
+import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutos de limite de execução
@@ -22,7 +23,13 @@ async function handleExecutiveReportCron(request: NextRequest) {
   const startTime = Date.now();
   const executionId = crypto.randomUUID();
 
-  // 1. Barreira de Horário / Fuso (America/Sao_Paulo)
+  // 1. Validação Obrigatória de Cron (Fail-Closed)
+  const cronCheck = assertCronAccess(request);
+  if (!cronCheck.authorized) {
+    return cronCheck.errorResponse!;
+  }
+
+  // 2. Barreira de Horário / Fuso (America/Sao_Paulo)
   const nowSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const dayOfWeek = nowSp.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
   const todayIso = nowSp.toISOString().split("T")[0];
@@ -31,17 +38,6 @@ async function handleExecutiveReportCron(request: NextRequest) {
   const isDryRun = request.nextUrl.searchParams.get("dry_run") === "true";
 
   try {
-    // 2. Validação de Autenticação / CRON_SECRET
-    const authHeader = request.headers.get("authorization");
-    const secretParam = request.nextUrl.searchParams.get("secret");
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (cronSecret) {
-      const token = authHeader ? authHeader.replace(/^Bearer\s+/i, "") : secretParam;
-      if (token !== cronSecret) {
-        return NextResponse.json({ error: "Acesso não autorizado. CRON_SECRET inválido." }, { status: 401 });
-      }
-    }
 
     // 3. Barreira de Domingo (Permanente)
     if (dayOfWeek === 0 && !forceOverride) {

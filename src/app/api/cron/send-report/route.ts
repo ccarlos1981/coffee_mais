@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
+import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 
@@ -26,11 +27,10 @@ function formatDateBr(dateString: string | null) {
 
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get("authorization");
-    const cronSecret = process.env.CRON_SECRET;
-
-    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // 1. Validação Obrigatória de Cron (Fail-Closed)
+    const cronCheck = assertCronAccess(request);
+    if (!cronCheck.authorized) {
+      return cronCheck.errorResponse!;
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON);

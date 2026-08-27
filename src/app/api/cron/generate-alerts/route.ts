@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
+import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 
@@ -25,10 +26,9 @@ interface SaleRow {
  */
 export async function GET(request: Request) {
   try {
-    const authHeader = request.headers.get('authorization');
-    // Para proteção simplificada de cron (Opcional, exige CRON_SECRET no .env)
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const cronCheck = assertCronAccess(request);
+    if (!cronCheck.authorized) {
+      return cronCheck.errorResponse!;
     }
 
     const supabase = getSupabaseClient();

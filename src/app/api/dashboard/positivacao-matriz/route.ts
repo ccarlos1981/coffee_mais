@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
-import { createClient } from "@supabase/supabase-js";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,24 +14,38 @@ export const dynamic = 'force-dynamic';
 const API_CACHE = new Map<string, { timestamp: number; data: unknown }>();
 const CACHE_TTL = 1000 * 60 * 5;
 
-function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(supabaseUrl, supabaseKey, {
-    global: {
-      fetch: (url, options) => fetch(url, { ...options, cache: 'no-store' }),
-    },
-  });
-}
+const NATIONAL_ROLES = ["Admin", "Admin Master", "CEO", "Diretor", "Gerente Nacional", "Trade", "Financeiro"];
 
 export async function GET(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
 
+    let requestedManager = searchParams.get('manager') !== 'all' ? searchParams.get('manager') : null;
+
+    // Enforce Regional Scope for Gerente Regional
+    const userRole = (profile.role || "").trim();
+    const isNational = NATIONAL_ROLES.some(r => r.toLowerCase() === userRole.toLowerCase());
+
+    if (!isNational && userRole.toLowerCase() === "gerente regional") {
+      const canonicalUserMgr = resolveCanonicalManager(profile.manager_name || profile.name || "").managerName;
+      if (requestedManager) {
+        const managers = requestedManager.split(',').map(m => resolveCanonicalManager(m).managerName);
+        const hasOther = managers.some(m => !isSameManager(m, canonicalUserMgr));
+        if (hasOther) {
+          requestedManager = canonicalUserMgr;
+        }
+      } else {
+        requestedManager = canonicalUserMgr;
+      }
+    }
+
     const filters: Record<string, string | null> = {
-      manager: searchParams.get('manager') !== 'all' ? searchParams.get('manager') : null,
+      manager: requestedManager,
       familia: searchParams.get('familia') !== 'all' ? searchParams.get('familia') : null,
       uf: searchParams.get('uf') !== 'all' ? searchParams.get('uf') : null,
       channel: searchParams.get('channel') !== 'all' ? searchParams.get('channel') : null,
@@ -33,14 +53,15 @@ export async function GET(request: Request) {
       matriz: searchParams.get('matriz') !== 'all' ? searchParams.get('matriz') : null,
     };
 
-    const cacheKey = request.url;
+    // Isolated Cache Key per user + effective query
+    const cacheKey = `${user.id}:${request.url}:${requestedManager || 'all'}`;
     const cached = API_CACHE.get(cacheKey);
     const isDev = process.env.NODE_ENV === 'development';
     if (!isDev && cached && Date.now() - cached.timestamp < CACHE_TTL) {
       return NextResponse.json(cached.data);
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = createAdminClient();
     const startMonth = startDate ? startDate.substring(0, 7) : null;
     const endMonth = endDate ? endDate.substring(0, 7) : null;
 
@@ -57,7 +78,6 @@ export async function GET(request: Request) {
     if (filters.channel) query = query.in('channel', filters.channel.split(','));
     if (filters.matriz) query = query.in('rede', filters.matriz.split(','));
 
-    console.log(`[Positivação Matriz API] Running MV query...`);
     const { data: rows, error } = await query.limit(50000);
 
     if (error) throw new Error(error.message);
@@ -139,8 +159,7 @@ export async function GET(request: Request) {
     API_CACHE.set(cacheKey, { timestamp: Date.now(), data: payload });
     return NextResponse.json(payload);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error('[Positivação Matriz API] Error:', message);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return handleAuthError(error);
   }
 }
+

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import nodemailer from "nodemailer";
 import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
+import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 
@@ -79,14 +80,10 @@ interface NotificationItem {
 // ─── handler ─────────────────────────────────────────────────────────────────
 export async function GET(request: Request) {
   try {
-    // Segurança: verificar CRON_SECRET em produção
-    const { searchParams } = new URL(request.url);
-    const secret = searchParams.get("secret");
-    if (
-      process.env.CRON_SECRET &&
-      secret !== process.env.CRON_SECRET
-    ) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Validação Obrigatória de Cron (Fail-Closed)
+    const cronCheck = assertCronAccess(request);
+    if (!cronCheck.authorized) {
+      return cronCheck.errorResponse!;
     }
 
     // Validar SMTP

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { executeSyncFaturamento } from "@/app/api/bigquery/sync-faturamento/route";
 import type { SyncTrigger } from "@/lib/bigquery";
+import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,12 @@ export const maxDuration = 60;
  *   0 5 * * 1     → 02:00 BRT Monday (reconciliation, last 30 days)
  */
 export async function GET(request: Request) {
+  // 1. Validação Obrigatória de Cron (Fail-Closed)
+  const cronCheck = assertCronAccess(request);
+  if (!cronCheck.authorized) {
+    return cronCheck.errorResponse!;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // DESATIVADO (Demanda 065 — 2026-08-22)
   // 
