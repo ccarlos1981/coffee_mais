@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     const profile = await requireApprovedProfile(user.id);
 
     // 1. Role verification
-    requireRole(profile.role, ALLOWED_UPLOAD_ROLES);
+    requireRole(profile, ALLOWED_UPLOAD_ROLES);
 
     const supabase = await createClient();
 

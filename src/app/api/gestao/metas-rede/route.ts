@@ -2,6 +2,43 @@ import { NextRequest, NextResponse } from "next/server";
 import { CommercialPlanningService } from "@/lib/planning/commercial-planning-service";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
 import { createClient } from "@/lib/supabase/server";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+  logAuditAction,
+} from "@/lib/supabase/auth-helpers";
+
+const ALLOWED_METAS_ROLES = [
+  "Admin",
+  "Admin Master",
+  "CEO",
+  "Presidência",
+  "Presidencia",
+  "Presidente",
+  "Diretoria",
+  "Diretor",
+  "Diretor Comercial",
+  "Gerente Nacional",
+  "Trade",
+  "Gerente Regional",
+  "Gerente Comercial",
+  "Gerente",
+];
+
+const TOP_DOWN_EXECUTIVE_ROLES = [
+  "Admin",
+  "Admin Master",
+  "CEO",
+  "Presidência",
+  "Presidencia",
+  "Presidente",
+  "Diretoria",
+  "Diretor",
+  "Diretor Comercial",
+  "Gerente Nacional",
+];
 
 /**
  * GET /api/gestao/metas-rede
@@ -167,28 +204,74 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
+    // 1. Role verification for Metas module
+    requireRole(profile, ALLOWED_METAS_ROLES);
+
     const body = await req.json();
-    const { action, year, month, targetStatus, user, comments } = body;
+    const { action, year, month, targetStatus, comments } = body;
 
     if (action === "WORKFLOW_TRANSITION") {
       if (!year || !month || !targetStatus) {
-        return NextResponse.json({ error: "Parâmetros inválidos para transição de workflow." }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: "Parâmetros inválidos para transição de workflow: year, month e targetStatus são obrigatórios." },
+          { status: 400 }
+        );
       }
+
+      const validStatuses = ["DRAFT", "REVIEW", "APPROVED", "FROZEN"];
+      if (!validStatuses.includes(targetStatus)) {
+        return NextResponse.json(
+          { success: false, error: `Status de workflow inválido: ${targetStatus}` },
+          { status: 400 }
+        );
+      }
+
+      // 2. Specific role gate for top-down workflow approval / freezing / reopening
+      if (targetStatus === "APPROVED" || targetStatus === "FROZEN" || targetStatus === "DRAFT") {
+        requireRole(profile, TOP_DOWN_EXECUTIVE_ROLES);
+      }
+
+      // 3. User identity derived exclusively from the authenticated profile (ignoring body.user spoofing)
+      const authenticatedUserIdentifier =
+        profile.name ||
+        profile.manager_name ||
+        user.email ||
+        user.id;
 
       const updatedWorkflow = await CommercialPlanningService.updateWorkflowStatus(
         Number(year),
         Number(month),
         targetStatus,
-        user || "Sistema",
+        authenticatedUserIdentifier,
         comments
       );
+
+      await logAuditAction(user.id, "METAS_REDE_WORKFLOW_TRANSITION", "cm_weekly_projections_workflow", {
+        year: Number(year),
+        month: Number(month),
+        targetStatus,
+        executedBy: authenticatedUserIdentifier,
+        role: profile.role,
+      });
 
       return NextResponse.json({ success: true, workflow: updatedWorkflow });
     }
 
-    return NextResponse.json({ error: "Ação não suportada." }, { status: 400 });
+    return NextResponse.json({ success: false, error: "Ação não suportada." }, { status: 400 });
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message === "NOT_FOUND" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[POST /api/gestao/metas-rede] Error:", error);
-    return NextResponse.json({ error: error?.message || "Erro ao processar requisição." }, { status: 500 });
+    return NextResponse.json({ success: false, error: error?.message || "Erro ao processar requisição." }, { status: 500 });
   }
 }
