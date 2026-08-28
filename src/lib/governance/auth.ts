@@ -20,5 +20,16 @@ export async function requireAuthenticatedUser(): Promise<AuthenticatedContext> 
   if (!user) {
     throw new Error("UNAUTHORIZED");
   }
+
+  const { data: profile } = await supabase
+    .from("cm_user_profiles")
+    .select("approved")
+    .eq("id", user.id)
+    .single();
+
+  if (!profile || !profile.approved) {
+    throw new Error("UNAUTHORIZED");
+  }
+
   return { supabase, user };
 }

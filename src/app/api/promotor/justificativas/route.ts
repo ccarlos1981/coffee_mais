@@ -1,33 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Perfis com autorização de gestor
-const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Trade"];
+const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Admin Master", "Trade"];
 
 // 1. GET: Retorna as ocorrências/justificativas
 // - Se for promotor: retorna apenas as suas.
 // - Se for gestor: retorna as dos seus promotores sob responsabilidade (ou todas se for Admin).
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Buscar perfil
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const role = profile?.role || "";
     const isGestor = GESTOR_ROLES.includes(role);
+
+    const supabase = await createClient();
 
     // Buscar employee_id do usuário logado na tabela auxiliar cm_promotor_perfil
     const { data: perfil } = await supabase
@@ -89,12 +80,9 @@ export async function GET(request: Request) {
 // 2. POST: Criar uma nova justificativa (Promotor)
 export async function POST(request: Request) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
 
     // Buscar perfil do promotor para obter employee_id
     const { data: perfil } = await supabase
@@ -180,35 +168,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: "Justificativa enviada com sucesso!", data: novaOcorrencia });
 
   } catch (error: unknown) {
-    console.error("[JUSTIFICATIVAS API POST] Erro fatal:", error);
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : "Erro ao enviar justificativa." 
-    }, { status: 500 });
+    return handleAuthError(error);
   }
 }
 
 // 3. PUT: Analisar uma justificativa (Supervisor/Admin)
 export async function PUT(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, GESTOR_ROLES);
+
     const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Validar se é gestor
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const role = profile?.role || "";
-    if (!GESTOR_ROLES.includes(role)) {
-      return NextResponse.json({ success: false, error: "Acesso negado. Apenas supervisores e administradores podem analisar ocorrências." }, { status: 403 });
-    }
 
     const body = await request.json();
     const { id, status, observacao_supervisor } = body;

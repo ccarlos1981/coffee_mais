@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
 import { AnalyticsEngine } from "@/lib/governance/analytics/engine";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +58,20 @@ export async function GET(
 
     if (!managerId) {
       return NextResponse.json({ success: false, error: "managerId é obrigatório." }, { status: 400 });
+    }
+
+    const isFullAccess = ["Admin", "Admin Master", "Presidência", "Diretoria", "Gerente Nacional", "CEO"].includes(profile.role);
+
+    if (!isFullAccess) {
+      const userCanonical = resolveCanonicalManager(profile.manager_name || profile.name);
+      const targetCanonical = resolveCanonicalManager(managerId);
+
+      if (!userCanonical.managerId || userCanonical.managerId !== targetCanonical.managerId) {
+        return NextResponse.json(
+          { success: false, error: `Acesso negado: Você só possui permissão para visualizar os dados da sua própria regional (${userCanonical.managerName || "indefinida"}).` },
+          { status: 403 }
+        );
+      }
     }
 
     const { rollingStart, rollingEnd } = computeRolling3MPeriod();

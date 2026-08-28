@@ -3,12 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { CommercialDomainService } from "@/lib/domain";
 import { requireAuth, requireApprovedProfile, requirePermission, handleAuthError } from "@/lib/supabase/auth-helpers";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+import { createAdminClient } from "@/lib/supabase/admin";
 
 // Flexible column name matching
 function findCol(row: Record<string, unknown>, ...candidates: string[]): unknown {
@@ -43,6 +38,8 @@ export async function POST(request: NextRequest) {
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
     await requirePermission(profile.role, "Atendimento");
+
+    const supabase = createAdminClient();
 
     const formData = await request.formData();
     const file = formData.get("file") as File;

@@ -1,29 +1,20 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET: Fetch recommendations with filters
 export async function GET(request: Request) {
-  const supabaseAdmin = createAdminClient();
   const { searchParams } = new URL(request.url);
 
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor"]);
 
-    const { data: profile } = await supabaseNormal
-      .from("cm_user_profiles")
-      .select("company_id")
-      .eq("id", user.id)
-      .single();
-
+    const supabaseAdmin = createAdminClient();
     const companyId = profile?.company_id || "e143e8d6-c7d7-4315-8f54-aa12ce554d2d";
 
     // Dynamic generation trigger
@@ -152,27 +143,12 @@ export async function GET(request: Request) {
 
 // PATCH: Supervisor Approve/Reject recommendation
 export async function PATCH(request: Request) {
-  const supabaseAdmin = createAdminClient();
-
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor"]);
 
-    const { data: profile } = await supabaseNormal
-      .from("cm_user_profiles")
-      .select("role, company_id")
-      .eq("id", user.id)
-      .single();
-
-    const isAuthorized = ["CEO", "Admin", "Trade", "Supervisor"].includes(profile?.role || "");
-    if (!isAuthorized) {
-      return NextResponse.json({ success: false, error: "Acesso negado: Perfil não autorizado." }, { status: 403 });
-    }
-
+    const supabaseAdmin = createAdminClient();
     const companyId = profile?.company_id || "e143e8d6-c7d7-4315-8f54-aa12ce554d2d";
     const body = await request.json();
     const { recommendation_id, approval_status, override_reason } = body;
@@ -241,26 +217,18 @@ export async function PATCH(request: Request) {
     });
 
   } catch (error: any) {
-    console.error("[PATCH RECOMMENDATION ERROR]", error);
-    return NextResponse.json(
-      { success: false, error: error?.message || "Internal Server Error" },
-      { status: 500 }
-    );
+    return handleAuthError(error);
   }
 }
 
 // POST: Recommendation feedback loop (executed/dismissed)
 export async function POST(request: Request) {
-  const supabaseAdmin = createAdminClient();
-
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor", "Promotor"]);
 
+    const supabaseAdmin = createAdminClient();
     const body = await request.json();
     const { recommendation_id, status, feedback_notes, feedback_rating } = body;
 

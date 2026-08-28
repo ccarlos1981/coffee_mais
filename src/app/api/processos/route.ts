@@ -1,32 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import DOMPurify from "isomorphic-dompurify";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
     const dept = searchParams.get("dept") || "Todos";
 
-    // 1. Obter perfil do usuário
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
     const role = profile?.role || "Promotor";
-    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
+    const allowedEditRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
     const isEditor = allowedEditRoles.includes(role);
 
     let query = supabase
@@ -121,23 +112,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const allowedEditRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
+    requireRole(profile, allowedEditRoles);
+
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
-    if (!profile || !allowedEditRoles.includes(profile.role)) {
-      return NextResponse.json({ error: "Sem permissão para criar processos" }, { status: 403 });
-    }
 
     const body = await request.json();
     const { titulo, categoria, departamento_responsavel, conteudo, status, mandatory_read, file_type, render_mode, original_file_url } = body;

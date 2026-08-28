@@ -4,30 +4,19 @@ import mammoth from "mammoth";
 import { PDFParse } from "pdf-parse";
 import { createWorker } from "tesseract.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const allowedRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
+    requireRole(profile, allowedRoles);
+
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
-    // Obter perfil do usuário para verificar se tem permissão (Admin, CEO, RH)
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const allowedRoles = ["Admin", "CEO", "RH", "TI"];
-    if (!profile || !allowedRoles.includes(profile.role)) {
-      return NextResponse.json({ error: "Sem permissão para importar processos" }, { status: 403 });
-    }
 
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

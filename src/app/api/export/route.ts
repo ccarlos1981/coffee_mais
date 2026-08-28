@@ -11,6 +11,27 @@ export const runtime = "nodejs";
 const MAX_EXPORT_ROWS = 50000;
 const MAX_EXPORT_COLS = 100;
 
+export function sanitizeCellForExcel(val: unknown): unknown {
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (/^[=+\-@\t\r]/.test(trimmed)) {
+      return `'${val}`;
+    }
+  }
+  return val;
+}
+
+export function sanitizeExportData(data: Record<string, unknown>[]): Record<string, unknown>[] {
+  return data.map(row => {
+    if (!row || typeof row !== "object") return row;
+    const cleanRow: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(row)) {
+      cleanRow[k] = sanitizeCellForExcel(v);
+    }
+    return cleanRow;
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const user = await requireAuth();
@@ -45,8 +66,10 @@ export async function POST(req: Request) {
       );
     }
 
+    const sanitizedData = sanitizeExportData(data);
+
     // Gerar Planilha
-    const worksheet = XLSX.utils.json_to_sheet(data);
+    const worksheet = XLSX.utils.json_to_sheet(sanitizedData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, sheetName || "Dados");
 

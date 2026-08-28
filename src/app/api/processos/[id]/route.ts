@@ -4,6 +4,7 @@ import DOMPurify from "isomorphic-dompurify";
 import { PDFParse } from "pdf-parse";
 import { createWorker } from "tesseract.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +14,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
 
     const { id } = await params;
 
@@ -34,15 +32,8 @@ export async function GET(
       return NextResponse.json({ error: "Processo não encontrado" }, { status: 404 });
     }
 
-    // 2. Obter perfil do usuário
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
     const role = profile?.role || "Promotor";
-    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
+    const allowedEditRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
     const isEditor = allowedEditRoles.includes(role);
 
     // Se NÃO for editor e o processo não for PUBLICADO, não pode ler
@@ -133,26 +124,13 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const allowedEditRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
+    requireRole(profile, allowedEditRoles);
+
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
     const { id } = await params;
-
-    // Verificar permissão de edição
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
-    if (!profile || !allowedEditRoles.includes(profile.role)) {
-      return NextResponse.json({ error: "Sem permissão para alterar processos" }, { status: 403 });
-    }
 
     const contentType = request.headers.get("content-type") || "";
     let titulo, categoria, departamento_responsavel, conteudo, status, change_log, nova_versao, mandatory_read, allow_download;
@@ -344,26 +322,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const allowedEditRoles = ["Admin", "Admin Master", "CEO", "RH", "TI"];
+    requireRole(profile, allowedEditRoles);
+
     const supabase = await createClient();
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
-
     const { id } = await params;
-
-    // Verificar permissão
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const allowedEditRoles = ["Admin", "CEO", "RH", "TI"];
-    if (!profile || !allowedEditRoles.includes(profile.role)) {
-      return NextResponse.json({ error: "Sem permissão para remover processos" }, { status: 403 });
-    }
 
     // Soft delete
     const { error: deleteErr } = await supabase
