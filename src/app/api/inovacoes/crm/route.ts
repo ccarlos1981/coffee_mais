@@ -26,21 +26,21 @@ export async function GET(request: Request) {
     // 1. Provedor de Dados Analíticos (AnalyticsEngine SSOT)
     const crmData = await AnalyticsEngine.getCrmComercial(filters);
 
-    // 2. Mapear dados analíticos brutos obtidos da AnalyticsEngine
-    const rawList = crmData.oportunidades.map((op) => ({
+    // 2. Mapear dados analíticos brutos obtidos da AnalyticsEngine (sem valores sintéticos/fictícios)
+    const rawList = crmData.oportunidades.map((op: any) => ({
       clienteId: op.clienteId,
       nomeParceiro: op.clienteNome,
-      cnpj: "00.000.000/0001-00",
-      rede: op.matrizNome,
-      gerenteNome: op.gerenteNome,
-      canal: op.canal,
-      uf: op.uf,
-      diasSemComprar: op.diasSemComprar,
-      dataUltimaCompra: null,
-      valorUltimaCompra: op.valorImpactoPotencial,
-      valorFaturadoPeriodo: op.valorImpactoPotencial,
-      valorFaturado12m: op.valorImpactoPotencial * 4,
-      frequenciaHistoricaDias: 20,
+      cnpj: op.cnpj || "",
+      rede: op.matrizNome || null,
+      gerenteNome: op.gerenteNome || "",
+      canal: op.canal || "",
+      uf: op.uf || "",
+      diasSemComprar: Number(op.diasSemComprar) || 0,
+      dataUltimaCompra: op.dataUltimaCompra || null,
+      valorUltimaCompra: Number(op.valorUltimaCompra) || Number(op.valorImpactoPotencial) || 0,
+      valorFaturadoPeriodo: Number(op.valorImpactoPotencial) || 0,
+      valorFaturado12m: Number(op.valorFaturado12m) || Number(op.valorImpactoPotencial) || 0,
+      frequenciaHistoricaDias: Number(op.frequenciaHistoricaDias) || 0,
     }));
 
     // 3. Processar Lógica Prescritiva no OpportunityRecommendationService Desacoplado

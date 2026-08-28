@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  assertPromotorAccess,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
-
-    // Check authentication
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-    }
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
 
     const { searchParams } = new URL(request.url);
     const promoterId = searchParams.get("promoter_id");
@@ -24,6 +23,11 @@ export async function GET(request: Request) {
     if (!promoterId || !rede || !uf) {
       return NextResponse.json({ success: false, error: "Parâmetros incompletos." }, { status: 400 });
     }
+
+    // Strict Object-Level Authorization: verify user has authority over target promoter
+    const { promoterId: authorizedPromoterId } = await assertPromotorAccess(user.id, profile, promoterId);
+
+    const adminClient = createAdminClient();
 
     const sqlQuery = `
       SELECT 
@@ -44,7 +48,7 @@ export async function GET(request: Request) {
     `;
 
     // Safely run the query replacing placeholder parameters to avoid SQL Injection
-    const escapedPromoterId = `'${promoterId.replace(/'/g, "''")}'`;
+    const escapedPromoterId = `'${authorizedPromoterId.replace(/'/g, "''")}'`;
     const escapedRede = `'${rede.replace(/'/g, "''")}'`;
     const escapedUf = `'${uf.replace(/'/g, "''")}'`;
 
@@ -77,6 +81,15 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message === "NOT_FOUND" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[METAS PROMOTOR HISTORY GET API ERROR]", error);
     return NextResponse.json({ success: false, error: error?.message || "Internal Server Error" }, { status: 500 });
   }

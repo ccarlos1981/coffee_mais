@@ -851,21 +851,12 @@ export default function InvestimentoPage() {
           setClientHasBoletoCondition(false);
         };
 
-        // Buscar prazo do cliente via cm_boletos e salvar na ação
+        // Buscar prazo do cliente via cm_clientes / cm_boletos determinístico e salvar na ação
         const fetchModalPrazo = async () => {
           let foundPrazo: string | null = selectedAction.condicao_pagamento || null;
           try {
-            // 1. Tenta via boleto da rede (mais preciso)
-            const { data: boletos } = await supabase
-              .from("cm_boletos")
-              .select("prazo")
-              .ilike("rede", `%${selectedAction.rede}%`)
-              .not("prazo", "is", null)
-              .limit(1);
-            if (boletos && boletos.length > 0 && boletos[0].prazo) {
-              foundPrazo = boletos[0].prazo;
-            } else {
-              // 2. Fallback: condicao_pagamento do cm_clientes
+            // 1. Tenta via condicao_pagamento canônica do cm_clientes
+            if (selectedAction.codigo_matriz) {
               const { data: clients } = await supabase
                 .from("cm_clientes")
                 .select("condicao_pagamento")
@@ -874,6 +865,20 @@ export default function InvestimentoPage() {
                 .limit(1);
               if (clients && clients.length > 0 && clients[0].condicao_pagamento) {
                 foundPrazo = clients[0].condicao_pagamento;
+              }
+            }
+
+            // 2. Fallback: boleto mais recente associado ao parceiro/matriz
+            if (!foundPrazo && selectedAction.codigo_matriz) {
+              const { data: boletos } = await supabase
+                .from("cm_boletos")
+                .select("prazo")
+                .eq("parceiro_codigo", selectedAction.codigo_matriz)
+                .not("prazo", "is", null)
+                .order("vencimento", { ascending: false })
+                .limit(1);
+              if (boletos && boletos.length > 0 && boletos[0].prazo) {
+                foundPrazo = boletos[0].prazo;
               }
             }
           } catch { /* mantém o valor anterior */ }

@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requireRole } from "@/lib/supabase/auth-helpers";
 import { AnalyticsEngine } from "@/lib/governance/analytics/engine";
 import { revalidatePath } from "next/cache";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
@@ -99,6 +100,9 @@ export interface LogoRedeItem {
  * 1. Obter Competências Parametrizadas
  */
 export async function obterCompetencias(): Promise<CompetenciaItem[]> {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
   const adminClient = createAdminClient();
   const { data, error } = await adminClient
     .from("cm_competencias_anuencia")
@@ -117,6 +121,10 @@ export async function criarCompetencia(input: {
   data_inicio: string;
   data_fim: string;
 }) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const adminClient = createAdminClient();
   const { data, error } = await adminClient
     .from("cm_competencias_anuencia")
@@ -143,6 +151,9 @@ export async function criarCompetencia(input: {
  */
 export async function obterLogoOficialRede(redeId: string): Promise<LogoRedeItem | null> {
   if (!redeId) return null;
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
   const adminClient = createAdminClient();
 
   const { data, error } = await adminClient
@@ -166,6 +177,10 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
   storage_path: string;
   logoRecord: LogoRedeItem;
 }> {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const file = formData.get("file") as File | null;
   const redeId = formData.get("rede_id") as string | null;
 
@@ -183,13 +198,12 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
     "image/jpeg",
     "image/jpg",
     "image/webp",
-    "image/svg+xml",
   ];
   const ext = "." + file.name.split(".").pop()?.toLowerCase();
-  const ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
+  const ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp"];
 
-  if (!ALLOWED_MIMES.includes(file.type) && !ALLOWED_EXTS.includes(ext)) {
-    throw new Error("Formato de arquivo inválido. Apenas PNG, JPG, JPEG, WEBP ou SVG são permitidos.");
+  if (!ALLOWED_MIMES.includes(file.type) || !ALLOWED_EXTS.includes(ext)) {
+    throw new Error("Formato de arquivo inválido. Apenas PNG, JPG, JPEG ou WEBP são permitidos.");
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -245,8 +259,10 @@ export async function salvarLogoOficialRede(input: {
   height?: number;
   motivoAlteracao?: string;
 }): Promise<LogoRedeItem> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const adminClient = createAdminClient();
 
   // 1. Obter a logo operacional vigente atual da rede
@@ -362,9 +378,11 @@ export async function executarLimpezaLogosOrfas(): Promise<{
   protegidosSnapshot: number;
   erros: string[];
 }> {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Admin", "Admin Master"]);
+
   const adminClient = createAdminClient();
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
   const { data: orfas, error: errRpc } = await adminClient.rpc("fn_listar_logos_obsoletas_orfas");
 
@@ -443,6 +461,9 @@ export async function listarCartasAnuencia(filters?: {
   uf?: string;
   busca?: string;
 }): Promise<CartaAnuenciaItem[]> {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
   const adminClient = createAdminClient();
   let query = adminClient.from("cm_cartas_anuencia").select("*").order("created_at", { ascending: false });
 
@@ -517,6 +538,9 @@ export async function obterFiltrosGerenteUf() {
  * 4. Resumo Executivo / KPIs
  */
 export async function obterResumoDashboard() {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
   const adminClient = createAdminClient();
 
   const [{ count: totalCartas }, { data: cartas }] = await Promise.all([
@@ -578,6 +602,10 @@ export async function obterDadosFarolExecutivo(filters?: {
   channel?: string;
   competencia?: string;
 }): Promise<FarolItem[]> {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO", "Gerente Regional", "Gerente Nacional", "Diretor"]);
+
   const redesAnalytics = await AnalyticsEngine.getFarolAnuenciaRedes({
     manager: filters?.manager,
     uf: filters?.uf,
@@ -660,15 +688,13 @@ export async function gerarCartaAnuencia(input: {
   storage_path?: string;
   observacoes?: string;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const adminClient = createAdminClient();
 
-  let userName = "Usuário do Sistema";
-  if (user) {
-    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
-    userName = profile?.name || user.email || userName;
-  }
+  let userName = profile?.name || user.email || "Usuário do Sistema";
 
   const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
   const finalSnapshotPath = input.storage_path || officialLogoRecord?.storage_path || null;
@@ -723,7 +749,7 @@ export async function gerarCartaAnuencia(input: {
       logo_id: officialLogoRecord?.id || null,
       logo_snapshot_path: finalSnapshotPath,
       logo_coffee_url: "/images/logo_coffee_mais_official.svg",
-      usuario_emissao: user?.id || null,
+      usuario_emissao: user.id,
       usuario_emissao_nome: userName,
       observacoes: input.observacoes || null,
       qr_code_hash: qrCodeHash,
@@ -732,6 +758,9 @@ export async function gerarCartaAnuencia(input: {
     .single();
 
   if (errInsert) {
+    if (errInsert.code === "23505") {
+      throw new Error("Operação concorrente detectada para esta competência. Atualize a tela e tente novamente.");
+    }
     throw new Error(`Erro ao gerar carta de anuência: ${errInsert.message}`);
   }
 
@@ -744,12 +773,12 @@ export async function gerarCartaAnuencia(input: {
       competencia: input.competencia,
       logo_snapshot_path: finalSnapshotPath,
     },
-    usuario_id: user?.id || null,
+    usuario_id: user.id,
     usuario_nome: userName,
   });
 
   await adminClient.from("cm_audit_logs").insert({
-    user_id: user?.id || null,
+    user_id: user.id,
     action: novaVersao > 1 ? "Reemissão Versão Carta Anuência" : "Emissão Carta Anuência",
     table_name: "cm_cartas_anuencia",
     new_data: {
@@ -784,8 +813,10 @@ export async function editarCartaAnuencia(input: {
   storage_path?: string;
   observacoes?: string;
 }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const adminClient = createAdminClient();
 
   const { data: cartaAtual, error: errFetch } = await adminClient
@@ -804,11 +835,7 @@ export async function editarCartaAnuencia(input: {
     );
   }
 
-  let userName = "Usuário do Sistema";
-  if (user) {
-    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
-    userName = profile?.name || user.email || userName;
-  }
+  let userName = profile?.name || user.email || "Usuário do Sistema";
 
   const officialLogoRecord = await obterLogoOficialRede(input.rede_id);
   const finalSnapshotPath = input.storage_path || officialLogoRecord?.storage_path || cartaAtual.logo_snapshot_path;
@@ -859,12 +886,12 @@ export async function editarCartaAnuencia(input: {
       versao: cartaAtual.versao,
       campos_alterados: camposAlterados,
     },
-    usuario_id: user?.id || null,
+    usuario_id: user.id,
     usuario_nome: userName,
   });
 
   await adminClient.from("cm_audit_logs").insert({
-    user_id: user?.id || null,
+    user_id: user.id,
     action: "Edição Carta Anuência",
     table_name: "cm_cartas_anuencia",
     old_data: cartaAtual,
@@ -890,15 +917,13 @@ export async function registrarCompartilhamento(
   canal: "EMAIL" | "WHATSAPP" | "LINK" | "DOWNLOAD",
   detalhesAdicionais?: any
 ) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+
   const adminClient = createAdminClient();
 
-  let userName = "Usuário do Sistema";
-  if (user) {
-    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
-    userName = profile?.name || user.email || userName;
-  }
+  let userName = profile?.name || user.email || "Usuário do Sistema";
 
   const { data: carta } = await adminClient.from("cm_cartas_anuencia").select("status").eq("id", cartaId).single();
   if (carta && carta.status === "EMITIDA" && canal !== "DOWNLOAD") {
@@ -910,12 +935,12 @@ export async function registrarCompartilhamento(
     evento: canal === "DOWNLOAD" ? "DOWNLOAD" : "COMPARTILHADA",
     canal: canal,
     detalhes: detalhesAdicionais || {},
-    usuario_id: user?.id || null,
+    usuario_id: user.id,
     usuario_nome: userName,
   });
 
   await adminClient.from("cm_audit_logs").insert({
-    user_id: user?.id || null,
+    user_id: user.id,
     action: `Compartilhamento Carta (${canal})`,
     table_name: "cm_cartas_anuencia",
     new_data: {
@@ -933,16 +958,13 @@ export async function registrarCompartilhamento(
  * 8. Upload de Carta Assinada (Baixa Automática no Farol)
  */
 export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+
   const adminClient = createAdminClient();
 
-  let userName = "Usuário do Sistema";
-  if (user) {
-    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
-    userName = profile?.name || user.email || userName;
-  }
-
+  let userName = profile?.name || user.email || "Usuário do Sistema";
   const dataAssinatura = new Date().toISOString();
 
   const { data: cartaAtualizada, error } = await adminClient
@@ -951,7 +973,7 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
       status: "ASSINADA",
       arquivo_assinado_url: arquivoAssinadoUrl,
       data_assinatura: dataAssinatura,
-      usuario_assinatura: user?.id || null,
+      usuario_assinatura: user.id,
       usuario_assinatura_nome: userName,
       updated_at: dataAssinatura,
     })
@@ -970,12 +992,12 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
       arquivo_assinado_url: arquivoAssinadoUrl,
       data_assinatura: dataAssinatura,
     },
-    usuario_id: user?.id || null,
+    usuario_id: user.id,
     usuario_nome: userName,
   });
 
   await adminClient.from("cm_audit_logs").insert({
-    user_id: user?.id || null,
+    user_id: user.id,
     action: "Upload Carta Assinada (Baixa Automática Farol)",
     table_name: "cm_cartas_anuencia",
     new_data: {
@@ -990,18 +1012,82 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
 }
 
 /**
+ * 8.1. Upload Server-Side Seguro de Carta Assinada
+ */
+export async function uploadCartaAssinadaServerAction(formData: FormData): Promise<CartaAnuenciaItem> {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+
+  const file = formData.get("file") as File | null;
+  const cartaId = formData.get("carta_id") as string | null;
+
+  if (!file || !cartaId) {
+    throw new Error("Arquivo assinado ou ID da Carta não fornecido.");
+  }
+
+  const MAX_SIZE = 20 * 1024 * 1024;
+  if (file.size > MAX_SIZE) {
+    throw new Error("O arquivo excede o limite máximo permitido de 20MB.");
+  }
+
+  const ALLOWED_MIMES = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+  ];
+  const ext = "." + file.name.split(".").pop()?.toLowerCase();
+  const ALLOWED_EXTS = [".pdf", ".png", ".jpg", ".jpeg", ".webp"];
+
+  if (!ALLOWED_MIMES.includes(file.type) || !ALLOWED_EXTS.includes(ext)) {
+    throw new Error("Formato de arquivo inválido. Apenas PDF, PNG, JPG ou WEBP são permitidos.");
+  }
+
+  const adminClient = createAdminClient();
+  const { data: carta, error: fetchErr } = await adminClient
+    .from("cm_cartas_anuencia")
+    .select("id, numero_carta, status")
+    .eq("id", cartaId)
+    .single();
+
+  if (fetchErr || !carta) {
+    throw new Error("Carta de anuência não encontrada.");
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
+  const filePath = `assinadas/${carta.numero_carta.toLowerCase()}_${Date.now()}_${cleanFileName}`;
+
+  const { error: uploadErr } = await adminClient.storage
+    .from("cartas-anuencia")
+    .upload(filePath, buffer, {
+      contentType: file.type || "application/pdf",
+      upsert: true,
+    });
+
+  if (uploadErr) {
+    throw new Error(`Erro ao enviar arquivo para o Storage corporativo: ${uploadErr.message}`);
+  }
+
+  const publicUrl = getStoragePublicUrl(filePath, "cartas-anuencia");
+  return uploadCartaAssinada(cartaId, publicUrl);
+}
+
+/**
  * 9. Cancelar Carta de Anuência
  */
 export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+
   const adminClient = createAdminClient();
 
-  let userName = "Usuário do Sistema";
-  if (user) {
-    const { data: profile } = await adminClient.from("cm_user_profiles").select("name").eq("id", user.id).maybeSingle();
-    userName = profile?.name || user.email || userName;
-  }
+  let userName = profile?.name || user.email || "Usuário do Sistema";
 
   const { data, error } = await adminClient
     .from("cm_cartas_anuencia")
@@ -1022,12 +1108,12 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
     carta_id: cartaId,
     evento: "CANCELADA",
     detalhes: { motivo },
-    usuario_id: user?.id || null,
+    usuario_id: user.id,
     usuario_nome: userName,
   });
 
   await adminClient.from("cm_audit_logs").insert({
-    user_id: user?.id || null,
+    user_id: user.id,
     action: "Cancelamento Carta Anuência",
     table_name: "cm_cartas_anuencia",
     new_data: { carta_id: cartaId, motivo },
@@ -1041,6 +1127,10 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
  * 10. Obter Histórico da Timeline de uma Carta
  */
 export async function obterTimelineCarta(cartaId: string): Promise<TimelineItem[]> {
+  if (!cartaId) return [];
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
   const adminClient = createAdminClient();
   const { data, error } = await adminClient
     .from("cm_carta_anuencia_timeline")

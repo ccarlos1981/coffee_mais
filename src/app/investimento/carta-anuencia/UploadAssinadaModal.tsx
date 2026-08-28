@@ -3,8 +3,7 @@
 import React, { useState } from "react";
 import { X, UploadCloud, CheckCircle2, FileText, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
-import { createClient } from "@/lib/supabase/client";
-import { CartaAnuenciaItem, uploadCartaAssinada } from "./actions";
+import { CartaAnuenciaItem, uploadCartaAssinadaServerAction } from "./actions";
 
 interface UploadAssinadaModalProps {
   carta: CartaAnuenciaItem | null;
@@ -23,7 +22,7 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
       const selected = e.target.files[0];
       const validTypes = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
       if (!validTypes.includes(selected.type)) {
-        toast.error("Formato de arquivo inválido. Selecione um PDF ou imagem (PNG/JPG).");
+        toast.error("Formato de arquivo inválido. Selecione um PDF ou imagem (PNG/JPG/WEBP).");
         return;
       }
       setFile(selected);
@@ -39,29 +38,11 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
 
     setUploading(true);
     try {
-      const supabase = createClient();
-      const fileExt = file.name.split(".").pop();
-      const fileName = `${carta.numero_carta.toLowerCase()}_${Date.now()}.${fileExt}`;
-      const filePath = `assinadas/${fileName}`;
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("carta_id", carta.id);
 
-      // Upload para o bucket cartas-anuencia
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("cartas-anuencia")
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadErr) {
-        throw new Error(`Erro ao enviar arquivo para o Storage: ${uploadErr.message}`);
-      }
-
-      // Obter URL pública
-      const { data: publicUrlData } = supabase.storage
-        .from("cartas-anuencia")
-        .getPublicUrl(filePath);
-
-      const publicUrl = publicUrlData.publicUrl;
-
-      // Atualizar status no banco via Server Action
-      await uploadCartaAssinada(carta.id, publicUrl);
+      await uploadCartaAssinadaServerAction(formData);
 
       toast.success("Carta de Anuência Assinada anexada com sucesso! Baixa automática realizada no Farol.");
       onSuccess();

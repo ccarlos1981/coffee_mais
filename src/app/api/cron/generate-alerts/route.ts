@@ -102,12 +102,18 @@ export async function GET(request: Request) {
       from += 1000;
     }
 
-    // 4. Analisa a Queda (Drop > 30%)
+    // 4. Analisa a Queda com Pacing Temporal Proporcional (evita falso churn no início do mês)
+    const totalDaysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysElapsed = Math.max(1, now.getDate());
+    const pacingFactor = Math.min(1, Math.max(0.1, daysElapsed / totalDaysInMonth));
+
     const alertsToCreate = [];
     for (const [client, info] of expressivosMap.entries()) {
-      const dropPct = info.fatCurr === 0 
-        ? 100 
-        : ((info.fatPrev - info.fatCurr) / info.fatPrev) * 100;
+      // Benchmark ajustado ao ritmo temporal decorrido no mês corrente
+      const expectedPacedFat = info.fatPrev * pacingFactor;
+      const dropPct = expectedPacedFat > 0
+        ? ((expectedPacedFat - info.fatCurr) / expectedPacedFat) * 100
+        : (info.fatCurr === 0 ? 100 : 0);
 
       if (dropPct >= 30) {
         alertsToCreate.push({
@@ -115,7 +121,7 @@ export async function GET(request: Request) {
           manager: info.manager,
           fat_previous: info.fatPrev,
           fat_current: info.fatCurr,
-          drop_pct: dropPct,
+          drop_pct: Number(dropPct.toFixed(2)),
           alert_type: dropPct >= 80 ? 'CHURN_RISK' : 'MILD_DROP',
           status: 'PENDING',
           alert_month: currentMonth
@@ -123,12 +129,12 @@ export async function GET(request: Request) {
       }
     }
 
-    // 5. Inserir no Banco de Dados (Upsert baseado na constraint client + alert_month)
+    // 5. Inserir/Atualizar no Banco de Dados (Upsert atualizando fat_current e drop_pct dinamicamente)
     let ops = 0;
     if (alertsToCreate.length > 0) {
       const { data: inserted, error: insertError } = await supabase
         .from('cm_client_alerts')
-        .upsert(alertsToCreate, { onConflict: 'client_name, alert_month', ignoreDuplicates: true })
+        .upsert(alertsToCreate, { onConflict: 'client_name, alert_month' })
         .select();
         
       if (insertError) throw insertError;

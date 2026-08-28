@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ProdutoConversaoService } from "@/lib/services/produto-conversao-service";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+  logAuditAction,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -77,14 +83,10 @@ async function obterFatorConversaoRede(
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
 
-    // Check auth
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-    }
+    const adminClient = createAdminClient();
 
     // Get params
     const { searchParams } = new URL(request.url);
@@ -96,11 +98,6 @@ export async function GET(request: Request) {
     const conversaoService = await ProdutoConversaoService.init(adminClient);
 
     // 1. Fetch user role
-    const { data: profile } = await adminClient
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .maybeSingle();
     const userRole = profile?.role || "Trade";
 
     // 2. Fetch all approved promoters
@@ -341,14 +338,14 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
 
-    // Check auth
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-    }
+    // Business Logic Security: only Trade / Admin roles can configure promoter targets
+    const ALLOWED_METAS_PROMOTOR_ROLES = ["Trade", "Admin", "Admin Master", "CEO"];
+    requireRole(profile, ALLOWED_METAS_PROMOTOR_ROLES);
+
+    const adminClient = createAdminClient();
 
     const body = await request.json();
     const { 
@@ -564,6 +561,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: "Ação concluída com sucesso!" });
 
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message === "NOT_FOUND" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[METAS PROMOTOR POST API ERROR]", error);
     return NextResponse.json({ success: false, error: error?.message || "Internal Server Error" }, { status: 500 });
   }
