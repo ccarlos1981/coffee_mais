@@ -364,7 +364,84 @@ export async function notificarTransicaoFase(cliente: any, faseAtual: "comercial
   }
 }
 
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  logAuditAction,
+} from "@/lib/supabase/auth-helpers";
+
+export interface ClienteImportPayload {
+  codigo: number;
+  cnpj?: string | null;
+  matriz?: string | null;
+  codigo_matriz?: string | null;
+  tipo_parceiro?: string | null;
+  nome_parceiro?: string | null;
+  razao_social?: string | null;
+  inscricao_estadual?: string | null;
+  cep?: string | null;
+  endereco?: string | null;
+  numero?: string | null;
+  complemento?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+  regional?: string | null;
+  responsavel?: string | null;
+  manager_id?: string | null;
+  manager_name?: string | null;
+  ka?: string | null;
+  status?: string | null;
+  fase?: string | null;
+  condicao_pagamento?: string | null;
+  classificacao_icms?: string | null;
+  retirar_st?: string | null;
+  empresa_preferencial?: string | null;
+  tipo_geracao_boleto?: string | null;
+  enviar_danfe?: string | null;
+  email_nfe?: string | null;
+  banco?: string | null;
+  agencia?: string | null;
+  conta?: string | null;
+  desconto_contratual?: string | null;
+  tabela_preco_url?: string | null;
+  data_vigor?: string | null;
+  emails_comercial?: string | null;
+  emails_trade?: string | null;
+  emails_abatimento?: string | null;
+  desconto_logistico?: string | null;
+  desconto_cd?: string | null;
+  desconto_marketing?: string | null;
+  desconto_aniversario?: string | null;
+  desconto_inauguracao?: string | null;
+  data_vigor_logistico?: string | null;
+  data_vigor_cd?: string | null;
+  data_vigor_marketing?: string | null;
+  data_vigor_aniversario?: string | null;
+  data_vigor_inauguracao?: string | null;
+  segmento?: string | null;
+}
+
+const ALLOWED_IMPORT_COLUMNS = new Set([
+  "codigo", "cnpj", "razao_social", "nome_parceiro", "tipo_parceiro",
+  "tipo_cadastro", "inscricao_estadual", "cep", "endereco", "numero",
+  "complemento", "cidade", "uf", "regional", "condicao_pagamento",
+  "classificacao_icms", "retirar_st", "empresa_preferencial",
+  "tipo_geracao_boleto", "enviar_danfe", "email_nfe", "banco",
+  "agencia", "conta", "desconto_contratual", "tabela_preco_url",
+  "data_vigor", "codigo_matriz", "matriz", "responsavel", "manager_id",
+  "manager_name", "ka", "status", "fase", "emails_comercial", "emails_trade",
+  "emails_abatimento", "desconto_logistico", "desconto_cd", "desconto_marketing",
+  "desconto_aniversario", "desconto_inauguracao", "data_vigor_logistico",
+  "data_vigor_cd", "data_vigor_marketing", "data_vigor_aniversario",
+  "data_vigor_inauguracao", "segmento"
+]);
+
 export async function sincronizarClientesSankhya() {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Admin", "Admin Master", "Financeiro", "Trade", "CEO"]);
+
   console.log("RCA SYNC: Iniciando sincronizarClientesSankhya");
   const supabase = await createClient();
 
@@ -448,25 +525,121 @@ export async function sincronizarClientesSankhya() {
     console.warn("RCA SYNC WARNING: Erro ao agendar refresh das MVs pós-sincronização:", refreshErr);
   }
 
+  await logAuditAction(user.id, "CLIENTES_SYNC_SANKHYA", "cm_clientes", { count: successCount });
+
   revalidatePath("/config-financeiro/clientes");
   console.log(`RCA SYNC: Sincronização concluída. Total de inserções: ${successCount}`);
   return { success: true, count: successCount };
 }
 
-export async function importarClientesEmLote(records: any[]) {
-  const supabase = await createClient();
+export async function importarClientesEmLote(records: ClienteImportPayload[]) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Admin", "Admin Master", "Financeiro", "Trade", "CEO"]);
 
-  const { error } = await supabase
-    .from("cm_clientes")
-    .upsert(records, { onConflict: 'codigo' });
-
-  if (error) {
-    console.error("Erro ao importar clientes em lote:", error);
-    throw new Error(`Erro ao importar registros: ${error.message}`);
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error("Lote vazio: nenhum registro de cliente fornecido.");
   }
 
+  if (records.length > 1000) {
+    throw new Error("Limite máximo de 1000 registros por lote excedido.");
+  }
+
+  const supabase = await createClient();
+
+  // Sanitizar records de acordo com a allowlist
+  const sanitizedRecords: ClienteImportPayload[] = records.map((raw) => {
+    const clean: Record<string, unknown> = {};
+    const rawObj = raw as unknown as Record<string, unknown>;
+    for (const key of Object.keys(rawObj)) {
+      if (ALLOWED_IMPORT_COLUMNS.has(key)) {
+        clean[key] = rawObj[key];
+      }
+    }
+    if (!clean.codigo || isNaN(Number(clean.codigo))) {
+      throw new Error(`Registro inválido: código obrigatório ausente ou inválido.`);
+    }
+    clean.codigo = Number(clean.codigo);
+    return clean as unknown as ClienteImportPayload;
+  });
+
+  // Obter codigos existentes para separação de INSERT vs UPDATE
+  const codigos = sanitizedRecords.map((r) => r.codigo);
+  const { data: existingRows, error: checkError } = await supabase
+    .from("cm_clientes")
+    .select("codigo")
+    .in("codigo", codigos);
+
+  if (checkError) {
+    throw new Error(`Erro ao verificar clientes existentes: ${checkError.message}`);
+  }
+
+  const existingCodeSet = new Set((existingRows || []).map((r) => r.codigo));
+  const newRecords: ClienteImportPayload[] = [];
+  const updateRecords: ClienteImportPayload[] = [];
+
+  const isAdmin = ["admin", "admin master", "ceo"].includes((profile.role || "").trim().toLowerCase());
+
+  for (const rec of sanitizedRecords) {
+    if (existingCodeSet.has(rec.codigo)) {
+      // Cliente existente: se não for admin master, proteger campos de governança estrutural
+      if (!isAdmin) {
+        const safeUpdate: Record<string, unknown> = { ...rec };
+        delete safeUpdate.codigo_matriz;
+        delete safeUpdate.matriz;
+        delete safeUpdate.manager_id;
+        delete safeUpdate.manager_name;
+        delete safeUpdate.responsavel;
+        delete safeUpdate.regional;
+        delete safeUpdate.uf;
+        updateRecords.push(safeUpdate as unknown as ClienteImportPayload);
+      } else {
+        updateRecords.push(rec);
+      }
+    } else {
+      newRecords.push(rec);
+    }
+  }
+
+  let insertedCount = 0;
+  let updatedCount = 0;
+
+  if (newRecords.length > 0) {
+    const { error: insertErr } = await supabase
+      .from("cm_clientes")
+      .insert(newRecords);
+
+    if (insertErr) {
+      console.error("Erro ao inserir novos clientes:", insertErr);
+      throw new Error(`Erro ao inserir novos clientes: ${insertErr.message}`);
+    }
+    insertedCount = newRecords.length;
+  }
+
+  if (updateRecords.length > 0) {
+    for (const uRec of updateRecords) {
+      const { codigo, ...fieldsToUpdate } = uRec;
+      const { error: updateErr } = await supabase
+        .from("cm_clientes")
+        .update(fieldsToUpdate)
+        .eq("codigo", codigo);
+
+      if (updateErr) {
+        console.error(`Erro ao atualizar cliente ${codigo}:`, updateErr);
+        throw new Error(`Erro ao atualizar cliente ${codigo}: ${updateErr.message}`);
+      }
+      updatedCount++;
+    }
+  }
+
+  await logAuditAction(user.id, "CLIENTES_IMPORT_LOTE", "cm_clientes", {
+    total: sanitizedRecords.length,
+    inserted: insertedCount,
+    updated: updatedCount,
+  });
+
   revalidatePath("/config-financeiro/clientes");
-  return { success: true, count: records.length };
+  return { success: true, count: sanitizedRecords.length, inserted: insertedCount, updated: updatedCount };
 }
 
 export async function gerarSugestoesResponsavel() {

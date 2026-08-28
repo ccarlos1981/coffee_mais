@@ -1,8 +1,13 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth, requireApprovedProfile, requireRole } from "@/lib/supabase/auth-helpers";
 
 export async function obterMetricasEstabilizacao() {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Admin", "Admin Master", "Financeiro", "Trade", "CEO", "Diretor", "Gerente Regional"]);
+
   const supabase = await createClient();
 
   // Executar queries em paralelo
