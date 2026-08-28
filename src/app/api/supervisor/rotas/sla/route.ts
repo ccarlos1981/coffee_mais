@@ -1,39 +1,27 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Trade"];
+const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Admin Master", "Trade"];
 
 // Helper to validate manager permission
 async function checkAuthAndRole() {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, GESTOR_ROLES);
+
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Não autenticado", status: 401 };
-
-  const { data: profile } = await supabase
-    .from("cm_user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const role = profile?.role || "";
-  if (!GESTOR_ROLES.includes(role)) {
-    return { error: "Acesso não autorizado", status: 403 };
-  }
-
-  return { supabase, user, role };
+  return { supabase, user, role: profile.role };
 }
 
 // GET /api/supervisor/rotas/sla
 export async function GET() {
   try {
     const auth = await checkAuthAndRole();
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
 
-    const { data: rules, error } = await auth.supabase!
+    const { data: rules, error } = await auth.supabase
       .from("cm_visit_sla_rules")
       .select("*")
       .order("faturamento_min", { ascending: true });
@@ -42,8 +30,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, rules });
   } catch (err: any) {
-    console.error("Error fetching SLA rules:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }
 
@@ -51,9 +38,6 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const auth = await checkAuthAndRole();
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
 
     const body = await request.json();
     const { id, faturamento_min, faturamento_max, base_visit_minutes } = body;
@@ -75,7 +59,7 @@ export async function POST(request: Request) {
     let result;
     if (id) {
       // Update
-      const { data, error } = await auth.supabase!
+      const { data, error } = await auth.supabase
         .from("cm_visit_sla_rules")
         .update(payload)
         .eq("id", id)
@@ -85,7 +69,7 @@ export async function POST(request: Request) {
       result = data;
     } else {
       // Insert
-      const { data, error } = await auth.supabase!
+      const { data, error } = await auth.supabase
         .from("cm_visit_sla_rules")
         .insert(payload)
         .select()
@@ -96,8 +80,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, rule: result });
   } catch (err: any) {
-    console.error("Error saving SLA rule:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }
 
@@ -105,9 +88,6 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const auth = await checkAuthAndRole();
-    if (auth.error) {
-      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
-    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
@@ -116,7 +96,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ success: false, error: "ID da regra não fornecido" }, { status: 400 });
     }
 
-    const { error } = await auth.supabase!
+    const { error } = await auth.supabase
       .from("cm_visit_sla_rules")
       .delete()
       .eq("id", id);
@@ -125,7 +105,6 @@ export async function DELETE(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
-    console.error("Error deleting SLA rule:", err);
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    return handleAuthError(err);
   }
 }

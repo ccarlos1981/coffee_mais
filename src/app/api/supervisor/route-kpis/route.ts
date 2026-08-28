@@ -1,37 +1,20 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { calculatePromoterCapacity } from "@/lib/ai/route-engine";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const startTime = Date.now();
-  const supabaseAdmin = createAdminClient();
-  let user = null;
 
   try {
-    // 1. Authenticate user via normal client
-    const supabaseNormal = await createClient();
-    const { data: { user: supabaseUser }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !supabaseUser) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-    user = supabaseUser;
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor"]);
 
-    // Check user role
-    const { data: profile } = await supabaseNormal
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const role = profile?.role || "";
-    const isAuthorized = ["CEO", "Admin", "Trade", "Supervisor"].includes(role);
-    if (!isAuthorized) {
-      return NextResponse.json({ success: false, error: "Acesso negado: Perfil não autorizado." }, { status: 403 });
-    }
+    const supabaseAdmin = createAdminClient();
 
     // 2. KPI 1: Promoters Capacity
     const { data: promotores } = await supabaseAdmin

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { CommercialDomainService } from "@/lib/domain";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const FULL_ACCESS_ROLES = ["Admin", "CEO", "Diretor", "Gerente Nacional"];
+const FULL_ACCESS_ROLES = ["Admin", "Admin Master", "CEO", "Diretor", "Gerente Nacional"];
 
 export async function GET(request: Request) {
   try {
@@ -14,20 +15,9 @@ export async function GET(request: Request) {
     const month = parseInt(searchParams.get('month') || String(new Date().getMonth() + 1));
     const employeeFilter = searchParams.get('employee') || searchParams.get('manager') || 'ALL';
 
-    // Authenticate user
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Get user profile
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, name, manager_name')
-      .eq('id', user.id)
-      .single();
 
     const userRole = profile?.role || '';
     const userDisplayName = profile?.name || profile?.manager_name || '';
@@ -70,7 +60,9 @@ export async function GET(request: Request) {
       .lte('start_date', endDate)
       .gte('end_date', startDate);
 
-    if (employeeFilter !== 'ALL') {
+    if (!isFullAccess) {
+      query = query.eq('employee_name', userDisplayName);
+    } else if (employeeFilter !== 'ALL') {
       query = query.eq('employee_name', employeeFilter);
     }
 
@@ -92,25 +84,15 @@ export async function GET(request: Request) {
       restrictedToManager: isFullAccess ? null : userDisplayName,
     });
   } catch (error: any) {
-    console.error('[Vacation API GET] General error:', error);
-    return NextResponse.json({ success: false, error: error?.message || 'Erro interno' }, { status: 500 });
+    return handleAuthError(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const supabaseServer = await createClient();
-    const { data: { user }, error: authError } = await supabaseServer.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, name, manager_name')
-      .eq('id', user.id)
-      .single();
 
     const userRole = profile?.role || '';
     const userDisplayName = profile?.name || profile?.manager_name || '';

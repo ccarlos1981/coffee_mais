@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import * as XLSX from "xlsx";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Trade"];
+const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Admin Master", "Trade"];
 
 interface ExcelRouteRow {
   "CPF do Promotor": any;
@@ -17,23 +18,11 @@ interface ExcelRouteRow {
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Validar autenticação e cargo
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, GESTOR_ROLES);
+
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: "Não autenticado" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    const role = profile?.role || "";
-    if (!GESTOR_ROLES.includes(role)) {
-      return NextResponse.json({ success: false, error: "Acesso não autorizado" }, { status: 403 });
-    }
 
     // 2. Ler arquivo da requisição
     const formData = await request.formData();

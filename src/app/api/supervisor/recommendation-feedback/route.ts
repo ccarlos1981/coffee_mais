@@ -1,21 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const supabaseAdmin = createAdminClient();
-
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor", "Promotor"]);
 
+    const supabaseAdmin = createAdminClient();
     const body = await request.json();
     const { recommendation_id, feedback_rating, notes } = body;
 

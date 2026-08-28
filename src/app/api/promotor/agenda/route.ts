@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Perfis com autorização de gestor
-const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Trade"];
+const GESTOR_ROLES = ["Supervisor", "CEO", "Admin", "Admin Master", "Trade"];
 
 // Função Haversine para cálculo de distância geodésica em metros
 function calculateDistanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -33,22 +34,12 @@ export async function GET(request: Request) {
     const promotorLat = latParam ? parseFloat(latParam) : null;
     const promotorLon = lonParam ? parseFloat(lonParam) : null;
 
-    const supabase = await createClient();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    // Buscar perfil do usuário
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const role = profile?.role || "";
     const isGestor = GESTOR_ROLES.includes(role);
+
+    const supabase = await createClient();
 
     // Buscar employee_id do promotor na tabela auxiliar de perfil
     const { data: perfil } = await supabase

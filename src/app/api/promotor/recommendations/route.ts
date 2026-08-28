@@ -1,29 +1,18 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET: Fetch recommendations for a specific PDV (active for the promotor)
 export async function GET(request: Request) {
-  const supabaseAdmin = createAdminClient();
   const { searchParams } = new URL(request.url);
 
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
-
-    const { data: profile } = await supabaseNormal
-      .from("cm_user_profiles")
-      .select("company_id")
-      .eq("id", user.id)
-      .single();
-
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const supabaseAdmin = createAdminClient();
     const companyId = profile?.company_id || "e143e8d6-c7d7-4315-8f54-aa12ce554d2d";
 
     const pdvId = searchParams.get("pdv_id");
@@ -104,15 +93,10 @@ export async function GET(request: Request) {
 
 // POST: Register execution feedback from promotor app
 export async function POST(request: Request) {
-  const supabaseAdmin = createAdminClient();
-
   try {
-    // 1. Authenticate user
-    const supabaseNormal = await createClient();
-    const { data: { user }, error: authError } = await supabaseNormal.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-    }
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+    const supabaseAdmin = createAdminClient();
 
     const body = await request.json();
     const { recommendation_id, status, feedback_notes, feedback_rating } = body;

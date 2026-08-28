@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,26 +15,15 @@ function getAdminClient() {
 
 export async function GET(request: Request) {
   try {
-    const supabaseServer = await createClient();
-    const { data: { user: authUser }, error: authError } = await supabaseServer.auth.getUser();
-
-    if (authError || !authUser) {
-      return NextResponse.json({ success: false, error: 'Não autenticado.' }, { status: 401 });
-    }
-
-    // Buscar Perfil do Usuário para controle de RLS e Roles
-    const { data: profile } = await supabaseServer
-      .from('cm_user_profiles')
-      .select('role, email')
-      .eq('id', authUser.id)
-      .single();
+    const authUser = await requireAuth();
+    const profile = await requireApprovedProfile(authUser.id);
 
     const userRole = profile?.role || 'Comercial';
-    const userEmail = profile?.email || authUser.email || '';
+    const userEmail = authUser.email || '';
     const emailPrefix = userEmail.split('@')[0].split('.')[0].toUpperCase(); // 'LEANDRO'
 
     // Definir permissões de perfis
-    const isManagerOrComercial = !['CEO', 'Admin', 'Trade', 'Financeiro', 'Supervisor'].includes(userRole);
+    const isManagerOrComercial = !['CEO', 'Admin', 'Admin Master', 'Trade', 'Financeiro', 'Supervisor'].includes(userRole);
 
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('query')?.trim() || '';

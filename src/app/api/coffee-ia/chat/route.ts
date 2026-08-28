@@ -144,48 +144,12 @@ export async function POST(request: NextRequest) {
     // Clean SQL: remove trailing semicolons and whitespace
     let rawSql = parsed.sql.replace(/;\s*$/, "").trim();
 
-    // ─── RIGOROUS SQL SANITIZATION (WAVE 1B HARDENING) ───
-    const sqlUpper = rawSql.toUpperCase();
-
-    // 1. Block statement stacking & comments
-    if (rawSql.includes(";") || rawSql.includes("--") || rawSql.includes("/*") || rawSql.includes("*/")) {
+    // ─── RIGOROUS SQL SANITIZATION & STRUCTURAL ALLOWLIST (WAVE 14 HARDENING) ───
+    const { validateSqlSecurity } = await import("@/lib/ai/sql-validator");
+    const validation = validateSqlSecurity(rawSql);
+    if (!validation.valid) {
       return Response.json(
-        { error: "Consulta inválida: caracteres não permitidos na instrução SQL." },
-        { status: 403 }
-      );
-    }
-
-    // 2. Enforce SELECT only
-    if (!sqlUpper.startsWith("SELECT") && !sqlUpper.startsWith("WITH")) {
-      return Response.json(
-        { error: "Por segurança, apenas consultas analíticas de leitura (SELECT) são permitidas." },
-        { status: 403 }
-      );
-    }
-
-    // 3. Block DDL / DML / administrative commands
-    const ddlDmlForbidden = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|EXECUTE|CREATE|REPLACE|VACUUM|REINDEX|REFRESH)\b/i;
-    if (ddlDmlForbidden.test(rawSql)) {
-      return Response.json(
-        { error: "Operação não autorizada detectada na consulta SQL." },
-        { status: 403 }
-      );
-    }
-
-    // 4. Block sensitive tables, internal schemas, and system catalogs
-    const sensitiveEntitiesForbidden = /\b(cm_user_profiles|cm_report_recipients|cm_sync_logs|cm_audit_logs|cm_role_permissions|auth\.|pg_catalog|information_schema|pg_authid|pg_shadow|pg_user|pg_proc|pg_tables)\b/i;
-    if (sensitiveEntitiesForbidden.test(rawSql)) {
-      return Response.json(
-        { error: "Acesso negado a tabelas restritas do sistema." },
-        { status: 403 }
-      );
-    }
-
-    // 5. Enforce table allowlist (must query only official analytical datasets)
-    const allowedDatasets = /\b(sales|targets|mv_vendas_mensal|mv_vendas_cliente_mensal|public\.sales|public\.targets)\b/i;
-    if (!allowedDatasets.test(rawSql)) {
-      return Response.json(
-        { error: "A consulta tenta acessar fontes de dados não homologadas." },
+        { error: validation.error || "A consulta tenta acessar fontes de dados não homologadas." },
         { status: 403 }
       );
     }
