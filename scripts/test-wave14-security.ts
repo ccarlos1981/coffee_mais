@@ -1,6 +1,6 @@
 /**
  * Test Suite: Wave 14 Security Hardening Verification
- * Validates remediation of ACH-W13-01 through ACH-W13-08
+ * Validates remediation of ACH-W13-01 through ACH-W13-08 and ACH-W14-01
  */
 
 import { validateSqlSecurity } from "../src/lib/ai/sql-validator";
@@ -22,7 +22,7 @@ function assert(description: string, condition: boolean, extraInfo?: string) {
 }
 
 console.log("\n=======================================================");
-console.log("🛡️  COFFEE++ — SUÍTE DE TESTES FORENSES DA WAVE 14");
+console.log("🛡️  COFFEE++ — SUÍTE DE TESTES FORENSES DA WAVE 14 & 14.1");
 console.log("=======================================================\n");
 
 // ─── 1. W14-AI-PARSER-* (Coffee IA Table Allowlist) ───
@@ -85,26 +85,41 @@ assert("W14-FORMULA-07: Numeric positive value (50) is NOT escaped", typeof f7 =
 const f8 = sanitizeExportData([
   { id: 1, name: "=cmd|' /C calc'!A0", amount: -500.25, normal: "Café Gourmet" }
 ]);
-assert("W14-FORMULA-08: sanitizeExportData handles complex row object correctly", 
-  f8[0].id === 1 && 
-  f8[0].name === "'=cmd|' /C calc'!A0" && 
-  f8[0].amount === -500.25 && 
+assert(
+  "W14-FORMULA-08: sanitizeExportData handles complex row object correctly",
+  f8[0].id === 1 &&
+  f8[0].name === "'=cmd|' /C calc'!A0" &&
+  f8[0].amount === -500.25 &&
   f8[0].normal === "Café Gourmet"
 );
 
 // ─── 3. W14-SQL-DEF-* (SECURITY DEFINER Search Path Migration) ───
 console.log("\n--- 3. W14-SQL-DEF: SECURITY DEFINER Search Path Migration ---");
 
-const migrationPath = path.join(__dirname, "../supabase/migrations/20260828_wave14_security_definer_search_path.sql");
-const migrationExists = fs.existsSync(migrationPath);
-assert("W14-SQL-DEF-01: Migration file exists", migrationExists);
+const migrationPath1 = path.join(__dirname, "../supabase/migrations/20260828_wave14_security_definer_search_path.sql");
+const migrationPath2 = path.join(__dirname, "../supabase/migrations/20260828_wave14_1_security_definer_gap.sql");
 
-if (migrationExists) {
-  const content = fs.readFileSync(migrationPath, "utf8");
-  const alterLines = content.split("\n").filter(l => l.startsWith("ALTER FUNCTION"));
-  assert(`W14-SQL-DEF-02: Migration contains at least 35 ALTER FUNCTION statements (Found: ${alterLines.length})`, alterLines.length >= 35);
-  const allHaveSearchPath = alterLines.every(l => l.includes("SET search_path = public, pg_temp;"));
-  assert("W14-SQL-DEF-03: All ALTER FUNCTION statements specify 'SET search_path = public, pg_temp;'", allHaveSearchPath);
+const migration1Exists = fs.existsSync(migrationPath1);
+const migration2Exists = fs.existsSync(migrationPath2);
+
+assert("W14-SQL-DEF-01: Wave 14 migration file exists", migration1Exists);
+assert("W14-SQL-DEF-02: Wave 14.1 gap migration file exists", migration2Exists);
+
+if (migration1Exists && migration2Exists) {
+  const content1 = fs.readFileSync(migrationPath1, "utf8");
+  const content2 = fs.readFileSync(migrationPath2, "utf8");
+
+  const alterLines1 = content1.split("\n").filter(l => l.startsWith("ALTER FUNCTION"));
+  const alterLines2 = content2.split("\n").filter(l => l.startsWith("ALTER FUNCTION"));
+  const totalAlters = alterLines1.length + alterLines2.length;
+
+  assert(`W14-SQL-DEF-03: Combined migrations contain at least 46 ALTER FUNCTION statements (Found: ${totalAlters})`, totalAlters >= 46);
+
+  const allHaveSearchPath1 = alterLines1.every(l => l.includes("SET search_path = public, pg_temp;"));
+  const allHaveSearchPath2 = alterLines2.every(l => l.includes("SET search_path = public, pg_temp;"));
+
+  assert("W14-SQL-DEF-04: All Wave 14 ALTER statements specify 'SET search_path = public, pg_temp;'", allHaveSearchPath1);
+  assert("W14-SQL-DEF-05: All Wave 14.1 ALTER statements specify 'SET search_path = public, pg_temp;'", allHaveSearchPath2);
 }
 
 // ─── 4. W14-STATIC-AUDIT-* (Static Code Audit for Security Guards) ───
@@ -189,11 +204,11 @@ assert(
 
 // ─── FINAL SUMMARY ───
 console.log("\n=======================================================");
-console.log(`📊 RESULTADO DA SUÍTE DE TESTES WAVE 14: ${passedCount} / ${totalCount} APROVADOS`);
+console.log(`📊 RESULTADO DA SUÍTE DE TESTES WAVE 14 & 14.1: ${passedCount} / ${totalCount} APROVADOS`);
 console.log("=======================================================\n");
 
 if (passedCount === totalCount) {
-  console.log("🟢 TODOS OS TESTES DA WAVE 14 PASSARAM COM SUCESSO!\n");
+  console.log("🟢 TODOS OS TESTES DA WAVE 14 & 14.1 PASSARAM COM SUCESSO!\n");
   process.exit(0);
 } else {
   console.error("🔴 ALGUNS TESTES FALHARAM. VERIFIQUE OS LOGS.\n");
