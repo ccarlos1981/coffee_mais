@@ -6,6 +6,7 @@ import {
   requireRole,
   handleAuthError,
   logAuditAction,
+  assertPdvAccess,
 } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
@@ -32,14 +33,43 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     ]);
 
     const supabase = getSupabaseClient();
+
+    // 1. Obter PDV alvo para validação de escopo e identidade
+    const { data: pdvAlvo, error: pdvErr } = await supabase
+      .from("pdvs")
+      .select("id, erp_code, network_id, name")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (pdvErr || !pdvAlvo) {
+      return NextResponse.json({ success: false, error: "PDV não encontrado." }, { status: 404 });
+    }
+
+    // 2. Validar autorização no nível do objeto (Object-Level Authorization)
+    await assertPdvAccess(user.id, profile, pdvAlvo.erp_code || pdvAlvo.id);
+
     const body = await request.json();
-    
     const { name, network_id, erp_code, status } = body;
+
+    // 3. Proteger campos estruturais contra privilege escalation (network_id, erp_code)
+    const roleLower = (profile.role || "").trim().toLowerCase();
+    const isTopAdminOrTrade = ["admin", "admin master", "trade", "ceo"].includes(roleLower);
+
+    if ((network_id !== undefined || erp_code !== undefined) && !isTopAdminOrTrade) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "A alteração de rede vinculada (network_id) ou código ERP é restrita a Administradores e Trade.",
+        },
+        { status: 403 }
+      );
+    }
+
     const updObj: Record<string, string | number | null> = { updated_at: new Date().toISOString() };
     
     if (name) updObj.name = name.trim();
-    if (network_id !== undefined) updObj.network_id = network_id;
-    if (erp_code !== undefined) updObj.erp_code = erp_code;
+    if (network_id !== undefined && isTopAdminOrTrade) updObj.network_id = network_id;
+    if (erp_code !== undefined && isTopAdminOrTrade) updObj.erp_code = erp_code;
     if (status) updObj.status = status;
 
     const { data, error } = await supabase
@@ -58,7 +88,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (
       error.message === "UNAUTHENTICATED" ||
       error.message?.includes("PROFILE_") ||
-      error.message?.includes("ROLE_NOT_ALLOWED")
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
     ) {
       return handleAuthError(error);
     }

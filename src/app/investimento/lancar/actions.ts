@@ -770,6 +770,8 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
   const data_inicio = formData.get("data_inicio") as string;
   
   try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
     const supabase = await createClient();
 
     const rawCodigoMatriz = formData.get("codigo_matriz") as string;
@@ -1098,6 +1100,8 @@ export async function atualizarChecklistTrade(id: string, checklist: {
 }
 
 export async function enviarParaTrade(id: string) {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -2826,6 +2830,8 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 }
 
 export async function obterRedesMatrizes() {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
   const supabase = await createClient();
 
   // 1. Carregar cm_redes_matrizes para indexação canônica exata da FK
@@ -3044,6 +3050,8 @@ export async function importarInvestimentosEmLote(
 
 export async function simularImportacaoInvestimentos(rawRows: any[][]): Promise<ActionResult<{ errors: any[]; summary: any; parsedLines: any[] }>> {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
     if (!rawRows || rawRows.length <= 1) {
       return errorResult(
         ActionErrorCode.EMPTY_FILE,
@@ -3388,6 +3396,8 @@ export async function simularImportacaoInvestimentos(rawRows: any[][]): Promise<
 }
 
 export async function promoverPlanejamento(id: string) {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -4043,6 +4053,8 @@ export async function obterHistoricoConsultorComercial(params: {
   mes_referencia_anterior?: string;
 }): Promise<ResultadoConsultorComercial> {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
     const supabase = await createClient();
 
     let query = supabase
