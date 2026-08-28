@@ -480,25 +480,36 @@ export async function assertPromotorAccess(
     throw new Error("FORBIDDEN");
   }
 
-  // 3. Supervisor: team check
+  // 3. Supervisor: dual-identity team check (auth.uid + employee_id)
   if (currentRole === "supervisor") {
+    const { data: supPerfil } = await adminClient
+      .from("cm_promotor_perfil")
+      .select("employee_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const supervisorIdsToCheck = [userId];
+    if (supPerfil?.employee_id) {
+      supervisorIdsToCheck.push(supPerfil.employee_id);
+    }
+
     const { data: supervised } = await adminClient
       .from("cm_promotor_supervisor_mapping")
       .select("promotor_id")
-      .eq("supervisor_id", userId);
+      .in("supervisor_id", supervisorIdsToCheck);
 
     if (supervised && supervised.length > 0) {
-      const promotorIds: string[] = supervised.map((s: any) => s.promotor_id);
+      const promotorIds: string[] = supervised.map((s: { promotor_id: string }) => s.promotor_id);
       if (promotorIds.includes(targetPromoterId.trim())) {
         return { authorized: true, promoterId: targetPromoterId.trim() };
       }
 
       const { data: supervisedProfiles } = await adminClient
         .from("cm_promotor_perfil")
-        .select("employee_id")
-        .in("user_id", promotorIds);
+        .select("user_id, employee_id")
+        .or(`user_id.in.(${promotorIds.join(",")}),employee_id.in.(${promotorIds.join(",")})`);
 
-      if (supervisedProfiles && supervisedProfiles.some((p: any) => p.employee_id === targetPromoterId.trim())) {
+      if (supervisedProfiles && supervisedProfiles.some((p: { user_id: string; employee_id: string }) => p.user_id === targetPromoterId.trim() || p.employee_id === targetPromoterId.trim())) {
         return { authorized: true, promoterId: targetPromoterId.trim() };
       }
     }

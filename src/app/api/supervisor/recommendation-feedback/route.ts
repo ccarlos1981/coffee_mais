@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { requireAuth, requireApprovedProfile, requireRole, assertPdvAccess, assertPromotorAccess, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +28,28 @@ export async function POST(request: Request) {
 
     if (recErr || !rec) {
       return NextResponse.json({ success: false, error: "Recomendação não encontrada." }, { status: 404 });
+    }
+
+    // ACH-W15-NEW-13: Validação de escopo por entity_type
+    const NATIONAL_ROLES = new Set(["admin", "admin master", "ceo", "trade"]);
+    const currentRole = (profile.role || "").toLowerCase();
+
+    if (!NATIONAL_ROLES.has(currentRole)) {
+      if (rec.assigned_user_id && rec.assigned_user_id === user.id) {
+        // Usuário designado tem autorização direta para enviar feedback
+      } else if (rec.entity_type === "PDV") {
+        await assertPdvAccess(user.id, profile, rec.entity_id);
+      } else if (rec.entity_type === "PROMOTOR") {
+        await assertPromotorAccess(user.id, profile, rec.entity_id);
+      } else if (rec.entity_type === "REGION") {
+        const userRegional = profile.manager_name || profile.name;
+        if (!userRegional || rec.entity_id.toUpperCase() !== userRegional.toUpperCase()) {
+          return NextResponse.json({ success: false, error: "Acesso negado: Recomendação fora da sua regional." }, { status: 403 });
+        }
+      } else {
+        // Tipos não mapeados (SKU / DISTRIBUTOR / etc) -> Fail closed
+        return NextResponse.json({ success: false, error: "Acesso negado para este tipo de recomendação." }, { status: 403 });
+      }
     }
 
     // 3. Upsert into feedback table
@@ -77,6 +99,12 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
+    if (error?.message === "FORBIDDEN") {
+      return NextResponse.json({ success: false, error: "Acesso negado." }, { status: 403 });
+    }
+    if (error?.message === "NOT_FOUND") {
+      return NextResponse.json({ success: false, error: "Recurso não encontrado." }, { status: 404 });
+    }
     console.error("[POST MANUAL FEEDBACK ERROR]", error);
     return NextResponse.json(
       { success: false, error: error?.message || "Internal Server Error" },
