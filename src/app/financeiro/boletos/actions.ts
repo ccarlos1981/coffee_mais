@@ -1,6 +1,5 @@
 "use server";
 
-import { supabase } from "@/lib/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
@@ -30,9 +29,13 @@ export async function validarAcessoBoletos(exigirEscrita = false): Promise<{ all
 
     const { data: profile } = await supabaseServer
       .from("cm_user_profiles")
-      .select("role")
+      .select("role, approved")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
+
+    if (!profile || !profile.approved) {
+      return { allowed: false, error: "Perfil não aprovado ou inexistente." };
+    }
 
     const role = profile?.role || "";
     const roleLower = role.toLowerCase();
@@ -73,6 +76,7 @@ export async function listarBoletos(): Promise<Boleto[]> {
     return [];
   }
 
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("cm_boletos")
     .select("*")
@@ -92,6 +96,7 @@ export async function importarBoletos(boletos: Omit<Boleto, "id" | "created_at" 
       return { success: false, error: authRes.error || "Acesso negado: Operação de escrita não permitida para o seu perfil." };
     }
 
+    const supabase = await createClient();
     const boletosToInsert = boletos.map((b) => ({
       rede: b.rede.toUpperCase(),
       numero_boleto: b.numero_boleto,
@@ -117,6 +122,13 @@ export async function importarBoletos(boletos: Omit<Boleto, "id" | "created_at" 
 }
 
 export async function listarBoletosAbertosPorRede(rede: string): Promise<Boleto[]> {
+  const authRes = await validarAcessoBoletos(false);
+  if (!authRes.allowed) {
+    console.error("Tentativa não autorizada em listarBoletosAbertosPorRede:", authRes.error);
+    return [];
+  }
+
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("cm_boletos")
     .select("*")
@@ -132,6 +144,12 @@ export async function listarBoletosAbertosPorRede(rede: string): Promise<Boleto[
 }
 
 export async function listarRedesDisponiveis(): Promise<string[]> {
+  const authRes = await validarAcessoBoletos(false);
+  if (!authRes.allowed) {
+    return [];
+  }
+
+  const supabase = await createClient();
   const { data, error } = await supabase
     .from("view_redes_disponiveis")
     .select("rede");
@@ -163,6 +181,7 @@ export async function atualizarBoleto(id: string, updates: Partial<Boleto>) {
       return { success: false, error: authRes.error || "Acesso negado: Operação de edição não permitida para o seu perfil." };
     }
 
+    const supabase = await createClient();
     const { error } = await supabase
       .from("cm_boletos")
       .update(updates)
@@ -177,4 +196,3 @@ export async function atualizarBoleto(id: string, updates: Partial<Boleto>) {
     return { success: false, error: err.message };
   }
 }
-

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { requireAuth, requireApprovedProfile, requireRole, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { requireAuth, requireApprovedProfile, requireRole, assertPromotorAccess, handleAuthError } from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,8 +39,6 @@ export async function GET(request: Request) {
     const profile = await requireApprovedProfile(user.id);
     requireRole(profile, ["CEO", "Admin", "Admin Master", "Trade", "Supervisor"]);
 
-    const supabase = await createClient();
-
     const { searchParams } = new URL(request.url);
     const promotorId = searchParams.get("promotor_id");
     const dataParam = searchParams.get("data"); // format: YYYY-MM-DD
@@ -48,6 +46,11 @@ export async function GET(request: Request) {
     if (!promotorId) {
       return NextResponse.json({ success: false, error: "Parâmetro promotor_id é obrigatório." }, { status: 400 });
     }
+
+    // ACH-W15-NEW-06: Validação de autorização de escopo de promotor / equipe
+    await assertPromotorAccess(user.id, profile, promotorId);
+
+    const supabase = await createClient();
 
     const targetDate = dataParam || new Date().toISOString().split("T")[0];
 

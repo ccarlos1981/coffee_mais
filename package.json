@@ -15,7 +15,8 @@
     "test:domain": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-commercial-domain.ts",
     "test:wave12-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave12-security.ts",
     "test:wave14-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave14-security.ts",
-    "test:wave15-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave15-security.ts"
+    "test:wave15-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave15-security.ts",
+    "test:wave16-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave16-security.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",
