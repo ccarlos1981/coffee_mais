@@ -221,28 +221,47 @@ export async function POST(request: Request) {
       console.error('Failed to update client payment conditions:', clientUpdateError);
     }
 
-    // Upsert prazo de pagamento (dias) em cm_acoes_investimento para manter sempre atualizado (somente ações abertas)
+    // Upsert prazo de pagamento (dias) em cm_acoes_investimento deterministicamente por codigo_matriz (somente ações abertas)
     try {
-      // Montar mapa: rede -> prazo (usa o boleto mais recente da rede que tenha prazo)
-      const redePrazoMap: { [rede: string]: string } = {};
+      const clientPrazoToUpdate: { [key: number]: string } = {};
       for (const row of rowsToInsert) {
-        if (row.rede && row.prazo) {
-          redePrazoMap[row.rede.trim()] = String(row.prazo);
+        const pCode = parseInt(row.parceiro_codigo, 10);
+        if (!isNaN(pCode) && row.prazo) {
+          clientPrazoToUpdate[pCode] = String(row.prazo);
         }
       }
 
-      if (Object.keys(redePrazoMap).length > 0) {
-        // Para cada rede com prazo, busca as ações abertas e atualiza condicao_pagamento
-        const upsertPromises = Object.entries(redePrazoMap).map(async ([rede, prazo]) => {
-          return supabase
-            .from('cm_acoes_investimento')
-            .update({ condicao_pagamento: prazo })
-            .ilike('rede', `%${rede}%`)
-            .in('status', ['PLANEJADA', 'EM_ANDAMENTO', 'DRAFT']);
-        });
+      const partnerCodesForPrazo = Object.keys(clientPrazoToUpdate).map(Number);
+      if (partnerCodesForPrazo.length > 0) {
+        const { data: clientsDataForPrazo } = await supabase
+          .from('cm_clientes')
+          .select('codigo, codigo_matriz')
+          .in('codigo', partnerCodesForPrazo);
 
-        await Promise.all(upsertPromises);
-        console.log(`Prazo de pagamento atualizado em cm_acoes_investimento para ${Object.keys(redePrazoMap).length} redes.`);
+        const matrixPrazoToUpdate: { [key: string]: string } = {};
+        if (clientsDataForPrazo) {
+          for (const c of clientsDataForPrazo) {
+            if (c.codigo_matriz) {
+              const prazo = clientPrazoToUpdate[c.codigo];
+              if (prazo) {
+                matrixPrazoToUpdate[c.codigo_matriz] = prazo;
+              }
+            }
+          }
+        }
+
+        if (Object.keys(matrixPrazoToUpdate).length > 0) {
+          const upsertPromises = Object.entries(matrixPrazoToUpdate).map(async ([matrixCode, prazo]) => {
+            return supabase
+              .from('cm_acoes_investimento')
+              .update({ condicao_pagamento: prazo })
+              .eq('codigo_matriz', matrixCode)
+              .in('status', ['PLANEJADA', 'EM_ANDAMENTO', 'DRAFT']);
+          });
+
+          await Promise.all(upsertPromises);
+          console.log(`Prazo de pagamento atualizado deterministicamente em cm_acoes_investimento para ${Object.keys(matrixPrazoToUpdate).length} matrizes.`);
+        }
       }
     } catch (investimentoUpdateError) {
       console.error('Failed to update acoes investimento prazo:', investimentoUpdateError);

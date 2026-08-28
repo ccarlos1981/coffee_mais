@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 import { 
   calculateAchievement, 
   calculateBonusPercentage, 
@@ -17,31 +21,21 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient();
-    const adminClient = createAdminClient();
+    const user = await requireAuth();
+    const loggedInProfile = await requireApprovedProfile(user.id);
 
-    // Check auth
-    const { data: { user }, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ success: false, error: "Não autorizado" }, { status: 401 });
-    }
-
-    // Obter employee_code e role do usuário logado
-    const { data: loggedInProfile, error: profileErr } = await adminClient
-      .from("cm_user_profiles")
-      .select("employee_code, role")
-      .eq("id", user.id)
-      .single();
-
-    if (profileErr) {
-      console.error("[DEBUG DESAFIO API] Profile Query Error:", profileErr);
-    }
-    console.log("[DEBUG DESAFIO API] User ID:", user.id, "Email:", user.email);
-    console.log("[DEBUG DESAFIO API] Profile:", loggedInProfile);
-
-    const currentUserCode = loggedInProfile?.employee_code || "0100";
     const currentUserRole = loggedInProfile?.role || "Promotor";
-    console.log("[DEBUG DESAFIO API] Resolved Role:", currentUserRole);
+    const currentUserCode = loggedInProfile?.employee_code || null;
+
+    // Fail closed: Promotores must have a valid employee_code linked to view personal challenge
+    if (currentUserRole.trim().toLowerCase() === "promotor" && !currentUserCode) {
+      return NextResponse.json(
+        { success: false, error: "PROMOTOR_CODE_REQUIRED: Código de promotor não vinculado ao perfil." },
+        { status: 400 }
+      );
+    }
+
+    const adminClient = createAdminClient();
 
     const { searchParams } = new URL(request.url);
     const region = searchParams.get("region");
@@ -246,6 +240,15 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message === "NOT_FOUND" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[DESAFIO PROMOTOR GET API ERROR]", error);
     return NextResponse.json({ success: false, error: error?.message || "Internal Server Error" }, { status: 500 });
   }

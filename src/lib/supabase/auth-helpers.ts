@@ -56,7 +56,7 @@ export async function requireApprovedProfile(userId: string) {
   const supabase = await createClient();
   const { data: profile } = await supabase
     .from("cm_user_profiles")
-    .select("role, approved, manager_name, name, company_id")
+    .select("role, approved, manager_name, name, company_id, employee_code")
     .eq("id", userId)
     .single();
 
@@ -414,6 +414,92 @@ export async function assertVisitaAccess(
 
       if (inPortfolio) {
         return { visita, authorized: true };
+      }
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  throw new Error("FORBIDDEN");
+}
+
+/**
+ * Strict Object-Level Authorization for Promoter data:
+ * - National roles (Admin, Admin Master, CEO, Trade, Gerente Nacional, Financeiro, Diretor): Full access.
+ * - Promotor: Can only access their own data (matching user_id or employee_id).
+ * - Supervisor: Can only access promoters under their supervision.
+ * - Gerente Regional / others: Fail closed (FORBIDDEN).
+ */
+export async function assertPromotorAccess(
+  userId: string,
+  profile: { role?: string | null; manager_name?: string | null; name?: string | null },
+  targetPromoterId: string,
+  adminClientOverride?: any
+): Promise<{ authorized: boolean; promoterId: string }> {
+  if (!targetPromoterId || typeof targetPromoterId !== "string" || targetPromoterId.trim().length === 0) {
+    throw new Error("NOT_FOUND");
+  }
+
+  const currentRole = (profile?.role || "").trim().toLowerCase();
+
+  // 1. National Roles
+  const NATIONAL_ROLES = new Set([
+    "admin",
+    "admin master",
+    "ceo",
+    "trade",
+    "financeiro",
+    "diretor",
+    "gerente nacional",
+    "ti",
+  ]);
+
+  if (NATIONAL_ROLES.has(currentRole)) {
+    return { authorized: true, promoterId: targetPromoterId.trim() };
+  }
+
+  const adminClient = adminClientOverride ?? createAdminClient();
+
+  // 2. Promotor: self-access check
+  if (currentRole === "promotor") {
+    if (targetPromoterId.trim() === userId) {
+      return { authorized: true, promoterId: targetPromoterId.trim() };
+    }
+
+    // Check if targetPromoterId matches employee_id of this user
+    const { data: myProfile } = await adminClient
+      .from("cm_promotor_perfil")
+      .select("employee_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (myProfile?.employee_id && myProfile.employee_id === targetPromoterId.trim()) {
+      return { authorized: true, promoterId: targetPromoterId.trim() };
+    }
+
+    throw new Error("FORBIDDEN");
+  }
+
+  // 3. Supervisor: team check
+  if (currentRole === "supervisor") {
+    const { data: supervised } = await adminClient
+      .from("cm_promotor_supervisor_mapping")
+      .select("promotor_id")
+      .eq("supervisor_id", userId);
+
+    if (supervised && supervised.length > 0) {
+      const promotorIds: string[] = supervised.map((s: any) => s.promotor_id);
+      if (promotorIds.includes(targetPromoterId.trim())) {
+        return { authorized: true, promoterId: targetPromoterId.trim() };
+      }
+
+      const { data: supervisedProfiles } = await adminClient
+        .from("cm_promotor_perfil")
+        .select("employee_id")
+        .in("user_id", promotorIds);
+
+      if (supervisedProfiles && supervisedProfiles.some((p: any) => p.employee_id === targetPromoterId.trim())) {
+        return { authorized: true, promoterId: targetPromoterId.trim() };
       }
     }
 

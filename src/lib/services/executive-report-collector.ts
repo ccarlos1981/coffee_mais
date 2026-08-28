@@ -394,6 +394,37 @@ export class ExecutiveReportCollector {
         END
     `);
 
+    // 2.1 Busca investimentos comerciais aprovados (verba_aprovada = true) para paridade com Baseline 57 MACO
+    const kaInvestRows = await AnalyticsEngine.executeSql<any>(`
+      SELECT
+        CASE
+          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+        END AS manager,
+        SUM(a.valor_investimento) as invest
+      FROM cm_acoes_investimento a
+      LEFT JOIN cm_campanhas camp ON camp.id = a.campanha_id
+      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(camp.cod_parceiro AS TEXT)
+      WHERE a.verba_aprovada = true
+        AND ((a.data_inicio >= '${dtStart}' AND a.data_inicio <= '${dtCutoff}') OR (a.data_fim >= '${dtStart}' AND a.data_fim <= '${dtCutoff}'))
+      GROUP BY
+        CASE
+          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+        END
+    `);
+    const kaInvestMap = new Map<string, number>();
+    (kaInvestRows || []).forEach((r: any) => {
+      const g = normalizeManager(r.manager);
+      kaInvestMap.set(g, Number(r.invest || 0));
+    });
+
     // Busca metas oficiais em public.targets e configurações de MACO do Desafio DRE (mesma fonte oficial do Acompanhamento)
     const [targetsRows, desafioConfigs] = await Promise.all([
       AnalyticsEngine.executeSql<any>(`
@@ -519,6 +550,12 @@ export class ExecutiveReportCollector {
       }
     });
 
+    // Baseline 57: Deduct approved commercial investments from MACO (MACO = Receita Após Impostos - CPV - Frete - Investimentos Aprovados)
+    Object.keys(gerentesKaData).forEach((g) => {
+      const invest = kaInvestMap.get(g) || 0;
+      gerentesKaData[g].maco = Math.max(0, gerentesKaData[g].maco - invest);
+    });
+
     let totalInsideFat = 0;
     let totalInsideUnd = 0;
     let totalInsideMaco = 0;
@@ -537,18 +574,19 @@ export class ExecutiveReportCollector {
     });
 
     const getBadge = (pct: number): "CRITICO" | "ATENCAO" | "ATINGIDO" => {
-      if (pct < 80) return "CRITICO";
-      if (pct < 100) return "ATENCAO";
-      return "ATINGIDO";
+      if (pct >= 100) return "ATINGIDO";
+      if (pct >= 85) return "ATENCAO";
+      return "CRITICO";
     };
 
     // Montar linhas dos gerentes KA (Página 1 Exclusiva)
-    const gerentesKa: SalesManagerReportRow[] = ["Julliano", "Leandro", "Luiz", "John Guedes"].map((name) => {
-      const data = gerentesKaData[name];
+    const gerentesKa: SalesManagerReportRow[] = managersKaDef.map((m) => {
+      const name = m.name;
+      const data = gerentesKaData[name] || { fat: 0, und: 0, maco: 0 };
       const target = targetsMap.get(name.toUpperCase()) || { metaFat: 1000000, metaUnd: 40000, metaMaco: 150000 };
 
-      const kaFat = Math.max(0, data.fat);
-      const kaUnd = Math.max(0, data.und);
+      const kaFat = data.fat;
+      const kaUnd = data.und;
       const kaMaco = Math.max(0, data.maco);
 
       const pctFat = target.metaFat > 0 ? (kaFat / target.metaFat) * 100 : 0;
@@ -609,13 +647,33 @@ export class ExecutiveReportCollector {
       ORDER BY SUM(CASE WHEN f.cod_top IN ('1200', '1201') THEN -ABS(f.vlr_total_liq) ELSE f.vlr_total_liq END) DESC
     `;
     const distClientsRows = await AnalyticsEngine.executeSql<any>(distClientsSql);
+
+    // Busca investimentos comerciais de distribuidores para dedução na margem de contribuição (Baseline 57)
+    const distInvestRows = await AnalyticsEngine.executeSql<any>(`
+      SELECT
+        c.nome_fantasia as cliente,
+        SUM(a.valor_investimento) as invest
+      FROM cm_acoes_investimento a
+      LEFT JOIN cm_campanhas camp ON camp.id = a.campanha_id
+      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(camp.cod_parceiro AS TEXT)
+      WHERE a.verba_aprovada = true
+        AND ((a.data_inicio >= '${dtStart}' AND a.data_inicio < '${dtNext}') OR (a.data_fim >= '${dtStart}' AND a.data_fim < '${dtNext}'))
+        AND (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%')
+      GROUP BY c.nome_fantasia
+    `);
+    const distInvestMap = new Map<string, number>();
+    (distInvestRows || []).forEach((r: any) => {
+      if (r.cliente) distInvestMap.set(String(r.cliente).toUpperCase(), Number(r.invest || 0));
+    });
+
     const topDistClientes = (distClientsRows || []).map((r: any) => {
       const fat = Number(r.fat || 0);
       const und = Number(r.und || 0);
       const custo = Number(r.custo || 0);
       const imp = Number(r.impostos || 0);
       const frete = Number(r.frete || 0);
-      const maco = fat - imp - frete - custo;
+      const inv = distInvestMap.get(String(r.cliente || "").toUpperCase()) || 0;
+      const maco = Math.max(0, fat - imp - frete - custo - inv);
       return {
         cliente: r.cliente,
         gerente: r.gerente,

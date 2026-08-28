@@ -23,7 +23,7 @@ type ViewRole = "PROMOTOR" | "SUPERVISOR" | "ADMIN";
 export default function DesafioPerformancePage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [currentUserCode, setCurrentUserCode] = useState("0100");
+  const [currentUserCode, setCurrentUserCode] = useState("");
   
   const [filterRegion, setFilterRegion] = useState("Geral");
   const [filterSupervisor, setFilterSupervisor] = useState("Todos");

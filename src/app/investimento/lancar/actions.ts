@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 import { resolveNotificationRecipients } from "@/lib/investimento/notification-service";
+import { CommercialDomainService } from "@/lib/domain/commercial-domain-service";
 
 // --- Divergência Operacional de Calendário ---
 import { MotivoDivergencia } from "../divergencia-constants";
@@ -355,27 +356,19 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       }
     }
 
-    if (!gerenteId && clientManagerName) {
-      const { data: profileByName } = await supabase
-        .from("cm_user_profiles")
-        .select("id")
-        .ilike("name", `${clientManagerName}%`)
-        .limit(1)
-        .maybeSingle();
-      if (profileByName) {
-        gerenteId = profileByName.id;
-      }
-    }
-
-    if (!gerenteId && gerenteName) {
-      const { data: profileByForm } = await supabase
-        .from("cm_user_profiles")
-        .select("id")
-        .ilike("name", `${gerenteName}%`)
-        .limit(1)
-        .maybeSingle();
-      if (profileByForm) {
-        gerenteId = profileByForm.id;
+    if (!gerenteId && (clientManagerName || gerenteName)) {
+      const targetManagerName = clientManagerName || gerenteName || "";
+      const canonicalManager = CommercialDomainService.resolveManager(targetManagerName);
+      if (canonicalManager && canonicalManager.managerName) {
+        const { data: profileByName } = await supabase
+          .from("cm_user_profiles")
+          .select("id")
+          .eq("name", canonicalManager.managerName)
+          .limit(1)
+          .maybeSingle();
+        if (profileByName) {
+          gerenteId = profileByName.id;
+        }
       }
     }
 
