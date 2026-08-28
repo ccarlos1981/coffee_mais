@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const profile = await requireApprovedProfile(user.id);
 
     // 1. Role verification: Only Supervisors and National Trade/Admin roles may review
-    requireRole(profile.role, ALLOWED_REVIEW_ROLES);
+    requireRole(profile, ALLOWED_REVIEW_ROLES);
 
     const body = await request.json();
     const { analysis_id, action, planogram_score_override, review_reason } = body;

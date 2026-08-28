@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requireRole,
+  handleAuthError,
+} from "@/lib/supabase/auth-helpers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const ALLOWED_ROLES = ["CEO", "Admin", "Admin Master", "Trade", "Supervisor"];
 
 function calculateDistanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371000;
@@ -22,38 +29,11 @@ function calculateDistanceM(lat1: number, lon1: number, lat2: number, lon2: numb
 export async function GET(request: Request) {
   const startTime = Date.now();
   try {
-    let supabase;
-    let user = null;
-    const stressTestSupervisorId = request.headers.get("x-stress-test-supervisor-id");
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ALLOWED_ROLES);
 
-    if (process.env.NODE_ENV === "development" && stressTestSupervisorId) {
-      supabase = createAdminClient();
-      user = { id: stressTestSupervisorId };
-    } else {
-      supabase = await createClient();
-      const { data: { user: supabaseUser }, error: authError } = await supabase.auth.getUser();
-      if (authError || !supabaseUser) {
-        return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
-      }
-      user = supabaseUser;
-    }
-
-    let role = "";
-    if (process.env.NODE_ENV === "development" && stressTestSupervisorId) {
-      role = "Supervisor";
-    } else {
-      const { data: profile } = await supabase
-        .from("cm_user_profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-      role = profile?.role || "";
-    }
-
-    const isAuthorized = ["CEO", "Admin", "Trade", "Supervisor"].includes(role);
-    if (!isAuthorized) {
-      return NextResponse.json({ success: false, error: "Acesso negado: Perfil não autorizado." }, { status: 403 });
-    }
+    const supabase = await createClient();
 
     const url = new URL(request.url);
     const dateStr = url.searchParams.get("date") || new Date().toISOString().split("T")[0];
@@ -361,6 +341,15 @@ export async function GET(request: Request) {
     });
 
   } catch (error: any) {
+    if (
+      error.message === "UNAUTHENTICATED" ||
+      error.message === "NOT_FOUND" ||
+      error.message?.includes("PROFILE_") ||
+      error.message?.includes("ROLE_NOT_ALLOWED") ||
+      error.message === "FORBIDDEN"
+    ) {
+      return handleAuthError(error);
+    }
     console.error("[PILOT KPIS API] Error:", error);
     return NextResponse.json({ success: false, error: error.message || "Erro interno." }, { status: 500 });
   }
