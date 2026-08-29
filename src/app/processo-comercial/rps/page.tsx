@@ -32,7 +32,6 @@ import {
   AlertTriangle,
   FileText
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -41,10 +40,13 @@ import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntel
 import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 import { FollowUpStatusBadge } from "@/app/processo-comercial/follow-up/components/FollowUpStatusBadge";
+import { RpsRedeDrawer } from "./components/RpsRedeDrawer";
 import type { FollowUpActionRecord } from "@/lib/services/follow-up-service";
 
 interface ClientRow {
   client: string;
+  codigo_matriz?: string | null;
+  uf?: string | null;
   ano_a: number;
   mes_a: number;
   media_trimestre?: number;
@@ -258,6 +260,17 @@ export default function RpsPage() {
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState<boolean>(false);
   const [removeModalTarget, setRemoveModalTarget] = useState<{ mIdx: number; cIdx: number; clientName: string; managerName: string } | null>(null);
 
+  // Estado do Drawer RPS 360°
+  const [selectedRede360, setSelectedRede360] = useState<{
+    redeName: string;
+    codigoMatriz?: string | null;
+    uf?: string | null;
+    managerName: string;
+    curReal: number;
+    curMeta: number;
+    projections: number[];
+  } | null>(null);
+
   // Mapeamento estético do nome dos gerentes via Domínio Comercial SSOT
   const getManagerDisplayName = (name: string) => {
     return CommercialDomainService.resolveManager(name).managerName || name;
@@ -279,31 +292,6 @@ export default function RpsPage() {
     return (businessDays.elapsed_days / businessDays.total_days) * 100;
   }, [businessDays]);
 
-  // Carrega dias úteis do banco de dados (total_days estático) e calcula elapsed_days dinamicamente
-  const loadBusinessDays = useCallback(async (year: number, month: number) => {
-    try {
-      const { data } = await supabase
-        .from("business_days")
-        .select("total_days, elapsed_days")
-        .eq("year", year)
-        .eq("month", month)
-        .maybeSingle();
-
-      const autoBd = calculateMonthBusinessDays(year, month);
-      setBusinessDays({
-        total_days: data?.total_days || autoBd.total_days,
-        elapsed_days: autoBd.elapsed_days,
-      });
-    } catch (err) {
-      console.error("Erro ao carregar dias úteis:", err);
-      const autoBd = calculateMonthBusinessDays(year, month);
-      setBusinessDays({
-        total_days: autoBd.total_days,
-        elapsed_days: autoBd.elapsed_days,
-      });
-    }
-  }, []);
-
   // Carrega projeções e históricos via API (Single Source of Truth para dados e permissões)
   const loadProjectionsData = useCallback(async (year: number, month: number) => {
     setLoading(true);
@@ -321,6 +309,11 @@ export default function RpsPage() {
         setIsAdmin(Boolean(json.isAdmin));
         setCanViewTotalBrasil(Boolean(json.canViewTotalBrasil));
         if (json.serverTime) setServerTimeInfo(json.serverTime);
+        if (json.businessDays) {
+          setBusinessDays(json.businessDays);
+        } else {
+          setBusinessDays(calculateMonthBusinessDays(year, month));
+        }
       } else {
         throw new Error(json.error || "Erro desconhecido ao carregar dados.");
       }
@@ -334,10 +327,9 @@ export default function RpsPage() {
 
   // Sincronizar dados ao alterar período
   useEffect(() => {
-    loadBusinessDays(filterYear, filterMonth);
     loadProjectionsData(filterYear, filterMonth);
     fetchRpsFollowUps();
-  }, [filterYear, filterMonth, loadBusinessDays, loadProjectionsData, fetchRpsFollowUps]);
+  }, [filterYear, filterMonth, loadProjectionsData, fetchRpsFollowUps]);
 
   // Handler para input de faturamento do cliente
   const handleClientProjChange = (mIdx: number, cIdx: number, wIdx: number, val: number) => {
@@ -1339,7 +1331,27 @@ export default function RpsPage() {
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="flex items-center gap-1.5 truncate">
                                       <span className="w-1.5 h-1.5 rounded-full bg-accent-gold/70 shrink-0"></span>
-                                      <span className="truncate font-semibold text-foreground-secondary hover:text-amber-300 transition-colors" title={cli.client}>
+                                      <span
+                                        className={`truncate font-semibold transition-colors ${
+                                          cli.client !== "OUTROS"
+                                            ? "text-foreground-secondary hover:text-amber-300 cursor-pointer"
+                                            : "text-foreground-muted cursor-default"
+                                        }`}
+                                        title={cli.client !== "OUTROS" ? `${cli.client} — Clique para Diagnóstico 360°` : cli.client}
+                                        onClick={() => {
+                                          if (cli.client !== "OUTROS") {
+                                            setSelectedRede360({
+                                              redeName: cli.client,
+                                              codigoMatriz: cli.codigo_matriz,
+                                              uf: cli.uf,
+                                              managerName: row.manager,
+                                              curReal: cli.real,
+                                              curMeta: cli.meta,
+                                              projections: cli.projections,
+                                            });
+                                          }
+                                        }}
+                                      >
                                         {cli.client}
                                       </span>
                                     </div>
@@ -1780,6 +1792,28 @@ export default function RpsPage() {
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
           {followUpToast}
         </div>
+      )}
+
+      {/* Drawer RPS 360° da Rede (Diagnóstico Operacional e Farol Sob Demanda) */}
+      {selectedRede360 && (
+        <RpsRedeDrawer
+          isOpen={Boolean(selectedRede360)}
+          onClose={() => setSelectedRede360(null)}
+          redeName={selectedRede360.redeName}
+          codigoMatriz={selectedRede360.codigoMatriz}
+          uf={selectedRede360.uf}
+          managerName={selectedRede360.managerName}
+          year={filterYear}
+          month={filterMonth}
+          curReal={selectedRede360.curReal}
+          curMeta={selectedRede360.curMeta}
+          projections={selectedRede360.projections}
+          mondays={mondays}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
       )}
 
       {/* Modal Canônica de Criação de Compromisso RPS (Follow-up) */}
