@@ -57,6 +57,8 @@ import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
+import { InvestimentoAcaoDrawer } from "./components/InvestimentoAcaoDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 
 const normalizeGerenteNome = (nome?: string | null): string => {
@@ -285,6 +287,12 @@ export default function InvestimentoPage() {
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [data, setData] = useState<AcaoInvestimento[]>([]);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  // Estado do Drawer Investimento 360° e Follow-Up Integrado (Wave B.14)
+  const [selectedAcao360, setSelectedAcao360] = useState<AcaoInvestimento | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // Faturamento e status por Matriz
   const [faturamentoMap, setFaturamentoMap] = useState<Record<string, Record<string, number>>>({});
@@ -3584,6 +3592,14 @@ export default function InvestimentoPage() {
                                       </label>
                                     )}
 
+                                     <button
+                                       onClick={(e) => { e.stopPropagation(); setSelectedAcao360(row); }}
+                                       className="p-1 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors cursor-pointer"
+                                       title="Diagnóstico 360° (Farol & Contrapartidas)"
+                                     >
+                                       <Shield className="w-3.5 h-3.5" />
+                                     </button>
+
                                     <Link
                                       href={`/investimento/${row.id}/editar`}
                                       onClick={(e) => e.stopPropagation()}
@@ -3739,6 +3755,14 @@ export default function InvestimentoPage() {
                                     />
                                   </label>
                                 )}
+
+                                <button
+                                   onClick={(e) => { e.stopPropagation(); setSelectedAcao360(row); }}
+                                   className="p-2 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors cursor-pointer"
+                                   title="Diagnóstico 360° (Farol & Contrapartidas)"
+                                 >
+                                   <Shield className="w-4 h-4" />
+                                 </button>
 
                                 <Link
                                   href={`/investimento/${row.id}/editar`}
@@ -6686,6 +6710,39 @@ export default function InvestimentoPage() {
           </div>
         )}
 
+        {/* Drawer Investimento 360° (Wave B.14) */}
+        {selectedAcao360 && (
+          <InvestimentoAcaoDrawer
+            isOpen={Boolean(selectedAcao360)}
+            onClose={() => setSelectedAcao360(null)}
+            acao={selectedAcao360}
+            onOpenFollowUp={(ctx) => {
+              setFollowUpInitialContext(ctx);
+              setIsFollowUpModalOpen(true);
+            }}
+          />
+        )}
+
+        {/* Modal Canônica de Criação de Follow-up (Wave B.12) */}
+        {isFollowUpModalOpen && (
+          <NewFollowUpModal
+            isOpen={isFollowUpModalOpen}
+            onClose={() => setIsFollowUpModalOpen(false)}
+            onCreated={() => {
+              setIsFollowUpModalOpen(false);
+              setFollowUpToast("Ação de Follow-up de Investimento registrada com sucesso!");
+              setTimeout(() => setFollowUpToast(null), 4000);
+            }}
+            initialContext={followUpInitialContext}
+          />
+        )}
+
+        {/* Toast Feedback */}
+        {followUpToast && (
+          <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+            {followUpToast}
+          </div>
+        )}
 
       </main>
     </div>
