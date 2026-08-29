@@ -191,7 +191,7 @@ ${
   /**
    * Dispatches email to cristiano.santos@coffeemais.com
    */
-  static async sendReport(data: EmailReportPayload): Promise<{ success: boolean; messageId?: string }> {
+  static async sendReport(data: EmailReportPayload): Promise<{ success: boolean; messageId?: string; error?: string }> {
     let subject = "";
     switch (data.status) {
       case "SUCCESS":
@@ -222,17 +222,22 @@ ${
     const html = this.generateHtmlReport(data);
     const text = this.generateTextReport(data);
 
-    // If SMTP is configured in environment
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    // If SMTP is configured in environment (defaulting host to smtp.gmail.com if omitted)
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const host = process.env.SMTP_HOST || "smtp.gmail.com";
+      const port = parseInt(process.env.SMTP_PORT || (host === "smtp.gmail.com" ? "465" : "587"), 10);
+      const secure = port === 465;
+
       try {
         const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port: parseInt(process.env.SMTP_PORT || "587", 10),
-          secure: process.env.SMTP_PORT === "465",
+          host,
+          port,
+          secure,
           auth: {
             user: process.env.SMTP_USER,
             pass: process.env.SMTP_PASS,
           },
+          tls: { rejectUnauthorized: false },
         });
 
         const info = await transporter.sendMail({
@@ -246,7 +251,8 @@ ${
         console.log(`[EmailNotificationService] E-mail enviado com sucesso: ${info.messageId}`);
         return { success: true, messageId: info.messageId };
       } catch (err: any) {
-        console.warn("[EmailNotificationService] Erro ao enviar e-mail via SMTP:", err.message);
+        console.error("[EmailNotificationService] Erro ao enviar e-mail via SMTP:", err.message);
+        return { success: false, error: err.message };
       }
     }
 

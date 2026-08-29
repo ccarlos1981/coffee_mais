@@ -190,9 +190,15 @@ export class GoogleDriveService {
     localFallbackPath?: string;
   } = {}): Promise<GoogleDriveDownloadResult> {
     const folderId = options.folderId || this.folderId;
+    const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
 
     // 1. Try Google Drive API first if service account credentials exist
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64)) {
+    const hasGoogleCreds = Boolean(
+      process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
+      (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64)
+    );
+
+    if (hasGoogleCreds) {
       try {
         const metadata = await this.locateTargetFile(folderId);
         const fileBuffer = await this.downloadFileFromDrive(metadata.id);
@@ -208,15 +214,19 @@ export class GoogleDriveService {
           source: "GOOGLE_DRIVE",
         };
       } catch (err: any) {
-        if (!options.allowLocalFallback) {
-          throw err;
+        if (isProduction || options.allowLocalFallback === false) {
+          throw new Error(`[GoogleDriveService] Falha ao baixar arquivo oficial do Google Drive: ${err.message}`);
         }
-        console.warn("[GoogleDriveService] Google Drive download failed, attempting local fallback:", err.message);
+        console.warn("[GoogleDriveService] Google Drive download failed in non-production, attempting local fallback:", err.message);
       }
+    } else if (isProduction && options.allowLocalFallback !== true) {
+      throw new Error(
+        "[GoogleDriveService] Credenciais do Google Drive (GOOGLE_SERVICE_ACCOUNT_EMAIL e GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) não estão configuradas no ambiente de Produção."
+      );
     }
 
-    // 2. Local Fallback (Downloads folder or configured path) for testing / dry-run
-    if (options.allowLocalFallback !== false) {
+    // 2. Local Fallback (Downloads folder or configured path) ONLY for local development / testing
+    if (options.allowLocalFallback !== false && !isProduction) {
       const fallbackPaths = [
         options.localFallbackPath,
         "/Users/cristiano/Downloads/CFOP.csv",

@@ -314,9 +314,11 @@ export class ExecutiveReportCollector {
       const metadata = (last.metadata as any) || {};
       const isSuccess = last.status === "SUCCESS" || metadata?.sub_status === "SUCCESS";
       
-      // Validação de data
-      const finishedIso = last.finished_at ? last.finished_at.split("T")[0] : "";
-      const validaHoje = isSuccess && (finishedIso === todayIso || finishedIso !== "");
+      // Validação estrita de data no fuso oficial de São Paulo (Proteção contra dado obsoleto)
+      const finishedIso = last.finished_at
+        ? new Date(last.finished_at).toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+        : "";
+      const validaHoje = isSuccess && finishedIso === todayIso;
 
       return {
         status: last.status || "UNKNOWN",
