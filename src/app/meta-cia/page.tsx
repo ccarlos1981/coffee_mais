@@ -87,9 +87,9 @@ export default function AcompAnualPage() {
       console.error("API falhou", err);
     }
 
-    // 2. Load CeoTargets from Supabase
+    // 2. Load CompanyTargets from Supabase
     const { data: targets, error } = await supabase
-      .from("ceo_targets")
+      .from("cm_company_targets")
       .select("*")
       .eq("year", YEAR);
       
@@ -177,7 +177,7 @@ export default function AcompAnualPage() {
         setDbTargets(prev => prev.map(t => t.id === existing.id ? payload : t));
         
         await supabase
-          .from("ceo_targets")
+          .from("cm_company_targets")
           .update({ [field]: value, updated_at: new Date().toISOString() })
           .eq("id", existing.id);
       } else {
@@ -190,7 +190,7 @@ export default function AcompAnualPage() {
         };
         
         const { data, error } = await supabase
-          .from("ceo_targets")
+          .from("cm_company_targets")
           .insert(payload)
           .select()
           .single();
