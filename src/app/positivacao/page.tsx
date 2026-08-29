@@ -5,13 +5,15 @@ import { usePersistedState } from "@/hooks/usePersistedState";
 import Link from "next/link";
 import { Filter, BarChart3, Upload, Home, DollarSign,
   History, Users, Target, TrendingUp, CheckCircle2, Calendar,
-  ChevronRight, ChevronDown, ChevronLeft, Package, Layers } from "lucide-react";
+  ChevronRight, ChevronDown, ChevronLeft, Package, Layers, ShieldCheck } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
 import { ExportButton } from "@/components/ExportButton";
 import { Skeleton, SkeletonGrid, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
+import { PositivacaoRedeDrawer } from "@/components/positivacao/PositivacaoRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -59,6 +61,12 @@ function getTextColor(value: number, _max: number): string {
 export default function PositivacaoPage() {
   const [loading, setLoading] = useState(true);
   const [, setFiltersLoading] = useState(false);
+
+  // Wave B.20: Positivação 360° Drawer & Follow-Up State
+  const [selectedPositivacao360, setSelectedPositivacao360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // Período default: 13 meses, acabando no mês ANTERIOR ao atual
   const now = new Date();
@@ -464,18 +472,47 @@ export default function PositivacaoPage() {
                             onClick={() => handleToggleManager(row.manager)} 
                             style={{ textAlign: "left", padding: "6px 10px", fontWeight: 500, cursor: "pointer" }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <ChevronRight 
-                                style={{ 
-                                  width: 12, 
-                                  height: 12, 
-                                  color: "var(--foreground-muted)",
-                                  transition: "transform 0.2s", 
-                                  transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
-                                  flexShrink: 0
-                                }} 
-                              />
-                              {row.manager}
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <ChevronRight 
+                                  style={{ 
+                                    width: 12, 
+                                    height: 12, 
+                                    color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s", 
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                    flexShrink: 0
+                                  }} 
+                                />
+                                <span>{row.manager}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedPositivacao360({
+                                    clienteNome: `Consolidado Gerente: ${row.manager}`,
+                                    clienteId: row.manager,
+                                    codParceiro: null,
+                                    redeNome: null,
+                                    codigoMatriz: null,
+                                    gerenteNome: row.manager,
+                                    uf: null,
+                                    cidade: null,
+                                    faturamentoReal: row.fat,
+                                    volumeReal: 0,
+                                    mesesPositivados: Object.values(row.monthly || {}).filter(v => v > 0).length,
+                                    mesesSemCompra: Object.values(row.monthly || {}).filter(v => v === 0).length,
+                                    historicoPositivacao: row.monthly,
+                                    dataStr: `${filterStartMonth}/${filterStartYear} até ${filterEndMonth}/${filterEndYear}`,
+                                  });
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Diagnóstico 360° do Gerente"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                                <span>360°</span>
+                              </button>
                             </div>
                           </td>
                           <td style={{ textAlign: "center", padding: "6px 6px", fontWeight: 700, color: "#3f51b5" }}>{row.clientes}</td>
@@ -564,18 +601,21 @@ export default function PositivacaoPage() {
                                             </th>
                                           );
                                         })}
+                                        <th style={{ textAlign: "center", padding: "6px 4px", width: 45, color: "var(--foreground-muted)" }}>
+                                          360°
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {detail.loading ? (
                                         <tr>
-                                          <td colSpan={(detail.type === 'client' ? 4 : 2) + monthKeys.length} style={{ textAlign: "center", padding: "20px 0", color: "var(--foreground-muted)" }}>
+                                          <td colSpan={(detail.type === 'client' ? 5 : 3) + monthKeys.length} style={{ textAlign: "center", padding: "20px 0", color: "var(--foreground-muted)" }}>
                                             Carregando listagem detalhada...
                                           </td>
                                         </tr>
                                       ) : detail.data.length === 0 ? (
                                         <tr>
-                                          <td colSpan={(detail.type === 'client' ? 4 : 2) + monthKeys.length} style={{ textAlign: "center", padding: "14px 0", color: "var(--foreground-muted)" }}>
+                                          <td colSpan={(detail.type === 'client' ? 5 : 3) + monthKeys.length} style={{ textAlign: "center", padding: "14px 0", color: "var(--foreground-muted)" }}>
                                             Nenhum registro encontrado.
                                           </td>
                                         </tr>
@@ -623,6 +663,39 @@ export default function PositivacaoPage() {
                                                 </td>
                                               );
                                             })}
+                                            <td style={{ textAlign: "center", padding: "5px 4px" }}>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const positiveCount = detRow.months.length;
+                                                  const totalMonthsCount = monthKeys.length;
+                                                  const inactiveCount = Math.max(0, totalMonthsCount - positiveCount);
+
+                                                  setSelectedPositivacao360({
+                                                    clienteNome: detRow.name,
+                                                    clienteId: detRow.name,
+                                                    codParceiro: null,
+                                                    redeNome: detRow.matriz || (detail.type === 'matriz' ? detRow.name : null),
+                                                    codigoMatriz: detRow.matriz || (detail.type === 'matriz' ? detRow.name : null),
+                                                    gerenteNome: row.manager,
+                                                    uf: detRow.uf || null,
+                                                    cidade: null,
+                                                    faturamentoReal: detRow.total_fat || 0,
+                                                    volumeReal: 0,
+                                                    mesesPositivados: positiveCount,
+                                                    mesesSemCompra: inactiveCount,
+                                                    historicoPositivacao: detRow.months,
+                                                    dataStr: `${filterStartMonth}/${filterStartYear} até ${filterEndMonth}/${filterEndYear}`,
+                                                  });
+                                                }}
+                                                className="px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors"
+                                                title={`Diagnóstico 360° de ${detRow.name}`}
+                                              >
+                                                <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                                                <span>360°</span>
+                                              </button>
+                                            </td>
                                           </tr>
                                         ))
                                       )}
@@ -724,11 +797,14 @@ export default function PositivacaoPage() {
                         </th>
                       );
                     })}
+                    <th style={{ textAlign: "center", padding: "6px 4px", minWidth: 45, fontSize: "0.6rem", fontWeight: 600 }}>
+                      360°
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {batalhaNaval.length === 0 ? (
-                    <tr><td colSpan={months.length + 1} style={{ padding: 16, textAlign: "center", color: "var(--foreground-muted)" }}>Nenhum dado encontrado</td></tr>
+                    <tr><td colSpan={months.length + 2} style={{ padding: 16, textAlign: "center", color: "var(--foreground-muted)" }}>Nenhum dado encontrado</td></tr>
                   ) : (
                     batalhaNaval.map((row, i) => {
                       // Calcula pior e segundo pior da linha (valores > 0)
@@ -761,6 +837,35 @@ export default function PositivacaoPage() {
                             </td>
                           );
                         })}
+                        <td style={{ textAlign: "center", padding: "4px 2px" }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedPositivacao360({
+                                clienteNome: `SKU: ${row.sku}`,
+                                clienteId: row.sku,
+                                codParceiro: null,
+                                redeNome: null,
+                                codigoMatriz: null,
+                                gerenteNome: "Portfólio / Comercial",
+                                uf: null,
+                                cidade: null,
+                                faturamentoReal: 0,
+                                volumeReal: row.totalQty || 0,
+                                mesesPositivados: Object.values(row.months || {}).filter(v => v > 0).length,
+                                mesesSemCompra: Object.values(row.months || {}).filter(v => v === 0).length,
+                                historicoPositivacao: row.months,
+                                dataStr: `${filterStartMonth}/${filterStartYear} até ${filterEndMonth}/${filterEndYear}`,
+                              });
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors"
+                            title={`Diagnóstico 360° do SKU ${row.sku}`}
+                          >
+                            <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                            <span>360°</span>
+                          </button>
+                        </td>
                       </tr>
                     );})
                   )}
@@ -791,6 +896,40 @@ export default function PositivacaoPage() {
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
+
+      {/* ── Drawer Positivação 360° (Wave B.20) ── */}
+      {selectedPositivacao360 && (
+        <PositivacaoRedeDrawer
+          isOpen={Boolean(selectedPositivacao360)}
+          onClose={() => setSelectedPositivacao360(null)}
+          context={selectedPositivacao360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Positivação) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
