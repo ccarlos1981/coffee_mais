@@ -24,6 +24,9 @@ async function handleImportCron(request: NextRequest) {
     return cronCheck.errorResponse!;
   }
 
+  let batchId: string | undefined;
+  let isDryRun = false;
+
   try {
     // 2. Barreira de Domingo (Timezone: America/Sao_Paulo)
     const nowSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
@@ -47,15 +50,39 @@ async function handleImportCron(request: NextRequest) {
     // 3. Parâmetros da Requisição
     const urlParams = request.nextUrl.searchParams;
     // Em produção (Demanda 059), o padrão é isDryRun = false (execução real)
-    const isDryRun = urlParams.get("dry_run") === "true";
+    isDryRun = urlParams.get("dry_run") === "true";
     const forceOverride = urlParams.get("force") === "true";
 
-    // 4. Download do Arquivo via Google Drive (ou fallback seguro de desenvolvimento)
+    // 4. Iniciar Registro Persistente de Execução em cm_sync_logs (Observabilidade Imediata)
+    try {
+      const { createAdminClient } = await import("@/lib/supabase/admin");
+      const supabase = createAdminClient();
+      const { data: initialLog } = await supabase
+        .from("cm_sync_logs")
+        .insert({
+          source: "google_drive_csv",
+          status: "RUNNING",
+          triggered_by: "cron_07",
+          metadata: {
+            file_name: "CFOP.CSV",
+            is_dry_run: isDryRun,
+            current_step: "DOWNLOADING_FROM_DRIVE",
+            progress: 5,
+          },
+        })
+        .select("id")
+        .single();
+      batchId = initialLog?.id;
+    } catch (logInitErr) {
+      console.warn("[CronImportDrive] Falha ao iniciar log preliminar:", logInitErr);
+    }
+
+    // 5. Download do Arquivo via Google Drive (ou fallback seguro em desenvolvimento local)
     const driveResult = await GoogleDriveService.fetchCfopCsv({
-      allowLocalFallback: true,
+      allowLocalFallback: process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1",
     });
 
-    // 5. Ingestão, Validações e Processamento via CsvImportService
+    // 6. Ingestão, Validações e Processamento via CsvImportService
     const importResult = await CsvImportService.processCsv({
       fileBuffer: driveResult.fileBuffer,
       fileName: driveResult.fileName,
@@ -66,11 +93,12 @@ async function handleImportCron(request: NextRequest) {
       triggeredBy: "cron_07",
       isDryRun,
       forceOverride,
+      existingBatchId: batchId,
     });
 
     const durationSeconds = (Date.now() - startTime) / 1000;
 
-    // 6. Envio de Notificação por E-mail
+    // 7. Envio de Notificação por E-mail
     const emailStatus =
       importResult.status === "DRY_RUN_SUCCESS"
         ? "DRY_RUN_SUCCESS"
@@ -110,6 +138,30 @@ async function handleImportCron(request: NextRequest) {
   } catch (error: any) {
     console.error("[CronImportDrive] Erro na execução da rota cron:", error);
     const durationSeconds = (Date.now() - startTime) / 1000;
+
+    if (batchId) {
+      try {
+        const { createAdminClient } = await import("@/lib/supabase/admin");
+        const supabase = createAdminClient();
+        await supabase
+          .from("cm_sync_logs")
+          .update({
+            status: "ERROR",
+            finished_at: new Date().toISOString(),
+            error_message: error.message || String(error),
+            metadata: {
+              file_name: "CFOP.CSV",
+              is_dry_run: isDryRun,
+              sub_status: "BLOCKED",
+              barrier_failed: "DRIVE_DOWNLOAD_OR_INIT_FAILED",
+              error_details: error.stack || String(error),
+            },
+          })
+          .eq("id", batchId);
+      } catch (logUpdateErr) {
+        console.error("[CronImportDrive] Falha ao registrar status ERROR em cm_sync_logs:", logUpdateErr);
+      }
+    }
 
     await EmailNotificationService.sendReport({
       status: "BLOCKED",

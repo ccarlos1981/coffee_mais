@@ -174,6 +174,7 @@ export class CsvImportService {
     triggeredBy?: string;
     isDryRun?: boolean;
     forceOverride?: boolean;
+    existingBatchId?: string;
   }): Promise<CsvImportResult> {
     const startTime = Date.now();
     const isDryRun = params.isDryRun ?? true; // Default to DRY_RUN for safety
@@ -191,6 +192,25 @@ export class CsvImportService {
 
     if (existingLogs && existingLogs.length > 0 && !params.forceOverride && !isDryRun) {
       const prev = existingLogs[0];
+      if (params.existingBatchId) {
+        await supabase
+          .from("cm_sync_logs")
+          .update({
+            status: "SKIPPED_DUPLICATE_HASH",
+            finished_at: new Date().toISOString(),
+            metadata: {
+              file_name: params.fileName,
+              file_size: params.fileSize,
+              file_hash: fileHash,
+              drive_file_id: params.driveFileId,
+              drive_modified_at: params.driveModifiedTime,
+              is_dry_run: false,
+              message: `Arquivo com hash SHA-256 idêntico já foi processado anteriormente com sucesso no Lote ${prev.id}.`,
+            },
+          })
+          .eq("id", params.existingBatchId);
+      }
+
       return {
         batchId: prev.id,
         fileHash,
@@ -219,32 +239,51 @@ export class CsvImportService {
       };
     }
 
-    // 2. Criar registro inicial em cm_sync_logs
-    const { data: logEntry, error: logErr } = await supabase
-      .from("cm_sync_logs")
-      .insert({
-        source: "google_drive_csv",
-        status: "RUNNING",
-        triggered_by: params.triggeredBy || "cron_07",
-        metadata: {
-          file_name: params.fileName,
-          file_size: params.fileSize,
-          file_hash: fileHash,
-          drive_file_id: params.driveFileId,
-          drive_modified_at: params.driveModifiedTime,
-          is_dry_run: isDryRun,
-          current_step: "PARSING_CSV",
-          progress: 10,
-        },
-      })
-      .select("id")
-      .single();
+    // 2. Criar ou atualizar registro inicial em cm_sync_logs
+    let batchId: string = params.existingBatchId || "";
+    if (batchId) {
+      await supabase
+        .from("cm_sync_logs")
+        .update({
+          metadata: {
+            file_name: params.fileName,
+            file_size: params.fileSize,
+            file_hash: fileHash,
+            drive_file_id: params.driveFileId,
+            drive_modified_at: params.driveModifiedTime,
+            is_dry_run: isDryRun,
+            current_step: "PARSING_CSV",
+            progress: 10,
+          },
+        })
+        .eq("id", batchId);
+    } else {
+      const { data: logEntry, error: logErr } = await supabase
+        .from("cm_sync_logs")
+        .insert({
+          source: "google_drive_csv",
+          status: "RUNNING",
+          triggered_by: params.triggeredBy || "cron_07",
+          metadata: {
+            file_name: params.fileName,
+            file_size: params.fileSize,
+            file_hash: fileHash,
+            drive_file_id: params.driveFileId,
+            drive_modified_at: params.driveModifiedTime,
+            is_dry_run: isDryRun,
+            current_step: "PARSING_CSV",
+            progress: 10,
+          },
+        })
+        .select("id")
+        .single();
 
-    if (logErr || !logEntry) {
-      throw new Error(`Falha ao registrar lote em cm_sync_logs: ${logErr?.message}`);
+      if (logErr || !logEntry) {
+        throw new Error(`Falha ao registrar lote em cm_sync_logs: ${logErr?.message}`);
+      }
+
+      batchId = logEntry.id;
     }
-
-    const batchId = logEntry.id;
 
     try {
       // 3. BARREIRA F: Parsing e Validação Estrutural
