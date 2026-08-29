@@ -18,6 +18,8 @@ import {
   User,
   ArrowLeft
 } from "lucide-react";
+import { TradeRedeDrawer } from "./components/TradeRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 export default function TradeDashboardPage() {
   const supabase = createClient();
@@ -36,6 +38,12 @@ export default function TradeDashboardPage() {
 
   const [tentativasBloqueadas, setTentativasBloqueadas] = useState<any[]>([]);
   const [ocorrenciasRecentes, setOcorrenciasRecentes] = useState<any[]>([]);
+
+  // Wave B.18: Trade 360° Drawer & Follow-Up State
+  const [selectedTrade360, setSelectedTrade360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -285,9 +293,32 @@ export default function TradeDashboardPage() {
                             {t.pdv?.nome_fantasia || "PDV"}
                           </td>
                           <td className="py-3">
-                            <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase ${badge.className}`}>
-                              {badge.label}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTrade360({
+                                  pdvNome: t.pdv?.nome_fantasia || "PDV de Campo",
+                                  pdvId: t.cod_parceiro || null,
+                                  redeNome: null,
+                                  codigoMatriz: t.cod_parceiro || null,
+                                  uf: null,
+                                  promotorNome: t.promotor?.nome_completo || null,
+                                  promotorId: t.promotor_id || null,
+                                  tipoCompliance: badge.label,
+                                  statusCompliance: t.tipo_bloqueio,
+                                  descricaoOcorrencia: t.mensagem || `Tentativa bloqueada por ${badge.label} no PDV ${t.pdv?.nome_fantasia || 'N/A'}`,
+                                  dataStr: new Date(t.created_at).toISOString().split('T')[0],
+                                })}
+                                className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[8px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Diagnóstico 360° do PDV / Tentativa Bloqueada"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                                <span>360°</span>
+                              </button>
+                              <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-3 text-right">
                             {t.foto_tentada_url ? (
@@ -334,9 +365,31 @@ export default function TradeDashboardPage() {
                 ocorrenciasRecentes.map(o => (
                   <div key={o.id} className="p-3 bg-neutral-900/30 border border-neutral-900 rounded-xl flex flex-col gap-1.5">
                     <div className="flex justify-between items-start">
-                      <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-900/30 px-2 py-0.5 rounded font-black">
-                        {o.tipo_ocorrencia.replace("_", " ")}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTrade360({
+                            pdvNome: o.visita?.pdv?.nome_fantasia || "Loja",
+                            pdvId: o.visita?.cod_parceiro || null,
+                            redeNome: null,
+                            codigoMatriz: o.visita?.cod_parceiro || null,
+                            uf: null,
+                            promotorNome: o.visita?.agenda?.promotor?.nome_completo || null,
+                            promotorId: null,
+                            tipoOcorrencia: o.tipo_ocorrencia.replace("_", " "),
+                            descricaoOcorrencia: o.descricao || `Ocorrência registrada no PDV ${o.visita?.pdv?.nome_fantasia || 'N/A'}`,
+                            dataStr: new Date(o.created_at).toISOString().split('T')[0],
+                          })}
+                          className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[8px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                          title="Diagnóstico 360° da Ocorrência"
+                        >
+                          <ShieldCheck className="w-2.5 h-2.5" />
+                          <span>360°</span>
+                        </button>
+                        <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-900/30 px-2 py-0.5 rounded font-black">
+                          {o.tipo_ocorrencia.replace("_", " ")}
+                        </span>
+                      </div>
                       <span className="text-[9px] text-neutral-500 font-mono">
                         {new Date(o.created_at).toLocaleDateString("pt-BR")}
                       </span>
@@ -363,6 +416,40 @@ export default function TradeDashboardPage() {
         </div>
 
       </div>
+
+      {/* ── Drawer Trade 360° (Wave B.18) ── */}
+      {selectedTrade360 && (
+        <TradeRedeDrawer
+          isOpen={Boolean(selectedTrade360)}
+          onClose={() => setSelectedTrade360(null)}
+          context={selectedTrade360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Trade & Campo) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
