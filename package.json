@@ -28,7 +28,8 @@
     "test:b13": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b13-rps-360.ts",
     "test:b14": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b14-investimentos-360.ts",
     "test:b15": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b15-rdm-360.ts",
-    "test:b16": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b16-agenda-360.ts"
+    "test:b16": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b16-agenda-360.ts",
+    "test:b17": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b17-supervisor-360.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",
