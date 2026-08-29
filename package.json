@@ -20,7 +20,8 @@
     "test:wave17-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave17-security.ts",
     "test:b5-4": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b5-4-company-targets.ts",
     "test:b6": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b6-skeleton-ux.ts",
-    "test:b8": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b8-observability.ts"
+    "test:b8": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b8-observability.ts",
+    "test:b9": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b9-central-execucao.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",

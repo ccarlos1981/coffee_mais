@@ -28,6 +28,8 @@ import { OpportunityRecommendation, SuggestedSku } from "@/lib/services/opportun
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 import { FollowUpStatusBadge } from "@/app/processo-comercial/follow-up/components/FollowUpStatusBadge";
 import type { FollowUpActionRecord } from "@/lib/services/follow-up-service";
+import { CrmFarolStatusCard } from "./CrmFarolStatusCard";
+import type { ClientFarolSummary } from "@/lib/services/client-farol-service";
 
 interface CrmClienteDrawerProps {
   oportunidade: OpportunityRecommendation | any;
@@ -39,6 +41,9 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
   const [activeActionToast, setActiveActionToast] = useState<string | null>(null);
   const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
   const [existingFollowUp, setExistingFollowUp] = useState<FollowUpActionRecord | null>(null);
+  const [farolData, setFarolData] = useState<ClientFarolSummary | null>(null);
+  const [loadingFarol, setLoadingFarol] = useState<boolean>(false);
+  const [errorFarol, setErrorFarol] = useState<string | null>(null);
 
   if (!rawOp) return null;
 
@@ -173,11 +178,45 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
     }
   }, []);
 
+  const fetchFarolStatus = useCallback(async (cliId: string, redeName?: string | null, signal?: AbortSignal) => {
+    if (!cliId && !redeName) return;
+    setLoadingFarol(true);
+    setErrorFarol(null);
+    try {
+      const params = new URLSearchParams();
+      if (cliId) params.set("clienteId", cliId);
+      if (redeName) params.set("redeNome", redeName);
+
+      const res = await fetch(`/api/inovacoes/crm/farol?${params.toString()}`, { signal, cache: "no-store" });
+      if (!res.ok) {
+        throw new Error(`Falha ao consultar Farol (${res.status})`);
+      }
+      const json = await res.json();
+      if (json.success && json.data) {
+        setFarolData(json.data);
+      } else {
+        setErrorFarol(json.error || "Dados do Farol indisponíveis");
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        console.error("Erro ao carregar Farol Comercial & Financeiro:", err);
+        setErrorFarol(err.message || "Erro na conexão com o Farol.");
+      }
+    } finally {
+      setLoadingFarol(false);
+    }
+  }, []);
+
   useEffect(() => {
+    const controller = new AbortController();
     if (oportunidade.clienteId) {
       fetchFollowUpStatus(oportunidade.clienteId);
+      fetchFarolStatus(oportunidade.clienteId, oportunidade.rede, controller.signal);
     }
-  }, [oportunidade.clienteId, fetchFollowUpStatus]);
+    return () => {
+      controller.abort();
+    };
+  }, [oportunidade.clienteId, oportunidade.rede, fetchFollowUpStatus, fetchFarolStatus]);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-md transition-all animate-in fade-in">
@@ -263,6 +302,13 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
               </div>
             </div>
           </div>
+
+          {/* Farol Comercial & Financeiro (Adimplência + Acordo Comercial) */}
+          <CrmFarolStatusCard
+            farol={farolData}
+            loading={loadingFarol}
+            error={errorFarol}
+          />
 
           {/* Indicadores Diagnósticos Financeiros & Operacionais */}
           <div className="space-y-2">
@@ -493,7 +539,7 @@ export const CrmClienteDrawer: React.FC<CrmClienteDrawerProps> = ({ oportunidade
             rede: oportunidade.rede,
             manager_id: oportunidade.gerenteId || undefined,
             origem: "COCKPIT_PRESCRITIVO",
-            origem_ref: `CRM-${oportunidade.clienteId}-${new Date().toISOString().slice(0, 10)}`,
+            origem_ref: `CRM_OPP_${oportunidade.clienteId}_${new Date().toISOString().slice(0, 7)}_${oportunidade.classificacaoRisco === "CRITICO" ? "REATIVACAO_CLIENTE" : "RECUPERACAO_VOLUME"}`,
             tipo_acao: oportunidade.classificacaoRisco === "CRITICO" ? "REATIVACAO_CLIENTE" : "RECUPERACAO_VOLUME",
             motivo: `Oportunidade Prescritiva: ${oportunidade.nomeParceiro} (${oportunidade.classificacaoRisco})`,
             descricao: `Score: ${oportunidade.scoreOportunidade}/100 | Dias sem compra: ${oportunidade.diasSemCompra} | Impacto Estimado: ${formatCur(oportunidade.impactoFinanceiroTotal || oportunidade.faturamentoPerdidoEstimado)}.\nJustificativa: ${oportunidade.justificativaRecomendacao}`,

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Sparkles, AlertTriangle, TrendingDown, Rocket, CheckCircle2, ArrowUpRight } from "lucide-react";
+import Link from "next/link";
+import { Sparkles, AlertTriangle, TrendingDown, Rocket, CheckCircle2, ArrowUpRight, ArrowRight } from "lucide-react";
 import { CockpitComercialData } from "@/lib/governance/analytics/engine";
 
 interface OportunidadesEngineProps {
@@ -101,38 +102,50 @@ export const OportunidadesEngine: React.FC<OportunidadesEngineProps> = ({
           {filteredOportunidades.map((op, idx) => (
             <div
               key={`${op.tipo}-${op.clienteOuRede}-${idx}`}
-              className="bg-background/50 border border-border/80 p-4 rounded-xl space-y-2 relative group hover:border-gold/50 transition-all shadow-sm"
+              className="bg-background/50 border border-border/80 p-4 rounded-xl space-y-2 relative group hover:border-gold/50 transition-all shadow-sm flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 rounded-lg bg-card border border-border">
-                    {getTipoIcon(op.tipo)}
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-card border border-border">
+                      {getTipoIcon(op.tipo)}
+                    </div>
+                    <h4 className="text-xs font-bold text-foreground line-clamp-1" title={op.titulo}>
+                      {op.titulo}
+                    </h4>
                   </div>
-                  <h4 className="text-xs font-bold text-foreground line-clamp-1" title={op.titulo}>
-                    {op.titulo}
-                  </h4>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getPriorityStyle(
+                      op.nivelPrioridade
+                    )}`}
+                  >
+                    Prioridade {op.nivelPrioridade}
+                  </span>
                 </div>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[9px] font-bold border shrink-0 ${getPriorityStyle(
-                    op.nivelPrioridade
-                  )}`}
-                >
-                  Prioridade {op.nivelPrioridade}
-                </span>
+
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {op.descricao}
+                </p>
               </div>
 
-              <p className="text-[11px] text-muted-foreground leading-relaxed">
-                {op.descricao}
-              </p>
+              <div className="pt-2 flex items-center justify-between border-t border-border/40 text-xs mt-2">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-medium text-muted-foreground uppercase tracking-wider">
+                    Impacto Potencial
+                  </span>
+                  <span className="font-mono font-bold text-gold flex items-center gap-1 text-xs">
+                    {formatCur(op.valorImpactoPotencial)}
+                    <ArrowUpRight className="w-3 h-3 text-gold/80" />
+                  </span>
+                </div>
 
-              <div className="pt-2 flex items-center justify-between border-t border-border/40 text-xs">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  Impacto Potencial
-                </span>
-                <span className="font-mono font-bold text-gold flex items-center gap-1">
-                  {formatCur(op.valorImpactoPotencial)}
-                  <ArrowUpRight className="w-3 h-3 text-gold/80" />
-                </span>
+                <Link
+                  href="/inovacoes/crm"
+                  className="px-2.5 py-1 rounded-lg bg-gold/10 hover:bg-gold/20 text-gold text-[11px] font-bold inline-flex items-center gap-1 transition-colors border border-gold/20"
+                >
+                  <span>Executar no CRM</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
               </div>
             </div>
           ))}
