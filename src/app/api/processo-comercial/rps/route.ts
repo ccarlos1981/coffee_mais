@@ -7,6 +7,7 @@ import { resolveCanonicalManager, isSameManager, resolveCanonicalNetwork } from 
 import { CommercialDomainService } from "@/lib/domain";
 import { resolveSupabaseTableName } from '@/lib/governance/analytics/sources';
 import { getInvestimentoRealizadoOficial } from '@/lib/investimento/getValorTotal';
+import { calculateMonthBusinessDays } from '@/lib/utils/business-days-calculator';
 
 export const runtime = 'nodejs';
 
@@ -261,7 +262,8 @@ export async function GET(request: Request) {
       resMgrTargets, 
       resInvestHist, 
       resProj, 
-      resPrevProj
+      resPrevProj,
+      resBd
     ] = await Promise.all([
       supabase.rpc('execute_readonly_query', { query_text: sqlManagerHistory }),
       supabase.rpc('execute_readonly_query', { query_text: sqlClientHistory }),
@@ -282,6 +284,12 @@ export async function GET(request: Request) {
         .eq('year', prevMonthYear)
         .eq('month', prevMonthVal)
         .order('updated_at', { ascending: false }),
+      supabase
+        .from('business_days')
+        .select('total_days, elapsed_days')
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle()
     ]);
 
     if (resMgrHist.error) throw new Error("Erro buscar histórico gerentes: " + resMgrHist.error.message);
@@ -587,8 +595,12 @@ export async function GET(request: Request) {
 
         const mediaTrimestreCli = (redeRollingMap.get(cName) || 0) / 3;
 
+        const officialRecord = managerOfficialRecords.find((r: any) => r.rede && r.rede.trim().toUpperCase() === cName.trim().toUpperCase());
+
         return {
           client: cName,
+          codigo_matriz: officialRecord?.codigoMatriz || null,
+          uf: officialRecord?.uf || null,
           ano_a: fatPy,
           mes_a: fatPm,
           media_trimestre: mediaTrimestreCli,
@@ -623,6 +635,8 @@ export async function GET(request: Request) {
 
       clientsList.push({
         client: "OUTROS",
+        codigo_matriz: null,
+        uf: null,
         ano_a: 0,
         mes_a: 0,
         media_trimestre: mediaTrimestreOutros,
@@ -648,6 +662,12 @@ export async function GET(request: Request) {
     const isAdmin = ["Admin", "Admin Master"].includes(userRole);
     const canViewTotalBrasil = isAdmin;
 
+    const autoBd = calculateMonthBusinessDays(year, month);
+    const businessDaysData = {
+      total_days: resBd?.data?.total_days || autoBd.total_days,
+      elapsed_days: autoBd.elapsed_days,
+    };
+
     return NextResponse.json({
       success: true,
       year,
@@ -655,6 +675,7 @@ export async function GET(request: Request) {
       mondays,
       managers: managersData,
       allAvailableRedes,
+      businessDays: businessDaysData,
       restrictedToManager: (!isGerenteNacionalAdmin && userManagerName && !FULL_ACCESS_ROLES.includes(userRole)) ? userManagerName : null,
       isGerenteNacionalAdmin,
       isAdmin,
