@@ -33,7 +33,8 @@
     "test:b18": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b18-trade-360.ts",
     "test:b19": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b19-distribuidores-360.ts",
     "test:b20": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b20-positivacao-360.ts",
-    "test:b21": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b21-sku-pdv-360.ts"
+    "test:b21": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b21-sku-pdv-360.ts",
+    "test:b22": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b22-sales-action-center.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",
