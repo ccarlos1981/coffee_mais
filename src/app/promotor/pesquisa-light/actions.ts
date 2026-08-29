@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { unstable_cache } from "next/cache";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
+import { requireAuth, requireApprovedProfile } from "@/lib/supabase/auth-helpers";
 import nodemailer from "nodemailer";
 
 export interface PesquisaLightData {
@@ -19,11 +20,9 @@ export async function salvarPesquisaLight(data: PesquisaLightData): Promise<Acti
   let userId: string | null = null;
 
   try {
-    // 1. Validar autenticação do usuário
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return errorResult(ActionErrorCode.UNAUTHORIZED, "Usuário não autenticado.");
-    }
+    // 1. Validar autenticação e aprovação do perfil do usuário
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
     userId = user.id;
 
     // 2. Validar campos obrigatórios
