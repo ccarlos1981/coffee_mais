@@ -2,46 +2,24 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  requireAuth,
+  requireApprovedProfile,
+  requirePermission,
+  requireRole,
+} from "@/lib/supabase/auth-helpers";
 
 export async function upsertEmployee(formData: FormData) {
   try {
-    const supabase = await createClient();
-    
-    // Obter usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { error: "Não autorizado. Por favor, faça login." };
-    }
-    
-    // Obter cargo e verificar permissão
-    const { data: profile } = await supabase
-      .from('cm_user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-      
-    const role = profile?.role;
-    let hasAccess = false;
-    
-    if (role === 'CEO') {
-      hasAccess = true;
-    } else if (role) {
-      const { data: permission } = await supabase
-        .from('cm_role_permissions')
-        .select('has_access')
-        .eq('role', role)
-        .eq('module_name', 'Cadastro Funcionários')
-        .eq('has_access', true)
-        .maybeSingle();
-      if (permission) {
-        hasAccess = true;
-      }
-    }
-    
-    if (!hasAccess) {
-      return { error: "Você não tem permissão para realizar esta ação." };
-    }
-    
+    // 1. Autenticação e autorização canônicas
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Cadastro Funcionários");
+
+    // Instanciação segura do adminClient após validação estrita de alçada
+    const supabase = createAdminClient();
+
     const id = formData.get("id") as string;
     const nome_completo = formData.get("nome_completo") as string;
     const cpf = formData.get("cpf") as string;
@@ -53,11 +31,11 @@ export async function upsertEmployee(formData: FormData) {
     const ativo = formData.get("ativo") === "true";
     const whatsapp = formData.get("whatsapp") as string;
     const endereco_casa = formData.get("endereco_casa") as string;
-    
+
     if (!nome_completo || !cpf) {
       return { error: "Nome completo e CPF são obrigatórios." };
     }
-    
+
     const cleanCpf = cpf.replace(/\D/g, "");
     if (cleanCpf.length !== 11) {
       return { error: "CPF deve conter exatamente 11 números." };
@@ -96,7 +74,7 @@ export async function upsertEmployee(formData: FormData) {
         console.warn("[GEOCODE] Não foi possível obter coordenadas para o endereço:", err);
       }
     }
-    
+
     const employeeData = {
       nome_completo: nome_completo.trim(),
       cpf: cleanCpf,
@@ -112,7 +90,7 @@ export async function upsertEmployee(formData: FormData) {
       lng_casa,
       updated_at: new Date().toISOString()
     };
-    
+
     let query;
     if (id) {
       query = supabase
@@ -124,9 +102,9 @@ export async function upsertEmployee(formData: FormData) {
         .from("cm_employees")
         .insert(employeeData);
     }
-    
+
     const { error } = await query;
-    
+
     if (error) {
       // Tratamento de violação de restrição UNIQUE no Postgres para o CPF (código 23505)
       if (error.code === "23505") {
@@ -134,7 +112,7 @@ export async function upsertEmployee(formData: FormData) {
       }
       return { error: error.message };
     }
-    
+
     revalidatePath("/gente-gestao/cadastro");
     return { success: true, message: `Funcionário ${id ? 'atualizado' : 'cadastrado'} com sucesso!` };
   } catch (error) {
@@ -145,52 +123,22 @@ export async function upsertEmployee(formData: FormData) {
 
 export async function deleteEmployee(id: string) {
   try {
-    const supabase = await createClient();
-    
-    // Obter usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { error: "Não autorizado. Por favor, faça login." };
-    }
-    
-    // Obter cargo e verificar permissão
-    const { data: profile } = await supabase
-      .from('cm_user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-      
-    const role = profile?.role;
-    let hasAccess = false;
-    
-    if (role === 'CEO') {
-      hasAccess = true;
-    } else if (role) {
-      const { data: permission } = await supabase
-        .from('cm_role_permissions')
-        .select('has_access')
-        .eq('role', role)
-        .eq('module_name', 'Cadastro Funcionários')
-        .eq('has_access', true)
-        .maybeSingle();
-      if (permission) {
-        hasAccess = true;
-      }
-    }
-    
-    if (!hasAccess) {
-      return { error: "Você não tem permissão para realizar esta ação." };
-    }
-    
+    // 1. Autenticação e autorização canônicas
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Cadastro Funcionários");
+
+    const supabase = createAdminClient();
+
     const { error } = await supabase
       .from("cm_employees")
       .delete()
       .eq("id", id);
-      
+
     if (error) {
       return { error: error.message };
     }
-    
+
     revalidatePath("/gente-gestao/cadastro");
     return { success: true, message: "Funcionário excluído com sucesso!" };
   } catch (error) {
@@ -212,46 +160,16 @@ export interface ImportEmployeeInput {
 
 export async function importEmployeesInBulk(employees: ImportEmployeeInput[]) {
   try {
-    const supabase = await createClient();
-    
-    // Obter usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { error: "Não autorizado. Por favor, faça login." };
-    }
-    
-    // Obter cargo e verificar permissão
-    const { data: profile } = await supabase
-      .from('cm_user_profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-      
-    const role = profile?.role;
-    let hasAccess = false;
-    
-    if (role === 'CEO') {
-      hasAccess = true;
-    } else if (role) {
-      const { data: permission } = await supabase
-        .from('cm_role_permissions')
-        .select('has_access')
-        .eq('role', role)
-        .eq('module_name', 'Cadastro Funcionários')
-        .eq('has_access', true)
-        .maybeSingle();
-      if (permission) {
-        hasAccess = true;
-      }
-    }
-    
-    if (!hasAccess) {
-      return { error: "Você não tem permissão para realizar esta ação." };
-    }
+    // 1. Autenticação e autorização canônicas
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    await requirePermission(profile.role, "Cadastro Funcionários");
 
     if (!Array.isArray(employees) || employees.length === 0) {
       return { error: "Nenhum funcionário válido enviado para importação." };
     }
+
+    const supabase = createAdminClient();
 
     // Fazer o upsert em lote usando a constraint de CPF
     const { error } = await supabase
@@ -273,24 +191,21 @@ export async function importEmployeesInBulk(employees: ImportEmployeeInput[]) {
 
 export async function getEmployeeEscala(employeeId: string) {
   try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
     const supabase = await createClient();
-    
-    // Obter usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { error: "Não autorizado. Por favor, faça login." };
-    }
-    
+
     const { data: escalas, error } = await supabase
       .from("cm_promotor_escala")
       .select("*")
       .eq("employee_id", employeeId)
       .order("dia_semana", { ascending: true });
-      
+
     if (error) {
       return { error: error.message };
     }
-    
+
     return { success: true, data: escalas || [] };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Erro interno do servidor.";
@@ -311,37 +226,22 @@ export interface SaveEscalaInput {
 
 export async function saveEmployeeEscala(employeeId: string, escalas: SaveEscalaInput[]) {
   try {
-    const supabase = await createClient();
-    
-    // Obter usuário logado
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { error: "Não autorizado. Por favor, faça login." };
-    }
-    
-    // Obter cargo e verificar permissão (apenas Admin, CEO, Trade, Supervisor)
-    const { data: profile } = await supabase
-      .from("cm_user_profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-      
-    const role = profile?.role;
-    const isGestor = ["Supervisor", "CEO", "Admin", "Trade"].includes(role || "");
-    if (!isGestor) {
-      return { error: "Você não tem permissão para realizar esta ação." };
-    }
-    
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["Supervisor", "CEO", "Admin", "Admin Master", "Trade"]);
+
+    const supabase = createAdminClient();
+
     // Deletar as escalas existentes para este employee_id
     const { error: deleteError } = await supabase
       .from("cm_promotor_escala")
       .delete()
       .eq("employee_id", employeeId);
-      
+
     if (deleteError) {
       return { error: deleteError.message };
     }
-    
+
     // Inserir as novas escalas válidas
     if (escalas && escalas.length > 0) {
       const scaleRows = escalas.map(esc => ({
@@ -355,16 +255,16 @@ export async function saveEmployeeEscala(employeeId: string, escalas: SaveEscala
         hora_saida: esc.hora_saida,
         tolerancia_minutos: esc.tolerancia_minutos ?? 10
       }));
-      
+
       const { error: insertError } = await supabase
         .from("cm_promotor_escala")
         .insert(scaleRows);
-        
+
       if (insertError) {
         return { error: insertError.message };
       }
     }
-    
+
     revalidatePath("/gente-gestao/cadastro");
     return { success: true, message: "Escala de trabalho salva com sucesso!" };
   } catch (error) {
@@ -372,5 +272,3 @@ export async function saveEmployeeEscala(employeeId: string, escalas: SaveEscala
     return { error: errorMsg };
   }
 }
-
-
