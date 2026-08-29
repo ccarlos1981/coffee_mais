@@ -20,6 +20,7 @@ import {
   Check,
   ExternalLink,
   ShieldAlert,
+  ShieldCheck,
   ThumbsUp,
   XCircle,
   Building2,
@@ -36,6 +37,8 @@ import {
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import Link from "next/link";
+import { SupervisorRedeDrawer } from "./components/SupervisorRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 const MapCommandCenter = dynamic(() => import("@/components/MapCommandCenter"), {
   ssr: false,
@@ -79,6 +82,12 @@ export default function SupervisorCommandCenterPage() {
   const [heartbeatLogs, setHeartbeatLogs] = useState<any[]>([]);
   const [geolocs, setGeolocs] = useState<Record<string, any>>({});
   const [loadingData, setLoadingData] = useState(true);
+
+  // Wave B.17: Supervisor 360° Drawer and Follow-Up States
+  const [selectedSupervisor360, setSelectedSupervisor360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // UI States
   const [searchFilter, setSearchFilter] = useState("");
@@ -2160,6 +2169,27 @@ export default function SupervisorCommandCenterPage() {
                                       <p className="text-[9px] text-neutral-500 font-mono mt-0.5">Cód: {block.cod_parceiro}</p>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedSupervisor360({
+                                          pdvNome: block.nome_fantasia || "PDV de Campo",
+                                          pdvId: block.pdv_id || block.cod_parceiro || null,
+                                          redeNome: block.rede || null,
+                                          codigoMatriz: block.cod_parceiro || null,
+                                          uf: block.uf || null,
+                                          promotorNome: null,
+                                          promotorId: null,
+                                          supervisorNome: employee?.nome_completo || profile?.full_name || "Supervisor",
+                                          tipoOcorrencia: block.ocorrencia ? "Ocorrência em Visita" : "Visita de PDV",
+                                          descricaoOcorrencia: block.ocorrencia?.descricao || `Visita ao PDV ${block.nome_fantasia} (Status: ${block.status}, Score: ${block.score_operacional})`,
+                                          dataStr: block.checkin_time ? new Date(block.checkin_time).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+                                        })}
+                                        className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[8px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                        title="Diagnóstico 360° do PDV"
+                                      >
+                                        <ShieldCheck className="w-2.5 h-2.5" />
+                                        <span>360°</span>
+                                      </button>
                                       <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border ${statusColor}`}>
                                         {block.status === "CONCLUIDA" ? "Concluído" : block.status.replace("_", " ")}
                                       </span>
@@ -2523,9 +2553,32 @@ export default function SupervisorCommandCenterPage() {
                             <span className={`px-2 py-0.5 border border-red-900/30 rounded-lg text-[8px] font-black uppercase tracking-wider ${config.text}`}>
                               {config.label}
                             </span>
-                            <span className="text-[8px] text-neutral-500 font-mono">
-                              {new Date(alerta.created_at).toLocaleTimeString()}
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSupervisor360({
+                                  pdvNome: alerta.pdv_nome || alerta.descricao?.split("no PDV")?.[1]?.trim() || "PDV de Campo",
+                                  pdvId: alerta.pdv_id || alerta.cod_parceiro || null,
+                                  redeNome: alerta.rede || null,
+                                  codigoMatriz: alerta.codigo_matriz || alerta.cod_parceiro || null,
+                                  uf: alerta.uf || null,
+                                  promotorNome: alerta.promotor?.nome_completo || null,
+                                  promotorId: alerta.promotor_id || null,
+                                  supervisorNome: employee?.nome_completo || profile?.full_name || "Supervisor",
+                                  tipoOcorrencia: alerta.tipo_alerta,
+                                  descricaoOcorrencia: alerta.descricao,
+                                  dataStr: new Date(alerta.created_at).toISOString().split('T')[0],
+                                })}
+                                className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[8px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Diagnóstico 360° do PDV / Ocorrência"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                                <span>360°</span>
+                              </button>
+                              <span className="text-[8px] text-neutral-500 font-mono">
+                                {new Date(alerta.created_at).toLocaleTimeString()}
+                              </span>
+                            </div>
                           </div>
 
                           <div className="text-[10px]">
@@ -3900,11 +3953,34 @@ export default function SupervisorCommandCenterPage() {
                                       Promotor: {log.promotor?.nome_completo || "N/A"} • Confiança IA: {log.ai_confidence ? (log.ai_confidence * 100).toFixed(0) : "0"}%
                                     </span>
                                   </div>
-                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
-                                    isTotal ? "bg-rose-500/10 text-rose-400 border-rose-950" : "bg-amber-500/10 text-amber-400 border-amber-950"
-                                  }`}>
-                                    Ruptura {log.rupture_status}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedSupervisor360({
+                                        pdvNome: pdvName,
+                                        pdvId: log.visita?.cod_parceiro || null,
+                                        redeNome: null,
+                                        codigoMatriz: log.visita?.cod_parceiro || null,
+                                        uf: null,
+                                        promotorNome: log.promotor?.nome_completo || null,
+                                        promotorId: log.promotor_id || null,
+                                        supervisorNome: employee?.nome_completo || profile?.full_name || "Supervisor",
+                                        tipoOcorrencia: `Ruptura de Estoque (${log.rupture_status})`,
+                                        descricaoOcorrencia: `Ruptura ${log.rupture_status} detectada no PDV ${pdvName} pelo promotor ${log.promotor?.nome_completo || 'N/A'}. Confiança IA: ${log.ai_confidence ? (log.ai_confidence * 100).toFixed(0) : "0"}%.`,
+                                        dataStr: new Date(log.created_at || new Date()).toISOString().split('T')[0],
+                                      })}
+                                      className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[8px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                      title="Diagnóstico 360° da Ruptura"
+                                    >
+                                      <ShieldCheck className="w-2.5 h-2.5" />
+                                      <span>360°</span>
+                                    </button>
+                                    <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
+                                      isTotal ? "bg-rose-500/10 text-rose-400 border-rose-950" : "bg-amber-500/10 text-amber-400 border-amber-950"
+                                    }`}>
+                                      Ruptura {log.rupture_status}
+                                    </span>
+                                  </div>
                                 </div>
                               );
                             })
@@ -6644,6 +6720,40 @@ export default function SupervisorCommandCenterPage() {
           );
         })()}
       </main>
+
+      {/* ── Drawer Supervisor 360° (Wave B.17) ── */}
+      {selectedSupervisor360 && (
+        <SupervisorRedeDrawer
+          isOpen={Boolean(selectedSupervisor360)}
+          onClose={() => setSelectedSupervisor360(null)}
+          context={selectedSupervisor360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Execução de Campo) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
