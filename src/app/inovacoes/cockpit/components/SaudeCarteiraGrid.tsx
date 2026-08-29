@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Search, HeartPulse, ShieldAlert, TrendingDown, TrendingUp, Clock, AlertCircle } from "lucide-react";
 import { CockpitComercialData } from "@/lib/governance/analytics/engine";
+import { TableSkeletonRows } from "@/components/Skeleton";
 
 interface SaudeCarteiraGridProps {
   data: CockpitComercialData["saudeCarteira"];
@@ -114,11 +115,25 @@ export const SaudeCarteiraGrid: React.FC<SaudeCarteiraGridProps> = ({ data, load
       </div>
 
       {/* Tabela de Clientes */}
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border" aria-busy={loading}>
         {loading ? (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            Carregando indicadores de saúde da carteira...
-          </div>
+          <table className="w-full text-left text-xs" aria-label="Carregando indicadores de saúde da carteira">
+            <thead className="bg-muted/50 text-muted-foreground uppercase font-semibold text-[10px] tracking-wider border-b border-border">
+              <tr>
+                <th className="py-2.5 px-3">Cliente / Parceiro</th>
+                <th className="py-2.5 px-3">Rede / Matriz</th>
+                <th className="py-2.5 px-3">Gerente</th>
+                <th className="py-2.5 px-3 text-center">Última Compra</th>
+                <th className="py-2.5 px-3 text-center">Recência</th>
+                <th className="py-2.5 px-3 text-right">Fat. Período</th>
+                <th className="py-2.5 px-3 text-right">Fat. 12M</th>
+                <th className="py-2.5 px-3 text-center">Saúde / Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <TableSkeletonRows rows={8} columns={8} />
+            </tbody>
+          </table>
         ) : filteredData.length === 0 ? (
           <div className="p-8 text-center text-xs text-muted-foreground">
             Nenhum cliente encontrado para os filtros selecionados.

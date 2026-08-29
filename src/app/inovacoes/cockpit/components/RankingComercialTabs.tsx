@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Trophy, Building, Users, UserCheck, Award } from "lucide-react";
 import { CockpitComercialData } from "@/lib/governance/analytics/engine";
+import { TableSkeletonRows } from "@/components/Skeleton";
 
 interface RankingComercialTabsProps {
   ranking: CockpitComercialData["ranking"];
@@ -76,11 +77,22 @@ export const RankingComercialTabs: React.FC<RankingComercialTabsProps> = ({
       </div>
 
       {/* Conteúdo das Abas */}
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border" aria-busy={loading}>
         {loading ? (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            Carregando rankings comerciais...
-          </div>
+          <table className="w-full text-left text-xs" aria-label="Carregando rankings comerciais">
+            <thead className="bg-muted/50 text-muted-foreground uppercase font-semibold text-[10px] tracking-wider border-b border-border">
+              <tr>
+                <th className="py-2.5 px-3 w-12 text-center">#</th>
+                <th className="py-2.5 px-3">Nome</th>
+                <th className="py-2.5 px-3 text-right">Faturamento</th>
+                <th className="py-2.5 px-3 text-right">Share / Margem</th>
+                <th className="py-2.5 px-3 w-36">Distribuição</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <TableSkeletonRows rows={6} columns={5} />
+            </tbody>
+          </table>
         ) : (
           <>
             {/* Aba 1: REDES */}

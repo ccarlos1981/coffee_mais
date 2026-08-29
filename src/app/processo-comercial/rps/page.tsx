@@ -36,6 +36,7 @@ import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { calculateMonthBusinessDays } from "@/lib/utils/business-days-calculator";
 import { ThemeToggle } from "@/components/ThemeProvider";
+import { RpsTableSkeleton } from "@/components/Skeleton";
 import { ExecutiveIntelligenceEngine } from "@/lib/governance/rps/executiveIntelligenceEngine";
 import { generateExecutivePdf } from "@/lib/reports/rpsExecutivePdf";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
@@ -1037,12 +1038,7 @@ export default function RpsPage() {
           )}
 
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-32 space-y-3">
-              <Loader2 className="w-8 h-8 text-accent-gold animate-spin" />
-              <p className="text-foreground-muted text-xs uppercase font-bold tracking-widest animate-pulse">
-                Carregando Projeções da RPS...
-              </p>
-            </div>
+            <RpsTableSkeleton managersCount={4} />
           ) : managers.length === 0 ? (
             <div className="text-center py-20 bg-background-card border border-border rounded-xl">
               <Calendar className="w-10 h-10 text-foreground-muted mx-auto mb-3" />

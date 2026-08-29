@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { TableSkeletonRows } from "@/components/Skeleton";
 import { 
   sincronizarClientesSankhya, 
   importarClientesEmLote,
@@ -1019,14 +1020,9 @@ export default function ClientesListPage() {
                   <th className="px-3.5 py-3 text-center">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="divide-y divide-border" aria-busy={loading}>
                 {loading ? (
-                  <tr>
-                    <td colSpan={12} className="px-3.5 py-12 text-center text-foreground-secondary">
-                      <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-accent-gold" />
-                      Carregando carteira de clientes...
-                    </td>
-                  </tr>
+                  <TableSkeletonRows rows={10} columns={12} />
                 ) : clientes.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-3.5 py-12 text-center text-foreground-secondary">

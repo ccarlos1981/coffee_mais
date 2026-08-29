@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Search, ArrowUpDown, Layers, LayoutGrid, FileText } from "lucide-react";
 import { DreComercialData } from "@/lib/governance/analytics/engine";
+import { TableSkeletonRows } from "@/components/Skeleton";
 
 interface DreDimensionalGridProps {
   dimensionais: DreComercialData["dimensionais"];
@@ -108,11 +109,29 @@ export const DreDimensionalGrid: React.FC<DreDimensionalGridProps> = ({
       </div>
 
       {/* Tabela Dimensional */}
-      <div className="overflow-x-auto rounded-xl border border-border">
+      <div className="overflow-x-auto rounded-xl border border-border" aria-busy={loading}>
         {loading ? (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            Carregando detalhamento dimensional da DRE...
-          </div>
+          <table className="w-full text-left text-xs whitespace-nowrap" aria-label="Carregando detalhamento dimensional da DRE">
+            <thead className="bg-muted/50 text-muted-foreground uppercase font-semibold text-[10px] tracking-wider border-b border-border">
+              <tr>
+                <th className="py-2.5 px-3">Dimensão</th>
+                <th className="py-2.5 px-3 text-right">Volume (un)</th>
+                <th className="py-2.5 px-3 text-right">Preço Médio</th>
+                <th className="py-2.5 px-3 text-right">Receita Bruta</th>
+                <th className="py-2.5 px-3 text-right">(-) Descontos</th>
+                <th className="py-2.5 px-3 text-right">Receita Líquida</th>
+                <th className="py-2.5 px-3 text-right">(-) Impostos</th>
+                <th className="py-2.5 px-3 text-right">Rec. Pós-Impostos</th>
+                <th className="py-2.5 px-3 text-right">(-) CPV</th>
+                <th className="py-2.5 px-3 text-right">Margem Bruta</th>
+                <th className="py-2.5 px-3 text-right">(-) Investimento</th>
+                <th className="py-2.5 px-3 text-right font-bold text-gold">MACO</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              <TableSkeletonRows rows={10} columns={12} />
+            </tbody>
+          </table>
         ) : filteredData.length === 0 ? (
           <div className="p-8 text-center text-xs text-muted-foreground">
             Nenhum registro encontrado.
