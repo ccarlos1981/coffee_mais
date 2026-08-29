@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Filter, BarChart3, Upload, Home, DollarSign,
   History, Users, Target, TrendingUp, CheckCircle2, Calendar,
-  ChevronRight, ChevronDown, ChevronLeft, Package
+  ChevronRight, ChevronDown, ChevronLeft, Package, ShieldCheck
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -14,6 +14,8 @@ import { ExportButton } from "@/components/ExportButton";
 import { Skeleton, SkeletonChart, SkeletonTable } from "@/components/Skeleton";
 import { EmptyState } from "@/components/EmptyState";
 import { GlassTooltip } from "@/components/GlassTooltip";
+import { SkuPdvRedeDrawer } from "@/components/sku-pdv/SkuPdvRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -38,6 +40,12 @@ interface FiltersData {
 export default function SkuPdvPage() {
   const [loading, setLoading] = useState(true);
   const [, setFiltersLoading] = useState(false);
+
+  // Wave B.21: SKU por PDV 360° Drawer & Follow-Up State
+  const [selectedSkuPdv360, setSelectedSkuPdv360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // Default period: 13 months, ending in the month prior to current date
   const now = new Date();
@@ -502,18 +510,47 @@ export default function SkuPdvPage() {
                             onClick={() => handleToggleManager(row.manager)} 
                             style={{ textAlign: "left", padding: "8px 10px", fontWeight: 500, cursor: "pointer" }}
                           >
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <ChevronRight 
-                                style={{ 
-                                  width: 12, 
-                                  height: 12, 
-                                  color: "var(--foreground-muted)",
-                                  transition: "transform 0.2s", 
-                                  transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
-                                  flexShrink: 0
-                                }} 
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <ChevronRight 
+                                  style={{ 
+                                    width: 12, 
+                                    height: 12, 
+                                    color: "var(--foreground-muted)",
+                                    transition: "transform 0.2s", 
+                                    transform: isExpanded ? "rotate(90deg)" : "rotate(0)",
+                                    flexShrink: 0
+                                  }} 
                                 />
-                              {row.manager}
+                                <span>{row.manager}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedSkuPdv360({
+                                    clienteNome: `Consolidado Gerente: ${row.manager}`,
+                                    clienteId: row.manager,
+                                    codParceiro: null,
+                                    redeNome: null,
+                                    codigoMatriz: null,
+                                    gerenteNome: row.manager,
+                                    uf: null,
+                                    cidade: null,
+                                    faturamentoReal: row.fat,
+                                    skusVendidos: undefined,
+                                    totalPortfolio: totals.total_portfolio,
+                                    pctPenetracao: totals.total_portfolio > 0 ? (row.avg_skus_per_pdv / totals.total_portfolio) * 100 : 0,
+                                    avgSkusPerPdv: row.avg_skus_per_pdv,
+                                    dataStr: `${filterStartMonth}/${filterStartYear} até ${filterEndMonth}/${filterEndYear}`,
+                                  });
+                                }}
+                                className="px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Diagnóstico 360° do Gerente"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                                <span>360°</span>
+                              </button>
                             </div>
                           </td>
                           <td style={{ textAlign: "center", padding: "8px 6px", fontWeight: 600 }}>{row.clientes}</td>
@@ -595,18 +632,21 @@ export default function SkuPdvPage() {
                                         <th style={{ textAlign: "center", padding: "6px 8px", color: "var(--foreground-muted)", width: 120 }}>
                                           SKUs Vendidos
                                         </th>
+                                        <th style={{ textAlign: "center", padding: "6px 4px", width: 50, color: "var(--foreground-muted)" }}>
+                                          360°
+                                        </th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {detail.loading ? (
                                         <tr>
-                                          <td colSpan={detail.type === 'client' ? 5 : 3} style={{ textAlign: "center", padding: "20px 0", color: "var(--foreground-muted)" }}>
+                                          <td colSpan={detail.type === 'client' ? 6 : 4} style={{ textAlign: "center", padding: "20px 0", color: "var(--foreground-muted)" }}>
                                             Carregando listagem detalhada...
                                           </td>
                                         </tr>
                                       ) : detail.data.length === 0 ? (
                                         <tr>
-                                          <td colSpan={detail.type === 'client' ? 5 : 3} style={{ textAlign: "center", padding: "14px 0", color: "var(--foreground-muted)" }}>
+                                          <td colSpan={detail.type === 'client' ? 6 : 4} style={{ textAlign: "center", padding: "14px 0", color: "var(--foreground-muted)" }}>
                                             Nenhum registro encontrado.
                                           </td>
                                         </tr>
@@ -650,6 +690,35 @@ export default function SkuPdvPage() {
                                                 ) : (
                                                   <span style={{ fontWeight: 600 }}>{detRow.skus_sold}</span>
                                                 )}
+                                              </td>
+                                              <td style={{ textAlign: "center", padding: "6px 4px" }}>
+                                                <button
+                                                  type="button"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setSelectedSkuPdv360({
+                                                      clienteNome: detRow.name,
+                                                      clienteId: detRow.name,
+                                                      codParceiro: null,
+                                                      redeNome: detRow.matriz || (detail.type === 'matriz' ? detRow.name : null),
+                                                      codigoMatriz: detRow.matriz || (detail.type === 'matriz' ? detRow.name : null),
+                                                      gerenteNome: row.manager,
+                                                      uf: detRow.uf || null,
+                                                      cidade: null,
+                                                      faturamentoReal: detRow.total_fat,
+                                                      skusVendidos: detRow.skus_sold,
+                                                      totalPortfolio: detRow.total_portfolio || totals.total_portfolio,
+                                                      pctPenetracao: detRow.pct,
+                                                      avgSkusPerPdv: detRow.skus_sold,
+                                                      dataStr: `${filterStartMonth}/${filterStartYear} até ${filterEndMonth}/${filterEndYear}`,
+                                                    });
+                                                  }}
+                                                  className="px-1.5 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer transition-colors"
+                                                  title={`Diagnóstico 360° de ${detRow.name}`}
+                                                >
+                                                  <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                                                  <span>360°</span>
+                                                </button>
                                               </td>
                                             </tr>
                                           );
@@ -746,6 +815,40 @@ export default function SkuPdvPage() {
         <Link href="/upload" className="bottom-tab"><Upload className="bottom-tab-icon" /> Upload</Link>
         <span className="bottom-tab disabled"><DollarSign className="bottom-tab-icon" /> DRE</span>
       </nav>
+
+      {/* ── Drawer SKU por PDV 360° (Wave B.21) ── */}
+      {selectedSkuPdv360 && (
+        <SkuPdvRedeDrawer
+          isOpen={Boolean(selectedSkuPdv360)}
+          onClose={() => setSelectedSkuPdv360(null)}
+          context={selectedSkuPdv360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Expansão de Mix) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
