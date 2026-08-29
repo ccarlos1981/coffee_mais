@@ -21,8 +21,11 @@ import {
   MapPin,
   RefreshCw,
   Filter,
-  Calendar
+  Calendar,
+  ShieldCheck
 } from "lucide-react";
+import { DistribuidoresRedeDrawer } from "./DistribuidoresRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 interface DistributorClient {
   cod_parceiro?: string;
@@ -64,6 +67,12 @@ export default function DistribuidoresView() {
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
+
+  // Wave B.19: Distribuidores 360° Drawer & Follow-Up State
+  const [selectedDistributor360, setSelectedDistributor360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // Carregar dados da AnalyticsEngine
   useEffect(() => {
@@ -459,8 +468,37 @@ export default function DistribuidoresView() {
                         <td style={{ padding: "1rem", textAlign: "center" }}>
                           {row.topClients.length}
                         </td>
-                        <td style={{ padding: "1rem", textAlign: "center", color: "var(--accent)", fontSize: "0.8rem" }}>
-                          {isExpanded ? "Ocultar" : "Ver Detalhes"}
+                        <td style={{ padding: "1rem", textAlign: "center" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDistributor360({
+                                  distribuidorNome: row.distributorName,
+                                  distribuidorId: row.managerId,
+                                  codigoMatriz: row.key,
+                                  gerenteNome: row.managerName,
+                                  uf: null,
+                                  cidade: null,
+                                  faturamentoReal: row.fat,
+                                  volumeReal: row.qty,
+                                  maco: row.maco,
+                                  macoPct: row.macoPercent,
+                                  pdvsAtendidos: row.topClients.length,
+                                  dataStr: `${startMonth} até ${endMonth}`,
+                                });
+                              }}
+                              className="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Diagnóstico 360° do Distribuidor"
+                            >
+                              <ShieldCheck className="w-3 h-3 text-amber-500" />
+                              <span>360°</span>
+                            </button>
+                            <span style={{ color: "var(--accent)", fontSize: "0.8rem" }}>
+                              {isExpanded ? "Ocultar" : "Ver Detalhes"}
+                            </span>
+                          </div>
                         </td>
                       </tr>
 
@@ -499,6 +537,7 @@ export default function DistribuidoresView() {
                                       <th style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>Faturamento</th>
                                       <th style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>Volume (UN)</th>
                                       <th style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>MACO</th>
+                                      <th style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>360°</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -513,6 +552,33 @@ export default function DistribuidoresView() {
                                         <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", fontWeight: 600 }}>{formatCurrency(client.fat)}</td>
                                         <td style={{ padding: "0.5rem 0.75rem", textAlign: "right" }}>{formatNumber(client.qty)}</td>
                                         <td style={{ padding: "0.5rem 0.75rem", textAlign: "right", color: "#10b981" }}>{formatCurrency(client.maco)}</td>
+                                        <td style={{ padding: "0.5rem 0.75rem", textAlign: "center" }}>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedDistributor360({
+                                                distribuidorNome: `${client.client} (${row.distributorName})`,
+                                                distribuidorId: client.cod_parceiro || null,
+                                                codigoMatriz: client.cod_parceiro || null,
+                                                gerenteNome: row.managerName,
+                                                uf: client.uf || null,
+                                                cidade: client.cidade || null,
+                                                faturamentoReal: client.fat,
+                                                volumeReal: client.qty,
+                                                maco: client.maco,
+                                                macoPct: client.fat > 0 ? (client.maco / client.fat) * 100 : 0,
+                                                pdvsAtendidos: 1,
+                                                dataStr: `${startMonth} até ${endMonth}`,
+                                              });
+                                            }}
+                                            className="px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                            title="Diagnóstico 360° do Cliente / PDV"
+                                          >
+                                            <ShieldCheck className="w-2.5 h-2.5 text-amber-500" />
+                                            <span>360°</span>
+                                          </button>
+                                        </td>
                                       </tr>
                                     ))}
                                   </tbody>
@@ -571,6 +637,40 @@ export default function DistribuidoresView() {
           </div>
         )}
       </div>
+
+      {/* ── Drawer Distribuidores 360° (Wave B.19) ── */}
+      {selectedDistributor360 && (
+        <DistribuidoresRedeDrawer
+          isOpen={Boolean(selectedDistributor360)}
+          onClose={() => setSelectedDistributor360(null)}
+          context={selectedDistributor360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Distribuição) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
