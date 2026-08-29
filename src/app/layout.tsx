@@ -4,6 +4,7 @@ import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "sonner";
+import { GlobalErrorBoundary, TelemetryBootstrap } from "@/components/telemetry/GlobalErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,7 +41,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
         <ThemeProvider>
-          {children}
+          <TelemetryBootstrap />
+          <GlobalErrorBoundary>
+            {children}
+          </GlobalErrorBoundary>
           <Toaster position="bottom-right" richColors />
         </ThemeProvider>
       </body>
