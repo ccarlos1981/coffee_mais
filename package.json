@@ -26,7 +26,8 @@
     "test:b11": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b11-closing-ui.ts",
     "test:b12": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b12-followup-ui.ts",
     "test:b13": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b13-rps-360.ts",
-    "test:b14": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b14-investimentos-360.ts"
+    "test:b14": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b14-investimentos-360.ts",
+    "test:b15": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b15-rdm-360.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",

@@ -25,6 +25,8 @@ import { RdmStorageAdapter } from "./providers/RdmStorageAdapter";
 import { ModalConfigDesafioPct } from "./components/ModalConfigDesafioPct";
 import { SlideDreAcumulado } from "./components/SlideDreAcumulado";
 import { RdmSlideAcumuladoData } from "@/lib/dre-gerencial/types";
+import { RdmRedeDrawer } from "./components/RdmRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricBlock {
@@ -1128,6 +1130,14 @@ function SlideDreResumo({
 function SlideDreRede({
   monthName,
   adapter,
+  comment,
+  onCommentChange,
+  onCommentSave,
+  saving,
+  onSelectRede,
+  manager,
+  year,
+  month,
 }: {
   monthName: string;
   adapter: RdmDataAdapter;
@@ -1135,6 +1145,10 @@ function SlideDreRede({
   onCommentChange?: (v: string) => void;
   onCommentSave?: () => void;
   saving?: boolean;
+  onSelectRede?: (rede: any) => void;
+  manager?: string;
+  year?: number;
+  month?: number;
 }) {
   const dreData = adapter.getDreData();
   const rawDimensionais = dreData?.dimensionais || [];
@@ -1298,8 +1312,46 @@ function SlideDreRede({
                         </td>
 
                         {/* Rede */}
-                        <td style={{ padding: '5px 8px', color: '#111827', fontWeight: isTop1 ? 800 : 600, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', borderRight: '1px solid #e2e8f0' }}>
-                          {dim.nome}
+                        <td 
+                          onClick={() => {
+                            if (onSelectRede) {
+                              onSelectRede({
+                                nome: dim.nome,
+                                codigo_matriz: dim.codigo_matriz || dim.id,
+                                uf: dim.uf,
+                                gerente: manager || "",
+                                faturamentoReal: dim.faturamentoBruto || dim.faturamento || 0,
+                                metaFaturamento: dim.meta || 0,
+                                volumeReal: dim.volume || 0,
+                                metaVolume: dim.metaVolume || 0,
+                                maco: dim.maco || 0,
+                                macoPct: dim.macoPct || 0,
+                                year: year || 2026,
+                                month: month || 8,
+                              });
+                            }
+                          }}
+                          style={{ 
+                            padding: '5px 8px', 
+                            color: '#111827', 
+                            fontWeight: isTop1 ? 800 : 600, 
+                            maxWidth: '180px', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis', 
+                            whiteSpace: 'nowrap', 
+                            borderRight: '1px solid #e2e8f0',
+                            cursor: onSelectRede ? 'pointer' : 'default',
+                          }}
+                          title={onSelectRede ? `Ver Diagnóstico 360° de ${dim.nome}` : undefined}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{dim.nome}</span>
+                            {onSelectRede && (
+                              <span style={{ fontSize: '0.55rem', padding: '1px 3px', borderRadius: '3px', background: '#fef3c7', color: '#b45309', fontWeight: 700, border: '1px solid #fde68a' }}>
+                                360°
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* UF */}
@@ -5172,6 +5224,12 @@ function SlideFarol({
 export default function RdmPage() {
   const router = useRouter();
 
+  // Estado do Drawer RDM 360° e Follow-Up Integrado (Wave B.15)
+  const [selectedRede360, setSelectedRede360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
+
   // Filtros (Mês padrão: mês anterior)
   const [manager, setManager] = useState("CRISTIANO");
   const [year,    setYear]    = useState(() => {
@@ -5608,6 +5666,10 @@ export default function RdmPage() {
           onCommentChange={v => setComments(prev => ({ ...prev, dre_rede: v }))}
           onCommentSave={() => saveComment('dre_rede')}
           saving={savingKey === 'dre_rede'}
+          onSelectRede={setSelectedRede360}
+          manager={manager}
+          year={year}
+          month={month}
         />
       );
     }
@@ -6415,6 +6477,40 @@ export default function RdmPage() {
         currentYear={year}
         currentMonth={month}
       />
+
+      {/* ── Drawer RDM 360° (Wave B.15) ── */}
+      {selectedRede360 && (
+        <RdmRedeDrawer
+          isOpen={Boolean(selectedRede360)}
+          onClose={() => setSelectedRede360(null)}
+          rede={selectedRede360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Recuperação RDM) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
