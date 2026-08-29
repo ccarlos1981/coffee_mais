@@ -11,9 +11,12 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  ShieldCheck,
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { resolveCanonicalManager, isSameManager } from "@/lib/domain/canonical";
+import { AgendaRedeDrawer } from "./components/AgendaRedeDrawer";
+import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -143,6 +146,12 @@ export default function AgendaPage() {
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
   const [filterManager, setFilterManager] = useState("ALL");
+
+  // Estado do Drawer Agenda 360° e Follow-Up Integrado (Wave B.16)
+  const [selectedEvent360, setSelectedEvent360] = useState<any | null>(null);
+  const [isFollowUpModalOpen, setIsFollowUpModalOpen] = useState(false);
+  const [followUpInitialContext, setFollowUpInitialContext] = useState<FollowUpInitialContext | null>(null);
+  const [followUpToast, setFollowUpToast] = useState<string | null>(null);
 
   // Dados
   const [loading, setLoading] = useState(true);
@@ -529,13 +538,30 @@ export default function AgendaPage() {
                         />
                       ) : value ? (
                         <div
-                          className="px-2 py-1 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-start gap-1 shrink-0"
+                          className="px-2 py-1 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-center justify-between gap-1 shrink-0"
                           style={{
                             backgroundColor: cellColors?.badge || 'var(--accent-gold)',
                             color: cellColors?.badgeText || '#ffffff',
                           }}
                         >
                           <span className="truncate flex-1">{value}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEvent360({
+                                dateStr: day.dateStr,
+                                manager: mgr,
+                                description: value,
+                                redeNome: null,
+                                codigoMatriz: null,
+                              });
+                            }}
+                            title="Diagnóstico 360° da Visita"
+                            className="opacity-80 hover:opacity-100 p-0.5 rounded bg-black/20 hover:bg-black/40 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shrink-0"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            <span>360°</span>
+                          </button>
                         </div>
                       ) : (
                         isEditable && (
@@ -836,6 +862,23 @@ export default function AgendaPage() {
                               <span className="truncate flex-1">
                                 {mgr.split(' ')[0]}: {value}
                               </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setSelectedEvent360({
+                                    dateStr: day.dateStr,
+                                    manager: mgr,
+                                    description: value,
+                                    redeNome: null,
+                                    codigoMatriz: null,
+                                  });
+                                }}
+                                title="Diagnóstico 360° da Visita"
+                                className="opacity-80 hover:opacity-100 p-0.5 rounded bg-black/20 hover:bg-black/40 text-[8px] font-bold inline-flex items-center gap-0.5 cursor-pointer shrink-0"
+                              >
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                                <span>360°</span>
+                              </button>
                             </div>
                           );
                         }
@@ -1222,6 +1265,40 @@ export default function AgendaPage() {
           )}
         </main>
       </div>
+
+      {/* ── Drawer Agenda 360° (Wave B.16) ── */}
+      {selectedEvent360 && (
+        <AgendaRedeDrawer
+          isOpen={Boolean(selectedEvent360)}
+          onClose={() => setSelectedEvent360(null)}
+          event={selectedEvent360}
+          onOpenFollowUp={(ctx) => {
+            setFollowUpInitialContext(ctx);
+            setIsFollowUpModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* ── Modal Canônica de Criação de Follow-up (Wave B.12) ── */}
+      {isFollowUpModalOpen && (
+        <NewFollowUpModal
+          isOpen={isFollowUpModalOpen}
+          onClose={() => setIsFollowUpModalOpen(false)}
+          onCreated={() => {
+            setIsFollowUpModalOpen(false);
+            setFollowUpToast("Ação de Follow-up (Visita Comercial) registrada com sucesso!");
+            setTimeout(() => setFollowUpToast(null), 4000);
+          }}
+          initialContext={followUpInitialContext}
+        />
+      )}
+
+      {/* ── Toast Feedback ── */}
+      {followUpToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
+          {followUpToast}
+        </div>
+      )}
     </div>
   );
 }
