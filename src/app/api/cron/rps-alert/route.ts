@@ -40,7 +40,7 @@ function getBrazilTimeParts() {
 export async function GET(request: Request) {
   try {
     // 1. Validação Obrigatória de Cron (Fail-Closed)
-    const cronCheck = assertCronAccess(request);
+    const cronCheck = await assertCronAccess(request);
     if (!cronCheck.authorized) {
       return cronCheck.errorResponse!;
     }

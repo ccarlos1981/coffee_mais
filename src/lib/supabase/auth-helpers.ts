@@ -2,35 +2,33 @@ import { createClient } from "./server";
 import { createAdminClient } from "./admin";
 import { timingSafeEqual } from "crypto";
 
-export function assertCronAccess(request: Request): { authorized: boolean; errorResponse?: Response } {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || cronSecret.trim() === "") {
-    console.error("[CRON SECURITY] CRON_SECRET não configurado no ambiente. Execução bloqueada (Fail-Closed).");
-    return {
-      authorized: false,
-      errorResponse: new Response(
-        JSON.stringify({ success: false, error: "Acesso não autorizado. Chave de cron não configurada no servidor." }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      ),
-    };
-  }
-
+export async function assertCronAccess(
+  request: Request
+): Promise<{ authorized: boolean; errorResponse?: Response; actorType?: "cron" | "admin_session" }> {
+  // 1. Canal 1: Automação Vercel Cron via Bearer Token
   const authHeader = request.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return {
-      authorized: false,
-      errorResponse: new Response(
-        JSON.stringify({ success: false, error: "Acesso não autorizado. Header Authorization Bearer ausente ou inválido." }),
-        { status: 401, headers: { "Content-Type": "application/json" } }
-      ),
-    };
-  }
+  const cronSecret = process.env.CRON_SECRET;
 
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
-  const secretBuffer = Buffer.from(cronSecret.trim());
-  const tokenBuffer = Buffer.from(token);
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    if (!cronSecret || cronSecret.trim() === "") {
+      console.error("[CRON SECURITY] CRON_SECRET não configurado no ambiente. Execução bloqueada (Fail-Closed).");
+      return {
+        authorized: false,
+        errorResponse: new Response(
+          JSON.stringify({ success: false, error: "Acesso não autorizado. Chave de cron não configurada no servidor." }),
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        ),
+      };
+    }
 
-  if (secretBuffer.length !== tokenBuffer.length || !timingSafeEqual(secretBuffer, tokenBuffer)) {
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const secretBuffer = Buffer.from(cronSecret.trim());
+    const tokenBuffer = Buffer.from(token);
+
+    if (secretBuffer.length === tokenBuffer.length && timingSafeEqual(secretBuffer, tokenBuffer)) {
+      return { authorized: true, actorType: "cron" };
+    }
+
     return {
       authorized: false,
       errorResponse: new Response(
@@ -40,7 +38,27 @@ export function assertCronAccess(request: Request): { authorized: boolean; error
     };
   }
 
-  return { authorized: true };
+  // 2. Canal 2: Sessão de Usuário Autenticado (Admin / Admin Master / Financeiro / CEO)
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["Admin", "Admin Master", "Financeiro", "CEO"]);
+    return { authorized: true, actorType: "admin_session" };
+  } catch {
+    // Falha silenciosa de sessão: cai na resposta padrão 401 abaixo
+  }
+
+  // 3. Bloqueio Fail-Closed se nenhum canal for atendido
+  return {
+    authorized: false,
+    errorResponse: new Response(
+      JSON.stringify({
+        success: false,
+        error: "Acesso não autorizado. Requer Bearer CRON_SECRET válido ou sessão administrativa ativa.",
+      }),
+      { status: 401, headers: { "Content-Type": "application/json" } }
+    ),
+  };
 }
 
 export async function requireAuth() {

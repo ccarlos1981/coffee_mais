@@ -24,7 +24,7 @@ async function handleExecutiveReportCron(request: NextRequest) {
   const executionId = crypto.randomUUID();
 
   // 1. Validação Obrigatória de Cron (Fail-Closed)
-  const cronCheck = assertCronAccess(request);
+  const cronCheck = await assertCronAccess(request);
   if (!cronCheck.authorized) {
     return cronCheck.errorResponse!;
   }

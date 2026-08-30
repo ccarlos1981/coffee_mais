@@ -33,7 +33,7 @@ async function runWave4Tests() {
   const dummyReq1 = new Request("https://api.coffeemais.com/api/cron/sync-bigquery", {
     headers: { Authorization: "Bearer some-token" },
   });
-  const resMissing = assertCronAccess(dummyReq1);
+  const resMissing = await assertCronAccess(dummyReq1);
   assert(
     resMissing.authorized === false && resMissing.errorResponse?.status === 401,
     "CRON-SECRET-MISSING-01",
@@ -42,7 +42,7 @@ async function runWave4Tests() {
 
   // CRON-SECRET-EMPTY-02: Fail-Closed when CRON_SECRET is empty string
   process.env.CRON_SECRET = "   ";
-  const resEmpty = assertCronAccess(dummyReq1);
+  const resEmpty = await assertCronAccess(dummyReq1);
   assert(
     resEmpty.authorized === false && resEmpty.errorResponse?.status === 401,
     "CRON-SECRET-EMPTY-02",
@@ -54,7 +54,7 @@ async function runWave4Tests() {
 
   // CRON-NO-AUTH-01: Missing Authorization header
   const reqNoAuth = new Request("https://api.coffeemais.com/api/cron/generate-alerts");
-  const resNoAuth = assertCronAccess(reqNoAuth);
+  const resNoAuth = await assertCronAccess(reqNoAuth);
   assert(
     resNoAuth.authorized === false && resNoAuth.errorResponse?.status === 401,
     "CRON-NO-AUTH-01",
@@ -65,7 +65,7 @@ async function runWave4Tests() {
   const reqWrongToken = new Request("https://api.coffeemais.com/api/cron/acoes-atrasadas", {
     headers: { Authorization: "Bearer wrong-token-value" },
   });
-  const resWrongToken = assertCronAccess(reqWrongToken);
+  const resWrongToken = await assertCronAccess(reqWrongToken);
   assert(
     resWrongToken.authorized === false && resWrongToken.errorResponse?.status === 401,
     "CRON-WRONG-SECRET-01",
@@ -74,7 +74,7 @@ async function runWave4Tests() {
 
   // CRON-QUERY-SECRET-01: Secret in query string rejected
   const reqQuerySecret = new Request("https://api.coffeemais.com/api/cron/rps-alert?secret=super-secret-cron-token-xyz-123456");
-  const resQuerySecret = assertCronAccess(reqQuerySecret);
+  const resQuerySecret = await assertCronAccess(reqQuerySecret);
   assert(
     resQuerySecret.authorized === false && resQuerySecret.errorResponse?.status === 401,
     "CRON-QUERY-SECRET-01",
@@ -85,7 +85,7 @@ async function runWave4Tests() {
   const reqValidToken = new Request("https://api.coffeemais.com/api/cron/executive-daily-report", {
     headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
   });
-  const resValidToken = assertCronAccess(reqValidToken);
+  const resValidToken = await assertCronAccess(reqValidToken);
   assert(
     resValidToken.authorized === true && !resValidToken.errorResponse,
     "CRON-VALID-SECRET-01",

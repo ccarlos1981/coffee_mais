@@ -19,7 +19,7 @@ async function handleImportCron(request: NextRequest) {
   const startTime = Date.now();
 
   // 1. Validação Obrigatória de Cron (Fail-Closed)
-  const cronCheck = assertCronAccess(request);
+  const cronCheck = await assertCronAccess(request);
   if (!cronCheck.authorized) {
     return cronCheck.errorResponse!;
   }
