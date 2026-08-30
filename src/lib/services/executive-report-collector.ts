@@ -463,9 +463,7 @@ export class ExecutiveReportCollector {
 
       const metaFat = Number(target?.meta_fat || 0);
       const metaUnd = Number(target?.meta_und || 0);
-      const cfg = desafioConfigs.get(m.id) || desafioConfigs.get("CRISTIANO");
-      const margemMaco = cfg?.margem_maco_pct ?? 0.395;
-      const metaMaco = Math.round((metaFat * margemMaco) / 1000) * 1000;
+      const metaMaco = 0;
 
       targetsMap.set(m.name.toUpperCase(), { metaFat, metaUnd, metaMaco });
       targetsMap.set(m.id, { metaFat, metaUnd, metaMaco });
@@ -495,9 +493,7 @@ export class ExecutiveReportCollector {
 
       const mFat = Number(target?.meta_fat || 0);
       const mUnd = Number(target?.meta_und || 0);
-      const cfg = desafioConfigs.get(m.id) || desafioConfigs.get("CRISTIANO");
-      const margemMaco = cfg?.margem_maco_pct ?? 0.395;
-      const mMaco = mFat > 0 ? Number((mFat * margemMaco).toFixed(2)) : 0;
+      const mMaco = 0;
 
       distMetaFat += mFat;
       distMetaUnd += mUnd;
@@ -514,7 +510,7 @@ export class ExecutiveReportCollector {
     const insideTargetRow = (targetsRows || []).find((t: any) => t.manager_id === '1004' || (t.manager || '').toLowerCase().includes('inside'));
     const insideMetaFat = Number(insideTargetRow?.meta_fat || 0);
     const insideMetaUnd = Number(insideTargetRow?.meta_und || 0);
-    const insideMetaMaco = insideMetaFat > 0 ? Math.round((insideMetaFat * 0.31) / 1000) * 1000 : 0;
+    const insideMetaMaco = 0;
     targetsMap.set("INSIDE SALES", {
       metaFat: insideMetaFat,
       metaUnd: insideMetaUnd,
@@ -585,7 +581,7 @@ export class ExecutiveReportCollector {
     const gerentesKa: SalesManagerReportRow[] = managersKaDef.map((m) => {
       const name = m.name;
       const data = gerentesKaData[name] || { fat: 0, und: 0, maco: 0 };
-      const target = targetsMap.get(name.toUpperCase()) || { metaFat: 1000000, metaUnd: 40000, metaMaco: 150000 };
+      const target = targetsMap.get(name.toUpperCase()) || { metaFat: 1000000, metaUnd: 40000, metaMaco: 0 };
 
       const kaFat = data.fat;
       const kaUnd = data.und;

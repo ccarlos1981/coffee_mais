@@ -90,7 +90,7 @@ export class ExecutiveCommercialService {
       tendPct: Number(tendPct.toFixed(1)),
       paceFat: (realFat / Math.max(1, bd.elapsed_days)) * bd.total_days,
       vendaFutura: realFat * 0.15,
-      metaMaco: (dreTotais?.faturamentoLiquido || realFat) * 0.3,
+      metaMaco: 0,
       realMaco: dreTotais?.macoTotal || realFat * 0.28,
       margemMacoPct: dreTotais?.margemMacoMedia || 28.5,
       variacaoMom: cockpitData.metrics.crescimentoPercentual || 0,
