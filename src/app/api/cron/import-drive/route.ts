@@ -28,11 +28,17 @@ async function handleImportCron(request: NextRequest) {
   let isDryRun = false;
 
   try {
-    // 2. Barreira de Domingo (Timezone: America/Sao_Paulo)
+    // 2. Parâmetros da Requisição
+    const urlParams = request.nextUrl.searchParams;
+    // Em produção (Demanda 059), o padrão é isDryRun = false (execução real)
+    isDryRun = urlParams.get("dry_run") === "true";
+    const forceOverride = urlParams.get("force") === "true";
+
+    // 3. Barreira de Domingo (Timezone: America/Sao_Paulo)
     const nowSp = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     const dayOfWeek = nowSp.getDay(); // 0 = Domingo, 1 = Segunda, ..., 6 = Sábado
 
-    if (dayOfWeek === 0) {
+    if (dayOfWeek === 0 && !isDryRun) {
       console.log("[CronImportDrive] Execução aos domingos é estritamente bloqueada.");
       await EmailNotificationService.sendReport({
         status: "SKIPPED",
@@ -46,12 +52,6 @@ async function handleImportCron(request: NextRequest) {
         message: "Execuções aos domingos estão permanentemente bloqueadas.",
       });
     }
-
-    // 3. Parâmetros da Requisição
-    const urlParams = request.nextUrl.searchParams;
-    // Em produção (Demanda 059), o padrão é isDryRun = false (execução real)
-    isDryRun = urlParams.get("dry_run") === "true";
-    const forceOverride = urlParams.get("force") === "true";
 
     // 4. Iniciar Registro Persistente de Execução em cm_sync_logs (Observabilidade Imediata)
     try {
