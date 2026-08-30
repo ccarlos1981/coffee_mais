@@ -331,13 +331,18 @@ export async function GET(request: Request) {
     const managersData = activeManagers.map(mName => {
       const canonicalTargetMgr = resolveCanonicalManager(mName);
 
-      // SSOT: Buscar Metas (Desafios) exclusivamente da tabela public.targets
-      const target = mgrTargets.find((t: any) => {
-        return isSameManager(t.manager, mName) || (t.manager_id && t.manager_id === canonicalTargetMgr.managerId);
+      // SSOT: Somar Metas (Desafios) da Carteira Total do Gerente na tabela public.targets
+      const matchingTargets = mgrTargets.filter((t: any) => {
+        return (
+          isSameManager(t.manager, mName) ||
+          (t.manager_id &&
+            (t.manager_id === canonicalTargetMgr.managerId ||
+              t.manager_id.startsWith(canonicalTargetMgr.managerId)))
+        );
       });
 
-      const targetFat = Number(target?.target_revenue || 0);
-      const targetVol = Number(target?.target_tons || 0);
+      const targetFat = matchingTargets.reduce((acc: number, t: any) => acc + Number(t.target_revenue || 0), 0);
+      const targetVol = matchingTargets.reduce((acc: number, t: any) => acc + Number(t.target_tons || 0), 0);
       const targetInvest = 10.0; // Padrão 10.0%
 
       // Buscar Históricos Gerente unificados via isSameManager

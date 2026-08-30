@@ -23,6 +23,7 @@ import {
 import {
   resolveCanonicalManager,
   canonicalizeKey,
+  isSameManager,
   resolveCanonicalNetwork,
   type CanonicalNetworkIdentity,
   type CanonicalNetworkResult,
@@ -44,6 +45,9 @@ import type {
   NetworkFilter,
   NormalizationResult,
   CommercialFilterOptions,
+  RealizadoCarteiraParams,
+  RealizadoCarteiraResult,
+  RealizadoCarteiraManagerResult,
 } from "./types";
 import type { ManagerInfo } from "./canonical";
 
@@ -434,6 +438,110 @@ export class CommercialDomainService {
   }
 
   // ============================================================
+  // REALIZADO CARTEIRA COMERCIAL (4 GERENTES)
+  // ============================================================
+
+  /**
+   * Retorna o Realizado da Carteira Comercial para os 4 Gerentes (Leandro, Luiz, Julliano, John Guedes).
+   * Consolida faturamento líquido das NFs faturadas da carteira do gerente, independente do canal cadastral do cliente.
+   * Não confunde com o Canal Key Account de /vendas.
+   */
+  static async getRealizadoCarteiraComercial(
+    params: RealizadoCarteiraParams
+  ): Promise<RealizadoCarteiraResult> {
+    const [salesRows, targetRows] = await Promise.all([
+      CommercialDomainRepository.fetchRealizadoCarteiraSales(params),
+      CommercialDomainRepository.fetchTargets(params.year, params.month),
+    ]);
+
+    const managersList = [
+      { name: "Luiz", id: "1002" },
+      { name: "Leandro Saffi", id: "1001" },
+      { name: "Julliano", id: "1000" },
+      { name: "John Guedes", id: "1003" },
+    ];
+
+    const targetMap = new Map<string, { targetFat: number; targetVol: number }>();
+    managersList.forEach((m) => {
+      const canonicalTargetMgr = resolveCanonicalManager(m.name);
+      const matchingTargets = (targetRows || []).filter((t: any) => {
+        return (
+          isSameManager(t.manager, m.name) ||
+          (t.manager_id &&
+            (t.manager_id === canonicalTargetMgr.managerId ||
+              t.manager_id.startsWith(canonicalTargetMgr.managerId)))
+        );
+      });
+      const targetFat = matchingTargets.reduce(
+        (acc: number, t: any) => acc + Number(t.target_revenue || 0),
+        0
+      );
+      const targetVol = matchingTargets.reduce(
+        (acc: number, t: any) => acc + Number(t.target_tons || 0),
+        0
+      );
+      targetMap.set(m.id, { targetFat, targetVol });
+    });
+
+    const gerentesResult: RealizadoCarteiraManagerResult[] = [];
+    let totalRealizadoFat = 0;
+    let totalRealizadoQty = 0;
+    let totalTargetFat = 0;
+
+    for (const m of managersList) {
+      if (params.managerName && !isSameManager(params.managerName, m.name)) {
+        continue;
+      }
+
+      const rows = (salesRows || []).filter((r: any) => isSameManager(r.manager, m.name));
+      const realizadoFat = rows.reduce((acc: number, r: any) => acc + Number(r.total_realizado || 0), 0);
+      const realizadoQty = rows.reduce((acc: number, r: any) => acc + Number(r.total_unidades || 0), 0);
+      const qtdLinhas = rows.reduce((acc: number, r: any) => acc + Number(r.qtd_linhas || 0), 0);
+      const qtdNfs = rows.reduce((acc: number, r: any) => acc + Number(r.qtd_nfs || 0), 0);
+
+      const canaisBreakdown: Record<string, number> = {};
+      rows.forEach((r: any) => {
+        const ch = r.channel || "Outros";
+        canaisBreakdown[ch] = (canaisBreakdown[ch] || 0) + Number(r.total_realizado || 0);
+      });
+
+      const targets = targetMap.get(m.id) || { targetFat: 0, targetVol: 0 };
+      const atingimentoFatPct =
+        targets.targetFat > 0 ? (realizadoFat / targets.targetFat) * 100 : 0;
+
+      gerentesResult.push({
+        manager: m.name,
+        managerId: m.id,
+        realizadoFat: Number(realizadoFat.toFixed(2)),
+        realizadoQty: Number(realizadoQty.toFixed(2)),
+        targetFat: targets.targetFat,
+        targetVol: targets.targetVol,
+        atingimentoFatPct: Number(atingimentoFatPct.toFixed(2)),
+        qtdNfs,
+        qtdLinhas,
+        canaisBreakdown,
+      });
+
+      totalRealizadoFat += realizadoFat;
+      totalRealizadoQty += realizadoQty;
+      totalTargetFat += targets.targetFat;
+    }
+
+    const totalAtingimentoFatPct =
+      totalTargetFat > 0 ? (totalRealizadoFat / totalTargetFat) * 100 : 0;
+
+    return {
+      year: params.year,
+      month: params.month,
+      totalRealizadoFat: Number(totalRealizadoFat.toFixed(2)),
+      totalRealizadoQty: Number(totalRealizadoQty.toFixed(2)),
+      totalTargetFat,
+      totalAtingimentoFatPct: Number(totalAtingimentoFatPct.toFixed(2)),
+      gerentes: gerentesResult,
+    };
+  }
+
+  // ============================================================
   // CACHE E VERSIONAMENTO
   // ============================================================
 
@@ -454,3 +562,4 @@ export class CommercialDomainService {
     return data;
   }
 }
+

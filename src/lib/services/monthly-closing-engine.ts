@@ -154,7 +154,8 @@ export class MonthlyClosingEngine {
 
         totalMetaFat += fat;
         totalMetaVolKg += volKg;
-        metaByManager.set(canonical, { fat, volKg });
+        const curr = metaByManager.get(canonical) || { fat: 0, volKg: 0 };
+        metaByManager.set(canonical, { fat: curr.fat + fat, volKg: curr.volKg + volKg });
       });
     }
 

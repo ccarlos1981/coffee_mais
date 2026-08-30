@@ -28,6 +28,7 @@ import type {
   DomainNormalizationRule,
   DomainVersion,
   NetworkFilter,
+  RealizadoCarteiraParams,
 } from "./types";
 
 export class CommercialDomainRepository {
@@ -327,4 +328,52 @@ export class CommercialDomainRepository {
       createdAt: data.created_at,
     };
   }
+
+  // ============================================================
+  // REALIZADO CARTEIRA COMERCIAL (public.sales / targets)
+  // ============================================================
+
+  static async fetchRealizadoCarteiraSales(params: RealizadoCarteiraParams): Promise<any[]> {
+    const supabase = this.getClient();
+    const dateClause = params.maxDate ? `AND s.invoice_date <= '${params.maxDate}'` : "";
+    const query = `
+      SELECT 
+        s.manager,
+        s.manager_id,
+        s.channel,
+        COUNT(DISTINCT s.invoice_number) as qtd_nfs,
+        COUNT(*) as qtd_linhas,
+        SUM(s.quantity) as total_unidades,
+        SUM(s.net_value) as total_realizado
+      FROM public.sales s
+      WHERE s.ano = ${params.year} AND s.mes = ${params.month}
+        ${dateClause}
+        AND s.manager IN ('Leandro Saffi', 'Luiz', 'Julliano', 'John Guedes')
+      GROUP BY s.manager, s.manager_id, s.channel
+      ORDER BY s.manager, total_realizado DESC
+    `;
+
+    const { data, error } = await supabase.rpc("execute_readonly_query", { query_text: query });
+    if (error) {
+      console.error("[CommercialDomainRepository] fetchRealizadoCarteiraSales error:", error.message);
+      return [];
+    }
+    return data || [];
+  }
+
+  static async fetchTargets(year: number, month: number): Promise<any[]> {
+    const supabase = this.getClient();
+    const { data, error } = await supabase
+      .from("targets")
+      .select("manager, manager_id, target_revenue, target_tons, year, month")
+      .eq("year", year)
+      .eq("month", month);
+
+    if (error) {
+      console.error("[CommercialDomainRepository] fetchTargets error:", error.message);
+      return [];
+    }
+    return data || [];
+  }
 }
+

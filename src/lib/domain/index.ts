@@ -27,6 +27,9 @@ export type {
   NetworkFilter,
   NormalizationResult,
   CommercialFilterOptions,
+  RealizadoCarteiraParams,
+  RealizadoCarteiraResult,
+  RealizadoCarteiraManagerResult,
 } from "./types";
 
 // === Baseline Existente (re-exports para retrocompatibilidade) ===

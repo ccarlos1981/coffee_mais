@@ -137,3 +137,42 @@ export interface CommercialFilterOptions {
   roles: SelectOption[];
   statuses: SelectOption[];
 }
+
+// =====================================================
+// CONTRATO OFICIAL — REALIZADO CARTEIRA COMERCIAL
+// =====================================================
+
+/** Parâmetros de consulta para o Realizado da Carteira Comercial */
+export interface RealizadoCarteiraParams {
+  year: number;
+  month: number;
+  managerName?: string;
+  maxDate?: string;
+}
+
+/** Resultado individual por gerente comercial */
+export interface RealizadoCarteiraManagerResult {
+  manager: string;
+  managerId: string;
+  realizadoFat: number;
+  realizadoQty: number;
+  targetFat?: number;
+  targetVol?: number;
+  atingimentoFatPct?: number;
+  qtdNfs?: number;
+  qtdLinhas?: number;
+  canaisBreakdown?: Record<string, number>;
+}
+
+/** Resultado consolidado do Realizado da Carteira Comercial */
+export interface RealizadoCarteiraResult {
+  year: number;
+  month: number;
+  totalRealizadoFat: number;
+  totalRealizadoQty: number;
+  totalTargetFat?: number;
+  totalAtingimentoFatPct?: number;
+  totalNfs?: number;
+  gerentes: RealizadoCarteiraManagerResult[];
+}
+
