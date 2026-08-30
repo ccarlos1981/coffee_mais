@@ -71,14 +71,14 @@ export async function requireAuth() {
 }
 
 export async function requireApprovedProfile(userId: string) {
-  const supabase = await createClient();
-  const { data: profile } = await supabase
+  const adminClient = createAdminClient();
+  const { data: profile, error } = await adminClient
     .from("cm_user_profiles")
     .select("role, approved, manager_name, name, company_id, employee_code")
     .eq("id", userId)
     .single();
 
-  if (!profile) {
+  if (error || !profile) {
     throw new Error("PROFILE_NOT_FOUND");
   }
   if (!profile.approved) {
