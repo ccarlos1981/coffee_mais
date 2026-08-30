@@ -56,7 +56,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
-import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
+import { buildMatrizLookup, resolveClienteMatriz, matchesActionToNetwork, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { InvestimentoAcaoDrawer } from "./components/InvestimentoAcaoDrawer";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 
@@ -2080,7 +2080,20 @@ export default function InvestimentoPage() {
     });
 
     filteredData.forEach(action => {
-      const mgr = normalizeGerenteNome(action.gerente_responsavel);
+      let mgr = normalizeGerenteNome(action.gerente_responsavel);
+      if (matrizLookup) {
+        const resolved = resolveClienteMatriz({
+          codigo_matriz: action.codigo_matriz,
+          rede: action.rede,
+          matriz: action.rede,
+          responsavel: action.gerente_responsavel,
+          gerente: action.gerente_responsavel,
+          gerente_responsavel: action.gerente_responsavel,
+        }, matrizLookup);
+        if (resolved.responsavel) {
+          mgr = normalizeGerenteNome(resolved.responsavel);
+        }
+      }
       if (counts[mgr] !== undefined) {
         counts[mgr]++;
       } else {
@@ -2091,7 +2104,7 @@ export default function InvestimentoPage() {
     return Object.entries(counts)
       .map(([manager, count]) => ({ manager, count }))
       .sort((a, b) => b.count - a.count || a.manager.localeCompare(b.manager, "pt-BR"));
-  }, [filteredData, gerentesDisponiveis]);
+  }, [filteredData, gerentesDisponiveis, matrizLookup]);
 
   const consolidadoGerenteMes = useMemo(() => {
     const counts: Record<string, Record<string, { networks: Set<string>; actionsCount: number }>> = {};
@@ -2103,8 +2116,36 @@ export default function InvestimentoPage() {
       });
     });
 
-    filteredData.forEach(action => {
-      const mgr = normalizeGerenteNome(action.gerente_responsavel);
+    managerFilteredAcoes.forEach(action => {
+      if (filterStatus) {
+        const status = calcularStatusItemInvestimento(action, action.fase_atual || 1, action.apuracao_preenchida_em);
+        if (status !== filterStatus) return;
+      }
+      if (filterFamilia) {
+        const hasFamilia = action.familias_detalhes && action.familias_detalhes.length > 0
+          ? action.familias_detalhes.some(f => f.familia_nome === filterFamilia)
+          : action.familia_produto === filterFamilia;
+        if (!hasFamilia) return;
+      }
+      if (filterRede && action.rede !== filterRede) return;
+
+      let mgr = normalizeGerenteNome(action.gerente_responsavel);
+      let netId = action.codigo_matriz || action.rede?.toUpperCase().trim() || "N/I";
+
+      if (matrizLookup) {
+        const resolved = resolveClienteMatriz({
+          codigo_matriz: action.codigo_matriz,
+          rede: action.rede,
+          matriz: action.rede,
+          responsavel: action.gerente_responsavel,
+          gerente: action.gerente_responsavel,
+          gerente_responsavel: action.gerente_responsavel,
+        }, matrizLookup);
+        if (resolved.responsavel) {
+          mgr = normalizeGerenteNome(resolved.responsavel);
+        }
+        netId = resolved.matriz || netId;
+      }
 
       if (!counts[mgr]) {
         counts[mgr] = {};
@@ -2116,7 +2157,6 @@ export default function InvestimentoPage() {
       const mes = action.mes_referencia;
       if (mes && counts[mgr][mes]) {
         counts[mgr][mes].actionsCount++;
-        const netId = action.codigo_matriz || action.rede?.toUpperCase().trim() || "N/I";
         counts[mgr][mes].networks.add(netId);
       }
     });
@@ -2135,19 +2175,27 @@ export default function InvestimentoPage() {
         totalActions: Object.values(formattedMonths).reduce((acc, curr) => acc + curr.actionsCount, 0)
       };
     }).sort((a, b) => b.totalActions - a.totalActions);
-  }, [filteredData, gerentesDisponiveis]);
+  }, [managerFilteredAcoes, gerentesDisponiveis, filterStatus, filterFamilia, filterRede, matrizLookup]);
 
   const acoesNoMesCount = useCallback((m: any, mes: string) => {
     return managerFilteredAcoes.filter(action => {
-      const matchesNetwork = action.codigo_matriz === m.codigo || 
-        (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim());
-      if (!matchesNetwork) return false;
+      if (!matchesActionToNetwork(action, m, matrizLookup)) return false;
       if (action.mes_referencia !== mes) return false;
 
       if (filterGerente) {
         const normFilterG = normalizeGerenteNome(filterGerente);
-        if (!action.gerente_responsavel) return false;
-        if (normalizeGerenteNome(action.gerente_responsavel) !== normFilterG) return false;
+        const actionManager = matrizLookup 
+          ? resolveClienteMatriz({
+              codigo_matriz: action.codigo_matriz,
+              rede: action.rede,
+              matriz: action.rede,
+              responsavel: action.gerente_responsavel,
+              gerente: action.gerente_responsavel,
+              gerente_responsavel: action.gerente_responsavel,
+            }, matrizLookup).responsavel || action.gerente_responsavel
+          : action.gerente_responsavel;
+
+        if (!actionManager || normalizeGerenteNome(actionManager) !== normFilterG) return false;
       }
 
       if (filterStatus) {
@@ -2164,19 +2212,27 @@ export default function InvestimentoPage() {
 
       return true;
     }).length;
-  }, [managerFilteredAcoes, filterGerente, filterStatus, filterFamilia]);
+  }, [managerFilteredAcoes, filterGerente, filterStatus, filterFamilia, matrizLookup]);
 
   const sortedMatrizesWithInvestimento = useMemo(() => {
     return myMatrizes.map(m => {
       const acoesCount = managerFilteredAcoes.filter(action => {
-        const matchesNetwork = action.codigo_matriz === m.codigo || 
-          (action.rede && action.rede.toUpperCase().trim() === m.nome.toUpperCase().trim());
-        if (!matchesNetwork) return false;
+        if (!matchesActionToNetwork(action, m, matrizLookup)) return false;
 
         if (filterGerente) {
           const normFilterG = normalizeGerenteNome(filterGerente);
-          if (!action.gerente_responsavel) return false;
-          if (normalizeGerenteNome(action.gerente_responsavel) !== normFilterG) return false;
+          const actionManager = matrizLookup 
+            ? resolveClienteMatriz({
+                codigo_matriz: action.codigo_matriz,
+                rede: action.rede,
+                matriz: action.rede,
+                responsavel: action.gerente_responsavel,
+                gerente: action.gerente_responsavel,
+                gerente_responsavel: action.gerente_responsavel,
+              }, matrizLookup).responsavel || action.gerente_responsavel
+            : action.gerente_responsavel;
+
+          if (!actionManager || normalizeGerenteNome(actionManager) !== normFilterG) return false;
         }
 
         if (filterStatus) {
@@ -2206,7 +2262,7 @@ export default function InvestimentoPage() {
       }
       return b.faturamentoTotal - a.faturamentoTotal;
     });
-  }, [myMatrizes, managerFilteredAcoes, faturamentoTotalMap, filterGerente, filterStatus, filterFamilia]);
+  }, [myMatrizes, managerFilteredAcoes, faturamentoTotalMap, filterGerente, filterStatus, filterFamilia, matrizLookup]);
 
   const filteredMatrizesInView = useMemo(() => {
     let result = sortedMatrizesWithInvestimento;

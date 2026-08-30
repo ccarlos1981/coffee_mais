@@ -13,6 +13,7 @@
     "health:analytics": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-analytics.ts",
     "health:mcp": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-mcp.ts",
     "test:domain": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/health-commercial-domain.ts",
+    "test:investimento": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-investimento-consolidation.ts",
     "test:wave12-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave12-security.ts",
     "test:wave14-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave14-security.ts",
     "test:wave15-security": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave15-security.ts",

@@ -316,3 +316,79 @@ export function resolveClienteMatriz(
     isAmbiguous: rawMatCode ? lookup.ambiguousMatrixCodes.has(rawMatCode) : false,
   };
 }
+
+/**
+ * Verifica deterministamente se uma ação de investimento pertence à rede de visualização (v_redes_matrizes_detalhes).
+ * Elimina duplicações em matrizes compartilhadas (ex: 95580.0 para FORT SC x FORT SP e 84906.0 para ZAFFARI RS x SP x CESTO).
+ */
+export function matchesActionToNetwork(
+  action: { rede?: string | null; codigo_matriz?: string | null; gerente_responsavel?: string | null },
+  network: { codigo?: string | null; nome?: string | null; gerente?: string | null },
+  lookup: MatrizLookup | null
+): boolean {
+  if (!action || !network) return false;
+
+  const netCode = cleanMatrixCode(network.codigo);
+  const netName = (network.nome || "").trim().toUpperCase();
+  const netManager = normalizeGerenteKey(network.gerente);
+
+  if (lookup) {
+    const resolved = resolveClienteMatriz({
+      codigo_matriz: action.codigo_matriz,
+      rede: action.rede,
+      matriz: action.rede,
+      responsavel: action.gerente_responsavel,
+      gerente: action.gerente_responsavel,
+      gerente_responsavel: action.gerente_responsavel,
+    }, lookup);
+
+    const resMatrizUpper = resolved.matriz.toUpperCase().trim();
+    const resCode = cleanMatrixCode(resolved.codigoMatriz);
+    const resManager = normalizeGerenteKey(resolved.responsavel || action.gerente_responsavel);
+
+    // 1. Se a matriz canônica resolvida bater com o nome exato da rede
+    if (resMatrizUpper === netName) {
+      if (netManager && resManager && netManager !== resManager) {
+        return false;
+      }
+      return true;
+    }
+
+    // 2. Se o código da matriz for unívoco (1:1 estrito)
+    if (resCode && netCode && resCode === netCode && !resolved.isAmbiguous) {
+      return true;
+    }
+
+    // 3. Se for código ambíguo / compartilhado, exige matching de nome e gerente
+    if (resCode && netCode && resCode === netCode) {
+      const nameMatches = resMatrizUpper.includes(netName) || netName.includes(resMatrizUpper);
+      const managerMatches = !netManager || !resManager || netManager === resManager;
+      if (nameMatches && managerMatches) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // Fallback seguro caso o lookup ainda não esteja montado
+  const actCode = cleanMatrixCode(action.codigo_matriz);
+  const actName = (action.rede || "").trim().toUpperCase();
+  const actManager = normalizeGerenteKey(action.gerente_responsavel);
+
+  if (actName && netName && actName === netName) {
+    if (netManager && actManager && netManager !== actManager) {
+      return false;
+    }
+    return true;
+  }
+
+  if (actCode && netCode && actCode === netCode) {
+    if (netManager && actManager) {
+      return netManager === actManager;
+    }
+    return true;
+  }
+
+  return false;
+}
