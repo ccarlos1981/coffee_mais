@@ -69,6 +69,18 @@ export interface CsvImportResult {
     officialNetDelta: number;
     isReconciled: boolean;
   };
+  spikeGuardDiagnostics?: {
+    prevPeriodEnd: string | null;
+    maxDate: string;
+    prevNet: number;
+    prevDay: number;
+    currentDay: number;
+    deltaDays: number;
+    avgDailyRevenue: number;
+    dailyIncrement: number;
+    toleratedIncrement: number;
+    passed: boolean;
+  } | null;
   message: string;
 }
 
@@ -513,10 +525,12 @@ export class CsvImportService {
       const currentMonthStart = minDate.substring(0, 7) + "-01";
       const { data: lastSuccessBatches } = await supabase
         .from("cm_sync_logs")
-        .select("id, period_start, period_end, rows_inserted, metadata")
+        .select("id, period_start, period_end, rows_inserted, metadata, started_at")
         .eq("status", "SUCCESS")
         .gte("period_start", currentMonthStart)
-        .order("finished_at", { ascending: false })
+        .lte("period_end", maxDate)
+        .order("period_end", { ascending: false })
+        .order("started_at", { ascending: false })
         .limit(1);
 
       const prevBatch = lastSuccessBatches?.[0] || null;
@@ -559,18 +573,50 @@ export class CsvImportService {
       }
 
       // 7. BARREIRA D: Spike Guard (Proteção contra duplicação de dados na origem)
-      if (prevNet > 0 && !params.forceOverride) {
-        const daysInMonth = parseInt(maxDate.split("-")[2], 10) || 1;
-        const avgDailyRevenue = prevNet / daysInMonth;
-        const dailyIncrement = metrics.totalNet - prevNet;
+      let spikeGuardDiagnostics: {
+        prevPeriodEnd: string | null;
+        maxDate: string;
+        prevNet: number;
+        prevDay: number;
+        currentDay: number;
+        deltaDays: number;
+        avgDailyRevenue: number;
+        dailyIncrement: number;
+        toleratedIncrement: number;
+        passed: boolean;
+      } | null = null;
 
-        if (dailyIncrement > avgDailyRevenue * 4) {
+      if (prevNet > 0 && !params.forceOverride) {
+        const prevDay = prevPeriodEnd ? parseInt(prevPeriodEnd.split("-")[2], 10) || 1 : 1;
+        const currentDay = parseInt(maxDate.split("-")[2], 10) || prevDay;
+        const deltaDays = Math.max(1, currentDay - prevDay);
+        const avgDailyRevenue = prevNet / prevDay;
+        const dailyIncrement = metrics.totalNet - prevNet;
+        const toleratedIncrement = avgDailyRevenue * deltaDays * 4;
+        const passed = dailyIncrement <= toleratedIncrement;
+
+        spikeGuardDiagnostics = {
+          prevPeriodEnd,
+          maxDate,
+          prevNet,
+          prevDay,
+          currentDay,
+          deltaDays,
+          avgDailyRevenue,
+          dailyIncrement,
+          toleratedIncrement,
+          passed,
+        };
+
+        if (!passed) {
           throw new CsvBarrierError(
-            `Alerta de Pico Anômalo (Spike Guard): Incremento diário de R$ ${dailyIncrement.toFixed(
+            `Alerta de Pico Anômalo (Spike Guard): Incremento de R$ ${dailyIncrement.toFixed(
               2
-            )} excede 4x a média diária histórica de R$ ${avgDailyRevenue.toFixed(2)}.`,
+            )} no período de ${deltaDays} dia(s) excede o limite tolerado de R$ ${toleratedIncrement.toFixed(
+              2
+            )} (4x a média histórica de R$ ${avgDailyRevenue.toFixed(2)}/dia).`,
             "SPIKE_GUARD",
-            { dailyIncrement, avgDailyRevenue }
+            { dailyIncrement, avgDailyRevenue, deltaDays, toleratedIncrement, prevNet, prevPeriodEnd, maxDate }
           );
         }
       }
@@ -709,6 +755,7 @@ export class CsvImportService {
             nfs_cancelled: metrics.nfsCancelled,
             total_devolution: metrics.totalDevolution,
             sub_status: finalStatus,
+            spike_guard_diagnostics: spikeGuardDiagnostics,
             metrics,
             swap_result: swapResult,
           },
@@ -739,6 +786,7 @@ export class CsvImportService {
           officialNetDelta: 0,
           isReconciled: true,
         },
+        spikeGuardDiagnostics,
         message: isDryRun
           ? "Simulação DRY_RUN concluída com 100% de sucesso. Nenhuma mutação foi feita na base oficial."
           : "Importação e promoção atômica concluídas com 100% de sucesso.",
