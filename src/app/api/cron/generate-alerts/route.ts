@@ -26,7 +26,7 @@ interface SaleRow {
  */
 export async function GET(request: Request) {
   try {
-    const cronCheck = assertCronAccess(request);
+    const cronCheck = await assertCronAccess(request);
     if (!cronCheck.authorized) {
       return cronCheck.errorResponse!;
     }

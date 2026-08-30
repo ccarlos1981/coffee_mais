@@ -17,7 +17,7 @@ async function handleProcessQueue(request: Request) {
 
     // Dual authorization mode: Cron Bearer Token (Constant-Time) OR Authenticated User Session
     if (authHeader) {
-      const cronCheck = assertCronAccess(request);
+      const cronCheck = await assertCronAccess(request);
       if (!cronCheck.authorized) {
         return cronCheck.errorResponse!;
       }

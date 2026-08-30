@@ -18,7 +18,7 @@ export const maxDuration = 60;
  */
 export async function GET(request: Request) {
   // 1. Validação Obrigatória de Cron (Fail-Closed)
-  const cronCheck = assertCronAccess(request);
+  const cronCheck = await assertCronAccess(request);
   if (!cronCheck.authorized) {
     return cronCheck.errorResponse!;
   }
