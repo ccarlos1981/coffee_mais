@@ -270,10 +270,9 @@ export default function VendasDashboard() {
         const payload = normalizeAnalyticsPayload<ManagerData, FamiliaData>(rawJson);
         const desafioConfigs = rawJson?.desafioConfigs || {};
 
-        const getMargemDesafio = (mId: string): number => {
-          const cleanId = mId.replace('-KA', '').replace('-DIST', '');
-          const cfg = desafioConfigs[cleanId] || desafioConfigs[mId] || desafioConfigs['CRISTIANO'] || { margem_maco_pct: 0.31 };
-          return typeof cfg.margem_maco_pct === 'number' ? cfg.margem_maco_pct : 0.31;
+        const getMargemDesafio = (_mId: string): number => {
+          // Meta MACO temporariamente zerada para todos os gerentes conforme diretriz
+          return 0;
         };
 
         if (payload.success) {
