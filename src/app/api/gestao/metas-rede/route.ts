@@ -260,6 +260,100 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, workflow: updatedWorkflow });
     }
 
+    if (action === "ADD_REDE") {
+      const { manager, manager_id, rede } = body;
+      if (!year || !month || !manager || !rede) {
+        return NextResponse.json(
+          { success: false, error: "Parâmetros inválidos para adicionar rede: year, month, manager e rede são obrigatórios." },
+          { status: 400 }
+        );
+      }
+
+      const result = await CommercialPlanningService.addRedeToManager(
+        Number(year),
+        Number(month),
+        String(manager),
+        String(manager_id || ""),
+        String(rede)
+      );
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      }
+
+      await logAuditAction(user.id, "METAS_REDE_ADD_REDE", "cm_rps_custom_carteira", {
+        year: Number(year),
+        month: Number(month),
+        manager: String(manager),
+        rede: String(rede),
+        executedBy: profile.name || user.email || user.id,
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "REMOVE_REDE") {
+      const { manager, rede } = body;
+      if (!year || !month || !manager || !rede) {
+        return NextResponse.json(
+          { success: false, error: "Parâmetros inválidos para excluir rede: year, month, manager e rede são obrigatórios." },
+          { status: 400 }
+        );
+      }
+
+      const result = await CommercialPlanningService.removeRedeFromManager(
+        Number(year),
+        Number(month),
+        String(manager),
+        String(rede)
+      );
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      }
+
+      await logAuditAction(user.id, "METAS_REDE_REMOVE_REDE", "cm_rps_custom_carteira", {
+        year: Number(year),
+        month: Number(month),
+        manager: String(manager),
+        rede: String(rede),
+        executedBy: profile.name || user.email || user.id,
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "REORDER_NETWORKS") {
+      const { manager, orderedRedes } = body;
+      if (!year || !month || !manager || !Array.isArray(orderedRedes)) {
+        return NextResponse.json(
+          { success: false, error: "Parâmetros inválidos para reordenar redes: year, month, manager e orderedRedes são obrigatórios." },
+          { status: 400 }
+        );
+      }
+
+      const result = await CommercialPlanningService.reorderManagerNetworks(
+        Number(year),
+        Number(month),
+        String(manager),
+        orderedRedes
+      );
+
+      if (!result.success) {
+        return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      }
+
+      await logAuditAction(user.id, "METAS_REDE_REORDENACAO", "cm_rps_custom_carteira", {
+        year: Number(year),
+        month: Number(month),
+        manager: String(manager),
+        redesCount: orderedRedes.length,
+        executedBy: profile.name || user.email || user.id,
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
     return NextResponse.json({ success: false, error: "Ação não suportada." }, { status: 400 });
   } catch (error: any) {
     if (

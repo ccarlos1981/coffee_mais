@@ -586,7 +586,10 @@ export async function GET(request: Request) {
         const fatPm = Number(pmSales?.fat || 0);
         const fatPy = Number(pySales?.fat || 0);
 
-        const metaProj = cProj.find((p: any) => p.kpi === 'META');
+        // Buscar meta mensal oficial (priorizando week_start_date com âncora mensal 'YYYY-MM-01')
+        const metaProjDay01 = cProj.find((p: any) => p.kpi === 'META' && String(p.week_start_date).endsWith('-01'));
+        const metaProjFallback = cProj.find((p: any) => p.kpi === 'META');
+        const metaProj = metaProjDay01 || metaProjFallback;
         const metaValue = metaProj ? Number(metaProj.projection_value) : 0;
 
         const clientPrevProjs = prevManagerProjs.filter((p: any) => p.client_matrix.trim().toUpperCase() === cName.trim().toUpperCase() && p.kpi === 'FAT');
@@ -831,16 +834,20 @@ export async function POST(request: Request) {
     }
 
     // Converter SEMPRE a propriedade manager para o nome canônico único do gerente antes do UPSERT em cm_weekly_projections
-    const rowsToUpsert = filteredProjections.map((p: any) => ({
-      manager: resolveCanonicalManager(p.manager).managerName,
-      client_matrix: p.client_matrix,
-      year: parseInt(year),
-      month: parseInt(month),
-      week_start_date: p.week_start_date,
-      kpi: p.kpi,
-      projection_value: Number(p.projection_value),
-      updated_at: new Date().toISOString()
-    }));
+    const rowsToUpsert = filteredProjections.map((p: any) => {
+      const isMetaKpi = p.kpi === 'META';
+      const canonicalWeekStart = isMetaKpi ? `${year}-${String(month).padStart(2, '0')}-01` : p.week_start_date;
+      return {
+        manager: resolveCanonicalManager(p.manager).managerName,
+        client_matrix: p.client_matrix,
+        year: parseInt(year),
+        month: parseInt(month),
+        week_start_date: canonicalWeekStart,
+        kpi: p.kpi,
+        projection_value: Number(p.projection_value),
+        updated_at: new Date().toISOString()
+      };
+    });
 
     if (rowsToUpsert.length > 0) {
       const { error } = await supabase

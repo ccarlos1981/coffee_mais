@@ -32,7 +32,11 @@ import {
   Lock,
   Edit3,
   Briefcase,
-  Truck
+  Truck,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { formatCurrency, formatCompact } from "@/lib/formatters";
 import { ExecutiveMoneyInput } from "@/components/ui/executive-money-input";
@@ -48,13 +52,13 @@ const MONTH_NAMES_PT = [
 ];
 const YEARS_AVAILABLE = [2025, 2026, 2027];
 
-type OperationalStatus = "EM_EDICAO" | "PENDENTE_APROVACAO" | "APROVADA" | "PUBLICADA";
+type WorkflowStatus = "DRAFT" | "REVIEW" | "APPROVED" | "FROZEN";
 
-const STATUS_LABELS: Record<OperationalStatus, { label: string; color: string; bg: string }> = {
-  EM_EDICAO: { label: "Em Edição", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.1)" },
-  PENDENTE_APROVACAO: { label: "Pendente de Aprovação", color: "#3b82f6", bg: "rgba(59, 130, 246, 0.1)" },
-  APROVADA: { label: "Aprovada", color: "#10b981", bg: "rgba(16, 185, 129, 0.1)" },
-  PUBLICADA: { label: "Publicada", color: "#8b5cf6", bg: "rgba(139, 92, 246, 0.1)" },
+const WORKFLOW_STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string; bg: string; description: string }> = {
+  DRAFT: { label: "Em Edição", color: "#d97706", bg: "rgba(245, 158, 11, 0.12)", description: "Planejamento aberto para edição" },
+  REVIEW: { label: "Pendente de Aprovação", color: "#2563eb", bg: "rgba(59, 130, 246, 0.12)", description: "Submetido para avaliação da diretoria" },
+  APPROVED: { label: "Aprovada", color: "#059669", bg: "rgba(16, 185, 129, 0.12)", description: "Validada pela diretoria comercial" },
+  FROZEN: { label: "Publicada (Congelada)", color: "#7c3aed", bg: "rgba(139, 92, 246, 0.12)", description: "Metas congeladas e oficiais para o exercício" },
 };
 
 /* ─── Helpers ───────────────────────────────────────────────────────────────── */
@@ -75,6 +79,18 @@ export function getPreceding3ClosedMonths(metaMonth: number, year: number): stri
     result.push(`${targetY}-${String(targetM).padStart(2, "0")}`);
   }
   return result;
+}
+
+export function formatMilReais(val: number): string {
+  if (!val || isNaN(val) || val === 0) return "R$ 0";
+  const inThousands = val / 1000;
+  return `R$ ${inThousands.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`;
+}
+
+export function formatValorMilharSimples(val: number): string {
+  if (!val || isNaN(val) || val === 0) return "0,0";
+  const inThousands = val / 1000;
+  return inThousands.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
@@ -135,7 +151,9 @@ export default function MetasRedePage() {
 
   const [managerMetaTargets, setManagerMetaTargets] = useState<Record<string, number>>({});
   const [channelMetaTargets, setChannelMetaTargets] = useState<Record<string, { ka: number; dist: number }>>({});
-  const [managerStatuses, setManagerStatuses] = useState<Record<string, OperationalStatus>>({});
+  const [workflowStatus, setWorkflowStatus] = useState<WorkflowStatus>("DRAFT");
+  const [workflowData, setWorkflowData] = useState<any>(null);
+  const [isWorkflowTransitioning, setIsWorkflowTransitioning] = useState<boolean>(false);
   
   // Rateio Preview Modal state
   const [previewModal, setPreviewModal] = useState<{
@@ -157,6 +175,42 @@ export default function MetasRedePage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Network Management States (Wave Evolução Funcional)
+  const [allAvailableNetworks, setAllAvailableNetworks] = useState<Array<{
+    rede: string;
+    manager: string;
+    manager_id: string;
+    codigo_matriz: string;
+    canal: string;
+    is_rede_planejavel: boolean;
+  }>>([]);
+
+  const [addRedeModal, setAddRedeModal] = useState<{
+    open: boolean;
+    manager: ManagerBlock | null;
+    channel?: "KA" | "Dist";
+  }>({
+    open: false,
+    manager: null,
+    channel: "KA"
+  });
+
+  const [searchRedeTerm, setSearchRedeTerm] = useState("");
+  const [selectedRedeToAdd, setSelectedRedeToAdd] = useState<string | null>(null);
+
+  const [removeRedeModal, setRemoveRedeModal] = useState<{
+    open: boolean;
+    manager: ManagerBlock | null;
+    rede: RedeRow | null;
+  }>({
+    open: false,
+    manager: null,
+    rede: null
+  });
+
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   // Check top-down authorization
   const isTopDownAuthorized = useMemo(() => {
     if (!userRole) return false;
@@ -174,6 +228,14 @@ export default function MetasRedePage() {
     ];
     return allowed.includes(r);
   }, [userRole]);
+
+  // Lock de edição quando status for Aprovada ou Publicada para usuários comuns
+  const isEditingLocked = useMemo(() => {
+    if (workflowStatus === "APPROVED" || workflowStatus === "FROZEN") {
+      return !isTopDownAuthorized;
+    }
+    return false;
+  }, [workflowStatus, isTopDownAuthorized]);
 
   // Contagem de Alterações Pendentes (ITEM 2)
   const dirtyKeysCount = useMemo(() => {
@@ -311,17 +373,26 @@ export default function MetasRedePage() {
         if (json.userProfile.userManagerName) setUserManagerName(json.userProfile.userManagerName);
       }
 
+      // Receber status de governança do workflow
+      if (json.workflow) {
+        setWorkflowStatus(json.workflow.status || "DRAFT");
+        setWorkflowData(json.workflow);
+      }
+
+      // Receber cadastro mestre de redes disponíveis
+      if (json.availableNetworks) {
+        setAllAvailableNetworks(json.availableNetworks);
+      }
+
       const { managerBlocks, managerMetas, months: apiMonths } = json;
       const monthKeys = apiMonths || Array.from({ length: targetMonth - 1 }, (_, i) => `${targetYear}-${String(i + 1).padStart(2, "0")}`);
       const initialInputs: Record<string, number> = {};
       const initialMgrTargets: Record<string, number> = {};
       const initialChannelTargets: Record<string, { ka: number; dist: number }> = {};
-      const initialStatuses: Record<string, OperationalStatus> = {};
 
       const result: ManagerBlock[] = (managerBlocks || []).map((mb: any) => {
         const mgrKey = mb.manager_id || mb.manager;
         initialMgrTargets[mgrKey] = mb.grandTotalMeta || 0;
-        initialStatuses[mgrKey] = "EM_EDICAO";
 
         const kaObj = (managerMetas || []).find((mm: any) => mm.manager_id === mb.manager_id && mm.manager.includes("(KA)"));
         const distObj = (managerMetas || []).find((mm: any) => mm.manager_id === mb.manager_id && mm.manager.includes("(Dist)"));
@@ -397,7 +468,6 @@ export default function MetasRedePage() {
       savedStateRef.current = { ...initialInputs };
       setManagerMetaTargets(initialMgrTargets);
       setChannelMetaTargets(initialChannelTargets);
-      setManagerStatuses(initialStatuses);
       if (result.length > 0) {
         setExpandedManagers(new Set([result[0].manager]));
       }
@@ -412,42 +482,71 @@ export default function MetasRedePage() {
     loadData(selectedMonth, selectedYear);
   }, [loadData, selectedMonth, selectedYear]);
 
+  // Transição Oficial de Workflow
+  const handleWorkflowTransition = async (targetStatus: WorkflowStatus, comments?: string) => {
+    setIsWorkflowTransitioning(true);
+    try {
+      const res = await fetch("/api/gestao/metas-rede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "WORKFLOW_TRANSITION",
+          year: selectedYear,
+          month: selectedMonth,
+          targetStatus,
+          comments
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao atualizar status do workflow.");
+      }
+      setWorkflowStatus(targetStatus);
+      if (data.workflow) setWorkflowData(data.workflow);
+      await loadData(selectedMonth, selectedYear);
+    } catch (err: any) {
+      console.error("Erro na transição de workflow:", err);
+      alert(`Erro no workflow: ${err.message}`);
+    } finally {
+      setIsWorkflowTransitioning(false);
+    }
+  };
+
   // Save handler (Upsert into cm_weekly_projections para Sincronização Bidirecional - ITEM 3)
   const handleSave = async () => {
+    if (isEditingLocked) {
+      alert("As metas desta competência estão aprovadas/congeladas. Apenas administradores podem realizar alterações.");
+      return;
+    }
     setSaving(true);
     try {
-      const rowsMap = new Map<string, any>();
+      const recordsToUpsert: any[] = [];
+      const canonDate = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-01`;
 
       managers.forEach((mgr) => {
         mgr.redes.forEach((r) => {
           const val = getMetaValue(r);
-          if (val > 0) {
-            const canonicalMgr = resolveCanonicalManager(r.manager).managerName;
-            const weekStartDate = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}-01`;
-            const key = `${canonicalMgr}|${r.rede}|${selectedYear}|${selectedMonth}|${weekStartDate}`;
-
-            rowsMap.set(key, {
-              manager: canonicalMgr,
-              manager_id: r.manager_id || null,
-              codigo_matriz: r.codigo_matriz || null,
+          if (val >= 0) {
+            recordsToUpsert.push({
+              manager: mgr.manager,
+              manager_id: r.manager_id || mgr.manager_id,
               client_matrix: r.rede,
+              codigo_matriz: r.codigo_matriz,
               kpi: "META",
-              projection_value: val,
-              month: selectedMonth,
+              week_start_date: canonDate,
               year: selectedYear,
-              week_start_date: weekStartDate,
+              month: selectedMonth,
+              projection_value: val,
               updated_at: new Date().toISOString(),
             });
           }
         });
       });
 
-      const rowsToUpsert = Array.from(rowsMap.values());
-
-      if (rowsToUpsert.length > 0) {
+      if (recordsToUpsert.length > 0) {
         const { error } = await supabase
           .from("cm_weekly_projections")
-          .upsert(rowsToUpsert, { onConflict: "manager,client_matrix,kpi,month,year,week_start_date" });
+          .upsert(recordsToUpsert, { onConflict: "manager,client_matrix,kpi,month,year,week_start_date" });
 
         if (error) throw error;
       }
@@ -455,12 +554,226 @@ export default function MetasRedePage() {
       savedStateRef.current = { ...metaInputs };
       setSaved(true);
       setTimeout(() => setSaved(false), 3500);
-      loadData(selectedMonth, selectedYear);
+      await loadData(selectedMonth, selectedYear);
     } catch (err: any) {
       console.error("Erro ao salvar metas na RPS:", err);
       alert(`Erro ao salvar metas: ${err?.message || "Verifique o console."}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Mapeamento de Ownership Ativo entre todas as redes
+  const assignedRedesMap = useMemo(() => {
+    const map = new Map<string, string>(); // redeUpper -> managerName
+    managers.forEach((mgr) => {
+      mgr.redes.forEach((r) => {
+        map.set(r.rede.toUpperCase(), mgr.manager);
+      });
+    });
+    return map;
+  }, [managers]);
+
+  // Lista Filtrada de Redes Elegíveis para Adição
+  const filteredAvailableRedes = useMemo(() => {
+    if (!addRedeModal.open || !addRedeModal.manager) return [];
+    const term = searchRedeTerm.trim().toLowerCase();
+    const isDistFilter = addRedeModal.channel === "Dist";
+
+    return allAvailableNetworks.filter((item) => {
+      const name = item.rede.toLowerCase();
+      const cod = (item.codigo_matriz || "").toLowerCase();
+      const canal = (item.canal || "").toLowerCase();
+
+      // Compatibilidade de canal
+      const isDistNet = canal.includes("dist") || (DISTRIBUTORS_REGISTRY[item.manager_id]?.redes || []).some((d) => item.rede.toUpperCase().includes(d.toUpperCase()));
+      if (isDistFilter && !isDistNet) return false;
+      if (!isDistFilter && isDistNet) return false;
+
+      // Filtro de busca textual
+      if (term && !name.includes(term) && !cod.includes(term) && !canal.includes(term)) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [allAvailableNetworks, addRedeModal, searchRedeTerm]);
+
+  const handleAddRede = async () => {
+    if (!addRedeModal.manager || !selectedRedeToAdd) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch("/api/gestao/metas-rede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ADD_REDE",
+          year: selectedYear,
+          month: selectedMonth,
+          manager: addRedeModal.manager.manager,
+          manager_id: addRedeModal.manager.manager_id,
+          rede: selectedRedeToAdd
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setActionError(data.error || "Erro ao adicionar rede.");
+        return;
+      }
+      setAddRedeModal({ open: false, manager: null });
+      setSelectedRedeToAdd(null);
+      setSearchRedeTerm("");
+      await loadData(selectedMonth, selectedYear);
+    } catch (err: any) {
+      setActionError(err.message || "Erro de conexão ao adicionar rede.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveRede = async () => {
+    if (!removeRedeModal.manager || !removeRedeModal.rede) return;
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const res = await fetch("/api/gestao/metas-rede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "REMOVE_REDE",
+          year: selectedYear,
+          month: selectedMonth,
+          manager: removeRedeModal.manager.manager,
+          rede: removeRedeModal.rede.rede
+        })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setActionError(data.error || "Erro ao excluir rede.");
+        return;
+      }
+      setRemoveRedeModal({ open: false, manager: null, rede: null });
+      await loadData(selectedMonth, selectedYear);
+    } catch (err: any) {
+      setActionError(err.message || "Erro de conexão ao excluir rede.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Reordenação Manual de Redes (Reutilizando semântica da RPS — display_order em cm_rps_custom_carteira)
+  const handleMoveNetworkUp = async (mgr: ManagerBlock, channel: "KA" | "Dist", cIdx: number) => {
+    if (cIdx <= 0 || isEditingLocked || saving) return;
+
+    const isDistFilter = channel === "Dist";
+    const kaRedes = mgr.redes.filter((r) => {
+      const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+      return !isDist;
+    });
+    const distRedes = mgr.redes.filter((r) => {
+      const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+      return isDist;
+    });
+
+    const targetList = isDistFilter ? [...distRedes] : [...kaRedes];
+    if (cIdx <= 0 || cIdx >= targetList.length) return;
+
+    // Swap
+    const temp = targetList[cIdx];
+    targetList[cIdx] = targetList[cIdx - 1];
+    targetList[cIdx - 1] = temp;
+
+    // Combine back
+    const newRedes = isDistFilter ? [...kaRedes, ...targetList] : [...targetList, ...distRedes];
+
+    // Optimistic UI update
+    setManagers((prev) =>
+      prev.map((m) => {
+        if (m.manager === mgr.manager) {
+          return { ...m, redes: newRedes };
+        }
+        return m;
+      })
+    );
+
+    // Build ordered list for persistence
+    const orderedPayload = newRedes.map((r, idx) => ({
+      rede: r.rede,
+      display_order: idx
+    }));
+
+    try {
+      await fetch("/api/gestao/metas-rede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "REORDER_NETWORKS",
+          year: selectedYear,
+          month: selectedMonth,
+          manager: mgr.manager,
+          orderedRedes: orderedPayload
+        })
+      });
+    } catch (err) {
+      console.error("Erro ao persistir reordenação de redes:", err);
+    }
+  };
+
+  const handleMoveNetworkDown = async (mgr: ManagerBlock, channel: "KA" | "Dist", cIdx: number) => {
+    if (isEditingLocked || saving) return;
+
+    const isDistFilter = channel === "Dist";
+    const kaRedes = mgr.redes.filter((r) => {
+      const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+      return !isDist;
+    });
+    const distRedes = mgr.redes.filter((r) => {
+      const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+      return isDist;
+    });
+
+    const targetList = isDistFilter ? [...distRedes] : [...kaRedes];
+    if (cIdx < 0 || cIdx >= targetList.length - 1) return;
+
+    // Swap
+    const temp = targetList[cIdx];
+    targetList[cIdx] = targetList[cIdx + 1];
+    targetList[cIdx + 1] = temp;
+
+    // Combine back
+    const newRedes = isDistFilter ? [...kaRedes, ...targetList] : [...targetList, ...distRedes];
+
+    // Optimistic UI update
+    setManagers((prev) =>
+      prev.map((m) => {
+        if (m.manager === mgr.manager) {
+          return { ...m, redes: newRedes };
+        }
+        return m;
+      })
+    );
+
+    // Build ordered list for persistence
+    const orderedPayload = newRedes.map((r, idx) => ({
+      rede: r.rede,
+      display_order: idx
+    }));
+
+    try {
+      await fetch("/api/gestao/metas-rede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "REORDER_NETWORKS",
+          year: selectedYear,
+          month: selectedMonth,
+          manager: mgr.manager,
+          orderedRedes: orderedPayload
+        })
+      });
+    } catch (err) {
+      console.error("Erro ao persistir reordenação de redes:", err);
     }
   };
 
@@ -571,6 +884,55 @@ export default function MetasRedePage() {
               </div>
             )}
 
+            {/* Status Simples da Competência & Lock Executivo */}
+            <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
+              <div
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${
+                  workflowStatus === "FROZEN"
+                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                }`}
+              >
+                {workflowStatus === "FROZEN" ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Competência Congelada</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Competência Aberta</span>
+                  </>
+                )}
+              </div>
+
+              {isTopDownAuthorized && (
+                <button
+                  type="button"
+                  onClick={() => handleWorkflowTransition(workflowStatus === "FROZEN" ? "DRAFT" : "FROZEN")}
+                  disabled={isWorkflowTransitioning || loading}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer ${
+                    workflowStatus === "FROZEN"
+                      ? "bg-amber-600 hover:bg-amber-700 text-white"
+                      : "bg-neutral-800 hover:bg-neutral-900 text-white"
+                  }`}
+                  title={workflowStatus === "FROZEN" ? "Descongelar esta competência para permitir edições" : "Congelar esta competência contra novas edições"}
+                >
+                  {workflowStatus === "FROZEN" ? (
+                    <>
+                      <Lock className="w-3 h-3 text-amber-200" />
+                      <span>Descongelar</span>
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3 text-neutral-300" />
+                      <span>Congelar</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
             {/* Alternar Visualização */}
             <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
               <button
@@ -623,9 +985,11 @@ export default function MetasRedePage() {
             {/* Botão de Persistência Sincronizada (ITEM 3) */}
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || isEditingLocked}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                saved
+                isEditingLocked
+                  ? "bg-neutral-200 text-neutral-500 cursor-not-allowed border border-neutral-300"
+                  : saved
                   ? "bg-emerald-600 text-white"
                   : dirtyKeysCount > 0
                   ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md ring-2 ring-amber-300"
@@ -634,12 +998,14 @@ export default function MetasRedePage() {
             >
               {saving ? (
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : isEditingLocked ? (
+                <Lock className="w-4 h-4 text-neutral-500" />
               ) : saved ? (
                 <Check className="w-4 h-4" />
               ) : (
                 <Save className="w-4 h-4" />
               )}
-              <span>{saved ? "Gravado na RPS!" : dirtyKeysCount > 0 ? "Salvar Metas na RPS" : "Salvar Metas na RPS"}</span>
+              <span>{isEditingLocked ? "Metas Congeladas" : saved ? "Gravado na RPS!" : "Salvar Metas na RPS"}</span>
             </button>
           </div>
         </div>
@@ -817,6 +1183,8 @@ export default function MetasRedePage() {
               const totalDiff = mgrConsolidatedTarget - totalSumInputted;
               const totalConciliated = Math.abs(totalDiff) < 0.01;
 
+              const mgrClean = cleanManagerName(mgr.manager);
+
               let hasMgrDirtyCell = false;
               mgr.redes.forEach((r) => {
                 const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
@@ -826,24 +1194,36 @@ export default function MetasRedePage() {
                 }
               });
 
-              const status = managerStatuses[mgrKey] || "EM_EDICAO";
-              const statusInfo = STATUS_LABELS[status];
-
-              const renderRedesTable = (redesList: RedeRow[]) => (
+              const renderRedesTable = (redesList: RedeRow[], channel: "KA" | "Dist") => (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="bg-neutral-100/60 border-b border-neutral-200 text-neutral-500 font-bold">
-                        <th className="p-3 w-10 text-center">#</th>
+                        <th className="p-3 w-8 text-center">#</th>
+                        <th className="p-3 w-14 text-center">Ordem</th>
                         <th className="p-3">Rede Planejável</th>
                         {tableDisplayedMonths.map((m) => (
-                          <th key={m} className="p-3 text-right">{m}</th>
+                          <th key={m} className="p-3 text-right font-medium">
+                            <div>{m}</div>
+                            <div className="text-[9px] font-normal text-neutral-400">R$ mil</div>
+                          </th>
                         ))}
-                        <th className="p-3 text-right bg-neutral-100/80">Média 3M (R$)</th>
+                        <th className="p-3 text-right bg-neutral-100/80 font-black text-neutral-900">
+                          <div className="leading-tight">
+                            <div>MÉDIA 3M</div>
+                            <div className="text-[9px] font-bold text-neutral-500">R$ mil</div>
+                          </div>
+                        </th>
                         <th className="p-3 text-right bg-blue-50/60 text-blue-900 font-bold border-l border-r border-blue-100">PREÇO MÉDIO 3M</th>
-                        <th className="p-3 text-right bg-amber-50/50 w-44 font-black text-neutral-900">Meta R$ ({MONTH_NAMES_PT[selectedMonth - 1]})</th>
+                        <th className="p-3 text-center bg-neutral-50/80 font-black text-neutral-900 w-28">
+                          <div className="leading-tight text-center">
+                            <div>Meta R$</div>
+                            <div className="text-[9px] font-bold text-neutral-500">R$ mil</div>
+                          </div>
+                        </th>
                         <th className="p-3 text-right bg-emerald-50/60 text-emerald-900 font-bold border-l border-r border-emerald-100">VOL META (Kg)</th>
                         <th className="p-3 text-right">% vs Média 3M</th>
+                        <th className="p-3 w-10 text-center">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -856,11 +1236,38 @@ export default function MetasRedePage() {
                         const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
                         const isCellDirty = savedStateRef.current[inputKey] !== undefined && Math.abs(val - (savedStateRef.current[inputKey] || 0)) > 0.001;
 
+                        // Cálculo de Maior e Menor Faturamento Positivo para Destaque
+                        const positiveFats = tableDisplayedMonths.map(mon => r.months[mon]?.fat || 0).filter(f => f > 0);
+                        const maxFat = positiveFats.length > 1 ? Math.max(...positiveFats) : -1;
+                        const minFat = positiveFats.length > 1 ? Math.min(...positiveFats) : -1;
+
                         return (
                           <tr key={`${r.manager_id}-${r.codigo_matriz}-${r.rede}`} className={`border-b border-neutral-100 transition-colors ${
-                            isCellDirty ? "bg-amber-50/40" : "hover:bg-neutral-50/50"
+                            isCellDirty ? "bg-amber-50/30" : "hover:bg-neutral-50/50"
                           }`}>
-                            <td className="p-3 text-center text-neutral-400">{rIdx + 1}</td>
+                            <td className="p-3 text-center text-neutral-400 font-mono text-[11px]">{rIdx + 1}</td>
+                            <td className="p-2 text-center w-14">
+                              <div className="flex items-center justify-center gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={rIdx === 0 || isEditingLocked || saving}
+                                  onClick={() => handleMoveNetworkUp(mgr, channel, rIdx)}
+                                  className="p-1 rounded hover:bg-neutral-200/60 text-neutral-500 hover:text-neutral-900 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                  title="Mover para cima (▲)"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={rIdx === redesList.length - 1 || isEditingLocked || saving}
+                                  onClick={() => handleMoveNetworkDown(mgr, channel, rIdx)}
+                                  className="p-1 rounded hover:bg-neutral-200/60 text-neutral-500 hover:text-neutral-900 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
+                                  title="Mover para baixo (▼)"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
                             <td className="p-3 font-bold text-neutral-800 flex items-center gap-2">
                               <span>{r.rede}</span>
                               {isCellDirty && (
@@ -868,29 +1275,52 @@ export default function MetasRedePage() {
                               )}
                             </td>
 
-                            {tableDisplayedMonths.map((m) => (
-                              <td key={m} className="p-3 text-right font-mono text-neutral-600">
-                                {formatCurrency(r.months[m]?.fat || 0)}
-                              </td>
-                            ))}
+                            {tableDisplayedMonths.map((m) => {
+                              const fatVal = r.months[m]?.fat || 0;
+                              const isMax = positiveFats.length > 1 && fatVal === maxFat && maxFat > 0;
+                              const isMin = positiveFats.length > 1 && fatVal === minFat && minFat > 0 && minFat !== maxFat;
+
+                              return (
+                                <td key={m} className="p-3 text-right font-mono text-xs">
+                                  <span className={`inline-block px-1.5 py-0.5 rounded transition-all ${
+                                    fatVal === 0
+                                      ? "text-neutral-400"
+                                      : isMax
+                                      ? "text-emerald-700 font-bold bg-emerald-50 border border-emerald-200"
+                                      : isMin
+                                      ? "text-rose-700 font-bold bg-rose-50 border border-rose-200"
+                                      : "text-neutral-700 font-medium"
+                                  }`}>
+                                    {formatValorMilharSimples(fatVal)}
+                                  </span>
+                                </td>
+                              );
+                            })}
 
                             <td className="p-3 text-right font-mono font-bold bg-neutral-50 text-neutral-900">
-                              {formatCurrency(r.avg3M)}
+                              {formatValorMilharSimples(r.avg3M)}
                             </td>
 
                             <td className="p-3 text-right font-mono font-semibold bg-blue-50/20 text-blue-900 border-l border-r border-blue-100">
                               {pm3M > 0 ? `${formatCurrency(pm3M)} /Kg` : "—"}
                             </td>
 
-                            <td className={`p-3 text-right transition-all ${
-                              isCellDirty ? "bg-amber-100/60 ring-2 ring-amber-400" : "bg-amber-50/30"
-                            }`}>
-                              <ExecutiveMoneyInput
-                                value={val}
-                                onChangeValue={(newVal: number) =>
-                                  setMetaValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, newVal)
-                                }
-                              />
+                            <td className="p-2 text-center w-28">
+                              <div className="flex justify-center">
+                                <ExecutiveMoneyInput
+                                  value={val}
+                                  inThousands={true}
+                                  disabled={isEditingLocked || saving}
+                                  onChangeValue={(newVal: number) =>
+                                    setMetaValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, newVal)
+                                  }
+                                  className={`w-24 text-center font-mono font-bold bg-white text-neutral-900 border rounded-md px-2 py-1.5 text-xs shadow-xs focus:outline-none focus:ring-2 transition-all ${
+                                    isCellDirty
+                                      ? "border-amber-500 ring-1 ring-amber-400 focus:ring-amber-500 focus:border-amber-500"
+                                      : "border-neutral-300 hover:border-neutral-400 focus:ring-neutral-900 focus:border-neutral-900"
+                                  } disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200`}
+                                />
+                              </div>
                             </td>
 
                             <td className="p-3 text-right font-mono font-bold bg-emerald-50/30 text-emerald-800 border-l border-r border-emerald-100">
@@ -901,6 +1331,18 @@ export default function MetasRedePage() {
                               pctVsAvg3M > 0 ? "text-emerald-600" : pctVsAvg3M < 0 ? "text-rose-600" : "text-neutral-400"
                             }`}>
                               {pctVsAvg3M !== 0 ? `${pctVsAvg3M > 0 ? "+" : ""}${pctVsAvg3M.toFixed(1)}%` : "—"}
+                            </td>
+
+                            <td className="p-3 text-center">
+                              <button
+                                type="button"
+                                disabled={isEditingLocked || saving}
+                                onClick={() => setRemoveRedeModal({ open: true, manager: mgr, rede: r })}
+                                title={`Excluir ${r.rede} do planejamento`}
+                                className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-30 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -930,27 +1372,18 @@ export default function MetasRedePage() {
                           <span className="font-black text-neutral-900 text-base">{cleanManagerName(mgr.manager)}</span>
                           
                           {hasMgrDirtyCell && (
-                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
                               <Edit3 className="w-3 h-3 text-amber-600" />
                               Em Edição
                             </span>
                           )}
 
-                          <select
-                            value={status}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              setManagerStatuses(prev => ({ ...prev, [mgrKey]: e.target.value as OperationalStatus }));
-                            }}
-                            style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
-                            className="text-[11px] font-bold px-2 py-0.5 rounded-full border border-current cursor-pointer focus:outline-none"
-                          >
-                            <option value="EM_EDICAO">Em Edição</option>
-                            <option value="PENDENTE_APROVACAO">Pendente de Aprovação</option>
-                            <option value="APROVADA">Aprovada</option>
-                            <option value="PUBLICADA">Publicada</option>
-                          </select>
+                          {workflowStatus === "FROZEN" && (
+                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                              <Lock className="w-3 h-3" />
+                              Congelada
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-3">
                           <span>{mgr.redes.length} Redes Planejáveis ({kaRedes.length} KA / {distRedes.length} Dist)</span>
@@ -962,18 +1395,70 @@ export default function MetasRedePage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                      <div className="text-right">
-                        <div className="text-xs text-neutral-500">Distribuído Total / Meta Oficial Consolidada</div>
-                        <div className="text-sm font-black flex items-center gap-1.5 justify-end">
-                          <span className="text-blue-600">{formatCurrency(totalSumInputted)}</span>
-                          <span className="text-neutral-400">/</span>
-                          <span className="text-neutral-900">{formatCurrency(mgrConsolidatedTarget)}</span>
+                    <div className="flex items-center gap-5 flex-wrap justify-end">
+                      {/* Resumo Canal KA */}
+                      {kaRedes.length > 0 && (
+                        <div className="text-right">
+                          <div className="text-xs text-neutral-500 font-medium">Meta Canal KA {mgrClean}</div>
+                          <div className="text-sm font-black flex items-center gap-1.5 justify-end">
+                            <span className="text-blue-600">{formatCurrency(kaSumInputted)}</span>
+                            <span className="text-neutral-400">/</span>
+                            <span className="text-neutral-900">{formatCurrency(kaOfficialMeta)}</span>
+                          </div>
+                          <div className={`text-[11px] font-bold ${kaConciliated ? "text-emerald-600" : "text-amber-600"}`}>
+                            {kaConciliated ? "✓ Conciliado KA" : `Saldo KA: ${formatCurrency(kaDiff)}`}
+                          </div>
                         </div>
-                        <div className={`text-[11px] font-bold ${totalConciliated ? "text-emerald-600" : "text-amber-600"}`}>
-                          {totalConciliated ? "✓ Conciliado Total" : `Saldo Total: ${formatCurrency(totalDiff)}`}
+                      )}
+
+                      {/* Divisória Vertical quando ambos os canais existem */}
+                      {kaRedes.length > 0 && distRedes.length > 0 && (
+                        <div className="hidden sm:block h-8 w-px bg-neutral-200" />
+                      )}
+
+                      {/* Resumo Canal Distribuidor */}
+                      {distRedes.length > 0 && (
+                        <div className="text-right">
+                          <div className="text-xs text-neutral-500 font-medium">Meta Canal Dist {mgrClean}</div>
+                          <div className="text-sm font-black flex items-center gap-1.5 justify-end">
+                            <span className="text-amber-600">{formatCurrency(distSumInputted)}</span>
+                            <span className="text-neutral-400">/</span>
+                            <span className="text-neutral-900">{formatCurrency(distOfficialMeta)}</span>
+                          </div>
+                          <div className={`text-[11px] font-bold ${distConciliated ? "text-emerald-600" : "text-amber-600"}`}>
+                            {distConciliated ? "✓ Conciliado Dist" : `Saldo Dist: ${formatCurrency(distDiff)}`}
+                          </div>
                         </div>
-                      </div>
+                      )}
+
+                      {/* Botão Salvar Metas do Gerente */}
+                      <button
+                        type="button"
+                        disabled={isEditingLocked || saving}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSave();
+                        }}
+                        className={`px-3.5 py-1.5 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                          isEditingLocked
+                            ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                            : saved
+                            ? "bg-emerald-600 text-white border border-emerald-700"
+                            : hasMgrDirtyCell
+                            ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse"
+                            : "bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-900"
+                        }`}
+                        title="Salvar todas as metas editadas na tela"
+                      >
+                        {saving ? (
+                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : saved ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : (
+                          <Save className="w-3.5 h-3.5" />
+                        )}
+                        <span>{saved ? "Gravado na RPS!" : "💾 Salvar Metas"}</span>
+                      </button>
                     </div>
                   </div>
 
@@ -982,19 +1467,20 @@ export default function MetasRedePage() {
                     <div className="p-4 bg-neutral-50/40 space-y-6 border-t border-neutral-100">
                       {/* 💼 CANAL 1: KA (Key Account) */}
                       <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
-                        <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-blue-50/50 to-white border-b border-indigo-100 flex items-center justify-between flex-wrap gap-3">
-                          <div className="flex items-center gap-3">
-                            <span className="px-2.5 py-1 rounded-full text-xs font-black bg-indigo-600 text-white flex items-center gap-1.5 shadow-sm">
-                              <Briefcase className="w-3.5 h-3.5" />
-                              CANAL KA (Key Accounts)
-                            </span>
-                            <span className="text-xs text-neutral-500 font-semibold">{kaRedes.length} Redes</span>
-                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              Vol: {Math.round(kaVolSum).toLocaleString("pt-BR")} Kg
-                            </span>
-                          </div>
+                        <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-blue-50/50 to-white border-b border-indigo-100 flex flex-col gap-2.5">
+                          {/* Linha 1: Título do canal e KPIs */}
+                          <div className="flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-indigo-600 text-white flex items-center gap-1.5 shadow-sm">
+                                <Briefcase className="w-3.5 h-3.5" />
+                                CANAL KA (Key Accounts)
+                              </span>
+                              <span className="text-xs text-neutral-500 font-semibold">{kaRedes.length} Redes</span>
+                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Vol: {Math.round(kaVolSum).toLocaleString("pt-BR")} Kg
+                              </span>
+                            </div>
 
-                          <div className="flex items-center gap-4">
                             <div className="text-right">
                               <div className="text-[11px] text-neutral-500 font-semibold">Distribuído KA / Meta Oficial KA</div>
                               <div className="text-xs font-black flex items-center gap-1 justify-end">
@@ -1006,8 +1492,30 @@ export default function MetasRedePage() {
                                 {kaConciliated ? "✓ Conciliado KA" : `Saldo KA: ${formatCurrency(kaDiff)}`}
                               </div>
                             </div>
+                          </div>
+
+                          {/* Linha 2: Botões de Ação do Canal */}
+                          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-indigo-100/60">
+                            <button
+                              type="button"
+                              disabled={isEditingLocked || saving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddRedeModal({ open: true, manager: mgr, channel: "KA" });
+                              }}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                                isEditingLocked
+                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                  : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                              }`}
+                            >
+                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                              <span>+ Adicionar Rede</span>
+                            </button>
 
                             <button
+                              type="button"
+                              disabled={isEditingLocked || saving}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleOpenRateioPreview(
@@ -1017,16 +1525,20 @@ export default function MetasRedePage() {
                                   "KA (Key Account)"
                                 );
                               }}
-                              className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
+                                isEditingLocked
+                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                  : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+                              }`}
                             >
-                              <Zap className="w-3.5 h-3.5 text-indigo-500" />
+                              <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                               <span>Distribuir Proporcionalmente (KA)</span>
                             </button>
                           </div>
                         </div>
 
                         {kaRedes.length > 0 ? (
-                          renderRedesTable(kaRedes)
+                          renderRedesTable(kaRedes, "KA")
                         ) : (
                           <div className="p-6 text-center text-xs text-neutral-400 italic">
                             Nenhuma rede KA vinculada a esta carteira.
@@ -1036,19 +1548,20 @@ export default function MetasRedePage() {
 
                       {/* 🚚 CANAL 2: DISTRIBUIDOR */}
                       <div className="bg-white rounded-xl border border-purple-100 shadow-sm overflow-hidden">
-                        <div className="p-3 bg-gradient-to-r from-purple-50/90 via-fuchsia-50/50 to-white border-b border-purple-100 flex items-center justify-between flex-wrap gap-3">
-                          <div className="flex items-center gap-3">
-                            <span className="px-2.5 py-1 rounded-full text-xs font-black bg-purple-600 text-white flex items-center gap-1.5 shadow-sm">
-                              <Truck className="w-3.5 h-3.5" />
-                              CANAL DISTRIBUIDOR
-                            </span>
-                            <span className="text-xs text-neutral-500 font-semibold">{distRedes.length} Clientes / Distribuidores</span>
-                            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              Vol: {Math.round(distVolSum).toLocaleString("pt-BR")} Kg
-                            </span>
-                          </div>
+                        <div className="p-3 bg-gradient-to-r from-purple-50/90 via-fuchsia-50/50 to-white border-b border-purple-100 flex flex-col gap-2.5">
+                          {/* Linha 1: Título do canal e KPIs */}
+                          <div className="flex items-center justify-between flex-wrap gap-3">
+                            <div className="flex items-center gap-3">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-purple-600 text-white flex items-center gap-1.5 shadow-sm">
+                                <Truck className="w-3.5 h-3.5" />
+                                CANAL DISTRIBUIDOR
+                              </span>
+                              <span className="text-xs text-neutral-500 font-semibold">{distRedes.length} Clientes / Distribuidores</span>
+                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                Vol: {Math.round(distVolSum).toLocaleString("pt-BR")} Kg
+                              </span>
+                            </div>
 
-                          <div className="flex items-center gap-4">
                             <div className="text-right">
                               <div className="text-[11px] text-neutral-500 font-semibold">Distribuído Dist / Meta Oficial Dist</div>
                               <div className="text-xs font-black flex items-center gap-1 justify-end">
@@ -1060,8 +1573,30 @@ export default function MetasRedePage() {
                                 {distConciliated ? "✓ Conciliado Dist" : `Saldo Dist: ${formatCurrency(distDiff)}`}
                               </div>
                             </div>
+                          </div>
+
+                          {/* Linha 2: Botões de Ação do Canal */}
+                          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-purple-100/60">
+                            <button
+                              type="button"
+                              disabled={isEditingLocked || saving}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAddRedeModal({ open: true, manager: mgr, channel: "Dist" });
+                              }}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                                isEditingLocked
+                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                  : "text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                              }`}
+                            >
+                              <Plus className="w-3.5 h-3.5 text-purple-600" />
+                              <span>+ Adicionar Rede</span>
+                            </button>
 
                             <button
+                              type="button"
+                              disabled={isEditingLocked || saving}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleOpenRateioPreview(
@@ -1071,16 +1606,20 @@ export default function MetasRedePage() {
                                   "Distribuidor"
                                 );
                               }}
-                              className="px-3 py-1.5 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors flex items-center gap-1.5 shadow-xs"
+                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
+                                isEditingLocked
+                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                  : "text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                              }`}
                             >
-                              <Zap className="w-3.5 h-3.5 text-purple-500" />
-                              <span>Distribuir Proporcionalmente (Distribuidor)</span>
+                              <Zap className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              <span>Distribuir Proporcionalmente (Dist)</span>
                             </button>
                           </div>
                         </div>
 
                         {distRedes.length > 0 ? (
-                          renderRedesTable(distRedes)
+                          renderRedesTable(distRedes, "Dist")
                         ) : (
                           <div className="p-6 text-center text-xs text-neutral-400 italic">
                             Nenhum cliente ou distribuidor atacado vinculado a esta carteira.
@@ -1158,6 +1697,210 @@ export default function MetasRedePage() {
               >
                 <Check className="w-4 h-4" />
                 <span>Confirmar Rateio</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL 1: ADICIONAR REDE NA CARTEIRA DE PLANEJAMENTO */}
+      {addRedeModal.open && addRedeModal.manager && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden font-sans space-y-4 p-6 animate-fade-in flex flex-col max-h-[85vh]">
+            <div className="flex items-center justify-between border-b border-neutral-200 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-neutral-900">
+                    Adicionar Rede no Planejamento
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Gerente: <span className="font-bold text-neutral-800">{cleanManagerName(addRedeModal.manager.manager)}</span> ({addRedeModal.channel === "Dist" ? "Canal Distribuidor" : "Canal KA"})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddRedeModal({ open: false, manager: null });
+                  setSelectedRedeToAdd(null);
+                  setActionError(null);
+                }}
+                className="p-1 text-neutral-400 hover:text-neutral-700 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {actionError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
+
+            {/* Input de Pesquisa Dinâmica */}
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+              <input
+                type="text"
+                autoFocus
+                placeholder="Pesquisar por nome da rede, código de matriz ou canal..."
+                value={searchRedeTerm}
+                onChange={(e) => setSearchRedeTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 border border-neutral-200 rounded-xl text-xs text-neutral-900 focus:border-neutral-900 focus:bg-white focus:outline-none"
+              />
+            </div>
+
+            {/* Lista de Resultados de Pesquisa */}
+            <div className="overflow-y-auto space-y-2 pr-1 text-xs flex-1 max-h-72">
+              {filteredAvailableRedes.length === 0 ? (
+                <div className="p-6 text-center text-xs text-neutral-400 italic">
+                  Nenhuma rede encontrada para a busca "{searchRedeTerm}".
+                </div>
+              ) : (
+                filteredAvailableRedes.map((item, itemIdx) => {
+                  const currentOwner = assignedRedesMap.get(item.rede.toUpperCase());
+                  const isOwnedByCurrent = currentOwner && cleanManagerName(currentOwner).toLowerCase() === cleanManagerName(addRedeModal.manager?.manager || "").toLowerCase();
+                  const isOwnedByOther = currentOwner && !isOwnedByCurrent;
+                  const isSelected = selectedRedeToAdd === item.rede;
+
+                  return (
+                    <div
+                      key={`${item.rede}_${item.codigo_matriz || ''}_${itemIdx}`}
+                      onClick={() => {
+                        if (!isOwnedByCurrent && !isOwnedByOther) {
+                          setSelectedRedeToAdd(item.rede);
+                          setActionError(null);
+                        }
+                      }}
+                      className={`p-3 rounded-xl border transition-all flex items-center justify-between ${
+                        isOwnedByOther
+                          ? "bg-neutral-50 border-neutral-200 opacity-60 cursor-not-allowed"
+                          : isOwnedByCurrent
+                          ? "bg-neutral-50 border-neutral-200 opacity-60 cursor-not-allowed"
+                          : isSelected 
+                          ? "bg-emerald-50 border-emerald-500 ring-1 ring-emerald-400 cursor-pointer" 
+                          : "bg-white border-neutral-200 text-neutral-800 hover:bg-neutral-50 hover:border-neutral-300 cursor-pointer"
+                      }`}
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-neutral-900">{item.rede}</span>
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-neutral-100 text-neutral-600 border border-neutral-200">
+                            {item.canal || "KA"}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-neutral-500 font-mono flex items-center gap-2">
+                          {item.codigo_matriz && <span>Matriz: {item.codigo_matriz}</span>}
+                          {isOwnedByOther && (
+                            <span className="font-sans font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              🔒 Pertence a: {currentOwner}
+                            </span>
+                          )}
+                          {isOwnedByCurrent && (
+                            <span className="font-sans font-semibold text-neutral-500">
+                              ✓ Já nesta carteira
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {!isOwnedByCurrent && !isOwnedByOther && (
+                        <input
+                          type="radio"
+                          name="selectedRedeToAdd"
+                          checked={isSelected}
+                          onChange={() => {
+                            setSelectedRedeToAdd(item.rede);
+                            setActionError(null);
+                          }}
+                          className="accent-emerald-600 w-4 h-4 cursor-pointer"
+                        />
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Botões de Ação do Modal */}
+            <div className="flex items-center justify-end gap-3 border-t border-neutral-200 pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setAddRedeModal({ open: false, manager: null });
+                  setSelectedRedeToAdd(null);
+                  setActionError(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!selectedRedeToAdd || actionLoading}
+                onClick={handleAddRede}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
+              >
+                {actionLoading ? "Adicionando..." : "+ Confirmar Inclusão"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: CONFIRMAÇÃO DE EXCLUSÃO DE REDE */}
+      {removeRedeModal.open && removeRedeModal.manager && removeRedeModal.rede && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-md shadow-2xl p-6 space-y-4 animate-fade-in">
+            <div className="flex items-center gap-3 border-b border-neutral-100 pb-3">
+              <div className="p-2.5 rounded-xl bg-rose-50 text-rose-600 border border-rose-200">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-neutral-900">
+                  Excluir Rede do Planejamento
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Gerente: {cleanManagerName(removeRedeModal.manager.manager)}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-700 leading-relaxed">
+              Deseja remover a rede <strong className="text-neutral-900">{removeRedeModal.rede.rede}</strong> da carteira de planejamento de <strong>{cleanManagerName(removeRedeModal.manager.manager)}</strong> para <strong>{MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}</strong>?
+            </p>
+
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-800 leading-relaxed">
+              <strong>Nota de Governança:</strong> Esta ação remove a rede da carteira ativa do gerente nesta competência. O histórico de faturamento real e o cadastro mestre permanecem 100% preservados.
+            </div>
+
+            {actionError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
+                {actionError}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRemoveRedeModal({ open: false, manager: null, rede: null });
+                  setActionError(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={actionLoading}
+                onClick={handleRemoveRede}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm cursor-pointer"
+              >
+                {actionLoading ? "Excluindo..." : "Confirmar Exclusão"}
               </button>
             </div>
           </div>

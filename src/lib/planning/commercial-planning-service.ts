@@ -10,6 +10,7 @@ export interface PlanejavelRedeDTO {
   manager_id: string;
   codigo_matriz: string;
   canal?: string;
+  display_order?: number;
 }
 
 export interface MonthlyBillingDTO {
@@ -43,6 +44,7 @@ export interface RedeViewModel {
   manager_id: string;
   codigo_matriz: string;
   canal?: string;
+  display_order?: number;
   fatQ2: number;
   qtyQ2: number;
   avgPriceQ2: number;
@@ -125,6 +127,14 @@ export interface MetasRedeViewModel {
   totalRedes: number;
   totalManagers: number;
   managerBlocks: ManagerBlockViewModel[];
+  availableNetworks?: Array<{
+    rede: string;
+    manager: string;
+    manager_id: string;
+    codigo_matriz: string;
+    canal: string;
+    is_rede_planejavel: boolean;
+  }>;
   months: string[];
   preceding3Months: string[];
   workflow: WorkflowDTO;
@@ -141,7 +151,7 @@ export interface MetasRedeViewModel {
 }
 
 export interface MetasRedePayloadDTO {
-  planRedes: { rede: string; manager: string; manager_id?: string; codigo_matriz?: string }[];
+  planRedes: { rede: string; manager: string; manager_id?: string; codigo_matriz?: string; canal?: string; display_order?: number }[];
   billing: Record<string, Record<string, MonthlyBillingDTO>>;
   metas: { manager: string; manager_id?: string; codigo_matriz?: string; client_matrix: string; value: number }[];
   managerMetas: { manager: string; manager_id?: string; value: number }[];
@@ -177,6 +187,45 @@ export class CommercialPlanningService {
   }
 
   /**
+   * Reads all records from vw_redes_planejaveis_oficiais using explicit pagination
+   * to guarantee that PostgREST 1000-row limit never truncates the result set.
+   */
+  private static async fetchAllOfficialRedes(): Promise<any[]> {
+    const supabase = createAdminClient();
+    const pageSize = 1000;
+    let page = 0;
+    let hasMore = true;
+    const allRecords: any[] = [];
+
+    while (hasMore) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error } = await supabase
+        .from("vw_redes_planejaveis_oficiais")
+        .select("rede, manager, manager_id, codigo_matriz, canal, is_rede_planejavel")
+        .range(from, to);
+
+      if (error) {
+        console.error(`[CommercialPlanningService] Error fetching vw_redes_planejaveis_oficiais page ${page}:`, error);
+        throw new Error(`Failed to fetch official networks (page ${page}): ${error.message}`);
+      }
+
+      if (data && data.length > 0) {
+        allRecords.push(...data);
+        if (data.length < pageSize) {
+          hasMore = false;
+        } else {
+          page++;
+        }
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allRecords;
+  }
+
+  /**
    * Fetches Metas por Rede payload for a target year and month.
    */
   public static async getMetasRedeData(year: number = this.DEFAULT_YEAR, month: number = 8): Promise<MetasRedePayloadDTO> {
@@ -194,22 +243,39 @@ export class CommercialPlanningService {
       }
     }
 
-    // 1. Query 1: Fetch official planejáveis networks from view
+    // 1. Query 1: Fetch official networks from view (all pages with complete pagination)
     const q1Start = performance.now();
-    const { data: rpData, error: rpError } = await supabase
-      .from("vw_redes_planejaveis_oficiais")
-      .select("rede, manager, manager_id, codigo_matriz, canal")
-      .eq("is_rede_planejavel", true);
-
+    const rpData = await this.fetchAllOfficialRedes();
     const q1End = performance.now();
     const viewSqlDuration = Number((q1End - q1Start).toFixed(2));
 
-    if (rpError) {
-      console.error("[CommercialPlanningService] Error fetching vw_redes_planejaveis_oficiais:", rpError);
-      throw new Error(`Failed to fetch official networks: ${rpError.message}`);
-    }
+    // 1.1 Fetch custom planning carteira adjustments from cm_rps_custom_carteira
+    const { data: customCarteiraData } = await supabase
+      .from("cm_rps_custom_carteira")
+      .select("manager, client_matrix, display_order, is_excluded")
+      .eq("year", year)
+      .eq("month", month);
 
-    // Telemetry & Data Quality Checks
+    const excludedSet = new Set<string>();
+    const customIncludedMap = new Map<string, string>(); // redeUpper -> managerName
+    const customOrderMap = new Map<string, number>(); // key -> display_order
+
+    (customCarteiraData || []).forEach((row: any) => {
+      const mgrClean = String(row.manager || "").trim().toLowerCase();
+      const redeClean = String(row.client_matrix || "").trim().toUpperCase();
+      const key = `${mgrClean}|${redeClean}`;
+      if (row.is_excluded) {
+        excludedSet.add(key);
+      } else {
+        customIncludedMap.set(redeClean, String(row.manager || "").trim());
+      }
+      if (row.display_order !== undefined && row.display_order !== null) {
+        customOrderMap.set(key, Number(row.display_order));
+      }
+    });
+
+    // Master map of all networks to resolve custom additions
+    const masterRedesMap = new Map<string, PlanejavelRedeDTO>();
     const seenKeys = new Set<string>();
     const planRedesMap = new Map<string, PlanejavelRedeDTO>();
 
@@ -218,24 +284,10 @@ export class CommercialPlanningService {
       const codMatriz = String(row.codigo_matriz || "").trim();
       const redeName = String(row.rede || "").trim();
       const managerName = String(row.manager || "").trim();
+      const redeUpper = redeName.toUpperCase();
 
-      if (!mgrId) {
-        PlanningTelemetry.triggerDataQualityAlert("NULL_MANAGER", `Rede '${redeName}' possui manager_id nulo no cadastro.`, { redeName });
-        return;
-      }
-
-      if (!codMatriz) {
-        PlanningTelemetry.triggerDataQualityAlert("NULL_MATRIZ", `Rede '${redeName}' possui codigo_matriz nulo no cadastro.`, { redeName });
-        return;
-      }
-
-      const key = `${mgrId}|${redeName.toUpperCase()}`;
-
-      if (seenKeys.has(key)) {
-        PlanningTelemetry.triggerDataQualityAlert("DUPLICATE_REDE", `Duplicidade detectada para a rede '${redeName}' do gerente '${managerName}'.`, { key });
-      } else {
-        seenKeys.add(key);
-        planRedesMap.set(key, {
+      if (!masterRedesMap.has(redeUpper)) {
+        masterRedesMap.set(redeUpper, {
           rede: redeName,
           manager: managerName,
           manager_id: mgrId,
@@ -243,7 +295,75 @@ export class CommercialPlanningService {
           canal: row.canal || "Outros"
         });
       }
+
+      if (!row.is_rede_planejavel) return;
+      if (!mgrId || !codMatriz) return;
+
+      const excludeKey = `${managerName.toLowerCase()}|${redeUpper}`;
+      if (excludedSet.has(excludeKey)) {
+        return; // Excluded for this manager in this competence
+      }
+
+      const key = `${mgrId}|${redeUpper}`;
+
+      if (seenKeys.has(key)) {
+        PlanningTelemetry.triggerDataQualityAlert("DUPLICATE_REDE", `Duplicidade detectada para a rede '${redeName}' do gerente '${managerName}'.`, { key });
+      } else {
+        seenKeys.add(key);
+        const orderKey = `${managerName.toLowerCase()}|${redeUpper}`;
+        planRedesMap.set(key, {
+          rede: redeName,
+          manager: managerName,
+          manager_id: mgrId,
+          codigo_matriz: codMatriz,
+          canal: row.canal || "Outros",
+          display_order: customOrderMap.get(orderKey)
+        });
+      }
     });
+
+    // Apply custom inclusions from cm_rps_custom_carteira
+    for (const [redeUpper, targetManager] of customIncludedMap.entries()) {
+      let masterInfo = masterRedesMap.get(redeUpper);
+
+      // Fallback determinístico caso alguma rede adicionada não esteja no masterRedesMap
+      if (!masterInfo) {
+        const { data: fallbackData } = await supabase
+          .from("vw_redes_planejaveis_oficiais")
+          .select("rede, manager, manager_id, codigo_matriz, canal, is_rede_planejavel")
+          .ilike("rede", redeUpper)
+          .limit(1);
+        if (fallbackData && fallbackData.length > 0) {
+          masterInfo = {
+            rede: fallbackData[0].rede,
+            manager: fallbackData[0].manager || targetManager,
+            manager_id: fallbackData[0].manager_id || "",
+            codigo_matriz: fallbackData[0].codigo_matriz || "",
+            canal: fallbackData[0].canal || "Outros",
+          };
+          masterRedesMap.set(redeUpper, masterInfo);
+        }
+      }
+
+      if (masterInfo) {
+        const canonTarget = resolveCanonicalManager(targetManager);
+        const targetMgrId = canonTarget?.managerId || masterInfo.manager_id;
+        const key = `${targetMgrId || targetManager}|${redeUpper}`;
+        const excludeKey = `${targetManager.toLowerCase()}|${redeUpper}`;
+        if (!excludedSet.has(excludeKey) && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          const orderKey = `${targetManager.toLowerCase()}|${redeUpper}`;
+          planRedesMap.set(key, {
+            rede: masterInfo.rede,
+            manager: targetManager,
+            manager_id: targetMgrId,
+            codigo_matriz: masterInfo.codigo_matriz,
+            canal: masterInfo.canal,
+            display_order: customOrderMap.get(orderKey)
+          });
+        }
+      }
+    }
 
     const planRedesList = Array.from(planRedesMap.values());
 
@@ -258,6 +378,9 @@ export class CommercialPlanningService {
     } else {
       // 2. Query 2: Fetch AGGREGATED sales history directly from PostgreSQL (Returns ~200 rows instead of 122k raw rows)
       const q2Start = performance.now();
+      const targetRedesUpper = Array.from(new Set(planRedesList.map((r) => r.rede.trim().replace(/'/g, "''").toUpperCase())));
+      const redesInClause = targetRedesUpper.length > 0 ? targetRedesUpper.map((r) => `'${r}'`).join(",") : "''";
+
       const aggSqlText = `
         SELECT 
           s.manager_id,
@@ -268,11 +391,7 @@ export class CommercialPlanningService {
         FROM public.mv_vendas_cliente_mensal s
         WHERE s.mes IN ('${months.join("','")}')
           AND s.rede IS NOT NULL
-          AND UPPER(TRIM(s.rede)) IN (
-            SELECT UPPER(TRIM(rede)) 
-            FROM public.vw_redes_planejaveis_oficiais 
-            WHERE is_rede_planejavel = TRUE
-          )
+          AND UPPER(TRIM(s.rede)) IN (${redesInClause})
         GROUP BY s.manager_id, TRIM(s.rede), s.mes
       `;
 
@@ -335,7 +454,7 @@ export class CommercialPlanningService {
     const q3Start = performance.now();
     const { data: metaData } = await supabase
       .from("cm_weekly_projections")
-      .select("manager, client_matrix, projection_value, manager_id, codigo_matriz")
+      .select("manager, client_matrix, projection_value, manager_id, codigo_matriz, week_start_date")
       .eq("kpi", "META")
       .eq("year", year)
       .eq("month", month)
@@ -413,6 +532,7 @@ export class CommercialPlanningService {
         manager_id: String(m.manager_id || "").trim(),
         codigo_matriz: String(m.codigo_matriz || "").trim(),
         client_matrix: String(m.client_matrix || "").trim(),
+        week_start_date: String(m.week_start_date || "").trim(),
         value: Number(m.projection_value) || 0
       })),
       managerMetas,
@@ -446,8 +566,15 @@ export class CommercialPlanningService {
     }
 
     // Build metas map: manager_id|codigo_matriz or manager_id|client_matrix
+    // Prioritizing canonical monthly records with week_start_date ending in -01
     const metaMap = new Map<string, number>();
-    payload.metas.forEach(m => {
+    const sortedMetas = [...payload.metas].sort((a: any, b: any) => {
+      const aIs01 = String(a.week_start_date || '').endsWith('-01') ? 1 : 0;
+      const bIs01 = String(b.week_start_date || '').endsWith('-01') ? 1 : 0;
+      return aIs01 - bIs01; // Records with -01 come last and win in map
+    });
+
+    sortedMetas.forEach(m => {
       if (m.codigo_matriz) {
         metaMap.set(`${m.manager_id}|${m.codigo_matriz}`, m.value);
       }
@@ -543,6 +670,7 @@ export class CommercialPlanningService {
           manager_id: net.manager_id,
           codigo_matriz: net.codigo_matriz,
           canal: net.canal,
+          display_order: net.display_order,
           fatQ2,
           qtyQ2,
           avgPriceQ2,
@@ -557,8 +685,15 @@ export class CommercialPlanningService {
         };
       });
 
-      // Sort networks by avg3M descending (tiebreaker: alphabetical)
-      redeVMList.sort((a, b) => b.avg3M !== a.avg3M ? b.avg3M - a.avg3M : a.rede.localeCompare(b.rede, "pt-BR"));
+      // Sort networks by custom display_order (if set in cm_rps_custom_carteira), otherwise by avg3M descending (tiebreaker: alphabetical)
+      redeVMList.sort((a, b) => {
+        const orderA = a.display_order !== undefined && a.display_order !== null && a.display_order < 999990 ? a.display_order : 999999;
+        const orderB = b.display_order !== undefined && b.display_order !== null && b.display_order < 999990 ? b.display_order : 999999;
+        if (orderA !== orderB) {
+          return orderA - orderB;
+        }
+        return b.avg3M !== a.avg3M ? b.avg3M - a.avg3M : a.rede.localeCompare(b.rede, "pt-BR");
+      });
 
       const mgrPace = mgrMed3M > 0 ? (mgrMetaSum / mgrMed3M) * 100 : 0;
 
@@ -617,6 +752,8 @@ export class CommercialPlanningService {
     const backendTimeMs = Number((bEnd - bStart).toFixed(2));
     const memMb = Number((process.memoryUsage().heapUsed / (1024 * 1024)).toFixed(2));
 
+    const availableNetworks = await this.getAvailableNetworks();
+
     return {
       grandTotalFat,
       grandTotalMed3M,
@@ -629,6 +766,7 @@ export class CommercialPlanningService {
       totalRedes,
       totalManagers: managerBlocks.length,
       managerBlocks,
+      availableNetworks,
       months: payload.months,
       preceding3Months,
       workflow,
@@ -643,6 +781,186 @@ export class CommercialPlanningService {
         memoryUsedMb: memMb
       }
     };
+  }
+
+  /**
+   * Fetches all available official networks from Master Data / view.
+   */
+  public static async getAvailableNetworks(): Promise<Array<{
+    rede: string;
+    manager: string;
+    manager_id: string;
+    codigo_matriz: string;
+    canal: string;
+    is_rede_planejavel: boolean;
+  }>> {
+    const data = await this.fetchAllOfficialRedes();
+
+    const seen = new Set<string>();
+    const list: any[] = [];
+    (data || []).forEach((r: any) => {
+      const name = String(r.rede || "").trim();
+      const upper = name.toUpperCase();
+      if (!upper || upper === "NÃO MAPEADO" || upper === "OUTROS") return;
+      if (!seen.has(upper)) {
+        seen.add(upper);
+        list.push({
+          rede: name,
+          manager: r.manager || "",
+          manager_id: r.manager_id || "",
+          codigo_matriz: r.codigo_matriz || "",
+          canal: r.canal || "KA",
+          is_rede_planejavel: !!r.is_rede_planejavel
+        });
+      }
+    });
+
+    return list;
+  }
+
+  /**
+   * Adds a network to a regional manager portfolio with strict ownership protection.
+   */
+  public static async addRedeToManager(
+    year: number,
+    month: number,
+    targetManager: string,
+    targetManagerId: string,
+    redeName: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const supabase = createAdminClient();
+    const cleanRede = redeName.trim();
+    const cleanTargetMgr = targetManager.trim();
+
+    // 1. Fetch current portfolio for this month/year across all managers to check ownership
+    const currentData = await this.getMetasRedeData(year, month);
+    
+    // 2. Ownership check: verify if the network already belongs to another manager
+    const existingAssignment = currentData.planRedes.find(
+      (r) => r.rede.toUpperCase() === cleanRede.toUpperCase()
+    );
+
+    if (existingAssignment) {
+      const existingMgrClean = existingAssignment.manager.trim();
+      if (existingMgrClean.toLowerCase() !== cleanTargetMgr.toLowerCase()) {
+        return {
+          success: false,
+          error: `A rede '${cleanRede}' já pertence ao gerente ${existingAssignment.manager}. Não é permitida a associação simultânea a dois gerentes.`
+        };
+      } else {
+        // Already assigned to this manager
+        return { success: true };
+      }
+    }
+
+    // 3. Fetch max display_order for this manager in custom carteira
+    const { data: existingCustom } = await supabase
+      .from("cm_rps_custom_carteira")
+      .select("display_order")
+      .eq("year", year)
+      .eq("month", month)
+      .eq("manager", cleanTargetMgr)
+      .order("display_order", { ascending: false })
+      .limit(1);
+
+    const nextOrder = existingCustom && existingCustom.length > 0 ? (existingCustom[0].display_order || 0) + 1 : 0;
+
+    // 4. Upsert into cm_rps_custom_carteira with is_excluded = false
+    const { error: upsertErr } = await supabase
+      .from("cm_rps_custom_carteira")
+      .upsert(
+        {
+          year,
+          month,
+          manager: cleanTargetMgr,
+          client_matrix: cleanRede,
+          display_order: nextOrder,
+          is_excluded: false,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "year,month,manager,client_matrix" }
+      );
+
+    if (upsertErr) {
+      console.error("[CommercialPlanningService.addRedeToManager] Upsert error:", upsertErr);
+      return { success: false, error: upsertErr.message };
+    }
+
+    this.invalidateCache(year, month);
+    return { success: true };
+  }
+
+  /**
+   * Removes a network from a regional manager portfolio without deleting sales history or Master Data.
+   */
+  public static async removeRedeFromManager(
+    year: number,
+    month: number,
+    targetManager: string,
+    redeName: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const supabase = createAdminClient();
+    const cleanRede = redeName.trim();
+    const cleanTargetMgr = targetManager.trim();
+
+    // Upsert into cm_rps_custom_carteira with is_excluded = true
+    const { error: upsertErr } = await supabase
+      .from("cm_rps_custom_carteira")
+      .upsert(
+        {
+          year,
+          month,
+          manager: cleanTargetMgr,
+          client_matrix: cleanRede,
+          display_order: 999999,
+          is_excluded: true,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "year,month,manager,client_matrix" }
+      );
+
+    if (upsertErr) {
+      console.error("[CommercialPlanningService.removeRedeFromManager] Upsert error:", upsertErr);
+      return { success: false, error: upsertErr.message };
+    }
+
+    this.invalidateCache(year, month);
+    return { success: true };
+  }
+
+  /**
+   * Reorders networks for a regional manager within a competence (persisting display_order to cm_rps_custom_carteira).
+   */
+  public static async reorderManagerNetworks(
+    year: number,
+    month: number,
+    manager: string,
+    orderedRedes: Array<{ rede: string; display_order: number }>
+  ): Promise<{ success: boolean; error?: string }> {
+    const supabase = createAdminClient();
+    const cleanMgr = manager.trim();
+
+    const rowsToUpsert = orderedRedes.map((item, idx) => ({
+      year,
+      month,
+      manager: cleanMgr,
+      client_matrix: item.rede.trim(),
+      display_order: item.display_order !== undefined ? item.display_order : idx,
+      is_excluded: false,
+      updated_at: new Date().toISOString()
+    }));
+
+    const { error: upsertErr } = await supabase
+      .from("cm_rps_custom_carteira")
+      .upsert(rowsToUpsert, { onConflict: "year,month,manager,client_matrix" });
+
+    if (upsertErr) {
+      console.error("[CommercialPlanningService.reorderManagerNetworks] Error:", upsertErr);
+      return { success: false, error: upsertErr.message };
+    }
+
+    this.invalidateCache(year, month);
+    return { success: true };
   }
 
   /**
