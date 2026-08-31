@@ -424,21 +424,20 @@ export async function GET(request: Request) {
       ? (fatPctMonth * 0.50) + (macoPctMonth * 0.30)
       : calcScore(volPctMonth, fatPctMonth);
 
-    // YTD - Trimestre 3
+    // Acumulado do Trimestre (Quarter-to-Date / QTD)
     const currentQuarter = Math.ceil(month / 3);
-    const qTrimestre = dreGerencialSlideAcumulado?.trimestres?.find(t => t.trimestre === currentQuarter);
-    const qFatLine = qTrimestre?.linhas?.find(l => l.kpi === 'Faturamento');
-    const qMacoLine = qTrimestre?.linhas?.find(l => l.kpi === 'Margem de Contribuição');
+    const quarterLabel = `ACUM. Q${currentQuarter}/${String(year).slice(-2)}`;
 
-    const qFatVal = qFatLine?.valores[`ACUM_Q${currentQuarter}`];
+    const qTrimestre = dreGerencialSlideAcumulado?.trimestres?.find(t => t.trimestre === currentQuarter);
+    const qMacoLine = qTrimestre?.linhas?.find(l => l.kpi === 'Margem de Contribuição');
     const qMacoVal = qMacoLine?.valores[`ACUM_Q${currentQuarter}`];
 
     const volPctYtd      = ytdTargetSum.tons > 0 ? (realYtd.qty / ytdTargetSum.tons) * 100 : 0;
     const investPctYtd   = investDesafio > 0 ? ((realYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
     const investDeltaYtd = realYtdInvestPct - investDesafio;
 
-    const ytdFatDesafio = ytdTargetSum.revenue || (qFatVal?.desafio ?? 0);
-    const ytdFatReal    = realYtd.fat || (qFatVal?.actual ?? 0);
+    const ytdFatDesafio = ytdTargetSum.revenue;
+    const ytdFatReal    = realYtd.fat;
     const ytdFatPct     = ytdFatDesafio > 0 ? (ytdFatReal / ytdFatDesafio) * 100 : 0;
     const ytdFatDelta   = ytdFatReal - prevYtdMonth.fat;
 
@@ -532,7 +531,7 @@ export async function GET(request: Request) {
       // YTD (acumulado do trimestre)
       ytd: isAgosto2026
         ? {
-            label: "ACUM. Q3/26",
+            label: quarterLabel,
             fat: {
               aa:      aaYtd.fat,
               mAnt:    prevYtdMonth.fat,
@@ -572,7 +571,7 @@ export async function GET(request: Request) {
             score: scoreYtd,
           }
         : {
-            label: `YTD F${String(year).slice(-2)}`,
+            label: quarterLabel,
             vol: {
               aa:      aaYtd.qty,
               mAnt:    prevYtdMonth.qty,

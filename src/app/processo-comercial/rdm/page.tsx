@@ -5174,7 +5174,7 @@ function SlideFarol({
     score: 0,
   };
   const m = farol?.month ?? emptyBlock;
-  const y = farol?.ytd ?? { label: 'YTD', ...emptyBlock };
+  const y = farol?.ytd ?? { label: 'ACUM.', ...emptyBlock };
 
   return (
     <SlideShell title="Farol de Metas" monthName={monthName}>

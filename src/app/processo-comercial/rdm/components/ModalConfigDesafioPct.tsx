@@ -101,29 +101,67 @@ export function ModalConfigDesafioPct({
   // Atualizar os inputs ao carregar dados ou trocar gerente/escopo
   useEffect(() => {
     if (!selectedManagerId || !configsMap[selectedManagerId]) {
-      setImpostosStr(DEFAULTS_PCT.impostos.toString());
-      setInvestimentoStr(DEFAULTS_PCT.investimento.toString());
-      setCpvStr(DEFAULTS_PCT.cpv.toString());
-      setFreteStr(DEFAULTS_PCT.frete.toString());
+      setImpostosStr(DEFAULTS_PCT.impostos.toFixed(1));
+      setInvestimentoStr(DEFAULTS_PCT.investimento.toFixed(1));
+      setCpvStr(DEFAULTS_PCT.cpv.toFixed(1));
+      setFreteStr(DEFAULTS_PCT.frete.toFixed(1));
       setIsCustom(false);
       setActiveScope('DEFAULT');
       return;
     }
 
-    const cfg = configsMap[selectedManagerId];
-    setImpostosStr((cfg.impostos_pct * 100).toFixed(1));
-    setInvestimentoStr((cfg.investimento_pct * 100).toFixed(1));
-    setCpvStr((cfg.cpv_pct * 100).toFixed(1));
-    setFreteStr((cfg.frete_pct * 100).toFixed(1));
-    setIsCustom(Boolean(cfg.is_custom));
-    setActiveScope(cfg.scope || 'DEFAULT');
+    const mgrData = configsMap[selectedManagerId];
+    if (selectedScope === 'GLOBAL') {
+      const gCfg = mgrData.global_config;
+      if (gCfg) {
+        setImpostosStr((Number(gCfg.impostos_pct) * 100).toFixed(1));
+        setInvestimentoStr((Number(gCfg.investimento_pct) * 100).toFixed(1));
+        setCpvStr((Number(gCfg.cpv_pct) * 100).toFixed(1));
+        setFreteStr((Number(gCfg.frete_pct) * 100).toFixed(1));
+        setIsCustom(true);
+        setActiveScope('GLOBAL');
+      } else {
+        setImpostosStr(DEFAULTS_PCT.impostos.toFixed(1));
+        setInvestimentoStr(DEFAULTS_PCT.investimento.toFixed(1));
+        setCpvStr(DEFAULTS_PCT.cpv.toFixed(1));
+        setFreteStr(DEFAULTS_PCT.frete.toFixed(1));
+        setIsCustom(false);
+        setActiveScope('DEFAULT');
+      }
+    } else {
+      // selectedScope === 'MONTH'
+      const mCfg = mgrData.month_config;
+      const gCfg = mgrData.global_config;
+      if (mCfg) {
+        setImpostosStr((Number(mCfg.impostos_pct) * 100).toFixed(1));
+        setInvestimentoStr((Number(mCfg.investimento_pct) * 100).toFixed(1));
+        setCpvStr((Number(mCfg.cpv_pct) * 100).toFixed(1));
+        setFreteStr((Number(mCfg.frete_pct) * 100).toFixed(1));
+        setIsCustom(true);
+        setActiveScope('MONTH');
+      } else if (gCfg) {
+        setImpostosStr((Number(gCfg.impostos_pct) * 100).toFixed(1));
+        setInvestimentoStr((Number(gCfg.investimento_pct) * 100).toFixed(1));
+        setCpvStr((Number(gCfg.cpv_pct) * 100).toFixed(1));
+        setFreteStr((Number(gCfg.frete_pct) * 100).toFixed(1));
+        setIsCustom(false);
+        setActiveScope('GLOBAL');
+      } else {
+        setImpostosStr(DEFAULTS_PCT.impostos.toFixed(1));
+        setInvestimentoStr(DEFAULTS_PCT.investimento.toFixed(1));
+        setCpvStr(DEFAULTS_PCT.cpv.toFixed(1));
+        setFreteStr(DEFAULTS_PCT.frete.toFixed(1));
+        setIsCustom(false);
+        setActiveScope('DEFAULT');
+      }
+    }
   }, [selectedManagerId, configsMap, selectedScope]);
 
-  async function loadConfigs() {
+  async function loadConfigs(tgtYear = selectedYear, tgtMonth = selectedMonth) {
     setLoading(true);
     setErrorMsg(null);
     try {
-      const res = await fetch(`/api/processo-comercial/rdm/config?year=${selectedYear}&month=${selectedMonth}`);
+      const res = await fetch(`/api/processo-comercial/rdm/config?year=${tgtYear}&month=${tgtMonth}`);
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Erro ao carregar configurações.');
@@ -430,10 +468,14 @@ export function ModalConfigDesafioPct({
                 fontWeight: 700,
                 padding: '2px 8px',
                 borderRadius: 4,
-                background: activeScope === 'MONTH' ? '#fef3c7' : (activeScope === 'GLOBAL' ? '#e0f2fe' : '#e2e8f0'),
-                color: activeScope === 'MONTH' ? '#92400e' : (activeScope === 'GLOBAL' ? '#0369a1' : '#475569'),
+                background: loading ? '#f1f5f9' : (activeScope === 'MONTH' ? '#fef3c7' : (activeScope === 'GLOBAL' ? '#e0f2fe' : '#e2e8f0')),
+                color: loading ? '#64748b' : (activeScope === 'MONTH' ? '#92400e' : (activeScope === 'GLOBAL' ? '#0369a1' : '#475569')),
               }}>
-                {activeScope === 'MONTH' ? `📌 Mês ${selectedYear}-${String(selectedMonth).padStart(2, '0')}` : (activeScope === 'GLOBAL' ? '🌐 Padrão Regional' : '⚙ Padrão Sistema')}
+                {loading ? '⏳ Carregando...' : (
+                  selectedScope === 'GLOBAL'
+                    ? (activeScope === 'GLOBAL' ? '🌐 Padrão Regional Personalizado' : '⚙ Padrão Regional (Default)')
+                    : (activeScope === 'MONTH' ? `📌 Mês ${selectedYear}-${String(selectedMonth).padStart(2, '0')}` : (activeScope === 'GLOBAL' ? '🌐 Herdado do Padrão Regional' : '⚙ Padrão Sistema'))
+                )}
               </span>
             </div>
 
