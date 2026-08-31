@@ -100,6 +100,7 @@ interface RedeRow {
   manager_id: string;
   codigo_matriz: string;
   canal?: string;
+  display_order?: number;
   months: Record<string, { fat: number; qty: number }>;
   avgPriceQ2: number;
   precoMedio3M: number;
@@ -183,6 +184,7 @@ export default function MetasRedePage() {
     codigo_matriz: string;
     canal: string;
     is_rede_planejavel: boolean;
+    search_terms?: string;
   }>>([]);
 
   const [addRedeModal, setAddRedeModal] = useState<{
@@ -358,7 +360,13 @@ export default function MetasRedePage() {
   const loadData = useCallback(async (targetMonth: number, targetYear: number) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/gestao/metas-rede?year=${targetYear}&month=${targetMonth}`);
+      const res = await fetch(`/api/gestao/metas-rede?year=${targetYear}&month=${targetMonth}&_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          "Pragma": "no-cache",
+          "Cache-Control": "no-cache"
+        }
+      });
       const json = await res.json();
 
       if (json.error) {
@@ -435,6 +443,7 @@ export default function MetasRedePage() {
             totalFat,
             totalQty,
             avg3M: r.avg3M || 0,
+            display_order: r.display_order,
           };
         });
 
@@ -584,14 +593,15 @@ export default function MetasRedePage() {
       const name = item.rede.toLowerCase();
       const cod = (item.codigo_matriz || "").toLowerCase();
       const canal = (item.canal || "").toLowerCase();
+      const searchTerms = (item.search_terms || `${name} ${cod} ${canal}`).toLowerCase();
 
       // Compatibilidade de canal
       const isDistNet = canal.includes("dist") || (DISTRIBUTORS_REGISTRY[item.manager_id]?.redes || []).some((d) => item.rede.toUpperCase().includes(d.toUpperCase()));
       if (isDistFilter && !isDistNet) return false;
       if (!isDistFilter && isDistNet) return false;
 
-      // Filtro de busca textual
-      if (term && !name.includes(term) && !cod.includes(term) && !canal.includes(term)) {
+      // Filtro de busca textual enriquecido (suporta busca por matriz, nome parceiro, razão social, código)
+      if (term && !searchTerms.includes(term) && !name.includes(term) && !cod.includes(term) && !canal.includes(term)) {
         return false;
       }
 
@@ -704,7 +714,7 @@ export default function MetasRedePage() {
     }));
 
     try {
-      await fetch("/api/gestao/metas-rede", {
+      const res = await fetch("/api/gestao/metas-rede", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -715,8 +725,16 @@ export default function MetasRedePage() {
           orderedRedes: orderedPayload
         })
       });
-    } catch (err) {
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        console.error("Erro ao persistir reordenação de redes:", data?.error);
+        alert(`Erro ao salvar ordem das redes: ${data?.error || "Falha na comunicação."}`);
+        await loadData(selectedMonth, selectedYear);
+      }
+    } catch (err: any) {
       console.error("Erro ao persistir reordenação de redes:", err);
+      alert(`Erro de conexão ao salvar ordem: ${err.message}`);
+      await loadData(selectedMonth, selectedYear);
     }
   };
 
@@ -761,7 +779,7 @@ export default function MetasRedePage() {
     }));
 
     try {
-      await fetch("/api/gestao/metas-rede", {
+      const res = await fetch("/api/gestao/metas-rede", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -772,8 +790,16 @@ export default function MetasRedePage() {
           orderedRedes: orderedPayload
         })
       });
-    } catch (err) {
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        console.error("Erro ao persistir reordenação de redes:", data?.error);
+        alert(`Erro ao salvar ordem das redes: ${data?.error || "Falha na comunicação."}`);
+        await loadData(selectedMonth, selectedYear);
+      }
+    } catch (err: any) {
       console.error("Erro ao persistir reordenação de redes:", err);
+      alert(`Erro de conexão ao salvar ordem: ${err.message}`);
+      await loadData(selectedMonth, selectedYear);
     }
   };
 
@@ -785,6 +811,64 @@ export default function MetasRedePage() {
       .map((m) => ({ ...m, redes: m.redes.filter((r) => r.rede.toLowerCase().includes(q)) }))
       .filter((m) => m.redes.length > 0 || m.manager.toLowerCase().includes(q));
   }, [managers, searchTerm]);
+
+  // Consolidado Nacional — Visão Executiva Direta por Canal (KA × Distribuidor)
+  const nationalConsolidated = useMemo(() => {
+    let kaDistribuida = 0;
+    let kaOficial = 0;
+    let distDistribuida = 0;
+    let distOficial = 0;
+    let totalRedesKA = 0;
+    let totalRedesDist = 0;
+
+    managers.forEach((mgr) => {
+      const kaRedes = mgr.redes.filter((r) => {
+        const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+        return !isDist;
+      });
+      const distRedes = mgr.redes.filter((r) => {
+        const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+        return isDist;
+      });
+
+      totalRedesKA += kaRedes.length;
+      totalRedesDist += distRedes.length;
+
+      kaRedes.forEach((r) => {
+        kaDistribuida += getMetaValue(r);
+      });
+      distRedes.forEach((r) => {
+        distDistribuida += getMetaValue(r);
+      });
+
+      const chTargets = channelMetaTargets[mgr.manager_id] || { ka: mgr.metaTotal || 0, dist: 0 };
+      kaOficial += chTargets.ka || 0;
+      distOficial += chTargets.dist || 0;
+    });
+
+    const kaDiff = kaOficial - kaDistribuida;
+    const kaConciliated = Math.abs(kaDiff) < 0.01;
+
+    const distDiff = distOficial - distDistribuida;
+    const distConciliated = Math.abs(distDiff) < 0.01;
+
+    return {
+      ka: {
+        distribuida: kaDistribuida,
+        oficial: kaOficial,
+        diff: kaDiff,
+        conciliated: kaConciliated,
+        totalRedes: totalRedesKA
+      },
+      dist: {
+        distribuida: distDistribuida,
+        oficial: distOficial,
+        diff: distDiff,
+        conciliated: distConciliated,
+        totalRedes: totalRedesDist
+      }
+    };
+  }, [managers, channelMetaTargets, getMetaValue]);
 
   // Resumo Executivo & Cards de Conciliação em Tempo Real (ITEM 6 — SINCRONIZAÇÃO REATIVA)
   const executiveCards = useMemo(() => {
@@ -1013,78 +1097,88 @@ export default function MetasRedePage() {
 
       {/* Main Content */}
       <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-6">
-        {/* RESUMO EXECUTIVO & CARDS DE CONCILIAÇÃO REATIVA (ITEM 6) */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          {/* Card 1: Conciliação em Tempo Real */}
-          <div className={`p-4 rounded-xl border transition-all ${
-            executiveCards.isConciliated 
-              ? "bg-emerald-50/60 border-emerald-200" 
-              : "bg-amber-50/60 border-amber-200"
-          }`}>
-            <div className="flex items-center justify-between text-xs font-bold text-neutral-500 mb-1">
-              <span>Status Conciliação</span>
-              {executiveCards.isConciliated ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
-              )}
+        {/* 🏛️ CONSOLIDADO NACIONAL NO TOPO DA TELA (KA × DISTRIBUIDOR) */}
+        <div className="bg-white rounded-xl border border-neutral-200 p-4 shadow-xs">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-2.5 mb-3.5 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-neutral-900">
+                Consolidado Nacional — {MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}
+              </span>
             </div>
-            <div className={`text-base font-black ${executiveCards.isConciliated ? "text-emerald-700" : "text-amber-800"}`}>
-              {executiveCards.isConciliated ? "✓ Conciliada" : `Desvio: ${formatCurrency(executiveCards.diffVal)}`}
-            </div>
-            <div className="text-[11px] text-neutral-500 mt-1">
-              {executiveCards.isConciliated 
-                ? "Paridade 100% com Meta Cia" 
-                : `Diferença de ${executiveCards.diffPct.toFixed(1)}%`}
+            <div className="text-[11px] font-bold text-neutral-500">
+              Total Brasil: {nationalConsolidated.ka.totalRedes + nationalConsolidated.dist.totalRedes} Redes Planejáveis ({nationalConsolidated.ka.totalRedes} KA / {nationalConsolidated.dist.totalRedes} Dist)
             </div>
           </div>
 
-          {/* Card 2: Meta Cia Consolidada */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-            <div className="text-xs font-bold text-neutral-500 mb-1">Meta Cia Consolidada</div>
-            <div className="text-lg font-black text-neutral-900">
-              {formatCurrency(executiveCards.totalConsolidatedGoal)}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Bloco Nacional: CANAL KA */}
+            <div className="bg-gradient-to-br from-indigo-50/50 via-white to-white rounded-xl border border-indigo-100 p-4 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between border-b border-indigo-50 pb-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700">
+                    <Briefcase className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-indigo-950">Canal KA</span>
+                </div>
+                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
+                  {nationalConsolidated.ka.totalRedes} Redes
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white rounded-lg p-2.5 border border-indigo-100/60 shadow-2xs">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Distribuída</div>
+                  <div className="text-xs sm:text-sm font-black text-indigo-700 mt-1 font-mono">{formatCurrency(nationalConsolidated.ka.distribuida)}</div>
+                </div>
+                <div className="bg-white rounded-lg p-2.5 border border-indigo-100/60 shadow-2xs">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Oficial</div>
+                  <div className="text-xs sm:text-sm font-black text-neutral-900 mt-1 font-mono">{formatCurrency(nationalConsolidated.ka.oficial)}</div>
+                </div>
+                <div className={`rounded-lg p-2.5 border shadow-2xs ${
+                  nationalConsolidated.ka.conciliated 
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                    : "bg-amber-50 border-amber-200 text-amber-900"
+                }`}>
+                  <div className="text-[10px] font-bold uppercase tracking-tight">Saldo</div>
+                  <div className="text-xs sm:text-sm font-black mt-1 font-mono">
+                    {nationalConsolidated.ka.conciliated ? "✓ Conciliado" : formatCurrency(nationalConsolidated.ka.diff)}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="text-[11px] text-neutral-400 mt-1">Soma Meta Gerentes</div>
-          </div>
 
-          {/* Card 3: Meta Distribuída */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-            <div className="text-xs font-bold text-neutral-500 mb-1">Meta Distribuída Redes</div>
-            <div className="text-lg font-black text-blue-600">
-              {formatCurrency(executiveCards.totalMetaInputted)}
-            </div>
-            <div className="text-[11px] text-blue-500 font-semibold mt-1">
-              {executiveCards.pctDistributed.toFixed(1)}% do total
-            </div>
-          </div>
-
-          {/* Card 4: Volume Total Meta (Kg) (ITEM 5) */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-            <div className="text-xs font-bold text-neutral-500 mb-1">Volume Meta Total (Kg)</div>
-            <div className="text-lg font-black text-emerald-700">
-              {Math.round(executiveCards.totalVolMetaKg).toLocaleString("pt-BR")} Kg
-            </div>
-            <div className="text-[11px] text-emerald-600 font-semibold mt-1">Recalculado em memória</div>
-          </div>
-
-          {/* Card 5: Saldo Restante */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-            <div className="text-xs font-bold text-neutral-500 mb-1">Saldo a Ratear</div>
-            <div className="text-lg font-black text-amber-600">
-              {formatCurrency(executiveCards.saldoRestante)}
-            </div>
-            <div className="text-[11px] text-neutral-400 mt-1">Pendente de rateio</div>
-          </div>
-
-          {/* Card 6: Cobertura de Redes */}
-          <div className="bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
-            <div className="text-xs font-bold text-neutral-500 mb-1">Redes com Meta</div>
-            <div className="text-lg font-black text-purple-600">
-              {executiveCards.totalRedesWithGoal} <span className="text-xs font-normal text-neutral-400">/ {executiveCards.totalRedesCount}</span>
-            </div>
-            <div className="text-[11px] text-neutral-400 mt-1">
-              {((executiveCards.totalRedesWithGoal / (executiveCards.totalRedesCount || 1)) * 100).toFixed(0)}% preenchidas
+            {/* Bloco Nacional: CANAL DISTRIBUIDOR */}
+            <div className="bg-gradient-to-br from-amber-50/50 via-white to-white rounded-xl border border-amber-100 p-4 shadow-xs flex flex-col justify-between">
+              <div className="flex items-center justify-between border-b border-amber-50 pb-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700">
+                    <Truck className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-xs font-black uppercase tracking-wider text-amber-950">Distribuidor</span>
+                </div>
+                <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100">
+                  {nationalConsolidated.dist.totalRedes} Redes
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2.5 text-center">
+                <div className="bg-white rounded-lg p-2.5 border border-amber-100/60 shadow-2xs">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Distribuída</div>
+                  <div className="text-xs sm:text-sm font-black text-amber-700 mt-1 font-mono">{formatCurrency(nationalConsolidated.dist.distribuida)}</div>
+                </div>
+                <div className="bg-white rounded-lg p-2.5 border border-amber-100/60 shadow-2xs">
+                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Oficial</div>
+                  <div className="text-xs sm:text-sm font-black text-neutral-900 mt-1 font-mono">{formatCurrency(nationalConsolidated.dist.oficial)}</div>
+                </div>
+                <div className={`rounded-lg p-2.5 border shadow-2xs ${
+                  nationalConsolidated.dist.conciliated 
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                    : "bg-amber-50 border-amber-200 text-amber-900"
+                }`}>
+                  <div className="text-[10px] font-bold uppercase tracking-tight">Saldo</div>
+                  <div className="text-xs sm:text-sm font-black mt-1 font-mono">
+                    {nationalConsolidated.dist.conciliated ? "✓ Conciliado" : formatCurrency(nationalConsolidated.dist.diff)}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1395,42 +1489,7 @@ export default function MetasRedePage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-5 flex-wrap justify-end">
-                      {/* Resumo Canal KA */}
-                      {kaRedes.length > 0 && (
-                        <div className="text-right">
-                          <div className="text-xs text-neutral-500 font-medium">Meta Canal KA {mgrClean}</div>
-                          <div className="text-sm font-black flex items-center gap-1.5 justify-end">
-                            <span className="text-blue-600">{formatCurrency(kaSumInputted)}</span>
-                            <span className="text-neutral-400">/</span>
-                            <span className="text-neutral-900">{formatCurrency(kaOfficialMeta)}</span>
-                          </div>
-                          <div className={`text-[11px] font-bold ${kaConciliated ? "text-emerald-600" : "text-amber-600"}`}>
-                            {kaConciliated ? "✓ Conciliado KA" : `Saldo KA: ${formatCurrency(kaDiff)}`}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Divisória Vertical quando ambos os canais existem */}
-                      {kaRedes.length > 0 && distRedes.length > 0 && (
-                        <div className="hidden sm:block h-8 w-px bg-neutral-200" />
-                      )}
-
-                      {/* Resumo Canal Distribuidor */}
-                      {distRedes.length > 0 && (
-                        <div className="text-right">
-                          <div className="text-xs text-neutral-500 font-medium">Meta Canal Dist {mgrClean}</div>
-                          <div className="text-sm font-black flex items-center gap-1.5 justify-end">
-                            <span className="text-amber-600">{formatCurrency(distSumInputted)}</span>
-                            <span className="text-neutral-400">/</span>
-                            <span className="text-neutral-900">{formatCurrency(distOfficialMeta)}</span>
-                          </div>
-                          <div className={`text-[11px] font-bold ${distConciliated ? "text-emerald-600" : "text-amber-600"}`}>
-                            {distConciliated ? "✓ Conciliado Dist" : `Saldo Dist: ${formatCurrency(distDiff)}`}
-                          </div>
-                        </div>
-                      )}
-
+                    <div className="flex items-center gap-4 flex-wrap justify-end">
                       {/* Botão Salvar Metas do Gerente */}
                       <button
                         type="button"
@@ -1439,13 +1498,13 @@ export default function MetasRedePage() {
                           e.stopPropagation();
                           handleSave();
                         }}
-                        className={`px-3.5 py-1.5 text-xs font-black rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                        className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
                           isEditingLocked
                             ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
                             : saved
-                            ? "bg-emerald-600 text-white border border-emerald-700"
+                            ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
                             : hasMgrDirtyCell
-                            ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse"
+                            ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse shadow-amber-200"
                             : "bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-900"
                         }`}
                         title="Salvar todas as metas editadas na tela"
@@ -1464,7 +1523,7 @@ export default function MetasRedePage() {
 
                   {/* Sub-cards de Canais Segregados (KA x Distribuidor) */}
                   {isExpanded && (
-                    <div className="p-4 bg-neutral-50/40 space-y-6 border-t border-neutral-100">
+                    <div className="p-4 bg-neutral-50/40 space-y-5 border-t border-neutral-100">
                       {/* 💼 CANAL 1: KA (Key Account) */}
                       <div className="bg-white rounded-xl border border-indigo-100 shadow-sm overflow-hidden">
                         <div className="p-3 bg-gradient-to-r from-indigo-50/90 via-blue-50/50 to-white border-b border-indigo-100 flex flex-col gap-2.5">
@@ -1479,18 +1538,6 @@ export default function MetasRedePage() {
                               <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                 Vol: {Math.round(kaVolSum).toLocaleString("pt-BR")} Kg
                               </span>
-                            </div>
-
-                            <div className="text-right">
-                              <div className="text-[11px] text-neutral-500 font-semibold">Distribuído KA / Meta Oficial KA</div>
-                              <div className="text-xs font-black flex items-center gap-1 justify-end">
-                                <span className="text-indigo-600">{formatCurrency(kaSumInputted)}</span>
-                                <span className="text-neutral-400">/</span>
-                                <span className="text-neutral-900">{formatCurrency(kaOfficialMeta)}</span>
-                              </div>
-                              <div className={`text-[10px] font-bold ${kaConciliated ? "text-emerald-600" : "text-amber-600"}`}>
-                                {kaConciliated ? "✓ Conciliado KA" : `Saldo KA: ${formatCurrency(kaDiff)}`}
-                              </div>
                             </div>
                           </div>
 
@@ -1547,12 +1594,12 @@ export default function MetasRedePage() {
                       </div>
 
                       {/* 🚚 CANAL 2: DISTRIBUIDOR */}
-                      <div className="bg-white rounded-xl border border-purple-100 shadow-sm overflow-hidden">
-                        <div className="p-3 bg-gradient-to-r from-purple-50/90 via-fuchsia-50/50 to-white border-b border-purple-100 flex flex-col gap-2.5">
+                      <div className="bg-white rounded-xl border border-amber-100 shadow-sm overflow-hidden">
+                        <div className="p-3 bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-white border-b border-amber-100 flex flex-col gap-2.5">
                           {/* Linha 1: Título do canal e KPIs */}
                           <div className="flex items-center justify-between flex-wrap gap-3">
                             <div className="flex items-center gap-3">
-                              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-purple-600 text-white flex items-center gap-1.5 shadow-sm">
+                              <span className="px-2.5 py-1 rounded-full text-xs font-black bg-amber-600 text-white flex items-center gap-1.5 shadow-sm">
                                 <Truck className="w-3.5 h-3.5" />
                                 CANAL DISTRIBUIDOR
                               </span>
@@ -1561,22 +1608,10 @@ export default function MetasRedePage() {
                                 Vol: {Math.round(distVolSum).toLocaleString("pt-BR")} Kg
                               </span>
                             </div>
-
-                            <div className="text-right">
-                              <div className="text-[11px] text-neutral-500 font-semibold">Distribuído Dist / Meta Oficial Dist</div>
-                              <div className="text-xs font-black flex items-center gap-1 justify-end">
-                                <span className="text-purple-600">{formatCurrency(distSumInputted)}</span>
-                                <span className="text-neutral-400">/</span>
-                                <span className="text-neutral-900">{formatCurrency(distOfficialMeta)}</span>
-                              </div>
-                              <div className={`text-[10px] font-bold ${distConciliated ? "text-emerald-600" : "text-amber-600"}`}>
-                                {distConciliated ? "✓ Conciliado Dist" : `Saldo Dist: ${formatCurrency(distDiff)}`}
-                              </div>
-                            </div>
                           </div>
 
                           {/* Linha 2: Botões de Ação do Canal */}
-                          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-purple-100/60">
+                          <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-amber-100/60">
                             <button
                               type="button"
                               disabled={isEditingLocked || saving}
@@ -1587,10 +1622,10 @@ export default function MetasRedePage() {
                               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer ${
                                 isEditingLocked
                                   ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
-                                  : "text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                                  : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
                               }`}
                             >
-                              <Plus className="w-3.5 h-3.5 text-purple-600" />
+                              <Plus className="w-3.5 h-3.5 text-emerald-600" />
                               <span>+ Adicionar Rede</span>
                             </button>
 
@@ -1609,10 +1644,10 @@ export default function MetasRedePage() {
                               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
                                 isEditingLocked
                                   ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
-                                  : "text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200"
+                                  : "text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
                               }`}
                             >
-                              <Zap className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                              <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                               <span>Distribuir Proporcionalmente (Dist)</span>
                             </button>
                           </div>

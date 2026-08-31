@@ -326,7 +326,7 @@ export class CommercialPlanningService {
     for (const [redeUpper, targetManager] of customIncludedMap.entries()) {
       let masterInfo = masterRedesMap.get(redeUpper);
 
-      // Fallback determinístico caso alguma rede adicionada não esteja no masterRedesMap
+      // Fallback 1: View oficial
       if (!masterInfo) {
         const { data: fallbackData } = await supabase
           .from("vw_redes_planejaveis_oficiais")
@@ -345,21 +345,90 @@ export class CommercialPlanningService {
         }
       }
 
+      // Fallback 2: Tabela cm_clientes (para redes/distribuidores com cadastro mestre sem matriz)
+      if (!masterInfo) {
+        const { data: clientFallback } = await supabase
+          .from("cm_clientes")
+          .select("codigo, nome_parceiro, razao_social, matriz, codigo_matriz, tipo_parceiro, responsavel, manager_id, uf")
+          .or(`matriz.ilike.%${redeUpper}%,nome_parceiro.ilike.%${redeUpper}%,razao_social.ilike.%${redeUpper}%`)
+          .limit(1);
+
+        if (clientFallback && clientFallback.length > 0) {
+          const cli = clientFallback[0];
+          const cleanRedeName = (cli.matriz && cli.matriz.trim() !== "") 
+            ? cli.matriz.trim() 
+            : (cli.nome_parceiro && cli.nome_parceiro.trim() !== "") 
+            ? cli.nome_parceiro.trim() 
+            : (cli.razao_social && cli.razao_social.trim() !== "")
+            ? cli.razao_social.trim()
+            : redeUpper;
+          
+          masterInfo = {
+            rede: cleanRedeName,
+            manager: cli.responsavel || targetManager,
+            manager_id: cli.manager_id || "",
+            codigo_matriz: cli.codigo_matriz || String(cli.codigo || ""),
+            canal: cli.tipo_parceiro || "Distribuidor",
+          };
+          masterRedesMap.set(redeUpper, masterInfo);
+        }
+      }
+
+      // Fallback 3: Histórico de Vendas em mv_vendas_cliente_mensal
+      if (!masterInfo) {
+        const { data: salesFallback } = await supabase
+          .from("mv_vendas_cliente_mensal")
+          .select("rede, nome_parceiro, manager, manager_id, channel")
+          .or(`rede.ilike.%${redeUpper}%,nome_parceiro.ilike.%${redeUpper}%`)
+          .limit(1);
+
+        if (salesFallback && salesFallback.length > 0) {
+          const sf = salesFallback[0];
+          masterInfo = {
+            rede: sf.rede || sf.nome_parceiro || redeUpper,
+            manager: sf.manager || targetManager,
+            manager_id: sf.manager_id || "",
+            codigo_matriz: "",
+            canal: sf.channel || "Distribuidor",
+          };
+          masterRedesMap.set(redeUpper, masterInfo);
+        }
+      }
+
+      // Fallback 4: Fallback determinístico seguro para redes customizadas válidas
+      if (!masterInfo) {
+        const canonTarget = resolveCanonicalManager(targetManager);
+        masterInfo = {
+          rede: redeUpper,
+          manager: targetManager,
+          manager_id: canonTarget?.managerId || "",
+          codigo_matriz: "",
+          canal: "Distribuidor",
+        };
+        masterRedesMap.set(redeUpper, masterInfo);
+      }
+
       if (masterInfo) {
         const canonTarget = resolveCanonicalManager(targetManager);
         const targetMgrId = canonTarget?.managerId || masterInfo.manager_id;
-        const key = `${targetMgrId || targetManager}|${redeUpper}`;
+        const canonRede = this.resolveCanonicalRedeName(masterInfo.rede);
+        const key = `${targetMgrId || targetManager}|${canonRede.toUpperCase()}`;
         const excludeKey = `${targetManager.toLowerCase()}|${redeUpper}`;
-        if (!excludedSet.has(excludeKey) && !seenKeys.has(key)) {
+        const canonExcludeKey = `${targetManager.toLowerCase()}|${canonRede.toUpperCase()}`;
+
+        if (!excludedSet.has(excludeKey) && !excludedSet.has(canonExcludeKey) && !seenKeys.has(key)) {
           seenKeys.add(key);
           const orderKey = `${targetManager.toLowerCase()}|${redeUpper}`;
+          const rawOrder = customOrderMap.get(orderKey);
+          const cleanOrder = rawOrder !== undefined && rawOrder !== null && rawOrder < 900000 ? rawOrder : undefined;
+
           planRedesMap.set(key, {
-            rede: masterInfo.rede,
+            rede: canonRede,
             manager: targetManager,
             manager_id: targetMgrId,
             codigo_matriz: masterInfo.codigo_matriz,
             canal: masterInfo.canal,
-            display_order: customOrderMap.get(orderKey)
+            display_order: cleanOrder
           });
         }
       }
@@ -378,21 +447,37 @@ export class CommercialPlanningService {
     } else {
       // 2. Query 2: Fetch AGGREGATED sales history directly from PostgreSQL (Returns ~200 rows instead of 122k raw rows)
       const q2Start = performance.now();
-      const targetRedesUpper = Array.from(new Set(planRedesList.map((r) => r.rede.trim().replace(/'/g, "''").toUpperCase())));
+      const targetRedesSet = new Set<string>();
+      planRedesList.forEach((r) => {
+        const u = r.rede.trim().replace(/'/g, "''").toUpperCase();
+        if (u) targetRedesSet.add(u);
+        if (u.includes("MANAC")) {
+          targetRedesSet.add("DIST MANACÁS");
+          targetRedesSet.add("DISTRIBUIDORA DE ALIMENTOS MANACAS LTDA");
+          targetRedesSet.add("DISTRIBUIDORA MANACAS");
+        }
+        if (u.includes("SOST")) {
+          targetRedesSet.add("SOST COMERCIAL");
+          targetRedesSet.add("DIST SOST");
+        }
+      });
+      const targetRedesUpper = Array.from(targetRedesSet);
       const redesInClause = targetRedesUpper.length > 0 ? targetRedesUpper.map((r) => `'${r}'`).join(",") : "''";
 
       const aggSqlText = `
         SELECT 
           s.manager_id,
-          TRIM(s.rede) AS rede,
+          TRIM(COALESCE(NULLIF(s.rede, ''), s.nome_parceiro)) AS rede,
           s.mes,
           SUM(s.fat) AS fat,
           SUM(s.qty) AS qty
         FROM public.mv_vendas_cliente_mensal s
         WHERE s.mes IN ('${months.join("','")}')
-          AND s.rede IS NOT NULL
-          AND UPPER(TRIM(s.rede)) IN (${redesInClause})
-        GROUP BY s.manager_id, TRIM(s.rede), s.mes
+          AND (
+            (s.rede IS NOT NULL AND UPPER(TRIM(s.rede)) IN (${redesInClause}))
+            OR (s.nome_parceiro IS NOT NULL AND UPPER(TRIM(s.nome_parceiro)) IN (${redesInClause}))
+          )
+        GROUP BY s.manager_id, TRIM(COALESCE(NULLIF(s.rede, ''), s.nome_parceiro)), s.mes
       `;
 
       const { data: salesAggData, error: salesError } = await supabase.rpc("execute_readonly_query", { query_text: aggSqlText });
@@ -442,7 +527,15 @@ export class CommercialPlanningService {
         const managerKey = `${net.manager_id}|${redeUpper}`;
 
         if (!billing[redeUpper]) {
-          billing[redeUpper] = managerRedeBilling[managerKey] || {};
+          if (managerRedeBilling[managerKey]) {
+            billing[redeUpper] = managerRedeBilling[managerKey];
+          } else {
+            // Procura por chave aproximada (ex: MANACAS, SOST)
+            const matchedKey = Object.keys(billing).find(k => k.includes(redeUpper) || redeUpper.includes(k) || (k.includes("MANAC") && redeUpper.includes("MANAC")) || (k.includes("SOST") && redeUpper.includes("SOST")));
+            if (matchedKey && billing[matchedKey]) {
+              billing[redeUpper] = billing[matchedKey];
+            }
+          }
         }
       });
 
@@ -524,7 +617,8 @@ export class CommercialPlanningService {
         manager: r.manager,
         manager_id: r.manager_id,
         codigo_matriz: r.codigo_matriz,
-        canal: r.canal
+        canal: r.canal,
+        display_order: r.display_order
       })),
       billing,
       metas: (metaData || []).map((m: any) => ({
@@ -784,6 +878,21 @@ export class CommercialPlanningService {
   }
 
   /**
+   * Resolves canonical network name for known aliases and master data variations.
+   */
+  public static resolveCanonicalRedeName(redeName: string): string {
+    const upper = (redeName || "").trim().toUpperCase();
+    if (!upper) return redeName;
+    if (upper.includes("MANACAS") || upper.includes("MANACÁS")) {
+      return "DIST MANACÁS";
+    }
+    if (upper.includes("SOST")) {
+      return "Dist Sost";
+    }
+    return redeName.trim();
+  }
+
+  /**
    * Fetches all available official networks from Master Data / view.
    */
   public static async getAvailableNetworks(): Promise<Array<{
@@ -793,27 +902,69 @@ export class CommercialPlanningService {
     codigo_matriz: string;
     canal: string;
     is_rede_planejavel: boolean;
+    search_terms?: string;
   }>> {
     const data = await this.fetchAllOfficialRedes();
 
     const seen = new Set<string>();
     const list: any[] = [];
     (data || []).forEach((r: any) => {
-      const name = String(r.rede || "").trim();
-      const upper = name.toUpperCase();
+      const canonicalName = this.resolveCanonicalRedeName(String(r.rede || "").trim());
+      const upper = canonicalName.toUpperCase();
       if (!upper || upper === "NÃO MAPEADO" || upper === "OUTROS") return;
       if (!seen.has(upper)) {
         seen.add(upper);
         list.push({
-          rede: name,
+          rede: canonicalName,
           manager: r.manager || "",
           manager_id: r.manager_id || "",
           codigo_matriz: r.codigo_matriz || "",
           canal: r.canal || "KA",
-          is_rede_planejavel: !!r.is_rede_planejavel
+          is_rede_planejavel: !!r.is_rede_planejavel,
+          search_terms: `${canonicalName} ${r.rede || ""} ${r.codigo_matriz || ""} ${r.canal || ""} ${r.manager || ""}`.toLowerCase()
         });
       }
     });
+
+    // Fallback de Master Data: incluir distribuidores e clientes comerciais elegíveis de cm_clientes
+    try {
+      const supabase = createAdminClient();
+      const { data: clientRecords } = await supabase
+        .from("cm_clientes")
+        .select("codigo, nome_parceiro, razao_social, matriz, codigo_matriz, tipo_parceiro, responsavel, manager_id, uf")
+        .or("tipo_parceiro.ilike.%dist%,ka.eq.true,matriz.not.is.null");
+
+      (clientRecords || []).forEach((c: any) => {
+        let canonicalName = (c.matriz && c.matriz.trim() !== "")
+          ? c.matriz.trim()
+          : (c.nome_parceiro && c.nome_parceiro.trim() !== "")
+          ? c.nome_parceiro.trim()
+          : (c.razao_social && c.razao_social.trim() !== "")
+          ? c.razao_social.trim()
+          : "";
+
+        canonicalName = this.resolveCanonicalRedeName(canonicalName);
+        const upper = canonicalName.toUpperCase();
+        if (!upper || upper === "NÃO MAPEADO" || upper === "OUTROS") return;
+
+        const searchComposite = `${canonicalName} ${c.nome_parceiro || ""} ${c.razao_social || ""} ${c.matriz || ""} ${c.codigo || ""} ${c.codigo_matriz || ""} ${c.responsavel || ""} ${c.uf || ""}`.toLowerCase();
+
+        if (!seen.has(upper)) {
+          seen.add(upper);
+          list.push({
+            rede: canonicalName,
+            manager: c.responsavel || "Luiz",
+            manager_id: String(c.manager_id || "1002"),
+            codigo_matriz: c.codigo_matriz ? String(c.codigo_matriz) : String(c.codigo || ""),
+            canal: c.tipo_parceiro || (c.ka ? "KA" : "Distribuidor"),
+            is_rede_planejavel: true,
+            search_terms: searchComposite
+          });
+        }
+      });
+    } catch (err) {
+      console.error("[CommercialPlanningService.getAvailableNetworks] Erro no fallback de Master Data:", err);
+    }
 
     return list;
   }
@@ -829,7 +980,7 @@ export class CommercialPlanningService {
     redeName: string
   ): Promise<{ success: boolean; error?: string }> {
     const supabase = createAdminClient();
-    const cleanRede = redeName.trim();
+    const cleanRede = this.resolveCanonicalRedeName(redeName);
     const cleanTargetMgr = targetManager.trim();
 
     // 1. Fetch current portfolio for this month/year across all managers to check ownership
@@ -837,35 +988,43 @@ export class CommercialPlanningService {
     
     // 2. Ownership check: verify if the network already belongs to another manager
     const existingAssignment = currentData.planRedes.find(
-      (r) => r.rede.toUpperCase() === cleanRede.toUpperCase()
+      (r) => this.resolveCanonicalRedeName(r.rede).toUpperCase() === cleanRede.toUpperCase()
     );
 
     if (existingAssignment) {
-      const existingMgrClean = existingAssignment.manager.trim();
-      if (existingMgrClean.toLowerCase() !== cleanTargetMgr.toLowerCase()) {
+      const existingMgr = existingAssignment.manager.trim().toLowerCase().replace(/\s*-\s*[a-z]{2}$/i, "");
+      const targetMgrNorm = cleanTargetMgr.toLowerCase().replace(/\s*-\s*[a-z]{2}$/i, "");
+
+      if (existingMgr !== targetMgrNorm && !existingMgr.includes(targetMgrNorm) && !targetMgrNorm.includes(existingMgr)) {
         return {
           success: false,
           error: `A rede '${cleanRede}' já pertence ao gerente ${existingAssignment.manager}. Não é permitida a associação simultânea a dois gerentes.`
         };
-      } else {
-        // Already assigned to this manager
+      }
+
+      // Se já está na carteira ativa do gerente alvo, retorna sucesso sem duplicar
+      if (existingMgr === targetMgrNorm || existingMgr.includes(targetMgrNorm) || targetMgrNorm.includes(existingMgr)) {
         return { success: true };
       }
     }
 
-    // 3. Fetch max display_order for this manager in custom carteira
+    // 3. Fetch max display_order for this manager for ACTIVE records (display_order < 900000)
     const { data: existingCustom } = await supabase
       .from("cm_rps_custom_carteira")
       .select("display_order")
       .eq("year", year)
       .eq("month", month)
       .eq("manager", cleanTargetMgr)
+      .eq("is_excluded", false)
+      .lt("display_order", 900000)
       .order("display_order", { ascending: false })
       .limit(1);
 
-    const nextOrder = existingCustom && existingCustom.length > 0 ? (existingCustom[0].display_order || 0) + 1 : 0;
+    const nextOrder = existingCustom && existingCustom.length > 0 && existingCustom[0].display_order !== null
+      ? (existingCustom[0].display_order ?? 0) + 1
+      : 0;
 
-    // 4. Upsert into cm_rps_custom_carteira with is_excluded = false
+    // 4. Upsert into cm_rps_custom_carteira with is_excluded = false (garantindo un-exclude e persistência)
     const { error: upsertErr } = await supabase
       .from("cm_rps_custom_carteira")
       .upsert(
@@ -940,11 +1099,28 @@ export class CommercialPlanningService {
     const supabase = createAdminClient();
     const cleanMgr = manager.trim();
 
-    const rowsToUpsert = orderedRedes.map((item, idx) => ({
+    // Deduplicar por client_matrix para garantir que o ON CONFLICT do PostgreSQL seja 100% resiliente
+    const seen = new Set<string>();
+    const uniqueRows: Array<{ rede: string; display_order: number }> = [];
+
+    orderedRedes.forEach((item, idx) => {
+      const cleanRede = item.rede.trim();
+      const upper = cleanRede.toUpperCase();
+      if (!upper) return;
+      if (!seen.has(upper)) {
+        seen.add(upper);
+        uniqueRows.push({
+          rede: cleanRede,
+          display_order: item.display_order !== undefined ? item.display_order : idx
+        });
+      }
+    });
+
+    const rowsToUpsert = uniqueRows.map((item, idx) => ({
       year,
       month,
       manager: cleanMgr,
-      client_matrix: item.rede.trim(),
+      client_matrix: item.rede,
       display_order: item.display_order !== undefined ? item.display_order : idx,
       is_excluded: false,
       updated_at: new Date().toISOString()

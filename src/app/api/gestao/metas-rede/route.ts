@@ -40,6 +40,10 @@ const TOP_DOWN_EXECUTIVE_ROLES = [
   "Gerente Nacional",
 ];
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
 /**
  * GET /api/gestao/metas-rede
  * Domain Handler for Commercial Planning (Metas por Rede).
@@ -172,7 +176,9 @@ export async function GET(req: NextRequest) {
     const response = NextResponse.json(responsePayload);
     response.headers.set("X-Request-ID", requestId);
     response.headers.set("X-Execution-Time-MS", String(executionTimeMs));
-    response.headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
+    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    response.headers.set("Pragma", "no-cache");
+    response.headers.set("Expires", "0");
     return response;
   } catch (error: any) {
     const executionTimeMs = Date.now() - startTime;

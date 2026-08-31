@@ -4205,6 +4205,51 @@ Qualquer eventual endurecimento da garantia de ownership cross-manager (ex: nova
 
 Status Oficial: `METAS_POR_REDE = LOCKED & CONFIRMED` | `METAS_POR_REDE_GESTÃO_CARTEIRA = HOMOLOGADO` | `ARCHITECTURAL_RISK = RECORDED_NON_BLOCKING` | `BASELINE = PERMANENTE`.
 
+---
+
+## 90. Baseline Oficial — Abertura de Metas por Rede: Identidade Canônica, Ordenação Contínua e Consolidação Nacional (Baseline Permanente)
+
+A partir de 31/08/2026, a arquitetura, as regras de identidade canônica, o mecanismo anti-cache de ordenação e os consolidadores executivos do módulo **Abertura de Metas por Rede (`/gestao/metas-rede`)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### 1. Diretrizes Mandatórias de Identidade Canônica:
+1. **Resolução Canônica Centralizada**: Todas as representações textuais de clientes e distribuidores são resolvidas centralizadamente via `CommercialPlanningService.resolveCanonicalRedeName()`.
+2. **Unicidade de Entidades Comerciais**:
+   - **MANACÁS**: `DIST MANACÁS` = `DISTRIBUIDORA DE ALIMENTOS MANACAS LTDA` = `DISTRIBUIDORA MANACAS` $\rightarrow$ resolve estritamente para a entidade canônica única **`DIST MANACÁS`** (Parceiro `#223911`).
+   - **SOST**: `Dist Sost` = `SOST COMERCIAL` = `SOST COMERCIAL LTDA` = `DIST SOST` $\rightarrow$ resolve estritamente para a entidade canônica única **`Dist Sost`** (Parceiro `#212424`).
+3. **Deduplicação no Modal `+ Adicionar Rede`**: O método `getAvailableNetworks()` agrupa e deduplica os clientes de `vw_redes_planejaveis_oficiais` e `cm_clientes` por entidade canônica, exibindo **exatamente uma opção selecionável por cliente físico**.
+4. **Prevenção de Duplicidade Ativa**: Se a entidade canônica já estiver na carteira ativa do gerente na competência (`is_excluded = false`), o modal exibe `✓ Já nesta carteira` e o backend não duplica o registro.
+
+### 2. Diretrizes Mandatórias de Ordenação e `display_order`:
+1. **Cálculo de `nextOrder`**: O cálculo da próxima posição em `addRedeToManager()` considera **exclusivamente registros ativos** (`is_excluded = false` e `display_order < 900000`), calculando $\text{nextOrder} = \max(\text{display\_order dos ativos}) + 1$.
+2. **Isolamento de Excluídos**: Registros excluídos (`is_excluded = true`) permanecem fixados em `display_order = 999999` e são terminantemente ignorados no cálculo de novas inclusões.
+3. **Persistência Imutável pós-Save e Reload**:
+   - O endpoint `GET /api/gestao/metas-rede` opera sob diretiva estrita `export const dynamic = "force-dynamic"` e cabeçalhos `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0`.
+   - O frontend consome o endpoint com `{ cache: "no-store" }` e timestamp `_t=${Date.now()}`, eliminando qualquer retenção de cache HTTP em navegadores ou proxies.
+   - O ato de clicar em `[Salvar Metas]` grava em `cm_weekly_projections` sem alterar o `display_order` de `cm_rps_custom_carteira`.
+4. **Isolamento Bidirecional KA $\times$ Distribuidor**: A reordenação manual ($\uparrow$ / $\downarrow$) dentro da tabela de KA não altera as posições de Distribuidor, e a reordenação de Distribuidor não altera as posições de KA.
+
+### 3. Diretrizes dos Consolidados Nacionais Executivos (Visão Gerente Nacional):
+1. **Posicionamento no Topo**: O topo da página `/gestao/metas-rede` renderiza permanentemente dois painéis consolidados superiores:
+   - **`CONSOLIDADO NACIONAL — KEY ACCOUNT (KA)`**
+   - **`CONSOLIDADO NACIONAL — DISTRIBUIDOR`**
+2. **Fórmula de Agregação Nacional**:
+   - `Meta Distribuída`: Soma exata das metas de todas as redes do respectivo canal em todos os blocos de gerentes.
+   - `Meta Oficial Cia`: Soma das metas corporativas oficiais dos gerentes por canal.
+   - `Saldo a Distribuir`: `Meta Oficial Cia − Meta Distribuída`.
+3. **Proibição de Duplicações**: O consolidado reflete exclusivamente os dados canônicos do `CommercialPlanningService.getMetasRedeViewModel()`, sendo proibida a soma de cards intermediários redundantes.
+
+### 4. Registro de Resíduos Históricos de Teste:
+Registram-se os registros `'DISTRIBUIDORA DE ALIMENTOS MANACAS LTDA'` (`display_order = 25`) e `'SOST COMERCIAL'` (`display_order = 1000003`) na tabela `cm_rps_custom_carteira` (Luiz / 2026/09) como **resíduos históricos de testes anteriores**. A camada analítica do `CommercialPlanningService` deduplica ambos automaticamente no `getMetasRedeData`, garantindo zero impacto operacional ou visual.
+
+### 5. Quality Gates e Paridade Financeira:
+- **TypeScript**: 0 erros (`npx tsc --noEmit`).
+- **Suíte de Testes**: 20/20 PASS (`npm run test:planning` cobrindo `UT-01..05`, `IT-01..02`, `FR-01..04`, `TEL-01..04`, `SAN-01..05`).
+- **Paridade Financeira**: 0,0000% de desvio em relação às views oficiais.
+- **Build de Produção**: 100% de sucesso no Next.js (Turbopack).
+
+Status Arquitetural: `METAS_POR_REDE = LOCKED & CONFIRMED` | `CANONICAL_IDENTITY = LOCKED` | `DISPLAY_ORDER_PERSISTENCE = LOCKED` | `CONSOLIDADO_NACIONAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
 
 
 

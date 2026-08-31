@@ -40,6 +40,63 @@ const FASE_CONFIG: Record<string, { label: string; color: string; bgColor: strin
   concluido: { label: "Concluído", color: "text-green-500", bgColor: "bg-green-500/10", borderColor: "border-green-500/20", icon: "✅" },
 };
 
+const GENERIC_STOPWORDS = new Set([
+  "dist", "distribuidora", "alimentos", "comercio", "comercial", "ltda", "sa", "me", "epp", "eireli",
+  "supermercado", "supermercados", "atacado", "atacadista", "de", "do", "da", "dos", "das", "e", "em"
+]);
+
+const UF_SET = new Set([
+  "sp", "df", "mg", "rj", "pr", "sc", "rs", "ba", "pe", "ce", "go", "es", "mt", "ms",
+  "am", "pa", "rn", "pb", "al", "se", "pi", "ma", "ro", "ac", "ap", "rr", "to"
+]);
+
+export function buildSearchOrString(searchGeneral: string): string {
+  const clean = searchGeneral.trim();
+  if (!clean) return "";
+
+  const unaccented = clean.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  
+  const searchTermsSet = new Set<string>();
+  
+  // 1. Expressão completa original e desacentuada
+  searchTermsSet.add(clean);
+  if (unaccented !== clean) {
+    searchTermsSet.add(unaccented);
+  }
+
+  // 2. Extrair tokens individuais desacentuados (mínimo 3 letras e ignorando siglas de UF soltas)
+  const tokens = unaccented.split(/\s+/).map(t => t.trim().toLowerCase()).filter(t => t.length >= 3 && !UF_SET.has(t));
+  
+  // 3. Identificar tokens salientes (que não são stopwords genéricas como 'dist', 'ltda', 'de')
+  const salientTokens = tokens.filter(t => !GENERIC_STOPWORDS.has(t));
+
+  if (salientTokens.length > 0) {
+    salientTokens.forEach(st => searchTermsSet.add(st));
+  } else {
+    tokens.forEach(t => searchTermsSet.add(t));
+  }
+
+  const clauses: string[] = [];
+  const fields = ["nome_parceiro", "razao_social", "matriz", "codigo_matriz", "responsavel"];
+
+  searchTermsSet.forEach(term => {
+    // Sanitizar caracteres especiais que quebram a sintaxe do PostgREST
+    const safeTerm = term.replace(/[,()]/g, " ").trim();
+    if (!safeTerm || safeTerm.length < 2) return;
+
+    fields.forEach(field => {
+      clauses.push(`${field}.ilike.%${safeTerm}%`);
+    });
+
+    const codeVal = parseInt(safeTerm);
+    if (!isNaN(codeVal) && String(codeVal) === safeTerm) {
+      clauses.push(`codigo.eq.${codeVal}`);
+    }
+  });
+
+  return clauses.join(",");
+}
+
 export default function ClientesListPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -124,13 +181,10 @@ export default function ClientesListPage() {
     }
 
     if (searchGeneral.trim()) {
-      const search = searchGeneral.trim();
-      let orString = `nome_parceiro.ilike.%${search}%,razao_social.ilike.%${search}%,matriz.ilike.%${search}%,codigo_matriz.ilike.%${search}%,responsavel.ilike.%${search}%`;
-      const codeVal = parseInt(search);
-      if (!isNaN(codeVal)) {
-        orString += `,codigo.eq.${codeVal}`;
+      const orString = buildSearchOrString(searchGeneral);
+      if (orString) {
+        query = query.or(orString);
       }
-      query = query.or(orString);
     }
 
     // Filtro: Mostrar somente clientes COM venda e SEM responsável
@@ -217,13 +271,10 @@ export default function ClientesListPage() {
         }
 
         if (searchGeneral.trim()) {
-          const search = searchGeneral.trim();
-          let orString = `nome_parceiro.ilike.%${search}%,razao_social.ilike.%${search}%,matriz.ilike.%${search}%,codigo_matriz.ilike.%${search}%,responsavel.ilike.%${search}%`;
-          const codeVal = parseInt(search);
-          if (!isNaN(codeVal)) {
-            orString += `,codigo.eq.${codeVal}`;
+          const orString = buildSearchOrString(searchGeneral);
+          if (orString) {
+            query = query.or(orString);
           }
-          query = query.or(orString);
         }
 
         if (filterComVendaSemResponsavel) {
