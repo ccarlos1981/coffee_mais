@@ -239,4 +239,12 @@ export class PlanningTelemetry {
       }
     };
   }
+
+  /**
+   * Resets active alerts and execution history (useful for test isolation).
+   */
+  public static reset(): void {
+    activeAlerts.length = 0;
+    executionHistory.length = 0;
+  }
 }
