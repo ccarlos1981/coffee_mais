@@ -104,6 +104,24 @@ export async function GET(request: NextRequest) {
         frete_pct: activeRow ? Number(activeRow.frete_pct) : DEFAULT_PCTS.frete_pct,
         updated_at: activeRow?.updated_at || null,
         updated_by: activeRow?.updated_by || null,
+        global_config: globalRow ? {
+          competencia: 'GLOBAL',
+          impostos_pct: Number(globalRow.impostos_pct),
+          investimento_pct: Number(globalRow.investimento_pct),
+          cpv_pct: Number(globalRow.cpv_pct),
+          frete_pct: Number(globalRow.frete_pct),
+          updated_at: globalRow.updated_at,
+          updated_by: globalRow.updated_by,
+        } : null,
+        month_config: monthRow ? {
+          competencia: targetCompetencia,
+          impostos_pct: Number(monthRow.impostos_pct),
+          investimento_pct: Number(monthRow.investimento_pct),
+          cpv_pct: Number(monthRow.cpv_pct),
+          frete_pct: Number(monthRow.frete_pct),
+          updated_at: monthRow.updated_at,
+          updated_by: monthRow.updated_by,
+        } : null,
       };
     });
 
@@ -162,10 +180,10 @@ export async function POST(request: NextRequest) {
       displayName = 'Cristiano (Total)';
     }
 
-    const isMonthScope = scope === 'MONTH' || (!!year && !!month);
-    const targetCompetencia = isMonthScope ? `${year}-${String(month).padStart(2, '0')}` : 'GLOBAL';
-    const anoNum = isMonthScope ? Number(year) : null;
-    const mesNum = isMonthScope ? Number(month) : null;
+    const isMonthScope = scope === 'MONTH';
+    const targetCompetencia = isMonthScope && year && month ? `${year}-${String(month).padStart(2, '0')}` : 'GLOBAL';
+    const anoNum = isMonthScope && year ? Number(year) : null;
+    const mesNum = isMonthScope && month ? Number(month) : null;
 
     const supabase = createAdminClient();
 
