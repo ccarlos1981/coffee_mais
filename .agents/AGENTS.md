@@ -4533,6 +4533,82 @@ A partir de 26/08/2026, após a conclusão da auditoria histórica forense e res
 
 Status Arquitetural: `RPS_GOVERNANCE = LOCKED` | `RPS_MANAGER_FAT_SOVEREIGN = LOCKED` | `RPS_NETWORK_FAT_INDEPENDENT = LOCKED` | `RPS_P4_7 = REJECTED` | `RPS_DESAFIO = LOCKED` | `RPS_PUBLIC_TARGETS_MUTATION = FORBIDDEN` | `RPS_MANAGER_ISOLATION = LOCKED` | `RPS_WEEK_ISOLATION = LOCKED` | `RPS_ALERT_14H = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 88. Baseline Oficial — Metas por Rede (Baseline Permanente)
+
+A partir de 31/08/2026, após a conclusão e homologação das Waves 1 a 6 de auditoria forense, saneamento e testes fim-a-fim, a arquitetura, governança e contratos de dados do módulo **Metas por Rede (`/gestao/metas-rede`)** tornam-se o baseline permanente e oficial do Coffee++.
+
+### Diretrizes Mandatórias de Governança:
+
+1. **Âncora Canônica de Metas Mensais (`week_start_date = 'YYYY-MM-01'`)**:
+   - A Meta por Rede possui granularidade estritamente **mensal**.
+   - Toda e qualquer gravação de `kpi = 'META'` (seja via `/gestao/metas-rede` ou `/processo-comercial/rps`) deve utilizar obrigatoriamente a âncora mensal `week_start_date = 'YYYY-MM-01'`.
+   - É expressamente proibido persistir `kpi = 'META'` com datas de segundas-feiras ou datas intrames.
+
+2. **Chave Conceitual e Idempotência**:
+   - A identidade de uma meta mensal por rede no ecossistema é definida pelo conjunto `(manager, client_matrix, kpi, year, month)`.
+   - Operações de salvamento devem garantir idempotência estrita via `upsert` na constraint PostgreSQL `(manager, client_matrix, kpi, month, year, week_start_date)`.
+
+3. **Regra do Zero (`val >= 0`)**:
+   - O valor `0` (Zero) é um valor comercial válido de Meta.
+   - O sistema deve persistir `projection_value = 0` quando uma meta for zerada ou removida pelo usuário, garantindo a eliminação de valores anteriores após recarregamento.
+
+4. **Workflow Oficial de Planejamento**:
+   - O ciclo de vida do planejamento mensal segue rigorosamente o fluxo de governança:
+     `DRAFT` (Em Edição) $\rightarrow$ `REVIEW` (Pendente de Aprovação) $\rightarrow$ `APPROVED` (Aprovada) $\rightarrow$ `FROZEN` (Publicada / Congelada).
+   - A tabela oficial reguladora é exclusivamente `public.cm_weekly_projections_workflow`.
+   - É expressamente proibida a criação de fluxos paralelos em `useState` local no frontend.
+
+5. **Lock de Edição e Segurança Executiva**:
+   - Quando o status do workflow for `APPROVED` ou `FROZEN`, os inputs numéricos de meta e as ferramentas de rateio ficam bloqueados para edição de usuários comuns.
+   - Alterações em competências congeladas/aprovadas são restritas a usuários com autorização top-down (`Admin`, `Admin Master`, `CEO`, `Diretoria`).
+
+6. **Paridade com a Reunião de Planejamento Semanal (RPS)**:
+   - A consulta de metas na RPS (`/processo-comercial/rps`) consome deterministicamente o registro canônico `YYYY-MM-01`, garantindo 0,0000% de divergência em relação ao módulo Metas por Rede.
+   - É proibido o uso de `ORDER BY updated_at DESC` para resolução de metas mensais.
+
+7. **Governança do Saldo Residual**:
+   - A existência de saldo residual a ratear (ex: `Saldo KA = R$ 25.594,00` em Agosto/2026) é permitida pelo sistema e reflete uma decisão de gestão comercial, não constituindo falha técnica.
+   - O sistema permite salvar, aprovar e publicar competências com saldo residual.
+   - É expressamente proibida a introdução de algoritmos automáticos compulsórios de rateio para forçar 100% de distribuição artificial.
+
+8. **Preservação de Fontes Oficiais (SSOT)**:
+   - Meta Oficial Corporativa: `public.targets` (Single Source of Truth).
+   - Histórico e Médias 3M: `public.mv_vendas_cliente_mensal`.
+   - Metas das Redes: `public.cm_weekly_projections` (`kpi = 'META'`).
+   - Governança de Workflow: `public.cm_weekly_projections_workflow`.
+
+Status Arquitetural: `METAS_POR_REDE = LOCKED & CONFIRMED` | `CANONICAL_ANCHOR_DAY01 = LOCKED` | `WORKFLOW_GOVERNANCE = LOCKED` | `PARITY_RPS = 100%` | `BASELINE = PERMANENTE`.
+
+---
+
+## 89. Registro de Risco Arquitetural — Gestão de Carteira e Ownership Cross-Manager (Metas por Rede)
+
+A partir de 31/08/2026, registra-se formalmente na governança do Coffee++ a caracterização arquitetural e o mapeamento de risco de concorrência da funcionalidade de **Gestão de Carteira de Redes (`/gestao/metas-rede`)**.
+
+### 1. Modelo de Proteção Vigente (Homologado):
+O ownership e a exclusividade de alocação de redes aos gerentes na competência de planejamento são atualmente assegurados por:
+1. **Frontend (UI)**: O mapa `assignedRedesMap` detecta a alocação ativa e bloqueia visualmente no modal de adição (`+ Adicionar Rede`) qualquer rede já atribuída a outro gerente, exibindo o badge `🔒 Pertence a: [Gerente]`.
+2. **Backend (API Service)**: O método `CommercialPlanningService.addRedeToManager` executa a verificação prévia da carteira da competência antes da escrita e rejeita com HTTP `400 Bad Request` qualquer tentativa de associar uma rede já alocada a outro gerente.
+3. **Banco de Dados (PostgreSQL)**: A constraint `UNIQUE (year, month, manager, client_matrix)` na tabela `public.cm_rps_custom_carteira` garante a idempotência e impede duplicidade de registros para o **mesmo gerente** na mesma competência.
+
+### 2. Limitação Arquitetural Mapeada (Known Limitation / Non-Blocking):
+- **Descrição**: A constraint relacional atual `(year, month, manager, client_matrix)` inclui o `manager` na tupla única. Consequentemente, a restrição de exclusividade cross-manager reside na camada de aplicação (Backend Service) e não como barreira relacional nativa do PostgreSQL.
+- **Risco de Concorrência**: Em um cenário de altíssima concorrência simultânea (duas requisições enviadas exatamente no mesmo milissegundo para a mesma rede por gerentes distintos), existe a possibilidade teórica de *race condition* na persistência.
+- **Classificação de Risco**: **`RISCO ARQUITETURAL DE CONCORRÊNCIA — NÃO BLOQUEANTE`**. Não se trata de bug funcional, pois o fluxo operacional padrão é 100% protegido pelo Backend Service.
+
+### 3. Preservação Obrigatória do Domínio de Redes Regionais (Caso REDE OBA):
+- **Invariante de Chave**: O campo `codigo_matriz` **NÃO é e não pode ser a chave de ownership**.
+- **Fundamento de Domínio (Baseline Seção 7)**: Grupos econômicos de mesma raiz fiscal operam unidades regionais independentes com gerentes distintos (ex: `REDE OBA SP` / Gerente Julliano vs `REDE OBA DF` / Gerente John Guedes, ambas compartilhando `codigo_matriz = '68216.0'`).
+- **Diretriz**: Qualquer futura evolução técnica deve utilizar estritamente o nome canônico discriminado da rede (`client_matrix` / `rede`) e a competência `(year, month)`, sendo expressamente proibido o uso isolado de `codigo_matriz`.
+
+### 4. Diretriz de Governança para Endurecimento Futuro:
+Qualquer eventual endurecimento da garantia de ownership cross-manager (ex: nova constraint condicional, índice parcial único, RPC transacional com `SELECT ... FOR UPDATE`, isolamento `SERIALIZABLE` ou revisão de modelo de dados) **deverá ser formalizado e tratado exclusivamente como um NOVO CICLO DE RDM**, sendo vedadas alterações pontuais sem planejamento homologado.
+
+Status Oficial: `METAS_POR_REDE = LOCKED & CONFIRMED` | `METAS_POR_REDE_GESTÃO_CARTEIRA = HOMOLOGADO` | `ARCHITECTURAL_RISK = RECORDED_NON_BLOCKING` | `BASELINE = PERMANENTE`.
+
+
 
 
 
