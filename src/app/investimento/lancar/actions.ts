@@ -2204,79 +2204,71 @@ export async function preencherApuracao(id: string, formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  const apuracao_numero_acordo = formData.get("apuracao_numero_acordo") as string;
-  const apuracao_qtd_vendida = parseInt(formData.get("apuracao_qtd_vendida") as string) || null;
-  const apuracao_valor_realizado = parseFloat((formData.get("apuracao_valor_realizado") as string)?.replace(',', '.') || '0') || null;
-  const vinculosStr = formData.get("vinculos_boletos") as string || "[]";
-  const vinculos = JSON.parse(vinculosStr) as Array<{ boleto_id: string, valor_associado: number }>;
-  const apuracao_boleto_id = vinculos[0]?.boleto_id || null;
-  
+  // Parsing resiliente de campos aceitando formato canônico e legado
+  const apuracao_numero_acordo = (
+    (formData.get("apuracao_numero_acordo") as string) ||
+    (formData.get("numero_acordo") as string) ||
+    ""
+  ).trim();
+
+  const rawQtd = formData.get("apuracao_qtd_vendida") || formData.get("volume_vendido_sellout") || formData.get("qtd_vendida");
+  const apuracao_qtd_vendida = rawQtd ? parseInt(String(rawQtd).replace(/\./g, '')) || null : null;
+
+  const rawValor = formData.get("apuracao_valor_realizado") || formData.get("valor_realizado");
+  const apuracao_valor_realizado = rawValor ? parseFloat(String(rawValor).replace(',', '.')) || null : null;
+
+  const vinculosStr = (formData.get("vinculos_boletos") as string) || "[]";
+  let vinculos: Array<{ boleto_id: string; valor_associado: number }> = [];
+  try {
+    vinculos = JSON.parse(vinculosStr);
+  } catch {
+    vinculos = [];
+  }
+
   // Evidências e Observações
-  const apuracao_evidencias_url = formData.get("apuracao_evidencias_url") as string || null;
-  const condicao_pagamento = formData.get("condicao_pagamento") as string || null;
+  const apuracao_evidencias_url = (formData.get("apuracao_evidencias_url") as string) || null;
+  const condicao_pagamento = (formData.get("condicao_pagamento") as string) || null;
   const sem_boleto = formData.get("sem_boleto") === "true";
-  const post_action_notes = formData.get("post_action_notes") as string || null;
+  const post_action_notes = (formData.get("post_action_notes") as string) || null;
 
   if (!apuracao_numero_acordo) {
     throw new Error("Dados do Acordo é obrigatório.");
   }
 
-  const { error } = await supabase
-    .from("cm_acoes_investimento")
-    .update({
-      fase_atual: 4,
-      devolvido_por: null,
-      devolvido_em: null,
-      rejection_reason: null,
-      apuracao_numero_acordo,
-      apuracao_qtd_vendida,
-      apuracao_valor_realizado,
-      apuracao_boleto_id,
-      apuracao_evidencias_url,
-      condicao_pagamento,
-      sem_boleto,
-      post_action_notes,
-      apuracao_preenchida_em: new Date().toISOString(),
-      apuracao_preenchida_por: user?.email || "unknown"
-    })
-    .eq("id", id)
-    .eq("fase_atual", 3);
+  // Executa a conclusão da apuração via RPC atômica transacional no PostgreSQL
+  const adminClient = createAdminClient();
+  const { data: rpcRes, error: rpcErr } = await adminClient.rpc("concluir_apuracao_investimento", {
+    p_acao_id: id,
+    p_apuracao_numero_acordo: apuracao_numero_acordo,
+    p_apuracao_qtd_vendida: apuracao_qtd_vendida,
+    p_apuracao_valor_realizado: apuracao_valor_realizado,
+    p_apuracao_evidencias_url: apuracao_evidencias_url,
+    p_condicao_pagamento: condicao_pagamento,
+    p_sem_boleto: sem_boleto,
+    p_post_action_notes: post_action_notes,
+    p_vinculos: vinculos,
+    p_user_email: user?.email || "unknown",
+    p_user_id: user?.id || null,
+  });
 
-  if (error) {
-    console.error("Erro ao preencher apuração:", error);
-    throw new Error("Falha ao salvar apuração.");
+  if (rpcErr) {
+    console.error("[APURACAO_ATOMICA] Erro na RPC concluir_apuracao_investimento:", rpcErr);
+    const detailMsg = rpcErr.message || rpcErr.details || rpcErr.hint || JSON.stringify(rpcErr);
+    throw new Error(`Falha ao concluir apuração: ${detailMsg}`);
   }
 
-  // Deletar vínculos de boletos existentes para esta ação
-  await supabase
-    .from("cm_acoes_boletos_vinculo")
-    .delete()
-    .eq("acao_id", id);
+  const apuracao_boleto_id = rpcRes?.primeiro_boleto_id || vinculos[0]?.boleto_id || null;
 
-  // Inserir os novos vínculos de boletos
-  if (vinculos.length > 0) {
-    const insertRows = vinculos.map(v => ({
-      acao_id: id,
-      boleto_id: v.boleto_id,
-      valor_associado: v.valor_associado
-    }));
-    const { error: linkError } = await supabase
-      .from("cm_acoes_boletos_vinculo")
-      .insert(insertRows);
-    if (linkError) {
-      console.error("Erro ao salvar vínculos de boletos:", linkError);
-      throw new Error("Falha ao salvar os vínculos dos boletos.");
-    }
-  }
-
-  // Disparar e-mail de notificação (aguardado para garantir execução estável na Vercel)
+  // Disparar e-mail de notificação (desacoplado com isolamento de falha)
   try {
     await enviarEmailNotificacaoApuracao(id, user?.email || "unknown", apuracao_boleto_id);
   } catch (mailErr) {
-    console.error("Falha ao enviar e-mail de notificação de apuração:", mailErr);
+    console.error("[Email Apuração] Falha não-bloqueante no envio de notificação de apuração:", mailErr);
   }
 
   revalidatePath("/investimento");
+  revalidatePath(`/investimento/${id}`);
+  return { success: true, action_id: id, fase_atual: 4 };
 }
 
 // ─── Fase 4: Conferência pelo Trade ─────────────────────────────────────

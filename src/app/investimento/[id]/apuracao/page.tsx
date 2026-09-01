@@ -23,8 +23,8 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
 
   if (error || !investment) notFound();
 
-  // Only allow apuração if phase is 2
-  if (investment.fase_atual !== 2) {
+  // Only allow apuração if phase is 3 (Apuração Comercial)
+  if (investment.fase_atual !== 3) {
     notFound();
   }
 
