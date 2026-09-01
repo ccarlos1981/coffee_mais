@@ -778,11 +778,94 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       }
     }
 
-    if (actionsToInsert.length === 0) {
+    // 3. Processar Múltiplas Ações personalizadas se enviadas via FormData
+    const multiplasAcoesStr = formData.get("multiplas_acoes") as string;
+    let finalActionsToInsert = actionsToInsert;
+    if (multiplasAcoesStr) {
+      try {
+        const parsedMultiplas = JSON.parse(multiplasAcoesStr);
+        if (Array.isArray(parsedMultiplas) && parsedMultiplas.length > 0) {
+          finalActionsToInsert = parsedMultiplas.map((a: any) => ({
+            rede,
+            codigo_matriz: codigo_matriz || null,
+            data_inicio: a.data_inicio || calculated_data_inicio,
+            data_fim: a.data_fim || calculated_data_fim,
+            date_mode: "single",
+            tipo_acao: a.tipo_acao || tipo_acao,
+            tipo_acao_detalhe: a.tipo_acao_detalhe || tipo_acao_detalhe,
+            familia_produto: a.familia_nome || a.familia_id || "Geral",
+            familias_detalhes: a.familias_detalhes || [{
+              familia_id: a.familia_id || "geral",
+              familia_nome: a.familia_nome || "Geral",
+              preco_flat: Number(a.preco_flat) || 0,
+              preco_acao: Number(a.preco_acao) || 0,
+              investimento: Number(a.valor_investimento) || 0,
+              expectativa_volume: Number(a.expectativa_volume) || 1,
+              start_date: a.data_inicio || calculated_data_inicio,
+              end_date: a.data_fim || calculated_data_fim,
+              status_trade: "PENDENTE"
+            }],
+            preco_flat: Number(a.preco_flat) || 0,
+            preco_acao: Number(a.preco_acao) || 0,
+            valor_investimento: Number(a.valor_investimento) || 0,
+            expectativa_volume: Number(a.expectativa_volume) || 1,
+            abrangencia: a.abrangencia || abrangencia,
+            tipo_pagamento: a.tipo_pagamento || tipo_pagamento,
+            skus_detalhes: a.skus_detalhes || [],
+            mes_referencia: a.mes_referencia || mes_referencia,
+            fase_atual: 1,
+            is_planejamento,
+            alertas_preventivos: a.alertas_preventivos || [],
+            status_financeiro: "NAO_FATURADA",
+            is_materializada_futura: !!a.is_materializada_futura,
+            acao_origem_recorrencia_id: a.acao_origem_recorrencia_id || null
+          }));
+        }
+      } catch (e) {
+        console.error("Erro ao fazer parse de multiplas_acoes:", e);
+      }
+    }
+
+    // 4. Processar Grade de Parcelas se enviada via FormData
+    const planoParcelasStr = formData.get("plano_parcelas") as string;
+    let finalParcelasToInsert: any[] = [];
+    if (planoParcelasStr) {
+      try {
+        const parsedParcelas = JSON.parse(planoParcelasStr);
+        if (Array.isArray(parsedParcelas) && parsedParcelas.length > 0) {
+          finalParcelasToInsert = parsedParcelas.map((p: any, idx: number) => ({
+            numero_parcela: p.numero_parcela || (idx + 1),
+            total_parcelas: p.total_parcelas || parsedParcelas.length,
+            valor_previsto: Number(p.valor_previsto) || 0,
+            data_vencimento: p.data_vencimento || calculated_data_inicio,
+            tipo_pagamento: p.tipo_pagamento || tipo_pagamento,
+            observacoes: p.observacoes || null
+          }));
+        }
+      } catch (e) {
+        console.error("Erro ao fazer parse de plano_parcelas:", e);
+      }
+    }
+
+    if (finalActionsToInsert.length === 0) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma ação válida deve ser gerada a partir do lançamento.");
     }
 
-    // 3. Execute transactional insert via Postgres RPC
+    const totalInvestimentoAcoes = finalActionsToInsert.reduce((acc, a) => acc + (Number(a.valor_investimento) || 0), 0);
+
+    // Se não houver parcelas configuradas, gerar parcela única à vista
+    if (finalParcelasToInsert.length === 0) {
+      finalParcelasToInsert = [{
+        numero_parcela: 1,
+        total_parcelas: 1,
+        valor_previsto: totalInvestimentoAcoes,
+        data_vencimento: calculated_data_inicio,
+        tipo_pagamento,
+        observacoes: null
+      }];
+    }
+
+    // 5. Executar criação atômica via RPC PostgreSQL criar_negociacao_completa_v1
     const p_campanha = {
       nome_campanha: `Campanha ${rede} - ${mes_referencia}`,
       rede,
@@ -790,17 +873,23 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       mes_referencia,
       status_operacional: "PLANEJAMENTO",
       status_financeiro: "ABERTA",
-      gerente_id: gerenteId || null
+      gerente_id: gerenteId || null,
+      is_planejamento,
+      tipo_plano_financeiro: finalParcelasToInsert.length > 1 ? "PARCELADO" : "A_VISTA"
     };
 
+    const idempotencyKey = (formData.get("idempotency_key") as string) || `idem_neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const adminClient = createAdminClient();
-    const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_campanha_e_acoes_v2", {
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_negociacao_completa_v1", {
       p_campanha,
-      p_acoes: actionsToInsert
+      p_acoes: finalActionsToInsert,
+      p_parcelas: finalParcelasToInsert,
+      p_user_id: user.id,
+      p_idempotency_key: idempotencyKey
     });
 
     if (rpcError) {
-      console.error("Erro na transação de criação de campanha/ações:", rpcError);
+      console.error("Erro na transação criar_negociacao_completa_v1:", rpcError);
       throw rpcError;
     }
 
@@ -825,7 +914,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
 
     revalidatePath("/investimento");
     revalidatePath("/investimento/planejamento");
-    return successResult({ is_planejamento });
+    return successResult({ is_planejamento, campanha_id: (rpcResult as any)?.campanha_id });
   } catch (err: any) {
     const requestId = await logServerError("criarAcaoInvestimento", { rede, abrangencia, data_inicio }, err);
     return errorResult(
@@ -3397,15 +3486,32 @@ export async function oficializarPlanejamento(
       ? idempotencyKey.trim() 
       : `idem_ofic_${id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-    // 4. Invocar RPC transacional soberana
-    const { data: rpcResult, error: rpcError } = await adminClient.rpc("oficializar_planejamento_v1", {
+    // 4. Invocar RPC transacional soberana (v2 com suporte a parcelas e campanhas integradas)
+    let rpcResult: any = null;
+    let rpcError: any = null;
+
+    const resV2 = await adminClient.rpc("oficializar_planejamento_v2", {
       p_planejamento_id: id,
       p_user_id: user.id,
       p_idempotency_key: finalKey
     });
 
+    if (resV2.error) {
+      console.warn("Falha na RPC oficializar_planejamento_v2, tentando fallback para v1:", resV2.error);
+      const resV1 = await adminClient.rpc("oficializar_planejamento_v1", {
+        p_planejamento_id: id,
+        p_user_id: user.id,
+        p_idempotency_key: finalKey
+      });
+      rpcResult = resV1.data;
+      rpcError = resV1.error;
+    } else {
+      rpcResult = resV2.data;
+      rpcError = resV2.error;
+    }
+
     if (rpcError) {
-      console.error("Erro na RPC oficializar_planejamento_v1:", rpcError);
+      console.error("Erro na oficialização do planejamento:", rpcError);
       return errorResult(ActionErrorCode.INTERNAL_ERROR, rpcError.message || "Erro ao oficializar planejamento no banco de dados.");
     }
 
@@ -4209,6 +4315,159 @@ export async function obterHistoricoConsultorComercial(params: {
     };
   }
 }
+
+// ─── Fase 5+: Gestão Financeira Avançada (Parcelas, Baixas e Quitações) ──────
+
+/**
+ * Registra um evento de pagamento e executa alocação FIFO atômica nas parcelas pendentes.
+ */
+export async function registrarPagamentoFinanceiro(params: {
+  campanhaId: string;
+  valorPago: number;
+  dataPagamento: string;
+  comprovanteUrl?: string | null;
+  observacoes?: string | null;
+  idempotencyKey?: string;
+}): Promise<ActionResult<any>> {
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
+
+    const adminClient = createAdminClient();
+    const idempotencyKey = params.idempotencyKey || `idem_pag_${params.campanhaId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_baixa_financeira_v1", {
+      p_campanha_id: params.campanhaId,
+      p_valor_pago: params.valorPago,
+      p_data_pagamento: params.dataPagamento,
+      p_comprovante_url: params.comprovanteUrl || null,
+      p_observacoes: params.observacoes || null,
+      p_user_id: user.id,
+      p_idempotency_key: idempotencyKey
+    });
+
+    if (rpcErr) {
+      console.error("Erro na RPC registrar_baixa_financeira_v1:", rpcErr);
+      return errorResult(ActionErrorCode.INTERNAL_ERROR, rpcErr.message || "Falha ao registrar pagamento.");
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath(`/investimento/${params.campanhaId}`);
+    return successResult(rpcRes);
+  } catch (err: any) {
+    return handleActionError(err, { module: "Investimentos", action: "registrarPagamentoFinanceiro" });
+  }
+}
+
+/**
+ * Cancela parcelas futuras pendentes decorrentes de quitação antecipada acordada (soft-cancel).
+ */
+export async function cancelarParcelasFuturas(
+  campanhaId: string,
+  motivo?: string
+): Promise<ActionResult<any>> {
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("cancelar_parcelas_futuras_v1", {
+      p_campanha_id: campanhaId,
+      p_user_id: user.id,
+      p_motivo: motivo || "Quitação antecipada confirmada pelo Financeiro"
+    });
+
+    if (error) {
+      return errorResult(ActionErrorCode.INTERNAL_ERROR, error.message || "Erro ao cancelar parcelas futuras.");
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath(`/investimento/${campanhaId}`);
+    return successResult(data);
+  } catch (err: any) {
+    return handleActionError(err, { module: "Investimentos", action: "cancelarParcelasFuturas" });
+  }
+}
+
+/**
+ * Consulta o plano financeiro consolidado de uma negociação (Campanha, Parcelas, Pagamentos e Alocações).
+ */
+export async function obterPlanoFinanceiroCampanha(campanhaId: string): Promise<ActionResult<{
+  campanha: any;
+  parcelas: any[];
+  pagamentos: any[];
+}>> {
+  try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
+    const adminClient = createAdminClient();
+    const { data: campanha, error: errCamp } = await adminClient
+      .from("cm_campanhas")
+      .select("*")
+      .eq("id", campanhaId)
+      .single();
+
+    if (errCamp || !campanha) {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Campanha não encontrada.");
+    }
+
+    const { data: parcelas } = await adminClient
+      .from("cm_investimento_parcelas")
+      .select("*")
+      .eq("campanha_id", campanhaId)
+      .order("numero_parcela", { ascending: true });
+
+    const { data: pagamentos } = await adminClient
+      .from("cm_investimento_pagamentos")
+      .select(`
+        *,
+        alocacoes:cm_investimento_pagamento_alocacoes(
+          id,
+          parcela_id,
+          valor_alocado,
+          created_at,
+          parcela:cm_investimento_parcelas(numero_parcela, valor_previsto, status_parcela)
+        )
+      `)
+      .eq("campanha_id", campanhaId)
+      .order("data_pagamento", { ascending: false });
+
+    return successResult({
+      campanha,
+      parcelas: parcelas || [],
+      pagamentos: pagamentos || []
+    });
+  } catch (err: any) {
+    return handleActionError(err, { module: "Investimentos", action: "obterPlanoFinanceiroCampanha" });
+  }
+}
+
+/**
+ * Executa a auditoria de reconciliação financeira em tempo real na campanha.
+ */
+export async function reconciliarFinanceiroCampanha(campanhaId: string): Promise<ActionResult<any>> {
+  try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("reconciliar_financeiro_campanha_v1", {
+      p_campanha_id: campanhaId
+    });
+
+    if (error) {
+      return errorResult(ActionErrorCode.INTERNAL_ERROR, error.message || "Erro ao reconciliar financeiro.");
+    }
+
+    return successResult(data);
+  } catch (err: any) {
+    return handleActionError(err, { module: "Investimentos", action: "reconciliarFinanceiroCampanha" });
+  }
+}
+
 
 
 
