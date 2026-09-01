@@ -36,7 +36,8 @@
     "test:b20": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b20-positivacao-360.ts",
     "test:b21": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b21-sku-pdv-360.ts",
     "test:b22": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b22-sales-action-center.ts",
-    "test:b23": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b23-sales-execution-control.ts"
+    "test:b23": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b23-sales-execution-control.ts",
+    "test:hardening": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave-hardening-rbac-smtp.ts"
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.3.1",

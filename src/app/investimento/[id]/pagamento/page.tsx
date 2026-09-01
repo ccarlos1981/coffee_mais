@@ -23,7 +23,8 @@ export default async function PagamentoPage({ params }: { params: Promise<{ id: 
 
   if (error || !investment) notFound();
 
-  if (investment.fase_atual !== 4) {
+  // Only allow payment if phase is 5 (Aguardando Pagamento)
+  if (investment.fase_atual !== 5) {
     notFound();
   }
 

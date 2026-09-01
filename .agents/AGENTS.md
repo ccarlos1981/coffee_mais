@@ -4673,3 +4673,33 @@ A partir de 01/09/2026, o layout executivo e a suíte de apresentação do **Con
    - Banco de dados, RPCs, views, RLS, migrations, APIs e persistência Save/Reload na RPS: 100% intactos e homologados.
 
 Status Arquitetural: `METAS_CONSOLIDADO_UX = LOCKED` | `GERENTE_VIEW = DEFAULT_COLLAPSED` | `REAL_TIME_UPDATE = PASS` | `KA_DIST_ISOLATION = LOCKED` | `PREVIOUS_BASELINE = LOCKED & CONFIRMED` | `BASELINE = PERMANENTE`.
+
+---
+
+## 92. Baseline Oficial — Persistência de Metas por Rede e Resolução Canônica de Entidades com Matriz Compartilhada (Baseline Permanente)
+
+A partir de 01/09/2026, a arquitetura de persistência e resolução canônica de metas no módulo **Abertura de Metas por Rede (`/gestao/metas-rede`)** torna-se o baseline permanente e oficial do Coffee++.
+
+### 1. Diagnóstico e Causa Raiz Homologada:
+1. **Colisão de `codigo_matriz`:** Identificou-se que redes distintas pertencentes ao mesmo gerente que compartilham o mesmo `codigo_matriz` (ex: `MATEUS` e `NOVO ATAC` sob o gerente Luiz compartilhando `codigo_matriz = '148252.0'`) sofriam sobrescrita na resolução em memória do `metaMap` quando o código consultava o código da matriz antes da identidade textual da rede.
+2. **Priorização Canônica Obrigatória:** A resolução em memória do `CommercialPlanningService.getMetasRedeViewModel` passa a priorizar estritamente a chave composta `manager_id + redeUpper`, utilizando `manager_id + codigo_matriz` exclusivamente como fallback de compatibilidade para registros legados:
+   $$\texttt{metaMap.get(\`${net.manager_id}|${redeUpper}\`)} \;\;??\;\; \texttt{metaMap.get(\`${net.manager_id}|${net.codigo_matriz}\`)} \;\;??\;\; 0$$
+
+### 2. Mapeamento e Auditoria de Colisões no Ecossistema:
+Foram auditadas e homologadas todas as ocorrências de matriz compartilhada sob o mesmo gerente na plataforma:
+- **Grupo #1 (Leandro Saffi / `1001` / `84906.0`):** `ZAFFARI (RS)` e `ZAFFARI (CESTO)` $\rightarrow$ Resoluções 100% isoladas e fiéis ao banco.
+- **Grupo #2 (Luiz / `1002` / `148252.0`):** `MATEUS` e `NOVO ATAC` $\rightarrow$ Resoluções 100% isoladas e fiéis ao banco.
+
+### 3. Validação Operacional e Persistência Fim-a-Fim:
+- **Caso MATEUS:** Validado o ciclo completo de mutação e recarga sem colisões: $\text{R\$\ } 400.000 \rightarrow \text{R\$\ } 450.000 \rightarrow \text{R\$\ } 0 \rightarrow \text{R\$\ } 400.000$.
+- **Preservação de `display_order`:** A ordem de exibição das redes em `cm_rps_custom_carteira` permanece 100% preservada e intacta pós-Save e Reload.
+- **Isolamento de Domínio:** Ficam mantidos 100% de paridade com o Consolidado Nacional, RPS, ownership comercial, segregação KA $\times$ Distribuidor, deduplicação, RLS, views e RPCs.
+
+### 4. Quality Gates de Homologação:
+- `npx tsc --noEmit`: 0 erros (PASS).
+- `npm run test:planning`: 20/20 PASS.
+- `npm run test:domain`: 32/32 PASS.
+- `npm run build`: 117/117 rotas Next.js (Turbopack) compiladas com sucesso.
+
+Status Arquitetural: `INCIDENTE_MATEUS = ENCERRADO` | `PERSISTENCIA_METAS = LOCKED` | `RESOLUCAO_CODIGO_MATRIZ = LOCKED` | `DISPLAY_ORDER = LOCKED` | `CONSOLIDADO = LOCKED` | `PREVIOUS_BASELINE = PRESERVED` | `STATUS_ARQUITETURAL = BASELINE_PERMANENT`.
+

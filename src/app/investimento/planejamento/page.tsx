@@ -309,11 +309,15 @@ export default function PlanejamentoInvestimentoPage() {
 
   // Filter lists derived from user matching roles
   const managerFilteredAcoes = useMemo(() => {
-    if (!userRole) return data;
-    if (userRole === 'Admin' || userRole === 'Financeiro' || userRole === 'CEO' || userRole === 'Trade') return data;
-    
-    // For regular managers, only show their own actions
-    return data.filter(d => d.gerente_responsavel === userEmail);
+    if (userRole !== "Gerente Regional" || !userEmail) {
+      return data;
+    }
+    const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+    return data.filter(r => {
+      if (!r.gerente_responsavel) return false;
+      const cleanGerente = r.gerente_responsavel.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix);
+    });
   }, [data, userRole, userEmail]);
 
   const redesDisponiveis = useMemo(() => {

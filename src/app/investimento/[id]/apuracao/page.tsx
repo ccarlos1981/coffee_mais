@@ -44,10 +44,28 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
     resolvedMatriz = res.matriz;
   }
 
+  // Buscar boletos em aberto para a rede
+  const todayStr = new Date().toISOString().split('T')[0];
+  let boletosAbertos: any[] = [];
+  try {
+    const cleanWord = resolvedMatriz.replace(/[\(\),]/g, ' ').trim().split(' ')[0];
+    const { data: boletos } = await supabase
+      .from("cm_boletos")
+      .select("*")
+      .or(`rede.ilike.%${cleanWord}%,rede.ilike.%${investment.rede}%`)
+      .eq("status", "Aberto")
+      .gte("vencimento", todayStr)
+      .order("vencimento", { ascending: true })
+      .limit(60);
+    boletosAbertos = boletos || [];
+  } catch (err) {
+    console.error("Erro ao buscar boletos para apuração:", err);
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="pb-16 pt-8">
-        <ApuracaoForm investment={investment} matrizNome={resolvedMatriz} />
+        <ApuracaoForm investment={investment} matrizNome={resolvedMatriz} initialBoletos={boletosAbertos} />
       </main>
     </div>
   );
