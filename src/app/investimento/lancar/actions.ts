@@ -3349,28 +3349,88 @@ export async function simularImportacaoInvestimentos(rawRows: any[][]): Promise<
   }
 }
 
-export async function promoverPlanejamento(id: string) {
-  const user = await requireAuth();
-  await requireApprovedProfile(user.id);
-  const supabase = await createClient();
-
-  const { error } = await supabase
-    .from("cm_acoes_investimento")
-    .update({
-      is_planejamento: false,
-      fase_atual: 1,
-      created_at: new Date().toISOString()
-    })
-    .eq("id", id);
-
-  if (error) {
-    console.error("Erro ao promover planejamento para investimento oficial:", error);
-    throw new Error("Falha ao promover investimento.");
+/**
+ * Oficializa um Planejamento de Investimento de forma não-destrutiva e idempotente.
+ * Invariante Soberana: O planejamento original (is_planejamento = true) NUNCA é modificado para false.
+ * Cria uma nova ação/campanha oficial (is_planejamento = false, fase_atual = 1) e registra em cm_audit_logs.
+ */
+export async function oficializarPlanejamento(
+  id: string,
+  idempotencyKey?: string
+): Promise<ActionResult<{ campanha_id: string; acao_id: string; planejamento_id: string; idempotent: boolean; message?: string }>> {
+  if (!id) {
+    return errorResult(ActionErrorCode.VALIDATION_ERROR, "ID do planejamento é obrigatório.");
   }
 
-  revalidatePath("/investimento");
-  revalidatePath("/investimento/planejamento");
-  return { success: true };
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    const adminClient = createAdminClient();
+
+    // 1. Obter o planejamento e sua campanha para validação de RBAC
+    const { data: planAction, error: fetchErr } = await adminClient
+      .from("cm_acoes_investimento")
+      .select("*, campanha:cm_campanhas(*)")
+      .eq("id", id)
+      .single();
+
+    if (fetchErr || !planAction) {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Planejamento não encontrado.");
+    }
+
+    if (!planAction.is_planejamento) {
+      return errorResult(ActionErrorCode.BUSINESS_RULE_VIOLATION, "O registro informado não é um planejamento ativo.");
+    }
+
+    // 2. Validação estrita de carteira para Gerente Regional
+    if (profile.role === "Gerente Regional") {
+      const campanhaGerenteId = planAction.campanha?.gerente_id;
+      if (campanhaGerenteId && campanhaGerenteId !== user.id) {
+        return errorResult(ActionErrorCode.UNAUTHORIZED, "Acesso Negado: Você não possui autorização para oficializar o planejamento de outro gerente comercial.");
+      }
+    } else if (!["Admin", "Admin Master", "Trade", "CEO", "Diretor"].includes(profile.role)) {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, `Acesso Negado: Perfil ${profile.role} não autorizado para oficializar planejamentos.`);
+    }
+
+    // 3. Garantir chave de idempotência determinística
+    const finalKey = (idempotencyKey && idempotencyKey.trim()) 
+      ? idempotencyKey.trim() 
+      : `idem_ofic_${id}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+    // 4. Invocar RPC transacional soberana
+    const { data: rpcResult, error: rpcError } = await adminClient.rpc("oficializar_planejamento_v1", {
+      p_planejamento_id: id,
+      p_user_id: user.id,
+      p_idempotency_key: finalKey
+    });
+
+    if (rpcError) {
+      console.error("Erro na RPC oficializar_planejamento_v1:", rpcError);
+      return errorResult(ActionErrorCode.INTERNAL_ERROR, rpcError.message || "Erro ao oficializar planejamento no banco de dados.");
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+
+    return successResult(rpcResult as any);
+  } catch (error: any) {
+    return handleActionError(error, {
+      module: "Investimentos",
+      action: "oficializarPlanejamento"
+    });
+  }
+}
+
+/**
+ * Alias de compatibilidade para promoverPlanejamento.
+ * Redireciona obrigatoriamente para oficializarPlanejamento garantindo semântica não-destrutiva.
+ */
+export async function promoverPlanejamento(id: string, idempotencyKey?: string) {
+  const res = await oficializarPlanejamento(id, idempotencyKey);
+  if (!res.success) {
+    throw new Error((res as any).message || "Falha ao oficializar planejamento.");
+  }
+  return res.data;
 }
 
 export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {

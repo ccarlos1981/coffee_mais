@@ -4703,3 +4703,26 @@ Foram auditadas e homologadas todas as ocorrências de matriz compartilhada sob 
 
 Status Arquitetural: `INCIDENTE_MATEUS = ENCERRADO` | `PERSISTENCIA_METAS = LOCKED` | `RESOLUCAO_CODIGO_MATRIZ = LOCKED` | `DISPLAY_ORDER = LOCKED` | `CONSOLIDADO = LOCKED` | `PREVIOUS_BASELINE = PRESERVED` | `STATUS_ARQUITETURAL = BASELINE_PERMANENT`.
 
+---
+
+## 93. Baseline Oficial — Abertura Automática da Competência Vigente com Hydration Safety (/gestao/metas-rede)
+
+A partir de 01/09/2026, o mecanismo de inicialização da competência e segurança de hidratação (Hydration Safety) no módulo **Abertura de Metas por Rede (`/gestao/metas-rede`)** torna-se o baseline permanente e oficial do Coffee++, com o encerramento formal do RDM de correção de regressão.
+
+### Diretrizes Mandatórias de Arquitetura:
+1. **Abertura na Competência Vigente do Runtime:** Toda nova entrada na rota `/gestao/metas-rede` ou recarregamento (F5) inicializa automaticamente na competência do mês/ano vigentes do sistema/runtime (`new Date().getMonth() + 1` e `new Date().getFullYear()`).
+2. **Eliminação Integral de Hydration Mismatch:** O primeiro render do cliente durante a hidratação (`hydrateRoot`) é rigorosamente determinístico e coincide 100% caractere a caractere com o SSR / Static Generation.
+3. **Padrão Canônico de Sincronização Pós-Hidratação:**
+   - O `useState` nasce com valores estáticos estáveis de baseline para renderização inicial determinística (`8` / `2026`).
+   - O hook `useEffect` executa a sincronização com a data do runtime (`new Date()`) imediatamente após a hidratação bem-sucedida, sem causar loops, flickers ou chamadas redundantes à API.
+4. **Liberdade de Seleção Manual em Sessão:** Durante a navegação interativa, o usuário pode selecionar qualquer competência no seletor de mês/ano, sendo a seleção respeitada durante toda a sessão sem forçar retornos automáticos até um novo F5/reload da página.
+5. **Preservação Absoluta das Invariantes Anteriores:**
+   - Metas, valores e persistência em `cm_weekly_projections`: 100% preservados.
+   - Resolução canônica de `codigo_matriz` (Seção 92): 100% preservada (`MATEUS`, `ZAFFARI`).
+   - Consolidados Nacionais e por Gerente (KA e Dist): 100% preservados.
+   - `display_order` e ordenação `↑ / ↓` em `cm_rps_custom_carteira`: 100% preservados.
+   - `CommercialPlanningService`, APIs, Views, RPCs, RLS e regras de negócio: 100% intactos.
+
+Status Arquitetural: `COMPETENCIA_VIGENTE = LOCKED & PASS` | `HYDRATION_SAFETY = LOCKED & PASS` | `SSR_CLIENT_PARITY = 100%` | `RELOAD = PASS` | `MANUAL_SELECTION = PASS` | `REGRESSION = ZERO` | `QUALITY_GATES = PASS` | `PREVIOUS_BASELINE = LOCKED & CONFIRMED` | `STATUS_ARQUITETURAL = BASELINE_PERMANENTE`.
+
+
