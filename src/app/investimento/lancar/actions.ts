@@ -8,7 +8,7 @@ import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } fr
 import { calcularCamposConsolidadosInvestimento } from "@/lib/investimento/consolidacao";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireAuth, requireApprovedProfile, requirePermission } from "@/lib/supabase/auth-helpers";
+import { requireAuth, requireApprovedProfile, requirePermission, requireRole } from "@/lib/supabase/auth-helpers";
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 import { resolveNotificationRecipients } from "@/lib/investimento/notification-service";
 import { CommercialDomainService } from "@/lib/domain/commercial-domain-service";
@@ -16,6 +16,28 @@ import { CommercialDomainService } from "@/lib/domain/commercial-domain-service"
 // --- Divergência Operacional de Calendário ---
 import { MotivoDivergencia } from "../divergencia-constants";
 // --- fim Divergência ---
+
+/**
+ * Cria transportador Nodemailer com timeouts explícitos para garantir
+ * que a resposta da Server Action não fique presa e o banco permaneça soberano.
+ */
+function createInvestimentoMailer() {
+  return nodemailer.createTransport({
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 5000,
+    greetingTimeout: 5000,
+    socketTimeout: 10000,
+  });
+}
 
 function parseCurrency(str: string | null): number | null {
   if (!str) return null;
@@ -98,6 +120,56 @@ async function resolveCanonicalCodigoMatriz(
 
   // Fallback: se não encontrar no cm_redes_matrizes, retornar raw original
   return raw || null;
+}
+
+/**
+ * Resolução Canônica de E-mail de Gerente Regional (SSOT)
+ * Consulta cm_user_profiles por name, manager_name ou normalização do CommercialDomainService
+ */
+async function resolveGerenteEmail(
+  adminClient: any,
+  gerenteNome?: string | null
+): Promise<string> {
+  if (!gerenteNome) return "";
+  const trimmed = gerenteNome.trim();
+  if (!trimmed) return "";
+
+  // 1. Tentar busca direta por name ou manager_name em cm_user_profiles
+  const { data: profiles } = await adminClient
+    .from("cm_user_profiles")
+    .select("id, name, manager_name")
+    .or(`name.eq."${trimmed}",manager_name.eq."${trimmed}"`)
+    .limit(5);
+
+  if (profiles && profiles.length > 0) {
+    for (const p of profiles) {
+      const { data: authUser } = await adminClient.auth.admin.getUserById(p.id);
+      if (authUser?.user?.email) {
+        return authUser.user.email;
+      }
+    }
+  }
+
+  // 2. Normalizar via CommercialDomainService (SSOT)
+  const canonicalMgr = CommercialDomainService.resolveManager(trimmed);
+  const searchName = canonicalMgr?.managerName || trimmed;
+
+  const { data: fuzzyProfiles } = await adminClient
+    .from("cm_user_profiles")
+    .select("id, name, manager_name")
+    .or(`name.ilike.%${searchName}%,manager_name.ilike.%${searchName}%`)
+    .limit(5);
+
+  if (fuzzyProfiles && fuzzyProfiles.length > 0) {
+    for (const p of fuzzyProfiles) {
+      const { data: authUser } = await adminClient.auth.admin.getUserById(p.id);
+      if (authUser?.user?.email) {
+        return authUser.user.email;
+      }
+    }
+  }
+
+  return "";
 }
 
 function parseVolume(str: string | null): number | null {
@@ -1064,10 +1136,10 @@ export async function atualizarChecklistTrade(id: string, checklist: {
     observacao?: string | null;
   };
 }) {
-  const supabase = await createClient();
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
   const adminClient = createAdminClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
 
   // Validação server-side da divergência (camada 2 de 3)
   const div = checklist.divergencia;
@@ -1101,7 +1173,8 @@ export async function atualizarChecklistTrade(id: string, checklist: {
 
 export async function enviarParaTrade(id: string) {
   const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Gerente Regional", "Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -1135,27 +1208,10 @@ export async function enviarParaTrade(id: string) {
     if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
       const adminClient = createAdminClient();
 
-      // Buscar e-mail do gerente regional
-      let managerEmail = "";
-      if (actionView.gerente_responsavel) {
-        const { data: profiles } = await adminClient
-          .from("cm_user_profiles")
-          .select("id")
-          .eq("name", actionView.gerente_responsavel);
+      // Buscar e-mail do gerente regional via resolução canônica SSOT
+      const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
-        if (profiles && profiles.length > 0) {
-          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
-          if (authUser?.user?.email) managerEmail = authUser.user.email;
-        }
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        tls: { rejectUnauthorized: false }
-      });
+      const transporter = createInvestimentoMailer();
 
       const resolvedRecipients = await resolveNotificationRecipients({
         evento: "ENVIAR_TRADE",
@@ -1288,27 +1344,31 @@ export async function enviarParaTrade(id: string) {
         </div>
       `;
 
-      await transporter.sendMail({
-        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-        to: recipients,
-        subject,
-        html: htmlBody,
-      });
-
-      console.log(`[Email Fase 1→2] Notificação enviada para: ${recipients}`);
+      const mailStartTime = Date.now();
+      try {
+        const info = await transporter.sendMail({
+          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+          to: recipients,
+          subject,
+          html: htmlBody,
+        });
+        console.log(`[SMTP_SUCCESS] Evento: ENVIAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+      } catch (mailErr: any) {
+        console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: ENVIAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+      }
     }
-  } catch (mailErr) {
-    console.error("Erro ao enviar e-mail de envio para Trade:", mailErr);
+  } catch (err: any) {
+    console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: ENVIAR_TRADE | Ação ID: ${id} | Erro: ${err?.message || err}`);
   }
 
   revalidatePath("/investimento");
 }
 
 export async function reprovarAcaoTrade(id: string, reason: string) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuário não autenticado.");
 
   if (!reason || !reason.trim()) {
     throw new Error("Motivo da reprovação é obrigatório.");
@@ -1371,26 +1431,9 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
       .single();
 
     if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
-      let managerEmail = "";
-      if (actionView.gerente_responsavel) {
-        const { data: profiles } = await adminClient
-          .from("cm_user_profiles")
-          .select("id")
-          .eq("name", actionView.gerente_responsavel);
+      const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
-        if (profiles && profiles.length > 0) {
-          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
-          if (authUser?.user?.email) managerEmail = authUser.user.email;
-        }
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        tls: { rejectUnauthorized: false }
-      });
+      const transporter = createInvestimentoMailer();
 
       const resolvedRecipients = await resolveNotificationRecipients({
         evento: "REPROVAR_TRADE",
@@ -1508,17 +1551,21 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
         </div>
       `;
 
-      await transporter.sendMail({
-        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-        to: recipients,
-        subject,
-        html: htmlBody,
-      });
-
-      console.log(`[Email Reprovação Trade] Notificação enviada para: ${recipients}`);
+      const mailStartTime = Date.now();
+      try {
+        const info = await transporter.sendMail({
+          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+          to: recipients,
+          subject,
+          html: htmlBody,
+        });
+        console.log(`[SMTP_SUCCESS] Evento: REPROVAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+      } catch (mailErr: any) {
+        console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: REPROVAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+      }
     }
-  } catch (mailErr) {
-    console.error("Erro ao enviar e-mail de reprovação do Trade:", mailErr);
+  } catch (err: any) {
+    console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: REPROVAR_TRADE | Ação ID: ${id} | Erro: ${err?.message || err}`);
   }
 
   revalidatePath("/investimento");
@@ -1534,8 +1581,10 @@ export async function validarTrade(id: string, checklist: {
   conferencia: boolean;
   sem_auditoria?: boolean;
 }) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
   const { error } = await supabase
     .from("cm_acoes_investimento")
@@ -1569,26 +1618,9 @@ export async function validarTrade(id: string, checklist: {
     if (actionView && process.env.SMTP_USER && process.env.SMTP_PASS) {
       const adminClient = createAdminClient();
 
-      let managerEmail = "";
-      if (actionView.gerente_responsavel) {
-        const { data: profiles } = await adminClient
-          .from("cm_user_profiles")
-          .select("id")
-          .eq("name", actionView.gerente_responsavel);
+      const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
-        if (profiles && profiles.length > 0) {
-          const { data: authUser } = await adminClient.auth.admin.getUserById(profiles[0].id);
-          if (authUser?.user?.email) managerEmail = authUser.user.email;
-        }
-      }
-
-      const transporter = nodemailer.createTransport({
-        host: "smtp.gmail.com",
-        port: 465,
-        secure: true,
-        auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-        tls: { rejectUnauthorized: false }
-      });
+      const transporter = createInvestimentoMailer();
 
       const resolvedRecipients = await resolveNotificationRecipients({
         evento: "VALIDAR_TRADE",
@@ -1740,17 +1772,21 @@ export async function validarTrade(id: string, checklist: {
         </div>
       `;
 
-      await transporter.sendMail({
-        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-        to: recipients,
-        subject,
-        html: htmlBody,
-      });
-
-      console.log(`[Email Fase 2→3] Notificação enviada para: ${recipients}`);
+      const mailStartTime = Date.now();
+      try {
+        const info = await transporter.sendMail({
+          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+          to: recipients,
+          subject,
+          html: htmlBody,
+        });
+        console.log(`[SMTP_SUCCESS] Evento: VALIDAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+      } catch (mailErr: any) {
+        console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: VALIDAR_TRADE | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+      }
     }
-  } catch (mailErr) {
-    console.error("Erro ao enviar e-mail de validação do Trade:", mailErr);
+  } catch (err: any) {
+    console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: VALIDAR_TRADE | Ação ID: ${id} | Erro: ${err?.message || err}`);
   }
 
   revalidatePath("/investimento");
@@ -1802,18 +1838,7 @@ async function enviarEmailNotificacaoApuracao(
       return;
     }
 
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false
-      }
-    });
+    const transporter = createInvestimentoMailer();
 
     // 5. Destinatários via Serviço Central por Responsabilidade Funcional
     const resolvedRecipients = await resolveNotificationRecipients({
@@ -2149,6 +2174,10 @@ async function enviarEmailNotificacaoApuracao(
               <td style="padding: 4px 0; color: #111827; font-weight: bold;">${acao.rede} ${acao.codigo_matriz ? `(${acao.codigo_matriz})` : ""}</td>
             </tr>
             <tr>
+              <td style="padding: 4px 0; color: #4b5563;">Gerente Responsável:</td>
+              <td style="padding: 4px 0; color: #111827;">${acao.gerente_responsavel || "-"}</td>
+            </tr>
+            <tr>
               <td style="padding: 4px 0; color: #4b5563;">Tipo de Ação:</td>
               <td style="padding: 4px 0; color: #111827;">${acao.tipo_acao}</td>
             </tr>
@@ -2184,25 +2213,30 @@ async function enviarEmailNotificacaoApuracao(
     `;
 
     // 11. Disparar o e-mail
-    console.log(`[Email Apuração] Enviando notificação para: ${recipients}`);
-    const info = await transporter.sendMail({
-      from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-      to: recipients,
-      subject: subject,
-      html: htmlBody,
-    });
-    console.log(`[Email Apuração] E-mail enviado com sucesso! Message ID: ${info.messageId}`);
-
-  } catch (err) {
-    console.error("[Email Apuração] Erro crítico ao processar/enviar e-mail de apuração:", err);
+    const mailStartTime = Date.now();
+    try {
+      const info = await transporter.sendMail({
+        from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+        to: recipients,
+        subject: subject,
+        html: htmlBody,
+      });
+      console.log(`[SMTP_SUCCESS] Evento: CONCLUIR_APURACAO | Ação ID: ${acaoId} | Código: ${acao.codigo || acaoId} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+    } catch (mailErr: any) {
+      console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: CONCLUIR_APURACAO | Ação ID: ${acaoId} | Código: ${acao.codigo || acaoId} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+    }
+  } catch (err: any) {
+    console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: CONCLUIR_APURACAO | Ação ID: ${acaoId} | Erro: ${err?.message || err}`);
   }
 }
 
 // ─── Fase 3: Apuração Comercial (Dossiê) ────────────────────────────────
 
 export async function preencherApuracao(id: string, formData: FormData) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Gerente Regional", "Trade", "Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
 
   // Parsing resiliente de campos aceitando formato canônico e legado
   const apuracao_numero_acordo = (
@@ -2274,10 +2308,10 @@ export async function preencherApuracao(id: string, formData: FormData) {
 // ─── Fase 4: Conferência pelo Trade ─────────────────────────────────────
 
 export async function conferirTrade(id: string, aprovado: boolean, observacao?: string) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) throw new Error("Usuário não autenticado.");
 
   const updateData: any = {
     trade_conferido_em: new Date().toISOString(),
@@ -2338,37 +2372,12 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
         .single();
 
       if (actionView) {
-        // 2. Tentar obter o e-mail do gerente regional responsável
-        let managerEmail = "";
-        if (actionView.gerente_responsavel) {
-          const { data: profile } = await adminClient
-            .from("cm_user_profiles")
-            .select("id")
-            .eq("manager_name", actionView.gerente_responsavel)
-            .maybeSingle();
-
-          if (profile?.id) {
-            const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
-            if (!userError && managerUser) {
-              managerEmail = managerUser.email || "";
-            }
-          }
-        }
+        // 2. Tentar obter o e-mail do gerente regional responsável via resolução canônica SSOT
+        const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
         // 3. Enviar e-mail de alerta
         if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-          const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            },
-            tls: {
-              rejectUnauthorized: false
-            }
-          });
+          const transporter = createInvestimentoMailer();
 
           // Configurar destinatários via serviço por responsabilidade funcional
           const resolvedRecipients = await resolveNotificationRecipients({
@@ -2451,16 +2460,22 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             </div>
           `;
 
-          await transporter.sendMail({
-            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-            to: recipients,
-            subject: subject,
-            html: htmlBody,
-          });
+          const mailStartTime = Date.now();
+          try {
+            const info = await transporter.sendMail({
+              from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+              to: recipients,
+              subject: subject,
+              html: htmlBody,
+            });
+            console.log(`[SMTP_SUCCESS] Evento: DEVOLVER_FINANCEIRO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+          } catch (mailErr: any) {
+            console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: DEVOLVER_FINANCEIRO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+          }
         }
       }
-    } catch (mailErr) {
-      console.error("Erro ao enviar e-mail de devolução pelo financeiro:", mailErr);
+    } catch (err: any) {
+      console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: DEVOLVER_FINANCEIRO | Ação ID: ${id} | Erro: ${err?.message || err}`);
     }
   }
 
@@ -2477,37 +2492,12 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
         .single();
 
       if (actionView) {
-        // 2. Tentar obter o e-mail do gerente regional responsável
-        let managerEmail = "";
-        if (actionView.gerente_responsavel) {
-          const { data: profile } = await adminClient
-            .from("cm_user_profiles")
-            .select("id")
-            .eq("manager_name", actionView.gerente_responsavel)
-            .maybeSingle();
-
-          if (profile?.id) {
-            const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
-            if (!userError && managerUser) {
-              managerEmail = managerUser.email || "";
-            }
-          }
-        }
+        // 2. Tentar obter o e-mail do gerente regional responsável via resolução canônica SSOT
+        const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
         // 3. Enviar e-mail de alerta
         if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-          const transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 465,
-            secure: true,
-            auth: {
-              user: process.env.SMTP_USER,
-              pass: process.env.SMTP_PASS,
-            },
-            tls: {
-              rejectUnauthorized: false
-            }
-          });
+          const transporter = createInvestimentoMailer();
 
           // Configurar destinatários via serviço por responsabilidade funcional
           const resolvedRecipients = await resolveNotificationRecipients({
@@ -2585,16 +2575,22 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             </div>
           `;
 
-          await transporter.sendMail({
-            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-            to: recipients,
-            subject: subject,
-            html: htmlBody,
-          });
+          const mailStartTime = Date.now();
+          try {
+            const info = await transporter.sendMail({
+              from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+              to: recipients,
+              subject: subject,
+              html: htmlBody,
+            });
+            console.log(`[SMTP_SUCCESS] Evento: APROVAR_FINANCEIRO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+          } catch (mailErr: any) {
+            console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: APROVAR_FINANCEIRO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+          }
         }
       }
-    } catch (mailErr) {
-      console.error("Erro ao enviar e-mail de aprovação pelo financeiro:", mailErr);
+    } catch (err: any) {
+      console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: APROVAR_FINANCEIRO | Ação ID: ${id} | Erro: ${err?.message || err}`);
     }
   }
 
@@ -2604,25 +2600,10 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
 // ─── Fase 5: Confirmação de Pagamento (Financeiro) ──────────────────────
 
 export async function confirmarPagamento(id: string, formData: FormData) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("Usuário não autenticado.");
-  }
-
-  const { data: profile } = await supabase
-    .from("cm_user_profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  const userRole = (profile?.role || "").toLowerCase();
-  const isFinanceiroAllowed = ["admin", "admin master", "financeiro", "ceo"].includes(userRole);
-
-  if (!isFinanceiroAllowed) {
-    throw new Error("Acesso negado: Confirmação de pagamento é uma operação exclusiva do perfil Financeiro.");
-  }
 
   const financeiro_observacoes = formData.get("financeiro_observacoes") as string || null;
   
@@ -2658,22 +2639,8 @@ export async function confirmarPagamento(id: string, formData: FormData) {
       .single();
 
     if (actionView) {
-      // 2. Tentar obter o e-mail do gerente regional responsável
-      let managerEmail = "";
-      if (actionView.gerente_responsavel) {
-        const { data: profile } = await adminClient
-          .from("cm_user_profiles")
-          .select("id")
-          .eq("manager_name", actionView.gerente_responsavel)
-          .maybeSingle();
-
-        if (profile?.id) {
-          const { data: { user: managerUser }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
-          if (!userError && managerUser) {
-            managerEmail = managerUser.email || "";
-          }
-        }
-      }
+      // 2. Tentar obter o e-mail do gerente regional responsável via resolução canônica SSOT
+      const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
       // 3. Obter URL temporária do comprovante se houver
       let comprovanteSignedUrl = "";
@@ -2689,18 +2656,7 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 
       // 4. Enviar e-mail se SMTP configurado
       if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        const transporter = nodemailer.createTransport({
-          host: "smtp.gmail.com",
-          port: 465,
-          secure: true,
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          },
-          tls: {
-            rejectUnauthorized: false
-          }
-        });
+        const transporter = createInvestimentoMailer();
 
         // Configurar destinatários via serviço por responsabilidade funcional
         const resolvedRecipients = await resolveNotificationRecipients({
@@ -2806,16 +2762,22 @@ export async function confirmarPagamento(id: string, formData: FormData) {
           </div>
         `;
 
-        await transporter.sendMail({
-          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-          to: recipients,
-          subject: subject,
-          html: htmlBody,
-        });
+        const mailStartTime = Date.now();
+        try {
+          const info = await transporter.sendMail({
+            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+            to: recipients,
+            subject: subject,
+            html: htmlBody,
+          });
+          console.log(`[SMTP_SUCCESS] Evento: PAGAMENTO_CONFIRMADO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+        } catch (mailErr: any) {
+          console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: PAGAMENTO_CONFIRMADO | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+        }
       }
     }
-  } catch (mailErr) {
-    console.error("Erro ao enviar e-mail de confirmação de pagamento:", mailErr);
+  } catch (err: any) {
+    console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: PAGAMENTO_CONFIRMADO | Ação ID: ${id} | Erro: ${err?.message || err}`);
   }
 
   revalidatePath("/investimento");
@@ -3415,6 +3377,10 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
   if (!motivo || !motivo.trim()) {
     throw new Error("Motivo do cancelamento é obrigatório.");
   }
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Gerente Regional", "Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
+
   try {
     const supabase = await createClient();
     const adminClient = createAdminClient();
@@ -3430,22 +3396,8 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
       throw new Error(`Ação não encontrada: ${fetchError?.message}`);
     }
 
-    // 2. Tentar obter o e-mail do gerente regional responsável
-    let managerEmail = "";
-    if (actionView.gerente_responsavel) {
-      const { data: profile } = await adminClient
-        .from("cm_user_profiles")
-        .select("id")
-        .eq("manager_name", actionView.gerente_responsavel)
-        .maybeSingle();
-
-      if (profile?.id) {
-        const { data: { user }, error: userError } = await adminClient.auth.admin.getUserById(profile.id);
-        if (!userError && user) {
-          managerEmail = user.email || "";
-        }
-      }
-    }
+    // 2. Tentar obter o e-mail do gerente regional responsável via resolução canônica SSOT
+    const managerEmail = await resolveGerenteEmail(adminClient, actionView.gerente_responsavel);
 
     // 3. Atualizar a ação no banco para retornar à Fase 1 (Planejamento) e Rascunho
     const { error: updateError } = await supabase
@@ -3472,18 +3424,7 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
     // 4. Enviar e-mail de alerta
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
       try {
-        const transporter = nodemailer.createTransport({
-          host: "smtp.gmail.com",
-          port: 465,
-          secure: true,
-          auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-          },
-          tls: {
-            rejectUnauthorized: false
-          }
-        });
+        const transporter = createInvestimentoMailer();
 
         // Configurar destinatários via serviço por responsabilidade funcional
         const resolvedRecipients = await resolveNotificationRecipients({
@@ -3569,14 +3510,20 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
           </div>
         `;
 
-        await transporter.sendMail({
-          from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
-          to: recipients,
-          subject: subject,
-          html: htmlBody,
-        });
-      } catch (mailErr) {
-        console.error("Erro ao enviar e-mail de ação não realizada:", mailErr);
+        const mailStartTime = Date.now();
+        try {
+          const info = await transporter.sendMail({
+            from: `"Gestão Coffee Mais" <${process.env.SMTP_USER}>`,
+            to: recipients,
+            subject: subject,
+            html: htmlBody,
+          });
+          console.log(`[SMTP_SUCCESS] Evento: ACAO_NAO_OCORREU | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | MessageId: ${info?.messageId || "ok"}`);
+        } catch (mailErr: any) {
+          console.error(`[SMTP_ERROR] Falha não-bloqueante no envio | Evento: ACAO_NAO_OCORREU | Ação ID: ${id} | Código: ${actionView.codigo || id} | Destinatários: ${recipients} | Duração: ${Date.now() - mailStartTime}ms | Tipo: ${mailErr?.name || "Error"} | Erro: ${mailErr?.message || mailErr}`);
+        }
+      } catch (err: any) {
+        console.error(`[SMTP_ERROR] Falha geral no bloco de e-mail | Evento: ACAO_NAO_OCORREU | Ação ID: ${id} | Erro: ${err?.message || err}`);
       }
     }
 
@@ -3648,9 +3595,10 @@ export async function fecharAcaoInvestimento(
     execution_score?: number;
   }
 ) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Gerente Regional", "Trade", "Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Não autorizado.");
 
   // Fetch the current action to get total investment
   const { data: action } = await supabase

@@ -743,8 +743,8 @@ export class CommercialPlanningService {
         const avg3MKg = avgPriceQ2 > 0 ? avg3M / avgPriceQ2 : 0;
 
         // Target Value & Volume (Kg)
-        const metaVal = metaMap.get(`${net.manager_id}|${net.codigo_matriz}`) ??
-                       metaMap.get(`${net.manager_id}|${redeUpper}`) ?? 0;
+        const metaVal = metaMap.get(`${net.manager_id}|${redeUpper}`) ??
+                       metaMap.get(`${net.manager_id}|${net.codigo_matriz}`) ?? 0;
         const volMetaKg = precoMedio3M > 0 ? metaVal / precoMedio3M : (avgPriceQ2 > 0 ? metaVal / avgPriceQ2 : 0);
         const metaKg = volMetaKg;
 

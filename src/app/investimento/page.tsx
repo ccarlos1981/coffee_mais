@@ -325,11 +325,18 @@ export default function InvestimentoPage() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [tradeChecklist, setTradeChecklist] = useState({ comunicacao: false, logistica: false, auditoria: false, garantia: false, conferencia: false, sem_auditoria: false });
+  const tradeChecklistRef = useRef(tradeChecklist);
+  tradeChecklistRef.current = tradeChecklist;
+
   const [tradeDivergencia, setTradeDivergencia] = useState<{
     possui: boolean;
     motivo: MotivoDivergencia | '';
     observacao: string;
   }>({ possui: false, motivo: '', observacao: '' });
+  const tradeDivergenciaRef = useRef(tradeDivergencia);
+  tradeDivergenciaRef.current = tradeDivergencia;
+
+  const checklistUpdateQueueRef = useRef<Promise<any>>(Promise.resolve());
   const [expandedCampaigns, setExpandedCampaigns] = useState<Record<string, boolean>>({});
   const [globalSearch, setGlobalSearch] = useState("");
   const [filterMes, setFilterMes] = useState(() => {
@@ -803,20 +810,25 @@ export default function InvestimentoPage() {
       actionModalIdRef.current = selectedAction.id;
 
       if (isNewAction) {
-        setTradeChecklist({ 
+        const initialChecklist = { 
           comunicacao: selectedAction.checklist_comunicacao || false, 
           logistica: selectedAction.checklist_logistica || false, 
           auditoria: selectedAction.checklist_auditoria || false, 
           garantia: selectedAction.checklist_garantia || false,
           conferencia: selectedAction.checklist_conferencia || false,
           sem_auditoria: selectedAction.checklist_sem_auditoria || false
-        });
+        };
+        setTradeChecklist(initialChecklist);
+        tradeChecklistRef.current = initialChecklist;
+
         // Sincronizar divergência de calendário
-        setTradeDivergencia({
+        const initialDivergencia = {
           possui: selectedAction.possui_divergencia_calendario || false,
-          motivo: (selectedAction.motivo_divergencia_calendario as MotivoDivergencia) || '',
+          motivo: (selectedAction.motivo_divergencia_calendario as MotivoDivergencia) || ('' as const),
           observacao: selectedAction.observacao_divergencia || '',
-        });
+        };
+        setTradeDivergencia(initialDivergencia);
+        tradeDivergenciaRef.current = initialDivergencia;
         setApuracaoForm({
           numero_acordo: selectedAction.apuracao_numero_acordo || "",
           qtd_vendida: selectedAction.apuracao_qtd_vendida?.toString() || "",
@@ -2349,7 +2361,7 @@ export default function InvestimentoPage() {
     // Preserva a posição atual do scroll no container do modal
     const currentScrollTop = modalScrollRef.current?.scrollTop;
 
-    // Atualização otimista imediata da interface visual
+    // Atualização síncrona imediata da interface visual e da ref
     const keyMap: Record<string, keyof typeof tradeChecklist> = {
       checklist_comunicacao: 'comunicacao',
       checklist_logistica: 'logistica',
@@ -2359,42 +2371,56 @@ export default function InvestimentoPage() {
     };
     const propKey = keyMap[fieldName];
     if (propKey) {
+      tradeChecklistRef.current = {
+        ...tradeChecklistRef.current,
+        [propKey]: checked
+      };
       setTradeChecklist(prev => ({ ...prev, [propKey]: checked }));
     }
     setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: checked } : prev);
     setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: checked } : item));
 
-    try {
-      const updatedChecklist = {
-        comunicacao: fieldName === 'checklist_comunicacao' ? checked : (tradeChecklist.comunicacao ?? selectedAction.checklist_comunicacao ?? false),
-        logistica: fieldName === 'checklist_logistica' ? checked : (tradeChecklist.logistica ?? selectedAction.checklist_logistica ?? false),
-        auditoria: fieldName === 'checklist_auditoria' ? checked : (tradeChecklist.auditoria ?? selectedAction.checklist_auditoria ?? false),
-        garantia: selectedAction.checklist_garantia || false,
-        conferencia: fieldName === 'checklist_conferencia' ? checked : (tradeChecklist.conferencia ?? selectedAction.checklist_conferencia ?? false),
-        sem_auditoria: fieldName === 'checklist_sem_auditoria' ? checked : (tradeChecklist.sem_auditoria ?? selectedAction.checklist_sem_auditoria ?? false),
-        divergencia: {
-          possui: tradeDivergencia.possui,
-          motivo: (tradeDivergencia.motivo as MotivoDivergencia) || null,
-          observacao: tradeDivergencia.observacao || null,
-        }
-      };
+    // Enfileiramento serial assíncrono para garantir integridade e eliminar race conditions
+    checklistUpdateQueueRef.current = checklistUpdateQueueRef.current.then(async () => {
+      try {
+        const latestSnapshot = tradeChecklistRef.current;
+        const updatedChecklist = {
+          comunicacao: latestSnapshot.comunicacao ?? false,
+          logistica: latestSnapshot.logistica ?? false,
+          auditoria: latestSnapshot.auditoria ?? false,
+          garantia: selectedAction.checklist_garantia || false,
+          conferencia: latestSnapshot.conferencia ?? false,
+          sem_auditoria: latestSnapshot.sem_auditoria ?? false,
+          divergencia: {
+            possui: tradeDivergenciaRef.current.possui,
+            motivo: (tradeDivergenciaRef.current.motivo as MotivoDivergencia) || null,
+            observacao: tradeDivergenciaRef.current.observacao || null,
+          }
+        };
 
-      await atualizarChecklistTrade(selectedAction.id, updatedChecklist);
-    } catch (err: any) {
-      console.error(err);
-      // Reverte o estado visual em caso de falha na gravação
-      if (propKey) {
-        setTradeChecklist(prev => ({ ...prev, [propKey]: !checked }));
+        await atualizarChecklistTrade(selectedAction.id, updatedChecklist);
+      } catch (err: any) {
+        console.error("Erro ao sincronizar checklist:", err);
+        // Reverte o estado visual em caso de falha na gravação
+        if (propKey) {
+          tradeChecklistRef.current = {
+            ...tradeChecklistRef.current,
+            [propKey]: !checked
+          };
+          setTradeChecklist(prev => ({ ...prev, [propKey]: !checked }));
+        }
+        setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: !checked } : prev);
+        setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: !checked } : item));
+        alert("Erro ao salvar checklist: " + err.message);
+      } finally {
+        // Garante a manutenção perfeita da posição do scroll
+        if (modalScrollRef.current && currentScrollTop !== undefined) {
+          modalScrollRef.current.scrollTop = currentScrollTop;
+        }
       }
-      setSelectedAction(prev => prev && prev.id === selectedAction.id ? { ...prev, [fieldName]: !checked } : prev);
-      setData(prev => prev.map(item => item.id === selectedAction.id ? { ...item, [fieldName]: !checked } : item));
-      alert("Erro ao salvar checklist: " + err.message);
-    } finally {
-      // Garante a manutenção perfeita da posição do scroll
-      if (modalScrollRef.current && currentScrollTop !== undefined) {
-        modalScrollRef.current.scrollTop = currentScrollTop;
-      }
-    }
+    });
+
+    await checklistUpdateQueueRef.current;
   };
 
   const handleActionEvidenceUpload = async (inputFiles: FileList | File[] | File | null) => {
