@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PlanningTelemetry } from "@/lib/planning/planning-telemetry";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
+import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
 export { PlanningGoalAllocator } from "./planning-goal-allocator";
 
 export interface PlanejavelRedeDTO {
@@ -377,7 +378,7 @@ export class CommercialPlanningService {
       // Fallback 3: Histórico de Vendas em mv_vendas_cliente_mensal
       if (!masterInfo) {
         const { data: salesFallback } = await supabase
-          .from("mv_vendas_cliente_mensal")
+          .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_CLIENTE_MENSAL))
           .select("rede, nome_parceiro, manager, manager_id, channel")
           .or(`rede.ilike.%${redeUpper}%,nome_parceiro.ilike.%${redeUpper}%`)
           .limit(1);

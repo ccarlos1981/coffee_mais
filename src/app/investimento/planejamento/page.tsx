@@ -45,7 +45,7 @@ import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, promoverPlanejamento, obterPlanilhaModelo } from "../lancar/actions";
+import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 interface AcaoInvestimento {
@@ -57,6 +57,7 @@ interface AcaoInvestimento {
   data_inicio: string;
   data_fim: string;
   tipo_acao: string;
+  tipo_acao_detalhe?: string | null;
   familia_produto?: string | null;
   preco_flat?: number | null;
   preco_acao?: number | null;
@@ -515,15 +516,96 @@ export default function PlanejamentoInvestimentoPage() {
     }
   };
 
-  // Promoting action
-  const handlePromote = async (id: string) => {
-    if (!confirm("Confirmar a promoção deste planejamento para Investimento Oficial?")) return;
-    setActionLoading(id);
+  // Cálculo de hash canônico do planejamento para validação de intenção
+  const computePlanningSnapshotHash = (action: AcaoInvestimento) => {
+    const famsSorted = action.familias_detalhes 
+      ? [...action.familias_detalhes].sort((a: any, b: any) => (a.familia_id || '').localeCompare(b.familia_id || ''))
+      : [];
+    const skusSorted = action.skus_detalhes
+      ? [...action.skus_detalhes].sort((a: any, b: any) => (a.sku || '').localeCompare(b.sku || ''))
+      : [];
+
+    const rawStr = [
+      (action.rede || '').toUpperCase().trim(),
+      (action.codigo_matriz || '').trim(),
+      action.mes_referencia || '',
+      action.data_inicio || '',
+      action.data_fim || '',
+      action.date_mode || 'single',
+      action.tipo_acao || '',
+      action.tipo_acao_detalhe || 'Ação de Vendas',
+      action.abrangencia || 'Família',
+      action.tipo_pagamento || 'Transf. Bancária',
+      (action.valor_investimento || 0).toString(),
+      (action.expectativa_volume || 0).toString(),
+      (action.preco_flat || 0).toString(),
+      (action.preco_acao || 0).toString(),
+      JSON.stringify(famsSorted),
+      JSON.stringify(skusSorted)
+    ].join('|');
+
+    let hash = 0;
+    for (let i = 0; i < rawStr.length; i++) {
+      const char = rawStr.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(16);
+  };
+
+  // Oficialização Segura com Idempotência Persistida em sessionStorage
+  const handleOficializar = async (action: AcaoInvestimento | null) => {
+    if (!action) return;
+    const actionId = action.id;
+    if (!confirm(`Deseja oficializar o planejamento para "${getMatrizNome(action)}"?\n\nO investimento oficial correspondente será criado e o registro de planejamento continuará salvo na sua carteira para futuras edições.`)) {
+      return;
+    }
+
+    setActionLoading(actionId);
     setFeedback(null);
+
+    const sessionKey = `coffee_ofic_intent_${actionId}`;
+    const currentHash = computePlanningSnapshotHash(action);
+
+    // 1. Recuperar intenção existente ou gerar nova chave determinística
+    let idempotencyKey = `idem_ofic_${actionId}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     try {
-      await promoverPlanejamento(id);
-      setFeedback({ type: "success", msg: "Ação promovida para Investimento Oficial com sucesso!" });
-      setTimeout(() => setFeedback(null), 3000);
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        const stored = window.sessionStorage.getItem(sessionKey);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed?.key && parsed?.snapshot_hash === currentHash) {
+            idempotencyKey = parsed.key;
+          }
+        }
+        window.sessionStorage.setItem(sessionKey, JSON.stringify({
+          key: idempotencyKey,
+          snapshot_hash: currentHash,
+          timestamp: Date.now()
+        }));
+      }
+    } catch (_) {}
+
+    try {
+      const result = await oficializarPlanejamento(actionId, idempotencyKey);
+
+      if (!result.success) {
+        throw new Error((result as any).message || "Erro ao oficializar planejamento.");
+      }
+
+      // 2. Limpar a intenção após confirmação de sucesso
+      try {
+        if (typeof window !== "undefined" && window.sessionStorage) {
+          window.sessionStorage.removeItem(sessionKey);
+        }
+      } catch (_) {}
+
+      const msg = result.data?.idempotent
+        ? "Oficialização confirmada (requisição idempotente processada com sucesso)."
+        : "Planejamento oficializado com sucesso! O investimento oficial foi gerado e o planejamento permanece disponível para reutilização.";
+
+      setFeedback({ type: "success", msg });
+      setTimeout(() => setFeedback(null), 4000);
       setSelectedAction(null);
       await loadData();
     } catch (err: unknown) {
@@ -531,6 +613,13 @@ export default function PlanejamentoInvestimentoPage() {
       setFeedback({ type: "error", msg: errMsg });
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handlePromote = (id: string) => {
+    const action = data.find(a => a.id === id);
+    if (action) {
+      handleOficializar(action);
     }
   };
 
@@ -996,7 +1085,7 @@ export default function PlanejamentoInvestimentoPage() {
               href="/investimento/lancar?planejamento=true"
               className="flex w-full sm:w-auto items-center justify-center gap-1.5 bg-[#10b981] hover:bg-[#059669] text-white px-3.5 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
             >
-              <CalendarIcon className="w-3.5 h-3.5" />
+              <TrendingUp className="w-3.5 h-3.5" />
               LANÇAR
             </Link>
 
@@ -1270,10 +1359,10 @@ export default function PlanejamentoInvestimentoPage() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => handlePromote(row.id)}
+                              onClick={() => handleOficializar(row)}
                               disabled={actionLoading === row.id}
                               className="p-1.5 bg-[#10b981]/10 border border-[#10b981]/20 text-[#10b981] hover:bg-[#10b981]/25 rounded-lg transition-all disabled:opacity-50"
-                              title="Promover para Oficial"
+                              title="Oficializar Planejamento"
                             >
                               {actionLoading === row.id ? (
                                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -1778,16 +1867,16 @@ export default function PlanejamentoInvestimentoPage() {
             {/* Modal Footer */}
             <div className="px-6 py-4 border-t border-border bg-elevated/30 flex flex-col gap-3">
               <button
-                onClick={() => handlePromote(selectedAction.id)}
+                onClick={() => handleOficializar(selectedAction)}
                 disabled={actionLoading === selectedAction.id}
-                className="w-full bg-[#10b981] hover:bg-[#059669] text-white font-bold text-sm rounded-xl py-3 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50"
+                className="w-full bg-[#10b981] hover:bg-[#059669] text-white font-bold text-sm rounded-xl py-3 flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-50 shadow-md"
               >
                 {actionLoading === selectedAction.id ? (
                   <RefreshCw className="w-5 h-5 animate-spin" />
                 ) : (
                   <CheckCircle2 className="w-5 h-5" />
                 )}
-                Confirmar e Promover p/ Oficial
+                Oficializar Planejamento
               </button>
 
               <div className="flex gap-3">

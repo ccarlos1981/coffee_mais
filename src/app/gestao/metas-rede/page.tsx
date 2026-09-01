@@ -153,8 +153,9 @@ interface RateioPreviewProposal {
 /* ─── Page Component ────────────────────────────────────────────────────────── */
 export default function MetasRedePage() {
   const [loading, setLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<number>(8); // Agosto por padrão
-  const [selectedYear, setSelectedYear] = useState<number>(2026); // 2026 por padrão
+  const [selectedMonth, setSelectedMonth] = useState<number>(8); // Baseline determinística para SSR
+  const [selectedYear, setSelectedYear] = useState<number>(2026); // Baseline determinística para SSR
+  const hasInitializedDateRef = useRef<boolean>(false);
   const [managers, setManagers] = useState<ManagerBlock[]>([]);
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
@@ -508,6 +509,17 @@ export default function MetasRedePage() {
   }, []);
 
   useEffect(() => {
+    if (!hasInitializedDateRef.current) {
+      hasInitializedDateRef.current = true;
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+      if (selectedMonth !== currentMonth || selectedYear !== currentYear) {
+        setSelectedMonth(currentMonth);
+        setSelectedYear(currentYear);
+        return;
+      }
+    }
     loadData(selectedMonth, selectedYear);
   }, [loadData, selectedMonth, selectedYear]);
 
