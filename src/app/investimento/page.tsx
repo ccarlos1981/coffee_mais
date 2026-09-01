@@ -2492,7 +2492,7 @@ export default function InvestimentoPage() {
 
 
   const handleApuracaoSubmit = async () => {
-    if (!selectedAction) return;
+    if (!selectedAction || actionLoading) return;
     try {
       if (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto) {
         throw new Error("Por favor, vincule pelo menos um boleto ou sinalize que o cliente não possui boletos em aberto.");
@@ -2501,7 +2501,9 @@ export default function InvestimentoPage() {
       setActionLoading(selectedAction.id);
       const fd = new FormData();
       fd.append('apuracao_numero_acordo', apuracaoForm.numero_acordo);
+      fd.append('numero_acordo', apuracaoForm.numero_acordo);
       fd.append('apuracao_qtd_vendida', apuracaoForm.qtd_vendida);
+      fd.append('volume_vendido_sellout', apuracaoForm.qtd_vendida);
       fd.append('apuracao_valor_realizado', apuracaoForm.valor_realizado);
       
       // Enviar a lista completa de boletos vinculados e seus valores associados
@@ -2513,9 +2515,6 @@ export default function InvestimentoPage() {
       // Enviar o primeiro ID de boleto para compatibilidade com a coluna legada
       fd.append('apuracao_boleto_id', vinculosBoletos[0]?.boleto_id || "");
       
-      // se tivesse arquivo no form, seria adicionado aqui. Como o usuário pede apenas evidência como URL,
-      // usaremos string se tiver, mas para arquivos teríamos que usar supabase storage.
-      // Vou focar apenas nos campos do form e no upload separado, ou usar um text input por agora.
       fd.append('apuracao_evidencias_url', apuracaoForm.evidencias_url);
       fd.append('condicao_pagamento', apuracaoForm.condicao_pagamento);
       fd.append('sem_boleto', semBoleto ? 'true' : 'false');
@@ -2528,7 +2527,13 @@ export default function InvestimentoPage() {
       loadData();
       setSelectedAction(null);
     } catch (error: any) {
-      setFeedback({ type: "error", msg: error.message });
+      console.error("[handleApuracaoSubmit] Erro ao submeter apuração:", error);
+      const rawMsg = error?.message || "Erro desconhecido ao salvar apuração.";
+      const isServerComponentDigest = rawMsg.includes("Server Components render") || rawMsg.includes("digest");
+      const userMsg = isServerComponentDigest 
+        ? "Falha ao processar a apuração no servidor. Por favor, tente novamente ou verifique as permissões de acesso." 
+        : rawMsg;
+      setFeedback({ type: "error", msg: userMsg });
     } finally {
       setActionLoading(null);
     }

@@ -68,6 +68,7 @@ export function ApuracaoForm({ investment, matrizNome }: ApuracaoFormProps) {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isPending || uploading) return;
     setError(null);
     
     if (!numeroAcordo.trim()) {
@@ -76,11 +77,14 @@ export function ApuracaoForm({ investment, matrizNome }: ApuracaoFormProps) {
     }
 
     const formData = new FormData();
-    formData.append("numero_acordo", numeroAcordo);
+    formData.append("apuracao_numero_acordo", numeroAcordo.trim());
+    formData.append("numero_acordo", numeroAcordo.trim());
+    formData.append("apuracao_qtd_vendida", volumeVendido);
     formData.append("volume_vendido_sellout", volumeVendido);
-    formData.append("vencimento", vencimento);
-    formData.append("dados_quitacao", dadosQuitacao);
+    formData.append("apuracao_valor_realizado", dadosQuitacao);
+    formData.append("condicao_pagamento", vencimento);
     formData.append("post_action_notes", postActionNotes);
+    formData.append("apuracao_evidencias_url", JSON.stringify(evidencias));
     formData.append("evidencias_urls", JSON.stringify(evidencias));
 
     startTransition(async () => {
@@ -88,7 +92,7 @@ export function ApuracaoForm({ investment, matrizNome }: ApuracaoFormProps) {
         await preencherApuracao(investment.id, formData);
         router.push("/investimento");
       } catch (err: any) {
-        setError(err.message || "Ocorreu um erro ao salvar.");
+        setError(err.message || "Ocorreu um erro ao salvar a apuração.");
       }
     });
   };

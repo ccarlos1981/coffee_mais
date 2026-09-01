@@ -93,6 +93,25 @@ export function formatValorMilharSimples(val: number): string {
   return inThousands.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 }
 
+export function getManagerRegionalName(managerId?: string, managerName?: string): string {
+  const normId = String(managerId || "").trim();
+  const normName = String(managerName || "").trim().toUpperCase();
+
+  if (normId === "1000" || normName.includes("JULLIANO") || normName.includes("JULIANO")) {
+    return "São Paulo Capital (SPC)";
+  }
+  if (normId === "1001" || normName.includes("LEANDRO")) {
+    return "Sul";
+  }
+  if (normId === "1002" || normName.includes("LUIZ")) {
+    return "Nordeste / Sudeste";
+  }
+  if (normId === "1003" || normName.includes("JOHN")) {
+    return "Centro-Oeste / Norte";
+  }
+  return managerName || "Outros";
+}
+
 /* ─── Types ─────────────────────────────────────────────────────────────────── */
 interface RedeRow {
   rede: string;
@@ -140,6 +159,7 @@ export default function MetasRedePage() {
   const [expandedManagers, setExpandedManagers] = useState<Set<string>>(new Set());
   const [searchTerm, setSearchTerm] = useState("");
   const [compactView, setCompactView] = useState<boolean>(false);
+  const [showManagerView, setShowManagerView] = useState<boolean>(false);
 
   // Profile Security State (ITEM 1)
   const [userRole, setUserRole] = useState<string>("Admin");
@@ -812,16 +832,14 @@ export default function MetasRedePage() {
       .filter((m) => m.redes.length > 0 || m.manager.toLowerCase().includes(q));
   }, [managers, searchTerm]);
 
-  // Consolidado Nacional — Visão Executiva Direta por Canal (KA × Distribuidor)
-  const nationalConsolidated = useMemo(() => {
-    let kaDistribuida = 0;
-    let kaOficial = 0;
-    let distDistribuida = 0;
-    let distOficial = 0;
+  // Consolidado de Metas Abertas — Visão Executiva por Gerente e Brasil (KA × Distribuidor)
+  const managerConsolidated = useMemo(() => {
+    let totalBrasilKa = 0;
+    let totalBrasilDist = 0;
     let totalRedesKA = 0;
     let totalRedesDist = 0;
 
-    managers.forEach((mgr) => {
+    const managerList = managers.map((mgr) => {
       const kaRedes = mgr.redes.filter((r) => {
         const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
         return !isDist;
@@ -834,90 +852,42 @@ export default function MetasRedePage() {
       totalRedesKA += kaRedes.length;
       totalRedesDist += distRedes.length;
 
+      let kaMeta = 0;
+      let distMeta = 0;
+
       kaRedes.forEach((r) => {
-        kaDistribuida += getMetaValue(r);
-      });
-      distRedes.forEach((r) => {
-        distDistribuida += getMetaValue(r);
-      });
-
-      const chTargets = channelMetaTargets[mgr.manager_id] || { ka: mgr.metaTotal || 0, dist: 0 };
-      kaOficial += chTargets.ka || 0;
-      distOficial += chTargets.dist || 0;
-    });
-
-    const kaDiff = kaOficial - kaDistribuida;
-    const kaConciliated = Math.abs(kaDiff) < 0.01;
-
-    const distDiff = distOficial - distDistribuida;
-    const distConciliated = Math.abs(distDiff) < 0.01;
-
-    return {
-      ka: {
-        distribuida: kaDistribuida,
-        oficial: kaOficial,
-        diff: kaDiff,
-        conciliated: kaConciliated,
-        totalRedes: totalRedesKA
-      },
-      dist: {
-        distribuida: distDistribuida,
-        oficial: distOficial,
-        diff: distDiff,
-        conciliated: distConciliated,
-        totalRedes: totalRedesDist
-      }
-    };
-  }, [managers, channelMetaTargets, getMetaValue]);
-
-  // Resumo Executivo & Cards de Conciliação em Tempo Real (ITEM 6 — SINCRONIZAÇÃO REATIVA)
-  const executiveCards = useMemo(() => {
-    let totalMed3M = 0;
-    let totalMetaInputted = 0;
-    let totalConsolidatedGoal = 0;
-    let totalRedesCount = 0;
-    let totalRedesWithGoal = 0;
-    let totalVolMetaKg = 0;
-
-    managers.forEach((mgr) => {
-      const mgrKey = mgr.manager_id || mgr.manager;
-      const mgrGoalTarget = managerMetaTargets[mgrKey] || mgr.metaTotal || 0;
-      totalConsolidatedGoal += mgrGoalTarget;
-      totalMed3M += mgr.grandTotalMed3M;
-      totalRedesCount += mgr.redes.length;
-
-      mgr.redes.forEach((r) => {
         const val = getMetaValue(r);
-        const pm3M = r.precoMedio3M > 0 ? r.precoMedio3M : (r.avgPriceQ2 > 0 ? r.avgPriceQ2 : 0);
-        const volKg = pm3M > 0 ? val / pm3M : 0;
-        
-        if (val > 0) {
-          totalMetaInputted += val;
-          totalRedesWithGoal++;
-          totalVolMetaKg += volKg;
-        }
+        kaMeta += val;
+        totalBrasilKa += val;
       });
+
+      distRedes.forEach((r) => {
+        const val = getMetaValue(r);
+        distMeta += val;
+        totalBrasilDist += val;
+      });
+
+      return {
+        manager: mgr.manager,
+        manager_id: mgr.manager_id,
+        kaMeta,
+        distMeta,
+        totalMeta: kaMeta + distMeta,
+        kaRedesCount: kaRedes.length,
+        distRedesCount: distRedes.length,
+        totalRedesCount: kaRedes.length + distRedes.length
+      };
     });
 
-    const diffVal = totalConsolidatedGoal - totalMetaInputted;
-    const diffPct = totalConsolidatedGoal > 0 ? (diffVal / totalConsolidatedGoal) * 100 : 0;
-    const isConciliated = Math.abs(diffVal) < 0.01;
-    const pctDistributed = totalConsolidatedGoal > 0 ? (totalMetaInputted / totalConsolidatedGoal) * 100 : 0;
-
     return {
-      totalMed3M,
-      totalMetaInputted,
-      totalConsolidatedGoal,
-      diffVal,
-      diffPct,
-      isConciliated,
-      pctDistributed,
-      totalRedesCount,
-      totalRedesWithGoal,
-      totalVolMetaKg,
-      saldoRestante: Math.max(0, diffVal)
+      managersSummary: managerList,
+      brasilKa: totalBrasilKa,
+      brasilDist: totalBrasilDist,
+      kaCount: totalRedesKA,
+      distCount: totalRedesDist,
+      totalBrasil: totalBrasilKa + totalBrasilDist
     };
-  }, [managers, managerMetaTargets, getMetaValue]);
+  }, [managers, metaInputs, getMetaValue]);
 
   const dynamicPrecedingMonths = useMemo(() => {
     return getPreceding3ClosedMonths(selectedMonth, selectedYear);
@@ -1097,87 +1067,135 @@ export default function MetasRedePage() {
 
       {/* Main Content */}
       <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-6">
-        {/* 🏛️ CONSOLIDADO NACIONAL NO TOPO DA TELA (KA × DISTRIBUIDOR) */}
-        <div className="bg-white rounded-xl border border-neutral-200 p-4 shadow-xs">
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-2.5 mb-3.5 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-neutral-900">
-                Consolidado Nacional — {MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}
-              </span>
+        {/* 🏛️ CONSOLIDADO DE METAS ABERTAS — VISÃO EXECUTIVA POR GERENTE E BRASIL (KA × DISTRIBUIDOR) */}
+        <div className="bg-white rounded-xl border border-neutral-200 p-5 shadow-xs transition-all">
+          <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4 flex-wrap gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-1.5 rounded-lg bg-neutral-900 text-white font-bold">
+                <Target className="w-4 h-4 text-amber-400" />
+              </div>
+              <div>
+                <h2 className="text-xs font-black uppercase tracking-wider text-neutral-900">
+                  Consolidado de Metas Abertas — {MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}
+                </h2>
+                <p className="text-[11px] text-neutral-500 font-medium">
+                  Acompanhamento executivo das metas comerciais abertas por gerente e consolidado Brasil em tempo real.
+                </p>
+              </div>
             </div>
-            <div className="text-[11px] font-bold text-neutral-500">
-              Total Brasil: {nationalConsolidated.ka.totalRedes + nationalConsolidated.dist.totalRedes} Redes Planejáveis ({nationalConsolidated.ka.totalRedes} KA / {nationalConsolidated.dist.totalRedes} Dist)
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Botão de Alternância de Visão por Gerente */}
+              <button
+                type="button"
+                onClick={() => setShowManagerView((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                  showManagerView
+                    ? "bg-neutral-900 text-white border-neutral-900 shadow-xs"
+                    : "bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 border-neutral-300 shadow-2xs"
+                }`}
+                title={showManagerView ? "Ocultar detalhamento por gerente" : "Exibir metas abertas por gerente"}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>{showManagerView ? "Ocultar por Gerente" : "Ver por Gerente"}</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showManagerView ? "rotate-180" : ""}`} />
+              </button>
+
+              <div className="text-xs font-bold text-neutral-700 bg-neutral-100 px-3.5 py-1.5 rounded-lg border border-neutral-200 flex items-center gap-2">
+                <span className="text-neutral-500 uppercase text-[10px] tracking-wider font-extrabold">Total Brasil Aberto:</span>
+                <span className="font-mono font-black text-neutral-950 text-sm">
+                  {formatCurrency(managerConsolidated.totalBrasil)}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Bloco Nacional: CANAL KA */}
-            <div className="bg-gradient-to-br from-indigo-50/50 via-white to-white rounded-xl border border-indigo-100 p-4 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between border-b border-indigo-50 pb-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700">
-                    <Briefcase className="w-3.5 h-3.5" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Bloco: CANAL KEY ACCOUNT (KA) */}
+            <div className="bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
+                      <Briefcase className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Key Account (KA)</span>
                   </div>
-                  <span className="text-xs font-black uppercase tracking-wider text-indigo-950">Canal KA</span>
+                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100 font-mono">
+                    {managerConsolidated.kaCount} Redes
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100">
-                  {nationalConsolidated.ka.totalRedes} Redes
-                </span>
+
+                {/* Visão de Gerentes KA (Recolhida por padrão) */}
+                {showManagerView ? (
+                  <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
+                    {managerConsolidated.managersSummary.map((m) => (
+                      <div key={`ka-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
+                        <span className="font-semibold text-neutral-700">{m.manager}</span>
+                        <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.kaMeta)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => setShowManagerView(true)}
+                      className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>▸ Ver por Gerente</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2.5 text-center">
-                <div className="bg-white rounded-lg p-2.5 border border-indigo-100/60 shadow-2xs">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Distribuída</div>
-                  <div className="text-xs sm:text-sm font-black text-indigo-700 mt-1 font-mono">{formatCurrency(nationalConsolidated.ka.distribuida)}</div>
-                </div>
-                <div className="bg-white rounded-lg p-2.5 border border-indigo-100/60 shadow-2xs">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Oficial</div>
-                  <div className="text-xs sm:text-sm font-black text-neutral-900 mt-1 font-mono">{formatCurrency(nationalConsolidated.ka.oficial)}</div>
-                </div>
-                <div className={`rounded-lg p-2.5 border shadow-2xs ${
-                  nationalConsolidated.ka.conciliated 
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
-                    : "bg-amber-50 border-amber-200 text-amber-900"
-                }`}>
-                  <div className="text-[10px] font-bold uppercase tracking-tight">Saldo</div>
-                  <div className="text-xs sm:text-sm font-black mt-1 font-mono">
-                    {nationalConsolidated.ka.conciliated ? "✓ Conciliado" : formatCurrency(nationalConsolidated.ka.diff)}
-                  </div>
-                </div>
+
+              <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
+                <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (KA)</span>
+                <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilKa)}</span>
               </div>
             </div>
 
-            {/* Bloco Nacional: CANAL DISTRIBUIDOR */}
-            <div className="bg-gradient-to-br from-amber-50/50 via-white to-white rounded-xl border border-amber-100 p-4 shadow-xs flex flex-col justify-between">
-              <div className="flex items-center justify-between border-b border-amber-50 pb-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-700">
-                    <Truck className="w-3.5 h-3.5" />
+            {/* Bloco: CANAL DISTRIBUIDOR */}
+            <div className="bg-gradient-to-br from-slate-50/80 via-white to-amber-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-800 font-bold">
+                      <Truck className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Distribuidor</span>
                   </div>
-                  <span className="text-xs font-black uppercase tracking-wider text-amber-950">Distribuidor</span>
+                  <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100 font-mono">
+                    {managerConsolidated.distCount} Redes
+                  </span>
                 </div>
-                <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100">
-                  {nationalConsolidated.dist.totalRedes} Redes
-                </span>
+
+                {/* Visão de Gerentes Distribuidor (Recolhida por padrão) */}
+                {showManagerView ? (
+                  <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
+                    {managerConsolidated.managersSummary.map((m) => (
+                      <div key={`dist-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
+                        <span className="font-semibold text-neutral-700">{m.manager}</span>
+                        <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.distMeta)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
+                    <button
+                      type="button"
+                      onClick={() => setShowManagerView(true)}
+                      className="text-amber-700 hover:text-amber-900 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>▸ Ver por Gerente</span>
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2.5 text-center">
-                <div className="bg-white rounded-lg p-2.5 border border-amber-100/60 shadow-2xs">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Distribuída</div>
-                  <div className="text-xs sm:text-sm font-black text-amber-700 mt-1 font-mono">{formatCurrency(nationalConsolidated.dist.distribuida)}</div>
-                </div>
-                <div className="bg-white rounded-lg p-2.5 border border-amber-100/60 shadow-2xs">
-                  <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">Meta Oficial</div>
-                  <div className="text-xs sm:text-sm font-black text-neutral-900 mt-1 font-mono">{formatCurrency(nationalConsolidated.dist.oficial)}</div>
-                </div>
-                <div className={`rounded-lg p-2.5 border shadow-2xs ${
-                  nationalConsolidated.dist.conciliated 
-                    ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
-                    : "bg-amber-50 border-amber-200 text-amber-900"
-                }`}>
-                  <div className="text-[10px] font-bold uppercase tracking-tight">Saldo</div>
-                  <div className="text-xs sm:text-sm font-black mt-1 font-mono">
-                    {nationalConsolidated.dist.conciliated ? "✓ Conciliado" : formatCurrency(nationalConsolidated.dist.diff)}
-                  </div>
-                </div>
+
+              <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
+                <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (Dist)</span>
+                <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilDist)}</span>
               </div>
             </div>
           </div>

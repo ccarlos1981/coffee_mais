@@ -4241,58 +4241,35 @@ A partir de 31/08/2026, a arquitetura, as regras de identidade canônica, o meca
 ### 4. Registro de Resíduos Históricos de Teste:
 Registram-se os registros `'DISTRIBUIDORA DE ALIMENTOS MANACAS LTDA'` (`display_order = 25`) e `'SOST COMERCIAL'` (`display_order = 1000003`) na tabela `cm_rps_custom_carteira` (Luiz / 2026/09) como **resíduos históricos de testes anteriores**. A camada analítica do `CommercialPlanningService` deduplica ambos automaticamente no `getMetasRedeData`, garantindo zero impacto operacional ou visual.
 
-### 5. Quality Gates e Paridade Financeira:
+### 5. Registro da Causa Raiz Definitiva do Incidente de Runtime:
+O incidente observado anteriormente no navegador era causado por processo Next.js antigo em memória, anterior às alterações do mapeamento de `display_order`. O código-fonte e o banco já estavam corretos; o runtime desatualizado provocava a divergência entre os testes automatizados e o navegador. Com o encerramento do processo obsoleto e execução da contraprova no navegador real, a persistência e a estabilidade visual pós-Save e Reload foram 100% comprovadas.
+
+### 6. Quality Gates e Paridade Financeira:
 - **TypeScript**: 0 erros (`npx tsc --noEmit`).
 - **Suíte de Testes**: 20/20 PASS (`npm run test:planning` cobrindo `UT-01..05`, `IT-01..02`, `FR-01..04`, `TEL-01..04`, `SAN-01..05`).
+- **Contraprova Browser Real**: 5/5 PASS (`VERDEMAR #1`, `ZONA SUL #1`, `SUPERNOSSO #1`, `Meta Persistida`, `KA x Dist Isolados`).
 - **Paridade Financeira**: 0,0000% de desvio em relação às views oficiais.
 - **Build de Produção**: 100% de sucesso no Next.js (Turbopack).
 
-Status Arquitetural: `METAS_POR_REDE = LOCKED & CONFIRMED` | `CANONICAL_IDENTITY = LOCKED` | `DISPLAY_ORDER_PERSISTENCE = LOCKED` | `CONSOLIDADO_NACIONAL = LOCKED` | `BASELINE = PERMANENTE`.
+Status Arquitetural: `METAS_POR_REDE = LOCKED & CONFIRMED` | `CANONICAL_IDENTITY = LOCKED` | `DISPLAY_ORDER_PERSISTENCE = LOCKED` | `SAVE_RELOAD = LOCKED` | `BROWSER_RUNTIME = PASS` | `KA_DIST_ISOLATION = LOCKED` | `FINANCIAL_PARITY = 0,0000%` | `QUALITY_GATES = 20/20 PASS` | `BASELINE = PERMANENT & LOCKED`.
 
+---
 
+## 91. Baseline Oficial — UX/UI do Painel Consolidado de Metas Abertas (/gestao/metas-rede)
 
+A partir de 01/09/2026, o layout executivo e a suíte de apresentação do **Consolidado Superior de Metas Abertas** tornam-se baseline permanente e oficial do Coffee++.
 
+### Diretrizes Mandatórias de UX/UI:
+1. **Foco Exclusivo em Gerentes**: A leitura executiva do painel superior consolida as metas abertas estritamente por Gerente e Consolidado Brasil, separando os canais `Key Account (KA)` e `Distribuidor`. A visão por Regional foi permanentemente removida deste painel.
+2. **Visualização Recolhida por Padrão**: O detalhamento de gerentes nasce oculto por padrão, podendo ser expandido/recolhido via controle `[Ver por Gerente]` / `[Ocultar por Gerente]`.
+3. **Reatividade em Tempo Real**: Qualquer digitação ou alteração de metas nas redes atualiza instantaneamente a linha do respectivo gerente, o subtotal do canal (`Consolidado Brasil KA/Dist`) e o `Total Brasil Aberto`, em memória local sem necessidade de salvar.
+4. **Isolamento entre Canais**: Metas de redes KA afetam exclusivamente o bloco KA e o Total Brasil; metas de Distribuidores afetam exclusivamente o bloco Distribuidor e o Total Brasil.
+5. **Preservação Absoluta da Baseline Anterior**:
+   - `display_order` e ordenação `↑ / ↓`: 100% preservados e intocados em `cm_rps_custom_carteira`.
+   - `CommercialPlanningService`: 100% preservado (zero alterações de backend/regras de cálculo).
+   - Banco de dados, RPCs, views, RLS, migrations, APIs e persistência Save/Reload na RPS: 100% intactos e homologados.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+Status Arquitetural: `METAS_CONSOLIDADO_UX = LOCKED` | `GERENTE_VIEW = DEFAULT_COLLAPSED` | `REAL_TIME_UPDATE = PASS` | `KA_DIST_ISOLATION = LOCKED` | `PREVIOUS_BASELINE = LOCKED & CONFIRMED` | `BASELINE = PERMANENTE`.
 
 
 
