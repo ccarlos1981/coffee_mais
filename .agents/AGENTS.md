@@ -4725,4 +4725,33 @@ A partir de 01/09/2026, o mecanismo de inicialização da competência e seguran
 
 Status Arquitetural: `COMPETENCIA_VIGENTE = LOCKED & PASS` | `HYDRATION_SAFETY = LOCKED & PASS` | `SSR_CLIENT_PARITY = 100%` | `RELOAD = PASS` | `MANUAL_SELECTION = PASS` | `REGRESSION = ZERO` | `QUALITY_GATES = PASS` | `PREVIOUS_BASELINE = LOCKED & CONFIRMED` | `STATUS_ARQUITETURAL = BASELINE_PERMANENTE`.
 
+---
+
+## 94. Baseline Oficial — Módulo de Investimentos: Múltiplas Ações / Períodos Comerciais + Plano Financeiro / Parcelamento / Pagamentos N:N
+
+A partir de 01/09/2026, a evolução arquitetural do **Módulo de Investimentos Comerciais** passa a integrar oficialmente o ecossistema Coffee++ sob a baseline permanente `BASELINE_INVESTIMENTOS_20260901_LOCKED`, após aprovação unânime e homologação formal em todos os Gates de Governança (Gate 1, Gate 2, Gate 3, Gate 4 e Gate 5.1).
+
+### Diretrizes Mandatórias de Arquitetura:
+1. **Desacoplamento Absoluto entre Ações Comerciais e Parcelas Financeiras**:
+   - Uma negociação comercial pode conter $N$ ações comerciais físicas independentes atendidas por $M$ prestações financeiras de fluxo de caixa (ex: 3 Ações comerciais atendidas por 4 Parcelas financeiras e vice-versa).
+   - O parcelamento financeiro **NUNCA** cria ações comerciais automaticamente.
+   - A materialização de períodos futuros ocorre exclusivamente sob configuração explícita (`is_materializada_futura = true`).
+2. **Regra Inviolável de Rede Única por Negociação**:
+   - Todas as ações comerciais pertencentes a uma mesma campanha/negociação devem pertencer estritamente à mesma rede da carteira comercial do Gerente Regional (`count(DISTINCT rede) = 1`).
+   - O banco de dados rejeita transacionalmente qualquer tentativa de submeter ações de redes distintas na mesma negociação.
+3. **Preservação de Histórico Contábil e Baixa Parcial (Regra 2A)**:
+   - Amortizações parciais de parcelas atualizam o `saldo_remanescente` e `valor_pago_acumulado`, preservando o `valor_previsto_original` imutável para reconstrução contábil.
+4. **Amortização em Cascata FIFO e Alocações N:N (Regra 3A)**:
+   - Pagamentos com valor superior à parcela corrente liquidam a parcela atual e transferem o saldo excedente para as parcelas subsequentes em ordem cronológica através da entidade associativa `cm_investimento_pagamento_alocacoes` (`UNIQUE (pagamento_id, parcela_id)`).
+5. **Quitação Antecipada Não-Destrutiva (Soft-Cancel)**:
+   - A liquidação antecipada de uma negociação cancela as parcelas financeiras pendentes (`status_parcela = 'CANCELADA_QUITACAO_ANTECIPADA'`), mantendo as ações comerciais físicas e o histórico contábil integralmente preservados (proibição absoluta de `DELETE` físico).
+6. **Preservação Total da Governança Financeira (Analytics / DRE / MACO)**:
+   - A apuração do investimento comercial no DRE consome exclusivamente `cm_acoes_investimento.valor_investimento` (`is_planejamento = false`).
+   - O parcelamento de fluxo de caixa **NÃO** multiplica nem altera os investimentos no DRE (0,0000% de desvio financeiro downstream).
+7. **Idempotência e Segurança Transacional**:
+   - Toda criação e baixa de pagamentos é protegida por locks advisory (`pg_advisory_xact_lock`) e logs imutáveis em `cm_audit_logs`.
+
+Status Arquitetural: `BASELINE_INVESTIMENTOS_20260901_LOCKED = HOMOLOGADO_E_CONGELADO` | `MULTIPLAS_ACOES = LOCKED` | `PLANO_FINANCEIRO = LOCKED` | `PAGAMENTOS_NN = LOCKED` | `DRE_MACO_PARITY = 100%` | `STATUS_ARQUITETURAL = BASELINE_PERMANENTE`.
+
+
 

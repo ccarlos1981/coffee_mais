@@ -8,6 +8,14 @@ import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
 import { LaunchInvestmentAdvisor } from "./LaunchInvestmentAdvisor";
 import { cleanMatrixCode } from "@/lib/utils/excel-import";
+import { PlanoFinanceiroSection } from "../components/PlanoFinanceiroSection";
+import { MultiplasAcoesSection } from "../components/MultiplasAcoesSection";
+import { 
+  ParcelaFinanceira, 
+  AcaoComercialItem, 
+  gerarGradeParcelasIguais, 
+  validarParidadeNegociacao 
+} from "@/lib/investimento/plano-financeiro-service";
 
 interface InvestmentFormProps {
   redes: Array<{ codigo: string; displayCode?: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
@@ -302,6 +310,34 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
 
+  // Modo Multi-Ações & Plano Financeiro
+  const [modoMultiplasAcoes, setModoMultiplasAcoes] = useState<boolean>(false);
+  const [multiplasAcoes, setMultiplasAcoes] = useState<AcaoComercialItem[]>(() => {
+    const defaultFam = (familias && familias[0]) ? familias[0] : "Linhas Especiais";
+    const dataInicio = initialData?.data_inicio || new Date().toISOString().slice(0, 10);
+    const dFim = new Date();
+    dFim.setDate(dFim.getDate() + 30);
+    const dataFim = initialData?.data_fim || dFim.toISOString().slice(0, 10);
+
+    return [{
+      familia_id: toFamiliaId(defaultFam),
+      familia_nome: defaultFam,
+      data_inicio: dataInicio,
+      data_fim: dataFim,
+      preco_flat: initialData?.preco_flat || 0,
+      preco_acao: initialData?.preco_acao || 0,
+      valor_investimento: initialData?.valor_investimento || 0,
+      expectativa_volume: initialData?.expectativa_volume || 1,
+      abrangencia: "Família",
+      tipo_pagamento: initialData?.tipo_pagamento || "Transf. Bancária",
+      tipo_acao: initialData?.tipo_acao || "Vendas",
+      tipo_acao_detalhe: initialData?.tipo_acao_detalhe || "Ação de Vendas",
+      is_materializada_futura: false
+    }];
+  });
+
+  const [parcelasPlano, setParcelasPlano] = useState<ParcelaFinanceira[]>([]);
+
   // Aniversário states (somente ativo quando tipoAcaoDetalhe === "Aniversário")
   const [tipoAniversario, setTipoAniversario] = useState<"Pagamento Único" | "Ação na Família">(() => {
     if (initialData?.tipo_acao_detalhe === "Aniversário") {
@@ -449,6 +485,44 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     }
   };
 
+  // Cálculo unificado do total investido na negociação
+  const totalInvestimentoCalculado = useMemo(() => {
+    if (isAniversarioPagamentoUnico) {
+      return parseNumericValue(valorPagamentoUnico);
+    }
+    if (modoMultiplasAcoes) {
+      return Math.round(multiplasAcoes.reduce((acc, a) => acc + (Number(a.valor_investimento) || 0), 0) * 100) / 100;
+    }
+    const totFam = showFamilias ? selectedFamilias.reduce((total, fam) => {
+      const inv = parseNumericValue(familiaDetails[fam]?.investimento || "");
+      const vol = parseNumericValue(familiaDetails[fam]?.expectativa_volume || "");
+      return total + (inv * vol);
+    }, 0) : 0;
+    const totSku = showSkus ? selectedSkus.reduce((total, sku) => {
+      const inv = parseNumericValue(skuDetails[sku]?.investimento || "");
+      const vol = parseNumericValue(skuDetails[sku]?.expectativa_volume || "");
+      return total + (inv * vol);
+    }, 0) : 0;
+    return Math.round((totFam + totSku) * 100) / 100;
+  }, [isAniversarioPagamentoUnico, valorPagamentoUnico, modoMultiplasAcoes, multiplasAcoes, showFamilias, selectedFamilias, familiaDetails, showSkus, selectedSkus, skuDetails]);
+
+  // Sincronização inicial da parcela à vista
+  useEffect(() => {
+    if (parcelasPlano.length <= 1) {
+      setParcelasPlano([{
+        numero_parcela: 1,
+        total_parcelas: 1,
+        valor_previsto_original: totalInvestimentoCalculado,
+        valor_previsto: totalInvestimentoCalculado,
+        valor_pago_acumulado: 0,
+        saldo_remanescente: totalInvestimentoCalculado,
+        data_vencimento: globalStart || new Date().toISOString().slice(0, 10),
+        tipo_pagamento: tipoPagamento || "Transf. Bancária",
+        status_parcela: "PENDENTE"
+      }]);
+    }
+  }, [totalInvestimentoCalculado, globalStart, tipoPagamento]);
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -461,6 +535,15 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     const mes_referencia = new FormData(e.currentTarget).get("mes_referencia") as string;
     if (!mes_referencia) {
       setError("Por favor, selecione o mês de referência.");
+      return;
+    }
+
+    // Validação de paridade financeira entre ações e parcelas
+    const somaParcelasAtuais = Math.round(parcelasPlano.reduce((acc, p) => acc + (Number(p.valor_previsto) || 0), 0) * 100) / 100;
+    const diferencaCentavos = Math.abs(Math.round((totalInvestimentoCalculado - somaParcelasAtuais) * 100) / 100);
+
+    if (totalInvestimentoCalculado > 0 && diferencaCentavos > 0.01) {
+      setError(`Divergência Financeira: O plano financeiro totaliza R$ ${somaParcelasAtuais.toFixed(2)}, mas as ações comerciais somam R$ ${totalInvestimentoCalculado.toFixed(2)}. Por favor, equilibre as parcelas antes de salvar.`);
       return;
     }
 
@@ -510,6 +593,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
       formData.append("familias_detalhes", JSON.stringify(packedUnico));
       formData.append("skus_detalhes", "[]");
       formData.append("is_planejamento", isPlanejamento ? "true" : "false");
+      formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
 
       startTransition(async () => {
         try {
@@ -682,6 +766,10 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     }
 
     formData.append("is_planejamento", isPlanejamento ? "true" : "false");
+    formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
+    if (modoMultiplasAcoes) {
+      formData.append("multiplas_acoes", JSON.stringify(multiplasAcoes));
+    }
 
     startTransition(async () => {
       try {
@@ -1004,8 +1092,61 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
           </div>
         </div>
 
-        {/* BLOCK 3: Pagamento Único ou Abrangência */}
-        {isAniversarioPagamentoUnico ? (
+        {/* Toggle Modo Multi-Ações / Períodos Comerciais */}
+        {!isAniversarioPagamentoUnico && (
+          <div className="pt-4 border-t border-border">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-elevated/40 border border-border/70 rounded-xl mb-4">
+              <div>
+                <div className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Package className="w-4 h-4 text-gold" />
+                  Estrutura da Negociação Comercial
+                </div>
+                <div className="text-[11px] text-muted">
+                  Escolha entre lançamento convencional ou múltiplas ações/períodos independentes
+                </div>
+              </div>
+              <div className="flex items-center bg-card border border-border p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setModoMultiplasAcoes(false)}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                    !modoMultiplasAcoes
+                      ? "bg-gold text-black shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Lançamento Convencional
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoMultiplasAcoes(true)}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${
+                    modoMultiplasAcoes
+                      ? "bg-gold text-black shadow-sm"
+                      : "text-muted hover:text-foreground"
+                  }`}
+                >
+                  Múltiplas Ações / Períodos
+                </button>
+              </div>
+            </div>
+
+            {modoMultiplasAcoes && (
+              <div className="mb-4">
+                <MultiplasAcoesSection
+                  acoes={multiplasAcoes}
+                  onChangeAcoes={setMultiplasAcoes}
+                  familiasDisponiveis={(familias || []).map(f => ({ id: toFamiliaId(f), nome: f }))}
+                  redeNome={selectedRede?.nome || ""}
+                  disabled={isLocked}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* BLOCK 3: Pagamento Único ou Abrangência (oculto se modo multi-ações estiver ativo) */}
+        {!modoMultiplasAcoes && (isAniversarioPagamentoUnico ? (
           <div className="pt-4 border-t border-border space-y-4 animate-in fade-in">
             <div className="space-y-4 bg-background border border-border p-4 rounded-xl">
               <div className="space-y-2">
@@ -1396,6 +1537,20 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
                 </span>
               </div>
             )}
+          </div>
+        ))}
+
+        {/* SEÇÃO INTEGRADA: Plano Financeiro & Parcelamento */}
+        {totalInvestimentoCalculado > 0 && (
+          <div className="pt-4 border-t border-border">
+            <PlanoFinanceiroSection
+              totalAcoes={totalInvestimentoCalculado}
+              dataInicioGlobal={globalStart}
+              tipoPagamentoGlobal={tipoPagamento}
+              parcelas={parcelasPlano}
+              onChangeParcelas={setParcelasPlano}
+              disabled={isLocked}
+            />
           </div>
         )}
 
