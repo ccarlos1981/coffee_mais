@@ -4469,32 +4469,60 @@ export async function reconciliarFinanceiroCampanha(campanhaId: string): Promise
 }
 
 /**
- * Exclui fisicamente uma ação comercial ou planejamento elegível com validação rigorosa de governança (Gate 5.7).
+ * Exclui fisicamente uma ação comercial ou planejamento elegível com validação rigorosa de governança (Gate 5.7 & 5.9).
  */
-export async function excluirAcaoInvestimento(id: string, motivo?: string) {
-  const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+export async function excluirAcaoInvestimento(
+  id: string,
+  motivo?: string
+): Promise<ActionResult<{ acao_id: string; message: string }>> {
+  try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
 
-  const adminClient = createAdminClient();
-  const { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", {
-    p_acao_id: id,
-    p_motivo: motivo || "Exclusão solicitada pelo usuário",
-    p_user_id: user.id
-  });
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", {
+      p_acao_id: id,
+      p_motivo: motivo || "Exclusão solicitada pelo usuário",
+      p_user_id: user.id
+    });
 
-  if (error) {
-    console.error("Erro na RPC excluir_acao_investimento_v1:", error);
-    throw new Error(error.message || "Erro ao excluir ação de investimento.");
+    if (error) {
+      console.error("Erro na RPC excluir_acao_investimento_v1:", error);
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        error.message || "Erro ao excluir ação de investimento."
+      );
+    }
+
+    if (!data?.success) {
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        data?.error || "Falha ao excluir ação de investimento."
+      );
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+
+    return successResult({
+      acao_id: id,
+      message: data.message || "Ação excluída com sucesso."
+    });
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sessão expirada. Faça login novamente.");
+    }
+    if (err.message === "PROFILE_NOT_APPROVED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Perfil de usuário não está aprovado.");
+    }
+    if (err.message === "PROFILE_NOT_FOUND") {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Perfil de usuário não encontrado.");
+    }
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      err?.message || "Erro inesperado ao processar exclusão."
+    );
   }
-
-  if (!data?.success) {
-    throw new Error(data?.error || "Falha ao excluir ação de investimento.");
-  }
-
-  revalidatePath("/investimento");
-  revalidatePath("/investimento/planejamento");
-
-  return { success: true, acao_id: id, message: data.message || "Ação excluída com sucesso." };
 }
 
 /**
