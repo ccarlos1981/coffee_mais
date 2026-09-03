@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package, Lock, Unlock, AlertTriangle, Check } from "lucide-react";
+import { ArrowLeft, Calendar, Save, CheckCircle2, ChevronDown, DollarSign, Package, Lock, Unlock, AlertTriangle, Check, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
@@ -22,9 +22,10 @@ interface InvestmentFormProps {
   familias: string[];
   skus?: string[];
   initialData?: any;
+  canCreateTest?: boolean;
 }
 
-export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }: InvestmentFormProps) {
+export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, canCreateTest = false }: InvestmentFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -97,6 +98,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
   const [mesReferencia, setMesReferencia] = useState<string>(
     initialData?.mes_referencia || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`
   );
+  const [isTest, setIsTest] = useState<boolean>(initialData ? !!initialData.is_test : false);
 
   useEffect(() => {
     if (!selectedRede) {
@@ -593,6 +595,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
       formData.append("familias_detalhes", JSON.stringify(packedUnico));
       formData.append("skus_detalhes", "[]");
       formData.append("is_planejamento", isPlanejamento ? "true" : "false");
+      formData.append("is_test", isTest ? "true" : "false");
       formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
 
       startTransition(async () => {
@@ -700,6 +703,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
     formData.set("data_inicio", calculatedStart);
     formData.set("data_fim", calculatedEnd);
     formData.append("date_mode", dateMode);
+    formData.append("is_test", isTest ? "true" : "false");
 
     const parseVal = (str: string) => {
       if (!str) return null;
@@ -840,6 +844,36 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData }:
       {/* Form */}
       <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl p-4 shadow-xl space-y-5">
         <fieldset disabled={isLocked} className="space-y-5 w-full">
+        
+        {/* Banner de Ação de Teste (Trade / Admin) */}
+        {canCreateTest && (
+          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3.5 flex items-center justify-between">
+            <div className="flex items-start gap-3">
+              <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-lg mt-0.5">
+                <FlaskConical className="w-4 h-4" />
+              </div>
+              <div>
+                <label htmlFor="is_test_toggle" className="text-sm font-semibold text-amber-300 cursor-pointer flex items-center gap-1.5">
+                  Ação de Teste / Homologação
+                </label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Marca este lançamento como registro de homologação técnica. Permite exclusão administrativa controlada posteriormente pelo Trade/Admin.
+                </p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 ml-3">
+              <input
+                type="checkbox"
+                id="is_test_toggle"
+                checked={isTest}
+                onChange={(e) => setIsTest(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-muted peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
+            </label>
+          </div>
+        )}
+
         <div className="space-y-4">
           {/* Matriz */}
           <div className="space-y-2 relative z-50">
