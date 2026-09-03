@@ -20,8 +20,17 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
-      const validTypes = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
-      if (!validTypes.includes(selected.type)) {
+      const ext = "." + (selected.name.split(".").pop() || "").toLowerCase();
+      const validExts = [".pdf", ".png", ".jpg", ".jpeg", ".webp"];
+      const validTypes = [
+        "application/pdf",
+        "application/x-pdf",
+        "image/png",
+        "image/jpeg",
+        "image/jpg",
+        "image/webp",
+      ];
+      if (!validTypes.includes(selected.type) && !validExts.includes(ext)) {
         toast.error("Formato de arquivo inválido. Selecione um PDF ou imagem (PNG/JPG/WEBP).");
         return;
       }

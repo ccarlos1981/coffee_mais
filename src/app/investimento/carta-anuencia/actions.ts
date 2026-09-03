@@ -9,6 +9,32 @@ import { getStoragePublicUrl } from "@/lib/storage-helpers";
 import { calculateBufferHash, getImageDimensionsFromBuffer } from "@/lib/server-image-helpers";
 import { calcularValidadeCartaAnuencia, verificarCartaExpirada } from "./validade-helper";
 
+export const CARTA_ANUENCIA_ALLOWED_ROLES = [
+  "Trade",
+  "Admin",
+  "Admin Master",
+  "Financeiro",
+  "CEO",
+  "Diretor",
+  "Gerente Regional",
+  "Gerente Nacional",
+  "TI",
+];
+
+async function safeInsertAuditLog(adminClient: any, logData: {
+  user_id?: string | null;
+  action: string;
+  table_name: string;
+  old_data?: any;
+  new_data?: any;
+}) {
+  try {
+    await adminClient.from("cm_audit_logs").insert(logData);
+  } catch (err) {
+    console.error("Aviso: Falha ao registrar log de auditoria em cm_audit_logs:", err);
+  }
+}
+
 export interface CartaAnuenciaItem {
   id: string;
   numero_carta: string;
@@ -179,7 +205,7 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
 }> {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const file = formData.get("file") as File | null;
   const redeId = formData.get("rede_id") as string | null;
@@ -198,12 +224,15 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
     "image/jpeg",
     "image/jpg",
     "image/webp",
+    "image/svg+xml",
   ];
-  const ext = "." + file.name.split(".").pop()?.toLowerCase();
-  const ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp"];
+  const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+  const ALLOWED_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".svg"];
 
-  if (!ALLOWED_MIMES.includes(file.type) || !ALLOWED_EXTS.includes(ext)) {
-    throw new Error("Formato de arquivo inválido. Apenas PNG, JPG, JPEG ou WEBP são permitidos.");
+  const isValidType = ALLOWED_MIMES.includes(file.type) || ALLOWED_EXTS.includes(ext);
+
+  if (!isValidType) {
+    throw new Error("Formato de arquivo inválido. Apenas PNG, JPG, JPEG, WEBP ou SVG são permitidos.");
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -261,7 +290,7 @@ export async function salvarLogoOficialRede(input: {
 }): Promise<LogoRedeItem> {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -344,7 +373,7 @@ export async function salvarLogoOficialRede(input: {
   }
 
   // 4. Auditoria Corporativa em cm_audit_logs
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user?.id || null,
     action: "Atualização Logo Oficial da Rede (Histórico Arquivado)",
     table_name: "cm_logos_redes",
@@ -436,7 +465,7 @@ export async function executarLimpezaLogosOrfas(): Promise<{
     removidos++;
   }
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user?.id || null,
     action: "Limpeza Controlada de Logos Históricas Órfãs",
     table_name: "cm_logos_redes_historico",
@@ -690,7 +719,7 @@ export async function gerarCartaAnuencia(input: {
 }) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -777,7 +806,7 @@ export async function gerarCartaAnuencia(input: {
     usuario_nome: userName,
   });
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user.id,
     action: novaVersao > 1 ? "Reemissão Versão Carta Anuência" : "Emissão Carta Anuência",
     table_name: "cm_cartas_anuencia",
@@ -815,7 +844,7 @@ export async function editarCartaAnuencia(input: {
 }) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -890,7 +919,7 @@ export async function editarCartaAnuencia(input: {
     usuario_nome: userName,
   });
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user.id,
     action: "Edição Carta Anuência",
     table_name: "cm_cartas_anuencia",
@@ -919,7 +948,7 @@ export async function registrarCompartilhamento(
 ) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -939,7 +968,7 @@ export async function registrarCompartilhamento(
     usuario_nome: userName,
   });
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user.id,
     action: `Compartilhamento Carta (${canal})`,
     table_name: "cm_cartas_anuencia",
@@ -960,7 +989,7 @@ export async function registrarCompartilhamento(
 export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: string) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -996,7 +1025,7 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
     usuario_nome: userName,
   });
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user.id,
     action: "Upload Carta Assinada (Baixa Automática Farol)",
     table_name: "cm_cartas_anuencia",
@@ -1017,7 +1046,7 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
 export async function uploadCartaAssinadaServerAction(formData: FormData): Promise<CartaAnuenciaItem> {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const file = formData.get("file") as File | null;
   const cartaId = formData.get("carta_id") as string | null;
@@ -1031,17 +1060,21 @@ export async function uploadCartaAssinadaServerAction(formData: FormData): Promi
     throw new Error("O arquivo excede o limite máximo permitido de 20MB.");
   }
 
+  const ext = "." + (file.name.split(".").pop() || "").toLowerCase();
+  const ALLOWED_EXTS = [".pdf", ".png", ".jpg", ".jpeg", ".webp"];
   const ALLOWED_MIMES = [
     "application/pdf",
+    "application/x-pdf",
     "image/png",
     "image/jpeg",
     "image/jpg",
     "image/webp",
   ];
-  const ext = "." + file.name.split(".").pop()?.toLowerCase();
-  const ALLOWED_EXTS = [".pdf", ".png", ".jpg", ".jpeg", ".webp"];
 
-  if (!ALLOWED_MIMES.includes(file.type) || !ALLOWED_EXTS.includes(ext)) {
+  const isExtValid = ALLOWED_EXTS.includes(ext);
+  const isMimeValid = ALLOWED_MIMES.includes(file.type || "");
+
+  if (!isExtValid && !isMimeValid) {
     throw new Error("Formato de arquivo inválido. Apenas PDF, PNG, JPG ou WEBP são permitidos.");
   }
 
@@ -1059,13 +1092,24 @@ export async function uploadCartaAssinadaServerAction(formData: FormData): Promi
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
+  let contentType = "application/pdf";
+  if (ext === ".png" || file.type === "image/png") {
+    contentType = "image/png";
+  } else if (ext === ".jpg" || ext === ".jpeg" || file.type === "image/jpeg" || file.type === "image/jpg") {
+    contentType = "image/jpeg";
+  } else if (ext === ".webp" || file.type === "image/webp") {
+    contentType = "image/webp";
+  } else {
+    contentType = "application/pdf";
+  }
+
   const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
   const filePath = `assinadas/${carta.numero_carta.toLowerCase()}_${Date.now()}_${cleanFileName}`;
 
   const { error: uploadErr } = await adminClient.storage
     .from("cartas-anuencia")
     .upload(filePath, buffer, {
-      contentType: file.type || "application/pdf",
+      contentType,
       upsert: true,
     });
 
@@ -1083,7 +1127,7 @@ export async function uploadCartaAssinadaServerAction(formData: FormData): Promi
 export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Trade", "Admin", "Admin Master", "CEO"]);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
 
@@ -1112,7 +1156,7 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
     usuario_nome: userName,
   });
 
-  await adminClient.from("cm_audit_logs").insert({
+  await safeInsertAuditLog(adminClient, {
     user_id: user.id,
     action: "Cancelamento Carta Anuência",
     table_name: "cm_cartas_anuencia",
