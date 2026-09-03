@@ -2,7 +2,11 @@
 -- Description: Implementação da RPC de Exclusão Governada de Ações de Investimento (Gate 5.7)
 -- Baseline: BASELINE_INVESTIMENTOS_20260901_LOCKED (Alteração Pontual de Governança)
 
--- 1. CRIAÇÃO DA RPC ATÔMICA excluir_acao_investimento_v1
+-- 1. REMOÇÃO DE TRIGGER LEGADO QUE EXCLUÍA CAMPANHA PAI AUTOMATICAMENTE
+-- Regra Canônica Gate 5.7: A tabela cm_campanhas NUNCA é excluída automaticamente.
+DROP TRIGGER IF EXISTS trg_cleanup_orphaned_campaigns ON public.cm_acoes_investimento;
+
+-- 2. CRIAÇÃO DA RPC ATÔMICA excluir_acao_investimento_v1
 CREATE OR REPLACE FUNCTION public.excluir_acao_investimento_v1(
     p_acao_id UUID,
     p_motivo TEXT DEFAULT NULL,
@@ -18,8 +22,15 @@ DECLARE
     v_auth_role TEXT;
     v_effective_user_id UUID;
     v_user_profile RECORD;
+    v_user_email TEXT;
     v_acao RECORD;
     v_campanha RECORD;
+    v_is_owner BOOLEAN;
+    v_manager_nome TEXT;
+    v_user_name_clean TEXT;
+    v_manager_name_clean TEXT;
+    v_user_email_prefix TEXT;
+    v_resolved_clean TEXT;
 BEGIN
     -- [A] Identificação Canônica do Usuário
     v_auth_uid := auth.uid();
@@ -42,7 +53,7 @@ BEGIN
         RAISE EXCEPTION 'Acesso Negado: Identidade do usuário não informada.';
     END IF;
 
-    -- [B] Validação do Perfil e Role (TODOS os perfis autenticados e aprovados permitidos)
+    -- [B] Validação do Perfil e Role (RBAC: Apenas Gerente Regional, Admin, Admin Master e CEO)
     SELECT * INTO v_user_profile 
     FROM public.cm_user_profiles 
     WHERE id = v_effective_user_id;
@@ -53,6 +64,10 @@ BEGIN
 
     IF COALESCE(v_user_profile.approved, false) = false THEN
         RAISE EXCEPTION 'Acesso Negado: Perfil % não está aprovado.', v_effective_user_id;
+    END IF;
+
+    IF v_user_profile.role NOT IN ('Gerente Regional', 'Admin', 'Admin Master', 'CEO') THEN
+        RAISE EXCEPTION 'Acesso Negado: Perfil com role "%" não possui permissão para excluir ações comerciais.', v_user_profile.role;
     END IF;
 
     -- Obter e-mail institucional a partir de auth.users
@@ -74,53 +89,46 @@ BEGIN
 
     -- [D] Validação Estrita de Ownership de Carteira para Gerente Regional
     IF v_user_profile.role = 'Gerente Regional' THEN
-        DECLARE
-            v_is_owner BOOLEAN := false;
-            v_manager_nome TEXT;
-            v_user_name_clean TEXT;
-            v_manager_name_clean TEXT;
-            v_user_email_prefix TEXT;
-            v_resolved_clean TEXT;
-        BEGIN
-            -- 1. Se a campanha possui autor/gerente_id igual ao usuário
-            IF v_acao.campanha_id IS NOT NULL THEN
-                SELECT * INTO v_campanha 
-                FROM public.cm_campanhas 
-                WHERE id = v_acao.campanha_id;
+        v_is_owner := false;
 
-                IF v_campanha.gerente_id IS NOT NULL AND v_campanha.gerente_id = v_effective_user_id THEN
+        -- 1. Se a campanha possui autor/gerente_id igual ao usuário
+        IF v_acao.campanha_id IS NOT NULL THEN
+            SELECT * INTO v_campanha 
+            FROM public.cm_campanhas 
+            WHERE id = v_acao.campanha_id;
+
+            IF v_campanha.gerente_id IS NOT NULL AND v_campanha.gerente_id = v_effective_user_id THEN
+                v_is_owner := true;
+            END IF;
+        END IF;
+
+        -- 2. Resolução do Gerente da Ação / Rede / Cliente
+        IF NOT v_is_owner THEN
+            SELECT 
+                COALESCE(
+                    (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE rm.codigo = v_acao.codigo_matriz LIMIT 1),
+                    (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE UPPER(TRIM(rm.nome)) = UPPER(TRIM(v_acao.rede)) LIMIT 1),
+                    (SELECT c_loja.responsavel FROM public.cm_clientes c_loja WHERE c_loja.codigo = v_acao.codigo LIMIT 1),
+                    (SELECT c_matriz.responsavel FROM public.cm_clientes c_matriz WHERE c_matriz.codigo_matriz = v_acao.codigo_matriz AND c_matriz.responsavel IS NOT NULL LIMIT 1)
+                ) INTO v_manager_nome;
+
+            v_user_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.name, ''), '[^a-zA-Z0-9]', '', 'g'));
+            v_manager_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.manager_name, ''), '[^a-zA-Z0-9]', '', 'g'));
+            v_user_email_prefix := UPPER(REGEXP_REPLACE(SPLIT_PART(COALESCE(v_user_email, ''), '@', 1), '[^a-zA-Z0-9]', '', 'g'));
+
+            IF v_manager_nome IS NOT NULL THEN
+                v_resolved_clean := UPPER(REGEXP_REPLACE(v_manager_nome, '[^a-zA-Z0-9]', '', 'g'));
+                IF (v_user_name_clean <> '' AND (v_resolved_clean LIKE v_user_name_clean || '%' OR v_user_name_clean LIKE v_resolved_clean || '%'))
+                   OR (v_manager_name_clean <> '' AND (v_resolved_clean LIKE v_manager_name_clean || '%' OR v_manager_name_clean LIKE v_resolved_clean || '%'))
+                   OR (v_user_email_prefix <> '' AND (v_resolved_clean LIKE v_user_email_prefix || '%' OR v_user_email_prefix LIKE v_resolved_clean || '%')) THEN
                     v_is_owner := true;
                 END IF;
             END IF;
+        END IF;
 
-            -- 2. Resolução do Gerente da Ação / Rede / Cliente
-            IF NOT v_is_owner THEN
-                SELECT 
-                    COALESCE(
-                        (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE rm.codigo = v_acao.codigo_matriz LIMIT 1),
-                        (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE UPPER(TRIM(rm.nome)) = UPPER(TRIM(v_acao.rede)) LIMIT 1),
-                        (SELECT c_loja.responsavel FROM public.cm_clientes c_loja WHERE c_loja.codigo = v_acao.codigo LIMIT 1),
-                        (SELECT c_matriz.responsavel FROM public.cm_clientes c_matriz WHERE c_matriz.codigo_matriz = v_acao.codigo_matriz AND c_matriz.responsavel IS NOT NULL LIMIT 1)
-                    ) INTO v_manager_nome;
-
-                v_user_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.name, ''), '[^a-zA-Z0-9]', '', 'g'));
-                v_manager_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.manager_name, ''), '[^a-zA-Z0-9]', '', 'g'));
-                v_user_email_prefix := UPPER(REGEXP_REPLACE(SPLIT_PART(COALESCE(v_user_email, ''), '@', 1), '[^a-zA-Z0-9]', '', 'g'));
-
-                IF v_manager_nome IS NOT NULL THEN
-                    v_resolved_clean := UPPER(REGEXP_REPLACE(v_manager_nome, '[^a-zA-Z0-9]', '', 'g'));
-                    IF (v_user_name_clean <> '' AND (v_resolved_clean LIKE v_user_name_clean || '%' OR v_user_name_clean LIKE v_resolved_clean || '%'))
-                       OR (v_manager_name_clean <> '' AND (v_resolved_clean LIKE v_manager_name_clean || '%' OR v_manager_name_clean LIKE v_resolved_clean || '%'))
-                       OR (v_user_email_prefix <> '' AND (v_resolved_clean LIKE v_user_email_prefix || '%' OR v_user_email_prefix LIKE v_resolved_clean || '%')) THEN
-                        v_is_owner := true;
-                    END IF;
-                END IF;
-            END IF;
-
-            IF NOT v_is_owner THEN
-                RAISE EXCEPTION 'Acesso Negado: esta ação pertence à carteira de outro gerente comercial.';
-            END IF;
-        END;
+        IF NOT v_is_owner THEN
+            RAISE EXCEPTION 'Acesso Negado: esta ação pertence à carteira de outro gerente comercial.';
+        END IF;
     END IF;
 
     -- [E] Validação de Fase e Estado de Planejamento
@@ -247,6 +255,6 @@ BEGIN
 END;
 $$;
 
--- 2. AJUSTE DE PRIVILÉGIOS E GRANTS DA RPC
+-- 3. AJUSTE DE PRIVILÉGIOS E GRANTS DA RPC
 REVOKE ALL ON FUNCTION public.excluir_acao_investimento_v1(UUID, TEXT, UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.excluir_acao_investimento_v1(UUID, TEXT, UUID) TO authenticated, service_role;
