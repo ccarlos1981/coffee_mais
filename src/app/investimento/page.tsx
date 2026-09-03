@@ -48,7 +48,7 @@ import {
   ArrowUp,
   ArrowDown
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade, excluirAcaoInvestimento } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade, excluirAcaoInvestimento, obterAcoesInvestimentoListagem } from "./lancar/actions";
 import { MotivoDivergencia, MOTIVOS_DIVERGENCIA } from "./divergencia-constants";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
@@ -1531,13 +1531,17 @@ export default function InvestimentoPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const { data: rows, error } = await supabase
-        .from("v_acoes_investimento_com_gerente")
-        .select("*")
-        .eq("is_planejamento", false)
-        .order("created_at", { ascending: false });
-        
-      if (error) throw error;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        if (!userEmail) setUserEmail(user.email || null);
+        const { data: profile } = await supabase.from('cm_user_profiles').select('role, name, manager_name').eq('id', user.id).single();
+        if (profile) {
+          setUserRole(profile.role);
+        }
+      }
+
+      // Leitura 100% segura no backend via Server Action + RPC com validação de auth.uid() e isolamento de carteira
+      const rows = await obterAcoesInvestimentoListagem(false);
       setData(rows || []);
 
       const { data: mRows, error: mError } = await supabase
@@ -2577,25 +2581,6 @@ export default function InvestimentoPage() {
 
   const totalPages = Math.ceil(groupedRenderableData.length / itemsPerPage);
 
-  const isAcaoExcluivel = useCallback((row: AcaoInvestimento) => {
-    // Exclusão governada (Gate 5.7): apenas Fase 1 oficial, sem pagamento
-    if ((row.fase_atual || 1) !== 1) return false;
-    if (row.financeiro_pago_em) return false;
-    if (row.is_planejamento) return false;
-
-    if (userRole === "Admin" || userRole === "Admin Master" || userRole === "CEO") {
-      return true;
-    }
-    if (userRole === "Gerente Regional") {
-      const { manager } = getGerenteAndUF(row);
-      if (!manager || !userEmail) return true;
-      const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
-      const cleanGerente = manager.toLowerCase().replace(/[^a-z0-9]/g, "");
-      return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix) || !row.gerente_responsavel;
-    }
-    return false;
-  }, [userRole, userEmail]);
-
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta ação comercial?")) return;
     
@@ -2608,8 +2593,9 @@ export default function InvestimentoPage() {
         setFeedback({ type: "success", msg: "Ação comercial excluída com sucesso." });
         setTimeout(() => setFeedback(null), 3000);
       }
-    } catch (err: any) {
-      setFeedback({ type: "error", msg: "Erro ao excluir: " + err.message });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setFeedback({ type: "error", msg: "Erro ao excluir: " + errMsg });
     } finally {
       setActionLoading(null);
     }
@@ -3719,20 +3705,18 @@ export default function InvestimentoPage() {
                                       <Pencil className="w-3.5 h-3.5" />
                                     </Link>
 
-                                    {isAcaoExcluivel(row) && (
-                                       <button
-                                         onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                         disabled={actionLoading === row.id}
-                                         className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors disabled:opacity-50"
-                                         title="Excluir"
-                                       >
-                                         {actionLoading === row.id ? (
-                                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-danger" />
-                                         ) : (
-                                           <Trash2 className="w-3.5 h-3.5" />
-                                         )}
-                                       </button>
-                                     )}
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                      disabled={actionLoading === row.id}
+                                      className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors disabled:opacity-50"
+                                      title="Excluir"
+                                    >
+                                      {actionLoading === row.id ? (
+                                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-danger" />
+                                      ) : (
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
                                   </div>
                                 </td>
                               </tr>
@@ -3880,7 +3864,6 @@ export default function InvestimentoPage() {
                                  >
                                    <Shield className="w-4 h-4" />
                                  </button>
-
                                 <Link
                                   href={`/investimento/${row.id}/editar`}
                                   onClick={(e) => e.stopPropagation()}
@@ -3890,20 +3873,18 @@ export default function InvestimentoPage() {
                                   <Pencil className="w-4 h-4" />
                                 </Link>
 
-                                {isAcaoExcluivel(row) && (
-                                   <button
-                                     onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                     disabled={actionLoading === row.id}
-                                     className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors disabled:opacity-50"
-                                     title="Excluir"
-                                   >
-                                     {actionLoading === row.id ? (
-                                       <RefreshCw className="w-4 h-4 animate-spin text-danger" />
-                                     ) : (
-                                       <Trash2 className="w-4 h-4" />
-                                     )}
-                                   </button>
-                                 )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                  disabled={actionLoading === row.id}
+                                  className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors disabled:opacity-50"
+                                  title="Excluir"
+                                >
+                                  {actionLoading === row.id ? (
+                                    <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -4192,20 +4173,18 @@ export default function InvestimentoPage() {
                                 >
                                   <Pencil className="w-5 h-5" />
                                 </Link>
-                                {isAcaoExcluivel(row) && (
-                                   <button
-                                     onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                     disabled={actionLoading === row.id}
-                                     className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors disabled:opacity-50"
-                                     title="Excluir"
-                                   >
-                                     {actionLoading === row.id ? (
-                                       <RefreshCw className="w-5 h-5 animate-spin text-danger" />
-                                     ) : (
-                                       <Trash2 className="w-5 h-5" />
-                                     )}
-                                   </button>
-                                 )}
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                  disabled={actionLoading === row.id}
+                                  className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors disabled:opacity-50"
+                                  title="Excluir"
+                                >
+                                  {actionLoading === row.id ? (
+                                    <RefreshCw className="w-5 h-5 animate-spin text-danger" />
+                                  ) : (
+                                    <Trash2 className="w-5 h-5" />
+                                  )}
+                                </button>
                               </div>
                             </div>
                           </div>
