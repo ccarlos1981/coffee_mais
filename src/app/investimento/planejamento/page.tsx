@@ -90,6 +90,9 @@ interface AcaoInvestimento {
   devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
   devolvido_em?: string | null;
   approved_snapshot?: any;
+  financeiro_pago_em?: string | null;
+  is_planejamento?: boolean | null;
+  possui_dependencia_financeira?: boolean | null;
 }
 
 interface InvestmentPeriod {
@@ -506,6 +509,18 @@ export default function PlanejamentoInvestimentoPage() {
   };
 
 
+  const isPlanningEligibleForDelete = (action?: AcaoInvestimento | null): boolean => {
+    if (!action) return false;
+    // Se for planejamento já oficializado, não pode excluir fisicamente
+    if (action.approved_snapshot?.origem_planejamento_id) return false;
+    // Apenas Fase 1
+    if ((action.fase_atual ?? 1) !== 1) return false;
+    // Bloqueia se possuir QUALQUER dependência financeira canônica (parcelas, pagamentos, boletos quitados, financeiro_pago_em)
+    if (action.possui_dependencia_financeira) return false;
+    if (action.financeiro_pago_em) return false;
+    return true;
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este planejamento?")) return;
     setActionLoading(id);
@@ -517,6 +532,9 @@ export default function PlanejamentoInvestimentoPage() {
         setFeedback({ type: "success", msg: "Planejamento excluído com sucesso." });
         setTimeout(() => setFeedback(null), 3000);
         setSelectedAction(null);
+      } else {
+        const errorMsg = res?.message || res?.error || "Erro ao excluir planejamento.";
+        setFeedback({ type: "error", msg: errorMsg });
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1361,18 +1379,20 @@ export default function PlanejamentoInvestimentoPage() {
                             >
                               <Pencil className="w-4 h-4" />
                             </Link>
-                            <button
-                              onClick={() => handleDelete(row.id)}
-                              disabled={actionLoading === row.id}
-                              className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all disabled:opacity-50"
-                              title="Excluir"
-                            >
-                              {actionLoading === row.id ? (
-                                <RefreshCw className="w-4 h-4 animate-spin text-danger" />
-                              ) : (
-                                <Trash2 className="w-4 h-4" />
-                              )}
-                            </button>
+                            {isPlanningEligibleForDelete(row) && (
+                              <button
+                                onClick={() => handleDelete(row.id)}
+                                disabled={actionLoading === row.id}
+                                className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all disabled:opacity-50"
+                                title="Excluir"
+                              >
+                                {actionLoading === row.id ? (
+                                  <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                                ) : (
+                                  <Trash2 className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
                             <button
                               onClick={() => handleOficializar(row)}
                               disabled={actionLoading === row.id}
@@ -1902,20 +1922,22 @@ export default function PlanejamentoInvestimentoPage() {
                 >
                   Editar Dados
                 </Link>
-                <button
-                  onClick={() => handleDelete(selectedAction.id)}
-                  disabled={actionLoading === selectedAction.id}
-                  className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {actionLoading === selectedAction.id ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin text-danger" />
-                      <span>Excluindo...</span>
-                    </>
-                  ) : (
-                    <span>Excluir Planejamento</span>
-                  )}
-                </button>
+                {isPlanningEligibleForDelete(selectedAction) && (
+                  <button
+                    onClick={() => handleDelete(selectedAction.id)}
+                    disabled={actionLoading === selectedAction.id}
+                    className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {actionLoading === selectedAction.id ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                        <span>Excluindo...</span>
+                      </>
+                    ) : (
+                      <span>Excluir Planejamento</span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -197,6 +197,7 @@ interface AcaoInvestimento {
   observacao_divergencia?: string | null;
   devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
   devolvido_em?: string | null;
+  possui_dependencia_financeira?: boolean | null;
 }
 
 interface InvestmentPeriod {
@@ -2581,6 +2582,17 @@ export default function InvestimentoPage() {
 
   const totalPages = Math.ceil(groupedRenderableData.length / itemsPerPage);
 
+  const isActionEligibleForDelete = (action: AcaoInvestimento): boolean => {
+    // Exclusão física permitida estritamente na Fase 1
+    if ((action.fase_atual ?? 1) !== 1) return false;
+    // Se for planejamento oficializado, não pode excluir
+    if (action.is_planejamento && action.approved_snapshot?.origem_planejamento_id) return false;
+    // Bloqueia se possuir QUALQUER dependência financeira canônica (parcelas, pagamentos, boletos quitados, financeiro_pago_em)
+    if (action.possui_dependencia_financeira) return false;
+    if (action.financeiro_pago_em) return false;
+    return true;
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta ação comercial?")) return;
     
@@ -2592,6 +2604,9 @@ export default function InvestimentoPage() {
         setData(prev => prev.filter(item => item.id !== id));
         setFeedback({ type: "success", msg: "Ação comercial excluída com sucesso." });
         setTimeout(() => setFeedback(null), 3000);
+      } else {
+        const errorMsg = res?.message || res?.error || "Erro ao excluir ação comercial.";
+        setFeedback({ type: "error", msg: errorMsg });
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -3705,18 +3720,20 @@ export default function InvestimentoPage() {
                                       <Pencil className="w-3.5 h-3.5" />
                                     </Link>
 
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                      disabled={actionLoading === row.id}
-                                      className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors disabled:opacity-50"
-                                      title="Excluir"
-                                    >
-                                      {actionLoading === row.id ? (
-                                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-danger" />
-                                      ) : (
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      )}
-                                    </button>
+                                    {isActionEligibleForDelete(row) && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                        disabled={actionLoading === row.id}
+                                        className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors disabled:opacity-50"
+                                        title="Excluir"
+                                      >
+                                        {actionLoading === row.id ? (
+                                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-danger" />
+                                        ) : (
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -3873,18 +3890,20 @@ export default function InvestimentoPage() {
                                   <Pencil className="w-4 h-4" />
                                 </Link>
 
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                  disabled={actionLoading === row.id}
-                                  className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors disabled:opacity-50"
-                                  title="Excluir"
-                                >
-                                  {actionLoading === row.id ? (
-                                    <RefreshCw className="w-4 h-4 animate-spin text-danger" />
-                                  ) : (
-                                    <Trash2 className="w-4 h-4" />
-                                  )}
-                                </button>
+                                {isActionEligibleForDelete(row) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                    disabled={actionLoading === row.id}
+                                    className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors disabled:opacity-50"
+                                    title="Excluir"
+                                  >
+                                    {actionLoading === row.id ? (
+                                      <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                                    ) : (
+                                      <Trash2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -4170,21 +4189,24 @@ export default function InvestimentoPage() {
                                   href={`/investimento/${row.id}/editar`}
                                   onClick={(e) => e.stopPropagation()}
                                   className="p-2.5 text-gold bg-gold/10 rounded-xl hover:bg-gold/20 transition-colors"
+                                  title="Editar"
                                 >
                                   <Pencil className="w-5 h-5" />
                                 </Link>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                  disabled={actionLoading === row.id}
-                                  className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors disabled:opacity-50"
-                                  title="Excluir"
-                                >
-                                  {actionLoading === row.id ? (
-                                    <RefreshCw className="w-5 h-5 animate-spin text-danger" />
-                                  ) : (
-                                    <Trash2 className="w-5 h-5" />
-                                  )}
-                                </button>
+                                {isActionEligibleForDelete(row) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                    disabled={actionLoading === row.id}
+                                    className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors disabled:opacity-50"
+                                    title="Excluir"
+                                  >
+                                    {actionLoading === row.id ? (
+                                      <RefreshCw className="w-5 h-5 animate-spin text-danger" />
+                                    ) : (
+                                      <Trash2 className="w-5 h-5" />
+                                    )}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>

@@ -15,6 +15,7 @@ export interface ActionResult<T> {
   success: boolean;
   code?: ActionErrorCode | string;
   message?: string;
+  error?: string;
   data?: T;
   requestId?: string;
 }
@@ -41,6 +42,7 @@ export function errorResult(
     success: false,
     code,
     message,
+    error: message,
     requestId
   };
 }
