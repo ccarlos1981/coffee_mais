@@ -55,6 +55,9 @@ BEGIN
         RAISE EXCEPTION 'Acesso Negado: Perfil % não está aprovado.', v_effective_user_id;
     END IF;
 
+    -- Obter e-mail institucional a partir de auth.users
+    SELECT email INTO v_user_email FROM auth.users WHERE id = v_effective_user_id;
+
     -- [C] Carregamento da Ação com Lock Transacional (Prevenção de Concorrência e Duplo Clique)
     SELECT * INTO v_acao 
     FROM public.cm_acoes_investimento 
@@ -102,7 +105,7 @@ BEGIN
 
                 v_user_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.name, ''), '[^a-zA-Z0-9]', '', 'g'));
                 v_manager_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.manager_name, ''), '[^a-zA-Z0-9]', '', 'g'));
-                v_user_email_prefix := UPPER(REGEXP_REPLACE(SPLIT_PART(COALESCE(v_user_profile.email, ''), '@', 1), '[^a-zA-Z0-9]', '', 'g'));
+                v_user_email_prefix := UPPER(REGEXP_REPLACE(SPLIT_PART(COALESCE(v_user_email, ''), '@', 1), '[^a-zA-Z0-9]', '', 'g'));
 
                 IF v_manager_nome IS NOT NULL THEN
                     v_resolved_clean := UPPER(REGEXP_REPLACE(v_manager_nome, '[^a-zA-Z0-9]', '', 'g'));
