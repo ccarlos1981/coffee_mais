@@ -48,7 +48,7 @@ import {
   ArrowUp,
   ArrowDown
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade, excluirAcaoInvestimento, obterAcoesInvestimentoListagem } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade, excluirAcaoInvestimento, excluirAcaoInvestimentoTeste, obterAcoesInvestimentoListagem } from "./lancar/actions";
 import { MotivoDivergencia, MOTIVOS_DIVERGENCIA } from "./divergencia-constants";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
@@ -198,6 +198,7 @@ interface AcaoInvestimento {
   devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
   devolvido_em?: string | null;
   possui_dependencia_financeira?: boolean | null;
+  is_test?: boolean | null;
 }
 
 interface InvestmentPeriod {
@@ -2593,6 +2594,46 @@ export default function InvestimentoPage() {
     return true;
   };
 
+  const isActionEligibleForAdminTestDelete = (action: AcaoInvestimento): boolean => {
+    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10B)
+    if (!userRole || !["Trade", "Admin"].includes(userRole)) return false;
+    // Condição mandatória: Ação DEVE estar identificada como is_test = TRUE
+    if (action.is_test !== true) return false;
+    // Fases permitidas para exclusão de teste: 1, 2, 3 e 4 (Fases 5 e 6 bloqueadas por fechamento/histórico)
+    const fase = action.fase_atual ?? 1;
+    if (fase < 1 || fase > 4) return false;
+    // Bloqueio financeiro absoluto: nenhuma dependência financeira permitida
+    if (action.possui_dependencia_financeira) return false;
+    if (action.financeiro_pago_em) return false;
+    return true;
+  };
+
+  const [testDeleteAction, setTestDeleteAction] = useState<AcaoInvestimento | null>(null);
+
+  const handleConfirmTestDelete = async () => {
+    if (!testDeleteAction) return;
+    const id = testDeleteAction.id;
+    setTestDeleteAction(null);
+    setActionLoading(id);
+    setFeedback(null);
+    try {
+      const res = await excluirAcaoInvestimentoTeste(id, "Exclusão administrativa de ação de teste");
+      if (res?.success) {
+        setData(prev => prev.filter(item => item.id !== id));
+        setFeedback({ type: "success", msg: "Ação de teste excluída com sucesso via operação administrativa." });
+        setTimeout(() => setFeedback(null), 3000);
+      } else {
+        const errorMsg = res?.message || res?.error || "Erro ao excluir ação de teste.";
+        setFeedback({ type: "error", msg: errorMsg });
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      setFeedback({ type: "error", msg: "Erro ao excluir: " + errMsg });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta ação comercial?")) return;
     
@@ -3734,6 +3775,24 @@ export default function InvestimentoPage() {
                                         )}
                                       </button>
                                     )}
+
+                                    {isActionEligibleForAdminTestDelete(row) && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setTestDeleteAction(row); }}
+                                        disabled={actionLoading === row.id}
+                                        className="p-1 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded transition-colors disabled:opacity-50 flex items-center gap-1 font-medium text-xs px-2 py-0.5 bg-amber-500/5 border border-amber-500/20"
+                                        title="Excluir ação de teste (Administrativo)"
+                                      >
+                                        {actionLoading === row.id ? (
+                                          <RefreshCw className="w-3 h-3 animate-spin text-amber-400" />
+                                        ) : (
+                                          <>
+                                            <span className="text-[11px]">🧪</span>
+                                            <span className="hidden sm:inline text-[11px]">Excluir teste</span>
+                                          </>
+                                        )}
+                                      </button>
+                                    )}
                                   </div>
                                 </td>
                               </tr>
@@ -4204,6 +4263,23 @@ export default function InvestimentoPage() {
                                       <RefreshCw className="w-5 h-5 animate-spin text-danger" />
                                     ) : (
                                       <Trash2 className="w-5 h-5" />
+                                    )}
+                                  </button>
+                                )}
+                                {isActionEligibleForAdminTestDelete(row) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setTestDeleteAction(row); }}
+                                    disabled={actionLoading === row.id}
+                                    className="p-2.5 text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl hover:bg-amber-500/20 transition-colors disabled:opacity-50 flex items-center gap-1 text-xs font-semibold"
+                                    title="Excluir ação de teste (Administrativo)"
+                                  >
+                                    {actionLoading === row.id ? (
+                                      <RefreshCw className="w-5 h-5 animate-spin text-amber-400" />
+                                    ) : (
+                                      <>
+                                        <span>🧪</span>
+                                        <span>Excluir teste</span>
+                                      </>
                                     )}
                                   </button>
                                 )}
@@ -6874,6 +6950,55 @@ export default function InvestimentoPage() {
         {followUpToast && (
           <div className="fixed bottom-6 right-6 z-50 p-4 rounded-xl bg-emerald-500/90 text-white font-bold text-xs shadow-2xl animate-in slide-in-from-bottom-5 duration-200">
             {followUpToast}
+          </div>
+        )}
+
+        {/* Modal de Confirmação de Exclusão de Ação de Teste (Gate 5.10A) */}
+        {testDeleteAction && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-card border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
+                  <AlertTriangle className="w-6 h-6 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-foreground">Excluir ação de teste?</h3>
+                  <p className="text-xs text-amber-400 font-mono mt-0.5">
+                    {testDeleteAction.rede} • Fase {testDeleteAction.fase_atual || 1}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-sm text-muted-foreground bg-muted/30 p-3.5 rounded-xl border border-border">
+                <p className="font-medium text-foreground">
+                  Esta ação está identificada como registro de teste/homologação.
+                </p>
+                <p className="text-xs">
+                  A exclusão será permanente e deve ser utilizada somente para limpeza de registros de teste.
+                </p>
+                <p className="text-xs font-semibold text-amber-300">
+                  Deseja continuar?
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setTestDeleteAction(null)}
+                  className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmTestDelete}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-xl transition-colors flex items-center gap-2 shadow-lg shadow-amber-900/20"
+                >
+                  <span>🧪</span>
+                  <span>Excluir ação de teste</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -25,10 +25,29 @@ export default async function LancarInvestimentoPage() {
     skusList = dbFilters.produtos;
   }
 
+  // Verificar perfil para permissão de ação de teste (RBAC Estrito: Trade, Admin)
+  const { data: { user } } = await supabase.auth.getUser();
+  let canCreateTest = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from('cm_user_profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+    if (profile && ['Trade', 'Admin'].includes(profile.role)) {
+      canCreateTest = true;
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="pb-16 pt-8">
-        <InvestmentForm redes={redesList} familias={familiasList} skus={skusList} />
+        <InvestmentForm 
+          redes={redesList} 
+          familias={familiasList} 
+          skus={skusList} 
+          canCreateTest={canCreateTest}
+        />
       </main>
     </div>
   );

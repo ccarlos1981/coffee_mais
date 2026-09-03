@@ -461,6 +461,9 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     const date_mode = (formData.get("date_mode") as string) || "single";
     const tipo_pagamento = formData.get("tipo_pagamento") as string || "Transf. Bancária";
     const is_planejamento = formData.get("is_planejamento") === "true";
+    const isTradeOrAdmin = ["Trade", "Admin"].includes(profile.role);
+    const rawIsTest = formData.get("is_test") === "true";
+    const is_test = isTradeOrAdmin && rawIsTest;
 
     const isPagamentoUnico = tipo_acao_detalhe === "Aniversário" && (tipo_aniversario === "Pagamento Único" || abrangencia === "Pagamento Único");
 
@@ -511,7 +514,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
         fase_atual: 1,
         is_planejamento,
         alertas_preventivos: [],
-        status_financeiro: "NAO_FATURADA"
+        status_financeiro: "NAO_FATURADA",
+        is_test
       }];
 
       const p_campanha = {
@@ -521,7 +525,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
         mes_referencia,
         status_operacional: "PLANEJAMENTO",
         status_financeiro: "ABERTA",
-        gerente_id: gerenteId || null
+        gerente_id: gerenteId || null,
+        is_test
       };
 
       const adminClient = createAdminClient();
@@ -716,7 +721,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
           fase_atual: 1,
           is_planejamento,
           alertas_preventivos: action_alertas,
-          status_financeiro: "NAO_FATURADA"
+          status_financeiro: "NAO_FATURADA",
+          is_test
         });
       }
     } else if (abrangencia === "SKU") {
@@ -773,7 +779,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
           fase_atual: 1,
           is_planejamento,
           alertas_preventivos: action_alertas,
-          status_financeiro: "NAO_FATURADA"
+          status_financeiro: "NAO_FATURADA",
+          is_test
         });
       }
     }
@@ -818,7 +825,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
             alertas_preventivos: a.alertas_preventivos || [],
             status_financeiro: "NAO_FATURADA",
             is_materializada_futura: !!a.is_materializada_futura,
-            acao_origem_recorrencia_id: a.acao_origem_recorrencia_id || null
+            acao_origem_recorrencia_id: a.acao_origem_recorrencia_id || null,
+            is_test: a.is_test !== undefined ? (isTradeOrAdmin && !!a.is_test) : is_test
           }));
         }
       } catch (e) {
@@ -875,6 +883,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       status_financeiro: "ABERTA",
       gerente_id: gerenteId || null,
       is_planejamento,
+      is_test,
       tipo_plano_financeiro: finalParcelasToInsert.length > 1 ? "PARCELADO" : "A_VISTA"
     };
 
@@ -4545,6 +4554,72 @@ export async function obterAcoesInvestimentoListagem(isPlanejamento: boolean = f
 
   return (data || []) as any[];
 }
+
+/**
+ * Exclui administrativamente uma ação de teste com validação rigorosa de governança (Gate 5.10B).
+ * Perfis autorizados: Trade, Admin.
+ */
+export async function excluirAcaoInvestimentoTeste(
+  id: string,
+  motivo?: string
+): Promise<ActionResult<{ acao_id: string; message: string }>> {
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
+    if (!["Trade", "Admin"].includes(profile.role)) {
+      return errorResult(
+        ActionErrorCode.UNAUTHORIZED,
+        `Acesso Negado: Perfil com role "${profile.role}" não possui autorização para exclusão administrativa de testes.`
+      );
+    }
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("excluir_acao_investimento_teste_v1", {
+      p_acao_id: id,
+      p_motivo: motivo || "Exclusão administrativa de ação de teste",
+      p_user_id: user.id
+    });
+
+    if (error) {
+      console.error("Erro na RPC excluir_acao_investimento_teste_v1:", error);
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        error.message || "Erro ao excluir ação de teste."
+      );
+    }
+
+    if (!data?.success) {
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        data?.error || "Falha ao excluir ação de teste."
+      );
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+
+    return successResult({
+      acao_id: id,
+      message: data.message || "Ação de teste excluída com sucesso."
+    });
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sessão expirada. Faça login novamente.");
+    }
+    if (err.message === "PROFILE_NOT_APPROVED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Perfil de usuário não está aprovado.");
+    }
+    if (err.message === "PROFILE_NOT_FOUND") {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Perfil de usuário não encontrado.");
+    }
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      err?.message || "Erro inesperado ao processar exclusão de teste."
+    );
+  }
+}
+
 
 
 

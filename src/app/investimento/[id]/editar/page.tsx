@@ -57,6 +57,19 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
     }
   }
 
+  // Verificar permissão para ação de teste (RBAC Estrito: Trade, Admin)
+  let canCreateTest = false;
+  if (user) {
+    const { data: profile } = await supabase
+      .from("cm_user_profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+    if (profile && ["Trade", "Admin"].includes(profile.role)) {
+      canCreateTest = true;
+    }
+  }
+
   // Fetch matrices with their codes from database
   const redesList = await obterRedesMatrizes();
 
@@ -66,7 +79,12 @@ export default async function EditarInvestimentoPage({ params }: { params: Promi
   return (
     <div className="min-h-screen bg-background">
       <main className="pb-16 pt-8">
-        <InvestmentForm redes={redesList} familias={familiasList} initialData={investment} />
+        <InvestmentForm 
+          redes={redesList} 
+          familias={familiasList} 
+          initialData={investment} 
+          canCreateTest={canCreateTest}
+        />
       </main>
     </div>
   );
