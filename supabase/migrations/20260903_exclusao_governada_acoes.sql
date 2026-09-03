@@ -42,7 +42,7 @@ BEGIN
         RAISE EXCEPTION 'Acesso Negado: Identidade do usuário não informada.';
     END IF;
 
-    -- [B] Validação do Perfil e Role
+    -- [B] Validação do Perfil e Role (TODOS os perfis autenticados e aprovados permitidos)
     SELECT * INTO v_user_profile 
     FROM public.cm_user_profiles 
     WHERE id = v_effective_user_id;
@@ -53,10 +53,6 @@ BEGIN
 
     IF COALESCE(v_user_profile.approved, false) = false THEN
         RAISE EXCEPTION 'Acesso Negado: Perfil % não está aprovado.', v_effective_user_id;
-    END IF;
-
-    IF v_user_profile.role NOT IN ('Gerente Regional', 'Admin', 'Admin Master', 'CEO') THEN
-        RAISE EXCEPTION 'Acesso Negado: Perfil "%" não possui autorização para excluir ações de investimento.', v_user_profile.role;
     END IF;
 
     -- [C] Carregamento da Ação com Lock Transacional (Prevenção de Concorrência e Duplo Clique)
@@ -73,22 +69,55 @@ BEGIN
         );
     END IF;
 
-    -- [D] Validação de Ownership de Carteira para Gerente Regional
+    -- [D] Validação Estrita de Ownership de Carteira para Gerente Regional
     IF v_user_profile.role = 'Gerente Regional' THEN
-        SELECT * INTO v_campanha 
-        FROM public.cm_campanhas 
-        WHERE id = v_acao.campanha_id;
+        DECLARE
+            v_is_owner BOOLEAN := false;
+            v_manager_nome TEXT;
+            v_user_name_clean TEXT;
+            v_manager_name_clean TEXT;
+            v_user_email_prefix TEXT;
+            v_resolved_clean TEXT;
+        BEGIN
+            -- 1. Se a campanha possui autor/gerente_id igual ao usuário
+            IF v_acao.campanha_id IS NOT NULL THEN
+                SELECT * INTO v_campanha 
+                FROM public.cm_campanhas 
+                WHERE id = v_acao.campanha_id;
 
-        -- Se a campanha possuir gerente_id definido e for de outro gerente
-        IF v_campanha.gerente_id IS NOT NULL AND v_campanha.gerente_id IS DISTINCT FROM v_effective_user_id THEN
-            -- Verificar se o nome ou manager_name do perfil coincide com a responsabilidade comercial
-            IF NOT (
-                (v_user_profile.name IS NOT NULL AND UPPER(TRIM(v_user_profile.name)) = UPPER(TRIM(COALESCE(v_acao.rede, '')))) OR
-                (v_user_profile.manager_name IS NOT NULL AND UPPER(TRIM(v_user_profile.manager_name)) = UPPER(TRIM(COALESCE(v_acao.rede, ''))))
-            ) THEN
-                RAISE EXCEPTION 'Acesso Negado: Esta ação pertence à carteira de outro gerente comercial.';
+                IF v_campanha.gerente_id IS NOT NULL AND v_campanha.gerente_id = v_effective_user_id THEN
+                    v_is_owner := true;
+                END IF;
             END IF;
-        END IF;
+
+            -- 2. Resolução do Gerente da Ação / Rede / Cliente
+            IF NOT v_is_owner THEN
+                SELECT 
+                    COALESCE(
+                        (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE rm.codigo = v_acao.codigo_matriz LIMIT 1),
+                        (SELECT rm.manager FROM public.cm_redes_matrizes rm WHERE UPPER(TRIM(rm.nome)) = UPPER(TRIM(v_acao.rede)) LIMIT 1),
+                        (SELECT c_loja.responsavel FROM public.cm_clientes c_loja WHERE c_loja.codigo = v_acao.codigo LIMIT 1),
+                        (SELECT c_matriz.responsavel FROM public.cm_clientes c_matriz WHERE c_matriz.codigo_matriz = v_acao.codigo_matriz AND c_matriz.responsavel IS NOT NULL LIMIT 1)
+                    ) INTO v_manager_nome;
+
+                v_user_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.name, ''), '[^a-zA-Z0-9]', '', 'g'));
+                v_manager_name_clean := UPPER(REGEXP_REPLACE(COALESCE(v_user_profile.manager_name, ''), '[^a-zA-Z0-9]', '', 'g'));
+                v_user_email_prefix := UPPER(REGEXP_REPLACE(SPLIT_PART(COALESCE(v_user_profile.email, ''), '@', 1), '[^a-zA-Z0-9]', '', 'g'));
+
+                IF v_manager_nome IS NOT NULL THEN
+                    v_resolved_clean := UPPER(REGEXP_REPLACE(v_manager_nome, '[^a-zA-Z0-9]', '', 'g'));
+                    IF (v_user_name_clean <> '' AND (v_resolved_clean LIKE v_user_name_clean || '%' OR v_user_name_clean LIKE v_resolved_clean || '%'))
+                       OR (v_manager_name_clean <> '' AND (v_resolved_clean LIKE v_manager_name_clean || '%' OR v_manager_name_clean LIKE v_resolved_clean || '%'))
+                       OR (v_user_email_prefix <> '' AND (v_resolved_clean LIKE v_user_email_prefix || '%' OR v_user_email_prefix LIKE v_resolved_clean || '%')) THEN
+                        v_is_owner := true;
+                    END IF;
+                END IF;
+            END IF;
+
+            IF NOT v_is_owner THEN
+                RAISE EXCEPTION 'Acesso Negado: esta ação pertence à carteira de outro gerente comercial.';
+            END IF;
+        END;
     END IF;
 
     -- [E] Validação de Fase e Estado de Planejamento

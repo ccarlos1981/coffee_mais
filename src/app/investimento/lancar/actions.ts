@@ -4473,8 +4473,7 @@ export async function reconciliarFinanceiroCampanha(campanhaId: string): Promise
  */
 export async function excluirAcaoInvestimento(id: string, motivo?: string) {
   const user = await requireAuth();
-  const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Gerente Regional", "Admin", "Admin Master", "CEO"]);
+  await requireApprovedProfile(user.id);
 
   const adminClient = createAdminClient();
   const { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", {
@@ -4497,6 +4496,28 @@ export async function excluirAcaoInvestimento(id: string, motivo?: string) {
 
   return { success: true, acao_id: id, message: data.message || "Ação excluída com sucesso." };
 }
+
+/**
+ * Obtém a listagem segura de ações comerciais ou planejamentos com isolamento estrito de carteira para Gerente Regional.
+ */
+export async function obterAcoesInvestimentoListagem(isPlanejamento: boolean = false) {
+  const user = await requireAuth();
+  await requireApprovedProfile(user.id);
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient.rpc("obter_acoes_investimento_v1", {
+    p_is_planejamento: isPlanejamento,
+    p_user_id: user.id
+  });
+
+  if (error) {
+    console.error("Erro na RPC obter_acoes_investimento_v1:", error);
+    throw new Error(error.message || "Erro ao carregar ações de investimento.");
+  }
+
+  return (data || []) as any[];
+}
+
 
 
 

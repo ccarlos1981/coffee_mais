@@ -45,7 +45,7 @@ import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento } from "../lancar/actions";
+import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento, obterAcoesInvestimentoListagem } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 interface AcaoInvestimento {
@@ -225,13 +225,17 @@ export default function PlanejamentoInvestimentoPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const { data: rows, error } = await supabase
-        .from("v_acoes_investimento_com_gerente")
-        .select("*")
-        .eq("is_planejamento", true)
-        .order("created_at", { ascending: false });
-        
-      if (error) throw error;
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        if (!userEmail) setUserEmail(user.email || null);
+        const { data: profile } = await supabase.from('cm_user_profiles').select('role').eq('id', user.id).single();
+        if (profile) {
+          setUserRole(profile.role);
+        }
+      }
+
+      // Leitura 100% segura no backend via Server Action + RPC com validação de auth.uid() e isolamento de carteira
+      const rows = await obterAcoesInvestimentoListagem(true);
       setData((rows as unknown as AcaoInvestimento[]) || []);
 
       const { data: mRows, error: mError } = await supabase
@@ -501,9 +505,6 @@ export default function PlanejamentoInvestimentoPage() {
     }
   };
 
-  const isPlanejamentoOficializado = (row: AcaoInvestimento) => {
-    return Boolean(row.approved_snapshot && (row.approved_snapshot.oficializado_em || row.approved_snapshot.origem_planejamento_id));
-  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este planejamento?")) return;
@@ -1362,9 +1363,9 @@ export default function PlanejamentoInvestimentoPage() {
                             </Link>
                             <button
                               onClick={() => handleDelete(row.id)}
-                              disabled={actionLoading === row.id || isPlanejamentoOficializado(row)}
-                              className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                              title={isPlanejamentoOficializado(row) ? "Planejamento já oficializado (imutável)" : "Excluir"}
+                              disabled={actionLoading === row.id}
+                              className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all disabled:opacity-50"
+                              title="Excluir"
                             >
                               {actionLoading === row.id ? (
                                 <RefreshCw className="w-4 h-4 animate-spin text-danger" />
@@ -1903,8 +1904,8 @@ export default function PlanejamentoInvestimentoPage() {
                 </Link>
                 <button
                   onClick={() => handleDelete(selectedAction.id)}
-                  disabled={actionLoading === selectedAction.id || isPlanejamentoOficializado(selectedAction)}
-                  className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  disabled={actionLoading === selectedAction.id}
+                  className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {actionLoading === selectedAction.id ? (
                     <>
