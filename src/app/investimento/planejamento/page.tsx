@@ -45,7 +45,7 @@ import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo } from "../lancar/actions";
+import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 interface AcaoInvestimento {
@@ -89,6 +89,7 @@ interface AcaoInvestimento {
   apuracao_preenchida_em?: string | null;
   devolvido_por?: 'TRADE' | 'FINANCEIRO' | null;
   devolvido_em?: string | null;
+  approved_snapshot?: any;
 }
 
 interface InvestmentPeriod {
@@ -500,19 +501,27 @@ export default function PlanejamentoInvestimentoPage() {
     }
   };
 
+  const isPlanejamentoOficializado = (row: AcaoInvestimento) => {
+    return Boolean(row.approved_snapshot && (row.approved_snapshot.oficializado_em || row.approved_snapshot.origem_planejamento_id));
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este planejamento?")) return;
+    setActionLoading(id);
+    setFeedback(null);
     try {
-      const { error } = await supabase.from("cm_acoes_investimento").delete().eq("id", id);
-      if (error) throw error;
-      
-      setData(prev => prev.filter(item => item.id !== id));
-      setFeedback({ type: "success", msg: "Planejamento excluído com sucesso." });
-      setTimeout(() => setFeedback(null), 3000);
-      setSelectedAction(null);
+      const res = await excluirAcaoInvestimento(id);
+      if (res?.success) {
+        setData(prev => prev.filter(item => item.id !== id));
+        setFeedback({ type: "success", msg: "Planejamento excluído com sucesso." });
+        setTimeout(() => setFeedback(null), 3000);
+        setSelectedAction(null);
+      }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setFeedback({ type: "error", msg: "Erro ao excluir: " + errMsg });
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -1353,10 +1362,15 @@ export default function PlanejamentoInvestimentoPage() {
                             </Link>
                             <button
                               onClick={() => handleDelete(row.id)}
-                              className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all"
-                              title="Excluir"
+                              disabled={actionLoading === row.id || isPlanejamentoOficializado(row)}
+                              className="p-1.5 bg-danger/10 border border-danger/20 text-danger hover:bg-danger/25 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={isPlanejamentoOficializado(row) ? "Planejamento já oficializado (imutável)" : "Excluir"}
                             >
-                              <Trash2 className="w-4 h-4" />
+                              {actionLoading === row.id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
                             </button>
                             <button
                               onClick={() => handleOficializar(row)}
@@ -1889,9 +1903,17 @@ export default function PlanejamentoInvestimentoPage() {
                 </Link>
                 <button
                   onClick={() => handleDelete(selectedAction.id)}
-                  className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all"
+                  disabled={actionLoading === selectedAction.id || isPlanejamentoOficializado(selectedAction)}
+                  className="flex-1 py-2.5 bg-danger/10 border border-danger/20 hover:bg-danger/20 text-danger font-semibold text-sm rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Excluir Planejamento
+                  {actionLoading === selectedAction.id ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                      <span>Excluindo...</span>
+                    </>
+                  ) : (
+                    <span>Excluir Planejamento</span>
+                  )}
                 </button>
               </div>
             </div>

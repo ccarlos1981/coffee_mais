@@ -48,7 +48,7 @@ import {
   ArrowUp,
   ArrowDown
 } from "lucide-react";
-import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade } from "./lancar/actions";
+import { enviarParaTrade, validarTrade, conferirTrade, atualizarChecklistTrade, confirmarPagamento, importarInvestimentosEmLote, simularImportacaoInvestimentos, marcarAcaoNaoAconteceu, reabrirAcaoInvestimento, fecharAcaoInvestimento, obterPlanilhaModelo, reprovarAcaoTrade, excluirAcaoInvestimento } from "./lancar/actions";
 import { MotivoDivergencia, MOTIVOS_DIVERGENCIA } from "./divergencia-constants";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
@@ -178,6 +178,7 @@ interface AcaoInvestimento {
   cancel_reason?: string | null;
   roi_mode?: string | null;
   approved_alerts_snapshot?: any;
+  is_planejamento?: boolean | null;
   action_result?: string | null;
   post_action_notes?: string | null;
   execution_score?: number | null;
@@ -2576,19 +2577,41 @@ export default function InvestimentoPage() {
 
   const totalPages = Math.ceil(groupedRenderableData.length / itemsPerPage);
 
+  const isAcaoExcluivel = useCallback((row: AcaoInvestimento) => {
+    // Exclusão governada (Gate 5.7): apenas Fase 1 oficial, sem pagamento
+    if ((row.fase_atual || 1) !== 1) return false;
+    if (row.financeiro_pago_em) return false;
+    if (row.is_planejamento) return false;
+
+    if (userRole === "Admin" || userRole === "Admin Master" || userRole === "CEO") {
+      return true;
+    }
+    if (userRole === "Gerente Regional") {
+      const { manager } = getGerenteAndUF(row);
+      if (!manager || !userEmail) return true;
+      const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanGerente = manager.toLowerCase().replace(/[^a-z0-9]/g, "");
+      return emailPrefix.startsWith(cleanGerente) || cleanGerente.startsWith(emailPrefix) || !row.gerente_responsavel;
+    }
+    return false;
+  }, [userRole, userEmail]);
+
   const handleDelete = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este lançamento?")) return;
+    if (!confirm("Tem certeza que deseja excluir esta ação comercial?")) return;
     
+    setActionLoading(id);
+    setFeedback(null);
     try {
-      const { error } = await supabase.from("cm_acoes_investimento").delete().eq("id", id);
-      if (error) throw error;
-      
-      setData(prev => prev.filter(item => item.id !== id));
-      setFeedback({ type: "success", msg: "Lançamento excluído com sucesso." });
-      
-      setTimeout(() => setFeedback(null), 3000);
+      const res = await excluirAcaoInvestimento(id);
+      if (res?.success) {
+        setData(prev => prev.filter(item => item.id !== id));
+        setFeedback({ type: "success", msg: "Ação comercial excluída com sucesso." });
+        setTimeout(() => setFeedback(null), 3000);
+      }
     } catch (err: any) {
       setFeedback({ type: "error", msg: "Erro ao excluir: " + err.message });
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -3696,13 +3719,20 @@ export default function InvestimentoPage() {
                                       <Pencil className="w-3.5 h-3.5" />
                                     </Link>
 
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                      className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors"
-                                      title="Excluir"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+                                    {isAcaoExcluivel(row) && (
+                                       <button
+                                         onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                         disabled={actionLoading === row.id}
+                                         className="p-1 text-muted hover:text-danger hover:bg-danger/10 rounded transition-colors disabled:opacity-50"
+                                         title="Excluir"
+                                       >
+                                         {actionLoading === row.id ? (
+                                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-danger" />
+                                         ) : (
+                                           <Trash2 className="w-3.5 h-3.5" />
+                                         )}
+                                       </button>
+                                     )}
                                   </div>
                                 </td>
                               </tr>
@@ -3860,13 +3890,20 @@ export default function InvestimentoPage() {
                                   <Pencil className="w-4 h-4" />
                                 </Link>
 
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                  className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors"
-                                  title="Excluir"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                {isAcaoExcluivel(row) && (
+                                   <button
+                                     onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                     disabled={actionLoading === row.id}
+                                     className="p-2 text-muted hover:text-danger hover:bg-danger/10 rounded-lg transition-colors disabled:opacity-50"
+                                     title="Excluir"
+                                   >
+                                     {actionLoading === row.id ? (
+                                       <RefreshCw className="w-4 h-4 animate-spin text-danger" />
+                                     ) : (
+                                       <Trash2 className="w-4 h-4" />
+                                     )}
+                                   </button>
+                                 )}
                               </div>
                             </td>
                           </tr>
@@ -4155,12 +4192,20 @@ export default function InvestimentoPage() {
                                 >
                                   <Pencil className="w-5 h-5" />
                                 </Link>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
-                                  className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
+                                {isAcaoExcluivel(row) && (
+                                   <button
+                                     onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }}
+                                     disabled={actionLoading === row.id}
+                                     className="p-2.5 text-danger bg-danger/10 rounded-xl hover:bg-danger/20 transition-colors disabled:opacity-50"
+                                     title="Excluir"
+                                   >
+                                     {actionLoading === row.id ? (
+                                       <RefreshCw className="w-5 h-5 animate-spin text-danger" />
+                                     ) : (
+                                       <Trash2 className="w-5 h-5" />
+                                     )}
+                                   </button>
+                                 )}
                               </div>
                             </div>
                           </div>

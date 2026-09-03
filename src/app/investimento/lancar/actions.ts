@@ -4468,6 +4468,36 @@ export async function reconciliarFinanceiroCampanha(campanhaId: string): Promise
   }
 }
 
+/**
+ * Exclui fisicamente uma ação comercial ou planejamento elegível com validação rigorosa de governança (Gate 5.7).
+ */
+export async function excluirAcaoInvestimento(id: string, motivo?: string) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, ["Gerente Regional", "Admin", "Admin Master", "CEO"]);
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", {
+    p_acao_id: id,
+    p_motivo: motivo || "Exclusão solicitada pelo usuário",
+    p_user_id: user.id
+  });
+
+  if (error) {
+    console.error("Erro na RPC excluir_acao_investimento_v1:", error);
+    throw new Error(error.message || "Erro ao excluir ação de investimento.");
+  }
+
+  if (!data?.success) {
+    throw new Error(data?.error || "Falha ao excluir ação de investimento.");
+  }
+
+  revalidatePath("/investimento");
+  revalidatePath("/investimento/planejamento");
+
+  return { success: true, acao_id: id, message: data.message || "Ação excluída com sucesso." };
+}
+
 
 
 
