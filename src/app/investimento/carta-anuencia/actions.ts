@@ -9,7 +9,7 @@ import { getStoragePublicUrl } from "@/lib/storage-helpers";
 import { calculateBufferHash, getImageDimensionsFromBuffer } from "@/lib/server-image-helpers";
 import { calcularValidadeCartaAnuencia, verificarCartaExpirada } from "./validade-helper";
 
-export const CARTA_ANUENCIA_ALLOWED_ROLES = [
+const CARTA_ANUENCIA_ALLOWED_ROLES = [
   "Trade",
   "Admin",
   "Admin Master",
