@@ -4621,6 +4621,74 @@ export async function excluirAcaoInvestimentoTeste(
   }
 }
 
+/**
+ * Gate 5.10K: Exclusão Administrativa Universal de Ações de Investimento
+ * Permite que os perfis Trade e Admin excluam ações reais ou de teste em qualquer fase (1 a 6),
+ * desde que NÃO possuam qualquer compromisso financeiro vinculado à negociação (Financial Guard).
+ * Perfis autorizados: Trade, Admin.
+ */
+export async function excluirAcaoInvestimentoAdmin(
+  id: string,
+  motivo?: string
+): Promise<ActionResult<{ acao_id: string; message: string }>> {
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+
+    const normalizedRole = (profile.role || "").trim().toLowerCase();
+    if (!["trade", "admin"].includes(normalizedRole)) {
+      return errorResult(
+        ActionErrorCode.UNAUTHORIZED,
+        `Acesso Negado: Perfil com role "${profile.role}" não possui autorização para exclusão administrativa de ações.`
+      );
+    }
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("excluir_acao_investimento_admin_v1", {
+      p_acao_id: id,
+      p_motivo: motivo || "Exclusão administrativa de ação",
+      p_user_id: user.id
+    });
+
+    if (error) {
+      console.error("Erro na RPC excluir_acao_investimento_admin_v1:", error);
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        error.message || "Erro ao excluir ação."
+      );
+    }
+
+    if (!data?.success) {
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        data?.error || "Falha ao excluir ação."
+      );
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath("/investimento/planejamento");
+
+    return successResult({
+      acao_id: id,
+      message: data.message || "Ação excluída com sucesso via operação administrativa."
+    });
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sessão expirada. Faça login novamente.");
+    }
+    if (err.message === "PROFILE_NOT_APPROVED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Perfil de usuário não está aprovado.");
+    }
+    if (err.message === "PROFILE_NOT_FOUND") {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Perfil de usuário não encontrado.");
+    }
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      err?.message || "Erro inesperado ao processar exclusão administrativa."
+    );
+  }
+}
+
 
 
 
