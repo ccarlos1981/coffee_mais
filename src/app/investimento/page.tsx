@@ -2595,13 +2595,10 @@ export default function InvestimentoPage() {
   };
 
   const isActionEligibleForAdminTestDelete = (action: AcaoInvestimento): boolean => {
-    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10B)
+    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10E: Fases 1 a 6)
     if (!userRole || !["Trade", "Admin"].includes(userRole)) return false;
     // Condição mandatória: Ação DEVE estar identificada como is_test = TRUE
     if (action.is_test !== true) return false;
-    // Fases permitidas para exclusão de teste: 1, 2, 3 e 4 (Fases 5 e 6 bloqueadas por fechamento/histórico)
-    const fase = action.fase_atual ?? 1;
-    if (fase < 1 || fase > 4) return false;
     // Bloqueio financeiro absoluto: nenhuma dependência financeira permitida
     if (action.possui_dependencia_financeira) return false;
     if (action.financeiro_pago_em) return false;
@@ -3960,6 +3957,24 @@ export default function InvestimentoPage() {
                                       <RefreshCw className="w-4 h-4 animate-spin text-danger" />
                                     ) : (
                                       <Trash2 className="w-4 h-4" />
+                                    )}
+                                  </button>
+                                )}
+
+                                {isActionEligibleForAdminTestDelete(row) && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setTestDeleteAction(row); }}
+                                    disabled={actionLoading === row.id}
+                                    className="p-1.5 text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1 font-medium text-xs px-2 py-1 bg-amber-500/5 border border-amber-500/20"
+                                    title="Excluir ação de teste (Administrativo)"
+                                  >
+                                    {actionLoading === row.id ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                                    ) : (
+                                      <>
+                                        <span className="text-[12px]">🧪</span>
+                                        <span className="hidden sm:inline text-[11px]">Excluir teste</span>
+                                      </>
                                     )}
                                   </button>
                                 )}
