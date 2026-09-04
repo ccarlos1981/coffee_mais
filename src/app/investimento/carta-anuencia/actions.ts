@@ -516,7 +516,12 @@ export async function listarCartasAnuencia(filters?: {
     return [];
   }
 
-  const redesMeta = await AnalyticsEngine.getMapeamentoRedesMeta();
+  let redesMeta: any[] = [];
+  try {
+    redesMeta = (await AnalyticsEngine.getMapeamentoRedesMeta()) || [];
+  } catch (errAnalytics) {
+    console.error("Aviso: Falha ao obter metadados de redes no AnalyticsEngine:", errAnalytics);
+  }
 
   const metaMap = new Map<string, { manager: string | null; uf: string | null }>();
   (redesMeta || []).forEach((row) => {
@@ -560,7 +565,12 @@ export async function listarCartasAnuencia(filters?: {
 }
 
 export async function obterFiltrosGerenteUf() {
-  return AnalyticsEngine.getFiltrosGerenteUf();
+  try {
+    return await AnalyticsEngine.getFiltrosGerenteUf();
+  } catch (err) {
+    console.error("Aviso: Falha ao obter filtros de Gerente e UF do AnalyticsEngine:", err);
+    return { gerentes: [], ufs: [] };
+  }
 }
 
 /**
