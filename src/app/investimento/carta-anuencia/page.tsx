@@ -52,6 +52,7 @@ export default function CartaAnuenciaPage() {
   const [competencias, setCompetencias] = useState<CompetenciaItem[]>([]);
   const [gerentesList, setGerentesList] = useState<string[]>([]);
   const [ufsList, setUfsList] = useState<string[]>([]);
+  const [cartasError, setCartasError] = useState<string | null>(null);
   const [kpis, setKpis] = useState({
     totalCartas: 0,
     emitidas: 0,
@@ -83,8 +84,10 @@ export default function CartaAnuenciaPage() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setCartasError(null);
+
     try {
-      const [cartasList, resumenKpis, compList, metaFiltros] = await Promise.all([
+      const [cartasRes, kpisRes, compRes, metaRes] = await Promise.allSettled([
         listarCartasAnuencia({
           status: statusFiltro,
           competencia: competenciaFiltro !== "TODAS" ? competenciaFiltro : undefined,
@@ -97,13 +100,88 @@ export default function CartaAnuenciaPage() {
         obterFiltrosGerenteUf(),
       ]);
 
-      setCartas(cartasList);
-      setKpis(resumenKpis);
-      setCompetencias(compList);
-      setGerentesList(metaFiltros.gerentes);
-      setUfsList(metaFiltros.ufs);
-    } catch (err) {
-      console.error("Erro ao carregar módulo Carta de Anuência:", err);
+      // 1. Processar Cartas de Anuência (Recurso Principal)
+      let loadedCartas: CartaAnuenciaItem[] = [];
+      if (cartasRes.status === "fulfilled") {
+        loadedCartas = cartasRes.value || [];
+        setCartas(loadedCartas);
+        setCartasError(null);
+      } else {
+        console.error("Erro ao carregar lista de Cartas de Anuência:", cartasRes.reason);
+        const errMsg = cartasRes.reason?.message || "";
+        if (errMsg.includes("UNAUTHENTICATED") || errMsg.includes("auth")) {
+          window.location.href = "/login?redirect=/investimento/carta-anuencia";
+          return;
+        }
+        setCartasError(errMsg || "Falha na comunicação com o servidor ao obter cartas.");
+        toast.error("Não foi possível carregar a lista de cartas.");
+      }
+
+      // 2. Processar KPIs (com fallback seguro derivado das cartas carregadas)
+      if (kpisRes.status === "fulfilled") {
+        setKpis(kpisRes.value);
+      } else if (cartasRes.status === "fulfilled") {
+        let emitidas = 0;
+        let pendentes = 0;
+        let assinadasVigentes = 0;
+        let assinadasExpiradas = 0;
+        let canceladas = 0;
+        loadedCartas.forEach((c) => {
+          if (c.status === "ASSINADA") {
+            if (c.expirada) assinadasExpiradas++;
+            else assinadasVigentes++;
+          } else if (c.status === "EMITIDA" || c.status === "ENVIADA" || c.status === "PENDENTE") {
+            pendentes++;
+            emitidas++;
+          } else if (c.status === "CANCELADA") {
+            canceladas++;
+          }
+        });
+        setKpis({
+          totalCartas: loadedCartas.length,
+          emitidas,
+          pendentes,
+          assinadasVigentes,
+          assinadasExpiradas,
+          totalAssinadas: assinadasVigentes + assinadasExpiradas,
+          canceladas,
+          tempoMedioAssinaturaDias: 0,
+        });
+      }
+
+      // 3. Processar Competências (com fallback derivado das cartas carregadas)
+      if (compRes.status === "fulfilled") {
+        setCompetencias(compRes.value || []);
+      } else if (cartasRes.status === "fulfilled") {
+        const compsUnicas = Array.from(new Set(loadedCartas.map((c) => c.competencia).filter(Boolean)));
+        setCompetencias(
+          compsUnicas.map((comp, idx) => ({
+            id: `comp-derived-${idx}`,
+            competencia: comp,
+            data_inicio: "",
+            data_fim: "",
+            encerrada: false,
+          }))
+        );
+      }
+
+      // 4. Processar Metadados de Gerentes e UFs (com fallback derivado das cartas)
+      if (metaRes.status === "fulfilled") {
+        setGerentesList(metaRes.value.gerentes || []);
+        setUfsList(metaRes.value.ufs || []);
+      } else if (cartasRes.status === "fulfilled") {
+        const gerentesSet = Array.from(
+          new Set(loadedCartas.map((c) => c.gerente).filter((g): g is string => !!g))
+        ).sort();
+        const ufsSet = Array.from(
+          new Set(loadedCartas.map((c) => c.uf).filter((u): u is string => !!u))
+        ).sort();
+        setGerentesList(gerentesSet);
+        setUfsList(ufsSet);
+      }
+    } catch (err: any) {
+      console.error("Erro inesperado em fetchData:", err);
+      setCartasError(err?.message || "Erro inesperado ao carregar dados.");
       toast.error("Erro ao carregar dados do módulo.");
     } finally {
       setLoading(false);
@@ -365,8 +443,24 @@ export default function CartaAnuenciaPage() {
             {/* Table of Letters */}
             <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
               {loading ? (
-                <div className="p-12 text-center text-xs text-muted-foreground">
-                  Carregando Cartas de Anuência...
+                <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="w-5 h-5 animate-spin text-primary" />
+                  <span>Carregando Cartas de Anuência...</span>
+                </div>
+              ) : cartasError ? (
+                <div className="p-12 text-center text-xs text-rose-600 dark:text-rose-400 space-y-3">
+                  <AlertCircle className="w-8 h-8 mx-auto text-rose-500" />
+                  <p className="font-semibold text-sm">Não foi possível carregar as Cartas de Anuência.</p>
+                  <p className="text-muted-foreground text-[11px] max-w-md mx-auto">
+                    {cartasError}
+                  </p>
+                  <button
+                    onClick={() => fetchData()}
+                    className="px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:opacity-90 transition-opacity inline-flex items-center gap-1.5"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Tentar Novamente
+                  </button>
                 </div>
               ) : cartas.length === 0 ? (
                 <div className="p-12 text-center text-xs text-muted-foreground space-y-2">
