@@ -2594,9 +2594,11 @@ export default function InvestimentoPage() {
     return true;
   };
 
-  const isActionEligibleForAdminTestDelete = (action: AcaoInvestimento): boolean => {
-    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10E: Fases 1 a 6)
-    if (!userRole || !["Trade", "Admin"].includes(userRole)) return false;
+  const isActionEligibleForAdminTestDelete = (action?: AcaoInvestimento | null): boolean => {
+    if (!action) return false;
+    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10G: Fases 1 a 6)
+    const normalizedRole = (userRole || "").trim().toLowerCase();
+    if (!["trade", "admin"].includes(normalizedRole)) return false;
     // Condição mandatória: Ação DEVE estar identificada como is_test = TRUE
     if (action.is_test !== true) return false;
     // Bloqueio financeiro absoluto: nenhuma dependência financeira permitida
@@ -2617,6 +2619,9 @@ export default function InvestimentoPage() {
       const res = await excluirAcaoInvestimentoTeste(id, "Exclusão administrativa de ação de teste");
       if (res?.success) {
         setData(prev => prev.filter(item => item.id !== id));
+        if (selectedAction?.id === id) {
+          setSelectedAction(null);
+        }
         setFeedback({ type: "success", msg: "Ação de teste excluída com sucesso via operação administrativa." });
         setTimeout(() => setFeedback(null), 3000);
       } else {
@@ -6809,6 +6814,17 @@ export default function InvestimentoPage() {
                         <Pencil className="w-4 h-4" />
                         Editar
                       </Link>
+                    )}
+                    {isActionEligibleForAdminTestDelete(selectedAction) && (
+                      <button
+                        onClick={() => setTestDeleteAction(selectedAction)}
+                        disabled={actionLoading === selectedAction.id}
+                        className="flex-1 flex items-center justify-center gap-2 px-6 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                        title="Excluir ação de teste (Administrativo)"
+                      >
+                        <Trash2 className="w-4 h-4 text-amber-400" />
+                        <span>🧪 Excluir Teste</span>
+                      </button>
                     )}
                     {(selectedAction.fase_atual || 1) >= 5 && !selectedAction.is_reopened && ['admin', 'ceo', 'diretor'].includes(userRole?.toLowerCase() || '') && (
                       <button

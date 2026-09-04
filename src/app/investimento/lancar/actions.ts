@@ -4567,7 +4567,8 @@ export async function excluirAcaoInvestimentoTeste(
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
 
-    if (!["Trade", "Admin"].includes(profile.role)) {
+    const normalizedRole = (profile.role || "").trim().toLowerCase();
+    if (!["trade", "admin"].includes(normalizedRole)) {
       return errorResult(
         ActionErrorCode.UNAUTHORIZED,
         `Acesso Negado: Perfil com role "${profile.role}" não possui autorização para exclusão administrativa de testes.`
