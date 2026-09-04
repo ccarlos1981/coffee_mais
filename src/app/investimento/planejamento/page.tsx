@@ -46,7 +46,7 @@ import { ptBR } from "date-fns/locale";
 import * as XLSX from "xlsx";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
-import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento, excluirAcaoInvestimentoTeste, obterAcoesInvestimentoListagem } from "../lancar/actions";
+import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento, excluirAcaoInvestimentoTeste, excluirAcaoInvestimentoAdmin, obterAcoesInvestimentoListagem } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 
 interface AcaoInvestimento {
@@ -523,38 +523,66 @@ export default function PlanejamentoInvestimentoPage() {
     return true;
   };
 
-  const isActionEligibleForAdminTestDelete = (action?: AcaoInvestimento | null): boolean => {
+  const canShowAdminDelete = (action?: AcaoInvestimento | null): boolean => {
     if (!action) return false;
-    // Exclusão de teste permitida estritamente para Trade e Admin (Gate 5.10G: Fases 1 a 6)
+    // Exclusão administrativa universal permitida estritamente para Trade e Admin (Fases 1 a 6)
+    // Aplicável a ações reais (is_test = FALSE) e de teste (is_test = TRUE)
     const normalizedRole = (userRole || "").trim().toLowerCase();
-    if (!["trade", "admin"].includes(normalizedRole)) return false;
-    // Condição mandatória: Ação DEVE estar identificada como is_test = TRUE
-    if (action.is_test !== true) return false;
+    return ["trade", "admin"].includes(normalizedRole);
+  };
+
+  const canExecuteAdminDelete = (action?: AcaoInvestimento | null): boolean => {
+    if (!canShowAdminDelete(action)) return false;
     // Bloqueio financeiro absoluto: nenhuma dependência financeira permitida
-    if (action.possui_dependencia_financeira) return false;
-    if (action.financeiro_pago_em) return false;
+    if (action?.possui_dependencia_financeira) return false;
+    if (action?.financeiro_pago_em) return false;
     return true;
   };
 
-  const [testDeleteAction, setTestDeleteAction] = useState<AcaoInvestimento | null>(null);
+  const isActionEligibleForAdminDelete = canShowAdminDelete;
+  // Compatibilidade com referências legadas
+  const canShowAdminTestDelete = canShowAdminDelete;
+  const canExecuteAdminTestDelete = canExecuteAdminDelete;
+  const isActionEligibleForAdminTestDelete = canShowAdminDelete;
 
-  const handleConfirmTestDelete = async () => {
-    if (!testDeleteAction) return;
-    const id = testDeleteAction.id;
-    setTestDeleteAction(null);
+  const [adminDeleteAction, setAdminDeleteAction] = useState<AcaoInvestimento | null>(null);
+  const testDeleteAction = adminDeleteAction;
+  const setTestDeleteAction = setAdminDeleteAction;
+
+  const handleConfirmAdminDelete = async () => {
+    if (!adminDeleteAction) return;
+    if (!canExecuteAdminDelete(adminDeleteAction)) {
+      setFeedback({
+        type: "error",
+        msg: "Este planejamento possui compromisso financeiro vinculado à negociação e não pode ser excluído fisicamente."
+      });
+      setAdminDeleteAction(null);
+      return;
+    }
+    const id = adminDeleteAction.id;
+    const isTest = adminDeleteAction.is_test === true;
+    setAdminDeleteAction(null);
     setActionLoading(id);
     setFeedback(null);
     try {
-      const res = await excluirAcaoInvestimentoTeste(id, "Exclusão administrativa de planejamento de teste");
+      const res = await excluirAcaoInvestimentoAdmin(
+        id,
+        isTest ? "Exclusão administrativa de planejamento de teste" : "Exclusão administrativa de planejamento"
+      );
       if (res?.success) {
         setData(prev => prev.filter(item => item.id !== id));
         if (selectedAction?.id === id) {
           setSelectedAction(null);
         }
-        setFeedback({ type: "success", msg: "Planejamento de teste excluído com sucesso via operação administrativa." });
+        setFeedback({
+          type: "success",
+          msg: isTest
+            ? "Planejamento de teste excluído com sucesso via operação administrativa."
+            : "Planejamento excluído com sucesso via operação administrativa."
+        });
         setTimeout(() => setFeedback(null), 3000);
       } else {
-        const errorMsg = res?.message || res?.error || "Erro ao excluir planejamento de teste.";
+        const errorMsg = res?.message || res?.error || "Erro ao excluir planejamento.";
         setFeedback({ type: "error", msg: errorMsg });
       }
     } catch (err: unknown) {
@@ -564,6 +592,8 @@ export default function PlanejamentoInvestimentoPage() {
       setActionLoading(null);
     }
   };
+
+  const handleConfirmTestDelete = handleConfirmAdminDelete;
 
   const handleDelete = async (id: string) => {
     if (!confirm("Tem certeza que deseja excluir este planejamento?")) return;
@@ -1423,7 +1453,7 @@ export default function PlanejamentoInvestimentoPage() {
                             >
                               <Pencil className="w-4 h-4" />
                             </Link>
-                            {isPlanningEligibleForDelete(row) && (
+                            {isPlanningEligibleForDelete(row) && !isActionEligibleForAdminDelete(row) && (
                               <button
                                 onClick={() => handleDelete(row.id)}
                                 disabled={actionLoading === row.id}
@@ -1437,19 +1467,28 @@ export default function PlanejamentoInvestimentoPage() {
                                 )}
                               </button>
                             )}
-                            {isActionEligibleForAdminTestDelete(row) && (
+                            {isActionEligibleForAdminDelete(row) && (
                               <button
-                                onClick={() => setTestDeleteAction(row)}
+                                onClick={() => setAdminDeleteAction(row)}
                                 disabled={actionLoading === row.id}
-                                className="p-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/25 rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 text-xs font-semibold"
-                                title="Excluir planejamento de teste (Administrativo)"
+                                className={`p-1.5 border rounded-lg transition-all disabled:opacity-50 flex items-center gap-1 text-xs font-semibold ${
+                                  row.is_test
+                                    ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/25"
+                                    : "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/25"
+                                }`}
+                                title={row.is_test ? "Excluir planejamento de teste (Administrativo)" : "Excluir planejamento (Administrativo)"}
                               >
                                 {actionLoading === row.id ? (
-                                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
-                                ) : (
+                                  <RefreshCw className={`w-4 h-4 animate-spin ${row.is_test ? "text-amber-400" : "text-red-400"}`} />
+                                ) : row.is_test ? (
                                   <>
                                     <span className="text-[12px]">🧪</span>
                                     <span className="hidden sm:inline text-[11px]">Excluir teste</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Trash2 className="w-4 h-4 text-red-400" />
+                                    <span className="hidden sm:inline text-[11px]">Excluir</span>
                                   </>
                                 )}
                               </button>
@@ -1983,7 +2022,7 @@ export default function PlanejamentoInvestimentoPage() {
                 >
                   Editar Dados
                 </Link>
-                {isPlanningEligibleForDelete(selectedAction) && (
+                {isPlanningEligibleForDelete(selectedAction) && !isActionEligibleForAdminDelete(selectedAction) && (
                   <button
                     onClick={() => handleDelete(selectedAction.id)}
                     disabled={actionLoading === selectedAction.id}
@@ -1999,15 +2038,28 @@ export default function PlanejamentoInvestimentoPage() {
                     )}
                   </button>
                 )}
-                {isActionEligibleForAdminTestDelete(selectedAction) && (
+                {isActionEligibleForAdminDelete(selectedAction) && (
                   <button
-                    onClick={() => setTestDeleteAction(selectedAction)}
+                    onClick={() => setAdminDeleteAction(selectedAction)}
                     disabled={actionLoading === selectedAction.id}
-                    className="flex-1 py-2.5 bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-400 font-semibold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Excluir planejamento de teste (Administrativo)"
+                    className={`flex-1 py-2.5 border font-semibold text-sm rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+                      selectedAction.is_test
+                        ? "bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20 text-amber-400"
+                        : "bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400"
+                    }`}
+                    title={selectedAction.is_test ? "Excluir planejamento de teste (Administrativo)" : "Excluir planejamento (Administrativo)"}
                   >
-                    <Trash2 className="w-4 h-4 text-amber-400" />
-                    <span>🧪 Excluir Teste</span>
+                    {selectedAction.is_test ? (
+                      <>
+                        <Trash2 className="w-4 h-4 text-amber-400" />
+                        <span>🧪 Excluir Teste</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4 text-red-400" />
+                        <span>🗑️ Excluir</span>
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -2252,50 +2304,111 @@ export default function PlanejamentoInvestimentoPage() {
         </div>
       )}
 
-      {/* Modal de Confirmação de Exclusão de Planejamento de Teste (Gate 5.10G) */}
-      {testDeleteAction && (
+      {/* Modal de Confirmação de Exclusão Administrativa (Gate 5.10K) */}
+      {adminDeleteAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-card border border-amber-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
-              <div className="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
-                <AlertTriangle className="w-6 h-6 text-amber-400" />
+              <div className={`p-3 rounded-xl ${canExecuteAdminDelete(adminDeleteAction) ? (adminDeleteAction.is_test ? "bg-amber-500/20 text-amber-400" : "bg-red-500/20 text-red-400") : "bg-red-500/20 text-red-400"}`}>
+                <AlertTriangle className={`w-6 h-6 ${canExecuteAdminDelete(adminDeleteAction) ? (adminDeleteAction.is_test ? "text-amber-400" : "text-red-400") : "text-red-400"}`} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-foreground">Excluir planejamento de teste?</h3>
-                <p className="text-xs text-amber-400 font-mono mt-0.5">
-                  {testDeleteAction.rede} • {testDeleteAction.familia_produto || "Planejamento"}
+                <h3 className="text-lg font-bold text-foreground">
+                  {canExecuteAdminDelete(adminDeleteAction)
+                    ? (adminDeleteAction.is_test ? "Excluir planejamento de teste?" : "Tem certeza que deseja excluir este planejamento?")
+                    : "EXCLUSÃO BLOQUEADA — Financial Guard"}
+                </h3>
+                <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                  {adminDeleteAction.rede} • {adminDeleteAction.familia_produto || "Planejamento"}
                 </p>
               </div>
             </div>
-            
-            <div className="space-y-2 text-sm text-muted-foreground bg-muted/30 p-3.5 rounded-xl border border-border">
-              <p className="font-medium text-foreground">
-                Este planejamento está identificado como registro de teste/homologação.
-              </p>
-              <p className="text-xs">
-                A exclusão será permanente e deve ser utilizada somente para limpeza de registros de teste.
-              </p>
-              <p className="text-xs font-semibold text-amber-300">
-                Deseja continuar?
-              </p>
+
+            {/* Action Info Card */}
+            <div className="bg-muted/30 p-3.5 rounded-xl border border-border space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Rede:</span>
+                <span className="font-semibold text-foreground">{adminDeleteAction.rede}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Família:</span>
+                <span className="font-semibold text-foreground">{adminDeleteAction.familia_produto || "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Fase Operacional:</span>
+                <span className="font-semibold text-foreground">Fase {adminDeleteAction.fase_atual || 1}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valor:</span>
+                <span className="font-semibold text-gold">{formatCurrency(adminDeleteAction.valor_investimento || 0)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">ID da Ação:</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{adminDeleteAction.id}</span>
+              </div>
             </div>
+            
+            {canExecuteAdminDelete(adminDeleteAction) ? (
+              <div className="space-y-2 text-sm text-muted-foreground bg-muted/30 p-3.5 rounded-xl border border-border">
+                <p className="font-medium text-foreground">
+                  {adminDeleteAction.is_test
+                    ? "Este planejamento está identificado como registro de teste/homologação."
+                    : "Este planejamento será excluído permanentemente do sistema."}
+                </p>
+                <p className="text-xs">
+                  {adminDeleteAction.is_test
+                    ? "A exclusão será permanente e deve ser utilizada para limpeza de registros de teste."
+                    : "A exclusão administrativa remove o planejamento físico e recalcula os agregados da campanha."}
+                </p>
+                <p className="text-xs font-semibold text-red-300">
+                  Deseja continuar com a exclusão?
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm text-red-200/90 bg-red-950/40 p-3.5 rounded-xl border border-red-500/30">
+                <p className="font-semibold text-red-400 flex items-center gap-1.5">
+                  <span>🛡️</span> Compromisso financeiro vinculado
+                </p>
+                <p className="text-xs leading-relaxed text-red-200/80">
+                  Este planejamento possui compromisso financeiro vinculado à negociação (parcelas, pagamentos confirmados ou boletos) e <strong>não pode ser excluído fisicamente</strong>.
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  O Financial Guard impede a exclusão física para preservar a integridade contábil e fiscal do ecossistema.
+                </p>
+              </div>
+            )}
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setTestDeleteAction(null)}
+                onClick={() => setAdminDeleteAction(null)}
                 className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
               >
-                Cancelar
+                {canExecuteAdminDelete(adminDeleteAction) ? "Cancelar" : "Entendido / Fechar"}
               </button>
-              <button
-                type="button"
-                onClick={handleConfirmTestDelete}
-                className="px-4 py-2 text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 rounded-xl transition-colors flex items-center gap-2 shadow-lg shadow-amber-900/20"
-              >
-                <span>🧪</span>
-                <span>Excluir planejamento de teste</span>
-              </button>
+              {canExecuteAdminDelete(adminDeleteAction) && (
+                <button
+                  type="button"
+                  onClick={handleConfirmAdminDelete}
+                  className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors flex items-center gap-2 shadow-lg ${
+                    adminDeleteAction.is_test
+                      ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/20"
+                      : "bg-red-600 hover:bg-red-500 shadow-red-900/20"
+                  }`}
+                >
+                  {adminDeleteAction.is_test ? (
+                    <>
+                      <span>🧪</span>
+                      <span>Excluir planejamento de teste</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Excluir planejamento</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
