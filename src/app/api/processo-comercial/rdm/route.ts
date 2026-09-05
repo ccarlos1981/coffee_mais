@@ -28,7 +28,7 @@ function getAdminClient() {
   );
 }
 
-import { requireApprovedProfile } from "@/lib/supabase/auth-helpers";
+import { requireApprovedProfile, logAuditAction } from "@/lib/supabase/auth-helpers";
 import { isSameManager } from "@/lib/domain/canonical";
 
 // Roles com acesso total ao RDM (enxergam todos os gerentes e configuram % desafio)
@@ -52,6 +52,42 @@ const KA_MANAGERS = CommercialDomainService.getFieldManagerList();
 
 // Opção "CRISTIANO" = total de todos os gerentes KA
 const CRISTIANO = "CRISTIANO";
+
+// Registry Oficial de Slides do RDM (29 slides)
+export const OFFICIAL_RDM_SLIDE_KEYS = [
+  'capa',
+  'agenda',
+  'cover_fup',
+  'follow_up',
+  'cover_farol',
+  'farol_metas',
+  'cover_dre',
+  'dre',
+  'dre_acumulado',
+  'dre_rede',
+  'cover_invest',
+  'invest_fases',
+  'invest_cliente',
+  'invest_rede',
+  'cover_resultado',
+  'fat_mensal',
+  'vol_mensal',
+  'vol_preco_medio',
+  'preco_yoy',
+  'preco_tabela',
+  'vol_matriz',
+  'preco_familia',
+  'cover_plano',
+  'plano_acao',
+  'cover_projecao',
+  'projecao_vendas',
+  'cover_rotas',
+  'agenda_rotas',
+  'obrigado',
+] as const;
+
+export type OfficialRdmSlideKey = typeof OFFICIAL_RDM_SLIDE_KEYS[number];
+const OFFICIAL_RDM_SLIDE_KEYS_SET = new Set<string>(OFFICIAL_RDM_SLIDE_KEYS);
 
 // ─── GET ──────────────────────────────────────────────────────────────────────
 export async function GET(request: Request) {
@@ -171,7 +207,7 @@ export async function GET(request: Request) {
       dimension: 'rede',
     };
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado] = await Promise.all([
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado, resSlideStatus] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -253,6 +289,14 @@ export async function GET(request: Request) {
         console.error('[RDM API] Erro ao carregar DRE Acumulado:', err);
         return null;
       }),
+
+      // 10. Status de governança dos slides (cm_rdm_slide_status)
+      supabaseServer
+        .from('cm_rdm_slide_status')
+        .select('slide_key, is_outdated, marked_by, marked_at')
+        .eq('year', year)
+        .eq('month', month)
+        .in('manager', Array.from(new Set([manager, resolveCanonicalManager(manager).managerName, ...(isSameManager(manager, 'Leandro Saffi') ? ['Leandro', 'Leandro Saffi'] : [])]))),
     ]);
 
     if (resSales.error) throw new Error("Erro vendas: " + resSales.error.message);
@@ -439,7 +483,7 @@ export async function GET(request: Request) {
     const ytdFatDesafio = ytdTargetSum.revenue;
     const ytdFatReal    = realYtd.fat;
     const ytdFatPct     = ytdFatDesafio > 0 ? (ytdFatReal / ytdFatDesafio) * 100 : 0;
-    const ytdFatDelta   = ytdFatReal - prevYtdMonth.fat;
+    const ytdFatDelta   = ytdFatReal - ytdFatDesafio;
 
     const ytdMacoDesafio = qMacoVal?.desafio ?? 0;
     const ytdMacoReal    = qMacoVal?.actual ?? 0;
@@ -579,7 +623,7 @@ export async function GET(request: Request) {
               desafio: ytdTargetSum.tons,
               real:    realYtd.qty,
               pct:     volPctYtd,
-              delta:   realYtd.qty - prevYtdMonth.qty,
+              delta:   realYtd.qty - ytdTargetSum.tons,
             },
             fat: {
               aa:      aaYtd.fat,
@@ -588,7 +632,7 @@ export async function GET(request: Request) {
               desafio: ytdFatDesafio,
               real:    realYtd.fat,
               pct:     ytdFatPct,
-              delta:   realYtd.fat - prevYtdMonth.fat,
+              delta:   realYtd.fat - ytdFatDesafio,
             },
             invest: {
               aa:      0,
@@ -807,6 +851,18 @@ export async function GET(request: Request) {
         };
       })(),
 
+      // Mapeamento dos slides marcados como desatualizados
+      outdatedSlides: (() => {
+        const outMap: Record<string, boolean> = {};
+        (resSlideStatus?.data ?? []).forEach((row: any) => {
+          if (row.slide_key && row.is_outdated) {
+            outMap[row.slide_key] = true;
+          }
+        });
+        return outMap;
+      })(),
+      canMarkOutdated: (user?.email?.toLowerCase().trim() === 'cristiano.santos@coffeemais.com'),
+
       dreGerencialSlideAcumulado,
 
       prevYear,
@@ -825,7 +881,7 @@ export async function GET(request: Request) {
   }
 }
 
-// ─── POST — Salvar comentário ─────────────────────────────────────────────────
+// ─── POST — Salvar comentário ou Status de Governança de Slide ───────────────
 export async function POST(request: Request) {
   try {
     const supabaseServer = await createClient();
@@ -834,10 +890,104 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Não autenticado." }, { status: 401 });
     }
 
+    const body = await request.json() as any;
+    const { action } = body;
+
+    // ─── Ação: Governança de Status de Atualização de Slide ───
+    if (action === 'set_slide_status') {
+      // 1. Autorização Server-Side estrita
+      if (user.email?.toLowerCase().trim() !== 'cristiano.santos@coffeemais.com') {
+        return NextResponse.json({
+          success: false,
+          error: "Acesso negado (403 Forbidden): Apenas o gestor autorizado pode alterar o status de governança de slides."
+        }, { status: 403 });
+      }
+
+      const { year, month, manager, slide_key, is_outdated } = body;
+
+      if (!year || !month || !manager || !slide_key) {
+        return NextResponse.json({ success: false, error: "Parâmetros inválidos." }, { status: 400 });
+      }
+
+      // 2. Validação estrita de registry: aceita apenas os 29 slides oficiais do RDM
+      if (!OFFICIAL_RDM_SLIDE_KEYS_SET.has(slide_key)) {
+        return NextResponse.json({
+          success: false,
+          error: `Escopo inválido (400 Bad Request): O slide '${slide_key}' não pertence aos 29 slides oficiais do RDM.`
+        }, { status: 400 });
+      }
+
+      const canonicalManagerName = resolveCanonicalManager(manager).managerName;
+      const isMarkingOutdated = Boolean(is_outdated);
+      const now = new Date().toISOString();
+
+      let updatePayload: any;
+      if (isMarkingOutdated) {
+        updatePayload = {
+          manager: canonicalManagerName,
+          year: Number(year),
+          month: Number(month),
+          slide_key,
+          is_outdated: true,
+          marked_by: user.email,
+          marked_at: now,
+          unmarked_by: null,
+          unmarked_at: null,
+          updated_at: now,
+        };
+      } else {
+        // Desmarcação não-destrutiva (sem DELETE): preserva marked_by e marked_at históricos
+        const { data: existingRow } = await supabaseServer
+          .from('cm_rdm_slide_status')
+          .select('marked_by, marked_at')
+          .eq('manager', canonicalManagerName)
+          .eq('year', Number(year))
+          .eq('month', Number(month))
+          .eq('slide_key', slide_key)
+          .maybeSingle();
+
+        updatePayload = {
+          manager: canonicalManagerName,
+          year: Number(year),
+          month: Number(month),
+          slide_key,
+          is_outdated: false,
+          marked_by: existingRow?.marked_by ?? null,
+          marked_at: existingRow?.marked_at ?? null,
+          unmarked_by: user.email,
+          unmarked_at: now,
+          updated_at: now,
+        };
+      }
+
+      const { error: statusErr } = await supabaseServer
+        .from('cm_rdm_slide_status')
+        .upsert(updatePayload, { onConflict: 'manager,year,month,slide_key' });
+
+      if (statusErr) throw statusErr;
+
+      await logAuditAction(
+        user.id,
+        isMarkingOutdated ? 'RDM_SLIDE_MARKED_OUTDATED' : 'RDM_SLIDE_UNMARKED_OUTDATED',
+        'cm_rdm_slide_status',
+        {
+          target: `${canonicalManagerName}_${year}_${month}_${slide_key}`,
+          manager: canonicalManagerName,
+          year,
+          month,
+          slide_key,
+          is_outdated: isMarkingOutdated,
+          user_email: user.email,
+        }
+      );
+
+      return NextResponse.json({ success: true, is_outdated: isMarkingOutdated });
+    }
+
+    // ─── Ação Padrão: Salvar comentário ───
     const profile = await requireApprovedProfile(user.id);
     const isFullAccess = checkIsGerenteNacionalAdmin(profile.role, user.email);
 
-    const body = await request.json() as { year: number; month: number; manager: string; slide_key: string; comment: string };
     const { year, month, manager, slide_key, comment } = body;
 
     if (!year || !month || !manager || !slide_key) {

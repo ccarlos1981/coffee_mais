@@ -73,6 +73,8 @@ interface RdmApiResponse {
   managers: string[];
   isRestrictedManager?: boolean;
   canConfigureDesafio?: boolean;
+  canMarkOutdated?: boolean;
+  outdatedSlides?: Record<string, boolean>;
   userRole?: string;
   userManager?: string | null;
   farol: FarolData;
@@ -587,9 +589,65 @@ function SlideSectionCover({ coverKey, monthName }: { coverKey: string; monthNam
 }
 
 
-function SlideShell({ title, monthName, children }: { title: string; monthName: string; children: React.ReactNode }) {
+// ─── Componente Reutilizável: Faixa Diagonal Pública de Slide Desatualizado ─────
+export function RdmOutdatedOverlay() {
   return (
-    <div className="rdm-slide">
+    <div
+      className="rdm-outdated-overlay"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: 60,
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 'inherit',
+      }}
+    >
+      <div
+        className="rdm-outdated-ribbon"
+        style={{
+          transform: 'rotate(-45deg)',
+          backgroundColor: 'rgba(220, 38, 38, 0.88)',
+          color: '#ffffff',
+          fontWeight: 900,
+          fontSize: '1.75rem',
+          letterSpacing: '0.28em',
+          padding: '14px 0',
+          width: '160%',
+          textAlign: 'center',
+          textTransform: 'uppercase',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.35)',
+          borderTop: '3px solid rgba(255, 255, 255, 0.7)',
+          borderBottom: '3px solid rgba(255, 255, 255, 0.7)',
+          textShadow: '0 2px 5px rgba(0, 0, 0, 0.6)',
+          userSelect: 'none',
+        }}
+      >
+        DESATUALIZADO
+      </div>
+    </div>
+  );
+}
+
+function SlideShell({
+  title,
+  monthName,
+  children,
+  isOutdated,
+}: {
+  title: string;
+  monthName: string;
+  children: React.ReactNode;
+  isOutdated?: boolean;
+}) {
+  return (
+    <div className="rdm-slide" style={{ position: 'relative' }}>
+      {/* Faixa Diagonal Pública de Slide Desatualizado (quando repassada localmente) */}
+      {isOutdated && <RdmOutdatedOverlay />}
+
       {/* Header */}
       <div className="rdm-slide-header">
         <div className="rdm-slide-title-block">
@@ -902,11 +960,13 @@ function SlideDreResumo({
   year,
   month,
   slide1Data,
+  isOutdated,
 }: {
   monthName: string;
   year?: number;
   month?: number;
   slide1Data?: any;
+  isOutdated?: boolean;
 }) {
   const MONTHS_UPPER = [
     '', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
@@ -939,7 +999,7 @@ function SlideDreResumo({
   const linhas = todasLinhas.filter((l: any) => LINHAS_PERMITIDAS.includes(l.kpi.trim()));
 
   return (
-    <SlideShell title="Resultado DRE" monthName={monthName}>
+    <SlideShell title="Resultado DRE" monthName={monthName} isOutdated={isOutdated}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', boxSizing: 'border-box' }}>
         <div style={{
           flex: 1,
@@ -5030,9 +5090,7 @@ function MetricRow({
     return formatCurrency(val / 1000, 0);
   };
 
-  const isGood = isDespesa
-    ? ((b.desafio && b.desafio > 0) ? (b.real ?? 0) <= b.desafio : true)
-    : isInvest
+  const isGood = isDespesa || isInvest
     ? (b.delta ?? 0) <= 0
     : (b.delta ?? 0) >= 0;
 
@@ -5051,7 +5109,7 @@ function MetricRow({
       <td className="rdm-farol-pct" style={isDeflator
         ? { background: 'transparent', color: 'inherit' }
         : isDespesa
-        ? { background: 'transparent', color: '#2e7d32', fontWeight: 700 }
+        ? { background: 'transparent', color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
         : isInvest
         ? { color: (b.real ?? 0) <= (b.desafio ?? 0) ? '#2e7d32' : '#c62828', fontWeight: 700 }
         : { background: light.bg, color: light.color }}>
@@ -5265,6 +5323,9 @@ export default function RdmPage() {
   const [showBuilderWizard,   setShowBuilderWizard]   = useState(false);
   const [showConfigModal,      setShowConfigModal]      = useState(false);
   const [canConfigureDesafio,  setCanConfigureDesafio]  = useState(false);
+  const [canMarkOutdated,      setCanMarkOutdated]      = useState(false);
+  const [outdatedSlides,       setOutdatedSlides]       = useState<Record<string, boolean>>({});
+  const [updatingSlideStatus,  setUpdatingSlideStatus]  = useState(false);
   const [isRestrictedManager,  setIsRestrictedManager]  = useState(false);
   const [userRestrictedManager, setUserRestrictedManager] = useState<string | null>(null);
 
@@ -5317,6 +5378,12 @@ export default function RdmPage() {
       if (json.canConfigureDesafio !== undefined) {
         setCanConfigureDesafio(Boolean(json.canConfigureDesafio));
       }
+      if (json.canMarkOutdated !== undefined) {
+        setCanMarkOutdated(Boolean(json.canMarkOutdated));
+      }
+      if (json.outdatedSlides) {
+        setOutdatedSlides(json.outdatedSlides);
+      }
       if (json.isRestrictedManager) {
         setIsRestrictedManager(true);
         if (json.userManager && json.userManager !== manager) {
@@ -5334,6 +5401,37 @@ export default function RdmPage() {
   }, [year, month, manager]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // ── Alternar Status de Governança de Slide (DESATUALIZADO) ──
+  const handleToggleSlideOutdated = async (sKey: string, newOutdated: boolean) => {
+    if (updatingSlideStatus) return;
+    setUpdatingSlideStatus(true);
+    setOutdatedSlides(prev => ({ ...prev, [sKey]: newOutdated }));
+    try {
+      const res = await fetch('/api/processo-comercial/rdm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set_slide_status',
+          year,
+          month,
+          manager,
+          slide_key: sKey,
+          is_outdated: newOutdated,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        setOutdatedSlides(prev => ({ ...prev, [sKey]: !newOutdated }));
+        alert(json.error || 'Erro ao atualizar status do slide.');
+      }
+    } catch (err: any) {
+      setOutdatedSlides(prev => ({ ...prev, [sKey]: !newOutdated }));
+      alert(err?.message || 'Erro de conexão ao atualizar status do slide.');
+    } finally {
+      setUpdatingSlideStatus(false);
+    }
+  };
 
   // ── Save comment ──
   const saveComment = async (slideKey: string) => {
@@ -5879,11 +5977,16 @@ export default function RdmPage() {
   }
 
   // ── Shared slide block ──
+  const currentSlideKey = slides[slideIdx]?.key;
+  const isCurrentSlideOutdated = Boolean(currentSlideKey && outdatedSlides[currentSlideKey]);
+
   const slideBlock = (
     <div
       className={`rdm-slide-inner rdm-anim-${direction} ${animating ? 'rdm-animating' : ''}`}
+      style={{ position: 'relative', overflow: 'hidden', borderRadius: 'inherit' }}
     >
       {renderSlide()}
+      {isCurrentSlideOutdated && <RdmOutdatedOverlay />}
     </div>
   );
 
@@ -6084,6 +6187,50 @@ export default function RdmPage() {
         </select>
 
         {error && <span className="rdm-filter-error">⚠ {error}</span>}
+
+        {canMarkOutdated && currentSlideKey && (
+          <label
+            title={outdatedSlides[currentSlideKey] ? "Clique para desmarcar slide como desatualizado" : "Clique para marcar slide como desatualizado"}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              marginLeft: 'auto',
+              padding: '4px 12px',
+              borderRadius: 6,
+              background: outdatedSlides[currentSlideKey] ? 'rgba(239, 68, 68, 0.14)' : 'rgba(201, 169, 110, 0.08)',
+              border: outdatedSlides[currentSlideKey] ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid rgba(201, 169, 110, 0.25)',
+              cursor: updatingSlideStatus ? 'not-allowed' : 'pointer',
+              userSelect: 'none',
+              transition: 'all 0.2s',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={Boolean(outdatedSlides[currentSlideKey])}
+              disabled={updatingSlideStatus}
+              onChange={e => handleToggleSlideOutdated(currentSlideKey, e.target.checked)}
+              style={{
+                cursor: updatingSlideStatus ? 'not-allowed' : 'pointer',
+                accentColor: '#ef4444',
+                width: 15,
+                height: 15,
+              }}
+            />
+            <span style={{
+              fontSize: '0.78rem',
+              fontWeight: 700,
+              color: outdatedSlides[currentSlideKey] ? '#ef4444' : '#c9a96e',
+              fontFamily: 'var(--font-geist-sans, system-ui)',
+            }}>
+              {updatingSlideStatus
+                ? 'Atualizando status...'
+                : outdatedSlides[currentSlideKey]
+                  ? '☑ Slide marcado como desatualizado'
+                  : '☐ Marcar como desatualizado'}
+            </span>
+          </label>
+        )}
       </div>
 
       {/* ── Slide Player ── */}
