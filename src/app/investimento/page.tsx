@@ -56,6 +56,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInte
 import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
+import { isAcaoAtrasada } from "@/lib/investimento/consolidacao";
 import { buildMatrizLookup, resolveClienteMatriz, matchesActionToNetwork, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { InvestimentoAcaoDrawer } from "./components/InvestimentoAcaoDrawer";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
@@ -1797,6 +1798,7 @@ export default function InvestimentoPage() {
       valor_homologado: number;
       valor_pago: number;
       saldo: number;
+      data_registro?: string | null;
       acoes: any[];
     } | {
       type: "legacy";
@@ -1830,6 +1832,7 @@ export default function InvestimentoPage() {
             valor_homologado: 0,
             valor_pago: 0,
             saldo: 0,
+            data_registro: null,
             acoes: []
           };
           campaignGroupsMap[action.campanha_id] = group;
@@ -1850,10 +1853,14 @@ export default function InvestimentoPage() {
       }
     });
 
-    // Calcular saldos consolidados
+    // Calcular saldos consolidados e data de registro derivada (MIN(created_at) das ações)
     items.forEach((item) => {
       if (item.type === "campaign") {
         item.saldo = Math.max(0, item.valor_homologado - item.valor_pago);
+        const dates = item.acoes
+          .map((ac: any) => ac.created_at || ac.data_registro)
+          .filter(Boolean);
+        item.data_registro = dates.length > 0 ? [...dates].sort()[0] : null;
       }
     });
 
@@ -1867,8 +1874,8 @@ export default function InvestimentoPage() {
           valA = a.type === "campaign" ? a.codigo_campanha : a.action.codigo || "";
           valB = b.type === "campaign" ? b.codigo_campanha : b.action.codigo || "";
         } else if (sortField === "data_registro") {
-          valA = a.type === "campaign" ? "" : (a.action.data_registro || "");
-          valB = b.type === "campaign" ? "" : (b.action.data_registro || "");
+          valA = a.type === "campaign" ? (a.data_registro || "") : (a.action.created_at || a.action.data_registro || "");
+          valB = b.type === "campaign" ? (b.data_registro || "") : (b.action.created_at || b.action.data_registro || "");
         } else if (sortField === "rede") {
           valA = a.type === "campaign" ? a.rede : (a.action.rede || "");
           valB = b.type === "campaign" ? b.rede : (b.action.rede || "");
@@ -1911,6 +1918,39 @@ export default function InvestimentoPage() {
         if (strA < strB) return sortDirection === "asc" ? -1 : 1;
         if (strA > strB) return sortDirection === "asc" ? 1 : -1;
         return 0;
+      });
+
+      // Ordenar também ações filhas dentro de cada campanha
+      items.forEach((item) => {
+        if (item.type === "campaign" && item.acoes && item.acoes.length > 1) {
+          item.acoes.sort((a: any, b: any) => {
+            let actValA: any = "";
+            let actValB: any = "";
+            if (sortField === "data_registro") {
+              actValA = a.created_at || a.data_registro || "";
+              actValB = b.created_at || b.data_registro || "";
+            } else if (sortField === "codigo") {
+              actValA = a.codigo || "";
+              actValB = b.codigo || "";
+            } else if (sortField === "periodo") {
+              actValA = a.data_inicio || "";
+              actValB = b.data_inicio || "";
+            } else if (sortField === "valor") {
+              actValA = getValorTotal(a);
+              actValB = getValorTotal(b);
+            } else {
+              return 0;
+            }
+            if (typeof actValA === "number" && typeof actValB === "number") {
+              return sortDirection === "asc" ? actValA - actValB : actValB - actValA;
+            }
+            const sA = String(actValA).toLowerCase();
+            const sB = String(actValB).toLowerCase();
+            if (sA < sB) return sortDirection === "asc" ? -1 : 1;
+            if (sA > sB) return sortDirection === "asc" ? 1 : -1;
+            return 0;
+          });
+        }
       });
     }
 
@@ -3602,7 +3642,7 @@ export default function InvestimentoPage() {
                                 </div>
                               </td>
                               <td className="px-3 xl:px-4 py-3 text-foreground/80 font-normal">
-                                -
+                                {item.data_registro ? new Date(item.data_registro).toLocaleDateString('pt-BR') : "-"}
                               </td>
                               <td className="px-3 xl:px-4 py-3 font-medium text-foreground">
                                 <div>
@@ -3640,10 +3680,22 @@ export default function InvestimentoPage() {
                                 {formatMesReferencia(item.mes_referencia)}
                               </td>
                               <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                                <div className="flex flex-col gap-0.5 text-xs font-medium">
-                                  <span>{formatDate(minDate)}</span>
-                                  <span className="text-muted">{formatDate(maxDate)}</span>
-                                </div>
+                                {(() => {
+                                  const temAcaoAtrasada = item.acoes.some((ac: any) => isAcaoAtrasada(ac.data_fim, ac.created_at));
+                                  return (
+                                    <div className={`flex flex-col gap-0.5 text-xs font-medium ${temAcaoAtrasada ? 'text-red-400 font-bold' : ''}`}>
+                                      <span className="flex items-center gap-1">
+                                        {formatDate(minDate)}
+                                        {temAcaoAtrasada && (
+                                          <span className="inline-flex items-center px-1 py-0.2 rounded text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/20" title="Campanha contém ação lançada após o término do período">
+                                            Atrasada
+                                          </span>
+                                        )}
+                                      </span>
+                                      <span className={temAcaoAtrasada ? 'text-red-400/80 font-bold' : 'text-muted'}>{formatDate(maxDate)}</span>
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td className="px-3 xl:px-4 py-3">
                                 <span className="px-2 py-1 rounded-md text-xs font-medium border bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20">
@@ -3708,10 +3760,22 @@ export default function InvestimentoPage() {
                                   -
                                 </td>
                                 <td className="px-3 xl:px-4 py-2 text-muted">
-                                  <div className="flex flex-col gap-0.5 text-[10px]">
-                                    <span>{formatDate(row.data_inicio)}</span>
-                                    <span>{formatDate(row.data_fim)}</span>
-                                  </div>
+                                  {(() => {
+                                    const atrasada = isAcaoAtrasada(row.data_fim, row.created_at);
+                                    return (
+                                      <div className={`flex flex-col gap-0.5 text-[10px] ${atrasada ? 'text-red-400 font-bold' : ''}`}>
+                                        <div className="flex items-center gap-1">
+                                          <span>{formatDate(row.data_inicio)}</span>
+                                          {atrasada && (
+                                            <span className="inline-flex items-center px-1 py-0.2 rounded text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/20" title="Ação lançada após o término do período">
+                                              Atrasada
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className={atrasada ? 'text-red-400/80 font-bold' : ''}>{formatDate(row.data_fim)}</span>
+                                      </div>
+                                    );
+                                  })()}
                                 </td>
                                 <td className="px-3 xl:px-4 py-2">
                                   <span className="px-1.5 py-0.5 rounded text-[10px] border bg-blue-500/5 text-blue-400 border-blue-500/10">
@@ -3889,15 +3953,25 @@ export default function InvestimentoPage() {
                               })()}
                             </td>
                             <td className="px-3 xl:px-4 py-3 text-foreground/80">
-                              <div className="flex flex-col gap-0.5 text-xs font-medium">
-                                <span className="flex items-center gap-1">
-                                  {formatDate(row.data_inicio)}
-                                  {row.date_mode === 'multiple' && (
-                                    <span className="text-[9px] bg-gold/10 text-gold px-1 rounded font-bold border border-gold/20" title="Múltiplas datas por item">Múlt.</span>
-                                  )}
-                                </span>
-                                <span className="text-muted">{formatDate(row.data_fim)}</span>
-                              </div>
+                              {(() => {
+                                const atrasada = isAcaoAtrasada(row.data_fim, row.created_at);
+                                return (
+                                  <div className={`flex flex-col gap-0.5 text-xs font-medium ${atrasada ? 'text-red-400 font-bold' : ''}`}>
+                                    <span className="flex items-center gap-1">
+                                      {formatDate(row.data_inicio)}
+                                      {row.date_mode === 'multiple' && (
+                                        <span className="text-[9px] bg-gold/10 text-gold px-1 rounded font-bold border border-gold/20" title="Múltiplas datas por item">Múlt.</span>
+                                      )}
+                                      {atrasada && (
+                                        <span className="inline-flex items-center px-1 py-0.2 rounded text-[8px] font-bold bg-red-500/10 text-red-400 border border-red-500/20" title="Ação lançada após o término do período">
+                                          Atrasada
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className={atrasada ? 'text-red-400/80 font-bold' : 'text-muted'}>{formatDate(row.data_fim)}</span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-3 xl:px-4 py-3">
                               <span className={`px-2 py-1 rounded-md text-xs font-medium border ${row.tipo_acao === 'Sell Out' ? 'bg-[#C4A25D]/10 text-[#C4A25D] border-[#C4A25D]/20' : 'bg-blue-500/10 text-blue-500 border-blue-500/20'}`}>

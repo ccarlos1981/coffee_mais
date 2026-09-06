@@ -138,7 +138,7 @@ export function validarParidadeNegociacao(
   const diferenca = Math.round((totalAcoes - totalParcelas) * 100) / 100;
 
   return {
-    valido: Math.abs(diferenca) < 0.01,
+    valido: Math.abs(diferenca) <= 0.01,
     totalAcoes,
     totalParcelas,
     diferenca
