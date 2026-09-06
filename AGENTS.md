@@ -4350,6 +4350,90 @@ A partir de 01/09/2026, a evolução arquitetural do **Módulo de Investimentos 
 
 Status Arquitetural: `BASELINE_INVESTIMENTOS_20260901_LOCKED = HOMOLOGADO_E_CONGELADO` | `MULTIPLAS_ACOES = LOCKED` | `PLANO_FINANCEIRO = LOCKED` | `PAGAMENTOS_NN = LOCKED` | `DRE_MACO_PARITY = 100%` | `STATUS_ARQUITETURAL = BASELINE_PERMANENTE`.
 
+---
+
+## 95. Baseline Oficial — RDM Slide 5: Farol de Metas / Delta Mensal (Baseline Permanente)
+
+A partir de 05/09/2026, a governança de cálculo e apresentação do **Slide 5 — Farol de Metas (`farol_metas`)** do módulo RDM (Reunião de Desempenho Mensal) torna-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`SLIDE_05_FAROL = HOMOLOGADO_E_CONGELADO` & `BASELINE = PERMANENTE`
+
+### Diretrizes Mandatórias de Arquitetura:
+1. **Fórmula Oficial do Delta ($\Delta$)**:
+   Para todos os indicadores de desempenho que possuem Desafio (Faturamento, Volume, MACO, Investimento, Despesas Comerciais), o cálculo do $\Delta$ (mensal e acumulado/YTD) segue estritamente a fórmula:
+   $$\Delta = \text{REAL} - \text{DESAFIO}$$
+2. **Caráter Exclusivamente Informativo de `M ANT.`**:
+   A coluna e os valores de **Mês Anterior (`M ANT.`)** possuem finalidade estritamente histórica e informativa para apoio à tomada de decisão. `M ANT.` **não participa** em hipótese alguma de:
+   - Cálculo de $\Delta$ do Desafio;
+   - Score Comercial do Gerente;
+   - Targets e Metas Comerciais;
+   - Regras de Semáforo de atingimento.
+3. **Preservação dos Pesos e Isolamento Temporal de Competências**:
+   - **Competências Históricas / Padrão (ex: Julho/2026)**: Faturamento = 100%, Volume = 0%, Investimento = 0%.
+   - **Competência Especial (Agosto/2026)**: Faturamento = 50%, MACO = 30%, Despesas Comerciais = 20%, Deflator = 0%, Volume = 0%, Investimento = 0%.
+   - O comportamento e os pesos de Agosto/2026 são estritamente isolados (`isAgosto2026 = (year === 2026 && month === 8)`) e não contaminam Julho/2026 ou outras competências.
+4. **Preservação de YTD e Score Comercial**:
+   - O Acumulado do Trimestre (YTD / Quarter-to-Date) preserva a apuração oficial $\text{Real YTD} - \text{Desafio YTD}$.
+   - O cálculo de Score permanece derivado da porcentagem de atingimento da meta ($\text{Real} / \text{Desafio} \times 100$).
+5. **Localização Centralizada**:
+   O cálculo reside exclusivamente em [`src/app/api/processo-comercial/rdm/route.ts`](file:///Users/cristiano/Projetos/Coffe%20Mais/src/app/api/processo-comercial/rdm/route.ts), sendo consumido de forma read-only pela interface de apresentação do Slide 5 em [`src/app/processo-comercial/rdm/page.tsx`](file:///Users/cristiano/Projetos/Coffe%20Mais/src/app/processo-comercial/rdm/page.tsx).
+6. **Não-Regressão e Governança**:
+   Fica vedada qualquer alteração na regra aritmética do Farol de Metas sem prévia homologação formal de arquitetura e aprovação nos Quality Gates obrigatórios (`npm run audit:analytics`, `npm run verify:parity`, `npx tsc --noEmit`, `npm run build`).
+
+Status Geral: `SLIDE_05_FAROL = HOMOLOGADO_E_CONGELADO` | `FAROL_DELTA_FORMULA = REAL_MINUS_DESAFIO` | `M_ANT_ROLE = INFORMATIVO_ONLY` | `BASELINE = CONFIRMED`.
+
+---
+
+## 96. Baseline Oficial — Homologação Integral com Ressalvas do Módulo RDM (Baseline Permanente)
+
+A partir de 05/09/2026, o resultado da Auditoria Integral do módulo **RDM — Reunião de Desempenho Mensal (29 Slides Oficiais)** torna-se o baseline permanente e oficial do Coffee++.
+
+### Status Arquitetural:
+`RDM = HOMOLOGADO_COM_RESSALVAS` & `BASELINE = PERMANENTE`
+
+### Consolidação do Escopo Auditado (29/29 Slides):
+1. **Resultado Funcional e Financeiro**:
+   - Falhas Críticas / Bloqueantes ($P0 = 0$ / $P1 = 0$).
+   - Bugs Funcionais Ativos = $0$.
+   - Divergências Financeiras Ativas = $0$.
+   - Regressões Decorrentes da Correção do Slide 5 = $0$.
+2. **Slide 5 (`farol_metas`)**:
+   - `SLIDE_05_FAROL = HOMOLOGADO_E_CONGELADO` (Seção 95).
+   - $\Delta = \text{REAL} - \text{DESAFIO}$ para todos os indicadores de desempenho com meta.
+   - `M ANT.` exclusivamente informativo e histórico, sem participação em Delta, Score, Target ou Semáforo.
+3. **Evidência Homologada dos Quality Gates**:
+   - `npm run audit:analytics` ➔ PASS (100.00% Conforme).
+   - `npm run verify:parity` ➔ PASS (0,0000% de Desvio Financeiro).
+   - `npm run test:planning` ➔ PASS (20/20 Testes Aprovados).
+   - `npx tsc --noEmit` ➔ PASS (0 Erros de Tipagem).
+   - `npm run build` ➔ PASS (117/117 Rotas Compiladas com Sucesso).
+
+### Riscos Operacionais e Dívidas Técnicas Homologadas:
+1. **RISK-01 (P2 — Risco Operacional / Plano de Ação - Slide 23)**:
+   - Ações 5W2H serializadas em campo JSON único em `cm_rdm_comments`.
+   - Edições simultâneas de múltiplos usuários no mesmo escopo operam sob política *Last-Write-Wins* (sobrescrita por último salvamento). Risco conhecido registrado para evolução futura sem alteração de schema atual.
+2. **DEBT-01 (P3 — Dívida Técnica / Queries de Investimento - Slides 11, 12 e 13)**:
+   - Os componentes `SlideInvestFases`, `SlideInvestCliente` e `SlideInvestRede` realizam consultas diretamente no client Supabase (`v_acoes_investimento_com_gerente`). Dívida técnica mapeada para centralização futura na API central `/api/processo-comercial/rdm`.
+3. **DEBT-02 (P3 — Dívida Técnica / Rota Legada `/rdm-gerencial`)**:
+   - A página `/rdm-gerencial` e sua API permanecem como visualizador isolado do DRE Gerencial, redundante com os Slides 7 e 8 do RDM oficial. Dívida técnica mantida sem alteração ou remoção.
+
+### Distinção de Governança:
+- `RISK-01`, `DEBT-01` e `DEBT-02` **NÃO** são considerados bugs funcionais ativos e **NÃO** invalidam a confiabilidade financeira, segurança, Presentation Mode, exportador PPTX ou o uso executivo do módulo RDM.
+- Fica proibida a conversão automática destes itens em P0/P1 sem nova evidência técnica formal.
+
+### Diretrizes Mandatórias para Futuras Alterações:
+Qualquer nova evolução no módulo RDM deverá obrigatoriamente:
+1. Identificar o slide e a SSOT afetada;
+2. Preservar as regras congeladas ($\Delta = \text{Real} - \text{Desafio}$, `M ANT.` informativo, Seção 95);
+3. Limitar estritamente o escopo da alteração;
+4. Comprovar aprovação unânime nos 5 Quality Gates;
+5. Realizar auditoria pós-implementação antes de qualquer atualização de homologação.
+
+Status Geral: `RDM = HOMOLOGADO_COM_RESSALVAS` | `ALL_29_SLIDES = AUDITED_AND_VERIFIED` | `QUALITY_GATES = 100%_PASS` | `GOVERNANCE = LOCKED`.
+
+
+
 
 
 

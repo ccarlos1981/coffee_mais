@@ -457,12 +457,12 @@ export async function GET(request: Request) {
     const fatDesafioMonth = targetSum.revenue || (dreFatRow?.desafio ?? 0);
     const fatRealMonth    = realMonth.fat || (dreFatRow?.actual ?? 0);
     const fatPctMonth     = fatDesafioMonth > 0 ? (fatRealMonth / fatDesafioMonth) * 100 : 0;
-    const fatDeltaMonth   = fatRealMonth - prevMonth.fat;
+    const fatDeltaMonth   = fatRealMonth - fatDesafioMonth;
 
     const macoDesafioMonth = dreMacoRow?.desafio ?? 0;
     const macoRealMonth    = dreMacoRow?.actual ?? 0;
     const macoPctMonth     = macoDesafioMonth > 0 ? (macoRealMonth / macoDesafioMonth) * 100 : 0;
-    const macoDeltaMonth   = macoRealMonth - (dreMacoRow?.mesAnterior ?? 0);
+    const macoDeltaMonth   = macoRealMonth - macoDesafioMonth;
 
     const scoreMonth = isAgosto2026
       ? (fatPctMonth * 0.50) + (macoPctMonth * 0.30)
@@ -549,7 +549,7 @@ export async function GET(request: Request) {
               desafio: targetSum.tons,
               real:    realMonth.qty,
               pct:     volPctMonth,
-              delta:   realMonth.qty - prevMonth.qty,
+              delta:   realMonth.qty - targetSum.tons,
             },
             fat: {
               aa:      aaMonth.fat,
@@ -558,7 +558,7 @@ export async function GET(request: Request) {
               desafio: fatDesafioMonth,
               real:    realMonth.fat,
               pct:     fatPctMonth,
-              delta:   realMonth.fat - prevMonth.fat,
+              delta:   realMonth.fat - fatDesafioMonth,
             },
             invest: {
               aa:      0,
