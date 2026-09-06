@@ -16,6 +16,7 @@ import {
   gerarGradeParcelasIguais, 
   validarParidadeNegociacao 
 } from "@/lib/investimento/plano-financeiro-service";
+import { validarIntersecaoCompetencia } from "@/lib/investimento/consolidacao";
 
 interface InvestmentFormProps {
   redes: Array<{ codigo: string; displayCode?: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null }>;
@@ -566,9 +567,19 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
         setError("Por favor, informe um valor válido para o Pagamento Único.");
         return;
       }
-      if (dateMode === "single" && (!globalStart || !globalEnd)) {
-        setError("Por favor, selecione as datas de início e fim da ação.");
-        return;
+      if (dateMode === "single") {
+        if (!globalStart || !globalEnd) {
+          setError("Por favor, selecione as datas de início e fim da ação.");
+          return;
+        }
+        if (globalStart > globalEnd) {
+          setError("A data de início não pode ser posterior à data de término.");
+          return;
+        }
+        if (!validarIntersecaoCompetencia(globalStart, globalEnd, mes_referencia)) {
+          setError(`Ação comercial fora da competência: as datas (${globalStart} a ${globalEnd}) não possuem vigência no mês de referência selecionado (${mes_referencia}).`);
+          return;
+        }
       }
 
       const formData = new FormData(e.currentTarget);
@@ -672,7 +683,51 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
         setError(`${item.name}: ${err}`);
         return;
       }
+    }
 
+    if (modoMultiplasAcoes) {
+      for (const a of multiplasAcoes) {
+        if (a.data_inicio && a.data_fim && !validarIntersecaoCompetencia(a.data_inicio, a.data_fim, mes_referencia)) {
+          setError(`Ação "${a.tipo_acao}": O período (${a.data_inicio} a ${a.data_fim}) não possui vigência no mês de competência (${mes_referencia}).`);
+          return;
+        }
+      }
+    } else if (dateMode === "single") {
+      if (!globalStart || !globalEnd) {
+        setError("Por favor, selecione as datas de início e término da ação.");
+        return;
+      }
+      if (globalStart > globalEnd) {
+        setError("A data de início não pode ser posterior à data de término.");
+        return;
+      }
+      if (!validarIntersecaoCompetencia(globalStart, globalEnd, mes_referencia)) {
+        setError(`Ação comercial fora da competência: o período (${globalStart} a ${globalEnd}) não possui vigência no mês de referência (${mes_referencia}).`);
+        return;
+      }
+    } else if (dateMode === "multiple") {
+      if (showFamilias) {
+        for (const fam of selectedFamilias) {
+          const d = familiaDetails[fam] || {};
+          const s = d.start_date || globalStart;
+          const e = d.end_date || globalEnd;
+          if (s && e && !validarIntersecaoCompetencia(s, e, mes_referencia)) {
+            setError(`Família ${fam}: As datas (${s} a ${e}) não possuem vigência no mês de competência (${mes_referencia}).`);
+            return;
+          }
+        }
+      }
+      if (showSkus) {
+        for (const sku of selectedSkus) {
+          const d = skuDetails[sku] || {};
+          const s = d.start_date || globalStart;
+          const e = d.end_date || globalEnd;
+          if (s && e && !validarIntersecaoCompetencia(s, e, mes_referencia)) {
+            setError(`SKU ${sku}: As datas (${s} a ${e}) não possuem vigência no mês de competência (${mes_referencia}).`);
+            return;
+          }
+        }
+      }
     }
 
     let calculatedStart = globalStart;

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import nodemailer from "nodemailer";
 import { cleanMatrixCode, excelSerialToDate, parseDateString, parseExcelNum } from "@/lib/utils/excel-import";
-import { calcularCamposConsolidadosInvestimento } from "@/lib/investimento/consolidacao";
+import { calcularCamposConsolidadosInvestimento, validarIntersecaoCompetencia } from "@/lib/investimento/consolidacao";
 import { ActionResult, ActionErrorCode, successResult, errorResult, handleActionError } from "@/lib/types/action-result";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAuth, requireApprovedProfile, requirePermission, requireRole } from "@/lib/supabase/auth-helpers";
@@ -792,42 +792,50 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       try {
         const parsedMultiplas = JSON.parse(multiplasAcoesStr);
         if (Array.isArray(parsedMultiplas) && parsedMultiplas.length > 0) {
-          finalActionsToInsert = parsedMultiplas.map((a: any) => ({
-            rede,
-            codigo_matriz: codigo_matriz || null,
-            data_inicio: a.data_inicio || calculated_data_inicio,
-            data_fim: a.data_fim || calculated_data_fim,
-            date_mode: "single",
-            tipo_acao: a.tipo_acao || tipo_acao,
-            tipo_acao_detalhe: a.tipo_acao_detalhe || tipo_acao_detalhe,
-            familia_produto: a.familia_nome || a.familia_id || "Geral",
-            familias_detalhes: a.familias_detalhes || [{
-              familia_id: a.familia_id || "geral",
-              familia_nome: a.familia_nome || "Geral",
+          finalActionsToInsert = parsedMultiplas.map((a: any) => {
+            const vol = Number(a.expectativa_volume) || 1;
+            const totalVal = Number(a.valor_investimento) || 0;
+            const unitVal = (a.preco_flat && a.preco_acao && Number(a.preco_flat) > Number(a.preco_acao))
+              ? Math.round((Number(a.preco_flat) - Number(a.preco_acao)) * 100) / 100
+              : (vol > 0 ? Math.round((totalVal / vol) * 100) / 100 : totalVal);
+
+            return {
+              rede,
+              codigo_matriz: codigo_matriz || null,
+              data_inicio: a.data_inicio || calculated_data_inicio,
+              data_fim: a.data_fim || calculated_data_fim,
+              date_mode: "single",
+              tipo_acao: a.tipo_acao || tipo_acao,
+              tipo_acao_detalhe: a.tipo_acao_detalhe || tipo_acao_detalhe,
+              familia_produto: a.familia_nome || a.familia_id || "Geral",
+              familias_detalhes: a.familias_detalhes || [{
+                familia_id: a.familia_id || "geral",
+                familia_nome: a.familia_nome || "Geral",
+                preco_flat: Number(a.preco_flat) || 0,
+                preco_acao: Number(a.preco_acao) || 0,
+                investimento: unitVal,
+                expectativa_volume: vol,
+                start_date: a.data_inicio || calculated_data_inicio,
+                end_date: a.data_fim || calculated_data_fim,
+                status_trade: "PENDENTE"
+              }],
               preco_flat: Number(a.preco_flat) || 0,
               preco_acao: Number(a.preco_acao) || 0,
-              investimento: Number(a.valor_investimento) || 0,
-              expectativa_volume: Number(a.expectativa_volume) || 1,
-              start_date: a.data_inicio || calculated_data_inicio,
-              end_date: a.data_fim || calculated_data_fim,
-              status_trade: "PENDENTE"
-            }],
-            preco_flat: Number(a.preco_flat) || 0,
-            preco_acao: Number(a.preco_acao) || 0,
-            valor_investimento: Number(a.valor_investimento) || 0,
-            expectativa_volume: Number(a.expectativa_volume) || 1,
-            abrangencia: a.abrangencia || abrangencia,
-            tipo_pagamento: a.tipo_pagamento || tipo_pagamento,
-            skus_detalhes: a.skus_detalhes || [],
-            mes_referencia: a.mes_referencia || mes_referencia,
-            fase_atual: 1,
-            is_planejamento,
-            alertas_preventivos: a.alertas_preventivos || [],
-            status_financeiro: "NAO_FATURADA",
-            is_materializada_futura: !!a.is_materializada_futura,
-            acao_origem_recorrencia_id: a.acao_origem_recorrencia_id || null,
-            is_test: a.is_test !== undefined ? (isTradeOrAdmin && !!a.is_test) : is_test
-          }));
+              valor_investimento: totalVal,
+              expectativa_volume: vol,
+              abrangencia: a.abrangencia || abrangencia,
+              tipo_pagamento: a.tipo_pagamento || tipo_pagamento,
+              skus_detalhes: a.skus_detalhes || [],
+              mes_referencia: a.mes_referencia || mes_referencia,
+              fase_atual: 1,
+              is_planejamento,
+              alertas_preventivos: a.alertas_preventivos || [],
+              status_financeiro: "NAO_FATURADA",
+              is_materializada_futura: !!a.is_materializada_futura,
+              acao_origem_recorrencia_id: a.acao_origem_recorrencia_id || null,
+              is_test: a.is_test !== undefined ? (isTradeOrAdmin && !!a.is_test) : is_test
+            };
+          });
         }
       } catch (e) {
         console.error("Erro ao fazer parse de multiplas_acoes:", e);
@@ -857,6 +865,16 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
 
     if (finalActionsToInsert.length === 0) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma ação válida deve ser gerada a partir do lançamento.");
+    }
+
+    // Validação Canônica de Competência (Gate 5.14B):
+    // Todas as ações devem possuir interseção do seu período com o mes_referencia informado
+    for (const a of finalActionsToInsert) {
+      const actMes = a.mes_referencia || mes_referencia;
+      const validacaoComp = validarIntersecaoCompetencia(a.data_inicio, a.data_fim, actMes);
+      if (!validacaoComp.valido) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, validacaoComp.mensagem || "Competência incompatível com o período da ação.");
+      }
     }
 
     const totalInvestimentoAcoes = finalActionsToInsert.reduce((acc, a) => acc + (Number(a.valor_investimento) || 0), 0);
@@ -987,6 +1005,13 @@ export async function atualizarAcaoInvestimento(id: string, formData: FormData):
 
     if (!rede || (date_mode === "single" && (!data_inicio || !data_fim)) || !tipo_acao || !mes_referencia) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "Os campos Matriz, Mês de Referência, Data Início, Data Fim e Tipo da Ação são obrigatórios.");
+    }
+
+    if (date_mode === "single") {
+      const validacaoComp = validarIntersecaoCompetencia(data_inicio, data_fim, mes_referencia);
+      if (!validacaoComp.valido) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, validacaoComp.mensagem || "Competência incompatível com o período da ação.");
+      }
     }
 
     if (isPagamentoUnico) {

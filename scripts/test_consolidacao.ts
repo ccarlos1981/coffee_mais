@@ -28,7 +28,7 @@ testCase("Apenas uma Família", () => {
   assert.strictEqual(res.familia_produto, "Grão");
   assert.strictEqual(res.preco_flat, 10);
   assert.strictEqual(res.preco_acao, 8);
-  assert.strictEqual(res.valor_investimento, 2);
+  assert.strictEqual(res.valor_investimento, 200); // 2 * 100 = 200
   assert.strictEqual(res.expectativa_volume, 100);
 });
 
@@ -42,7 +42,7 @@ testCase("Apenas um SKU", () => {
   assert.strictEqual(res.familia_produto, "Múltiplos SKUs");
   assert.strictEqual(res.preco_flat, 15);
   assert.strictEqual(res.preco_acao, 12);
-  assert.strictEqual(res.valor_investimento, 3);
+  assert.strictEqual(res.valor_investimento, 150); // 3 * 50 = 150
   assert.strictEqual(res.expectativa_volume, 50);
 });
 
@@ -57,7 +57,7 @@ testCase("Múltiplas Famílias com volumes iguais (média aritmética)", () => {
   assert.strictEqual(res.familia_produto, "Grão, Cápsula");
   assert.strictEqual(res.preco_flat, 15); // (10*100 + 20*100) / 200 = 15
   assert.strictEqual(res.preco_acao, 12); // (8*100 + 16*100) / 200 = 12
-  assert.strictEqual(res.valor_investimento, 3); // (2*100 + 4*100) / 200 = 3
+  assert.strictEqual(res.valor_investimento, 600); // 2*100 + 4*100 = 600
   assert.strictEqual(res.expectativa_volume, 200);
 });
 
@@ -72,7 +72,7 @@ testCase("Múltiplos SKUs com volumes iguais", () => {
   assert.strictEqual(res.familia_produto, "Múltiplos SKUs");
   assert.strictEqual(res.preco_flat, 20); // (10 + 30) / 2 = 20
   assert.strictEqual(res.preco_acao, 16); // (8 + 24) / 2 = 16
-  assert.strictEqual(res.valor_investimento, 4); // (2 + 6) / 2 = 4
+  assert.strictEqual(res.valor_investimento, 1600); // 2*200 + 6*200 = 1600
   assert.strictEqual(res.expectativa_volume, 400);
 });
 
@@ -85,12 +85,12 @@ testCase("Média ponderada com volumes diferentes", () => {
   // Pesos: Grão (1/4), Cápsula (3/4)
   // preco_flat: (10 * 100 + 20 * 300) / 400 = (1000 + 6000) / 400 = 17.5
   // preco_acao: (8 * 100 + 16 * 300) / 400 = (800 + 4800) / 400 = 14
-  // valor_investimento: (2 * 100 + 5 * 300) / 400 = (200 + 1500) / 400 = 4.25
+  // valor_investimento: 2 * 100 + 5 * 300 = 200 + 1500 = 1700
   const res = calcularCamposConsolidadosInvestimento(familias, null);
   
   assert.strictEqual(res.preco_flat, 17.5);
   assert.strictEqual(res.preco_acao, 14);
-  assert.strictEqual(res.valor_investimento, 4.25);
+  assert.strictEqual(res.valor_investimento, 1700);
   assert.strictEqual(res.expectativa_volume, 400);
 });
 
@@ -148,12 +148,12 @@ testCase("Consolidação mista (Famílias e SKUs)", () => {
   // Total vol = 200
   // flat: (1000 + 2000) / 200 = 15
   // acao: (800 + 1600) / 200 = 12
-  // inv: (200 + 400) / 200 = 3
+  // inv: 2 * 100 + 4 * 100 = 600
   const res = calcularCamposConsolidadosInvestimento(familias, skus);
   
   assert.strictEqual(res.preco_flat, 15);
   assert.strictEqual(res.preco_acao, 12);
-  assert.strictEqual(res.valor_investimento, 3);
+  assert.strictEqual(res.valor_investimento, 600);
   assert.strictEqual(res.expectativa_volume, 200);
   assert.strictEqual(res.familia_produto, "Grão"); // Prioriza nome das famílias se houver
 });
