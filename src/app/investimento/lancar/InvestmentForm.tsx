@@ -25,9 +25,19 @@ interface InvestmentFormProps {
   canCreateTest?: boolean;
 }
 
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c =>
+    (+c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> +c / 4).toString(16)
+  );
+}
+
 export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, canCreateTest = false }: InvestmentFormProps) {
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => generateIdempotencyKey());
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -597,6 +607,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
       formData.append("is_planejamento", isPlanejamento ? "true" : "false");
       formData.append("is_test", isTest ? "true" : "false");
       formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
+      formData.append("idempotency_key", idempotencyKey);
 
       startTransition(async () => {
         try {
@@ -608,6 +619,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
           }
           
           if (result?.success) {
+            setIdempotencyKey(generateIdempotencyKey());
             router.refresh();
             if (result.data?.is_planejamento || (result as any).is_planejamento) {
               router.push("/investimento/planejamento");
@@ -771,6 +783,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
 
     formData.append("is_planejamento", isPlanejamento ? "true" : "false");
     formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
+    formData.append("idempotency_key", idempotencyKey);
     if (modoMultiplasAcoes) {
       formData.append("multiplas_acoes", JSON.stringify(multiplasAcoes));
     }
@@ -785,6 +798,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
         }
         
         if (result?.success) {
+          setIdempotencyKey(generateIdempotencyKey());
           router.refresh();
           if (result.data?.is_planejamento || (result as any).is_planejamento) {
             router.push("/investimento/planejamento");

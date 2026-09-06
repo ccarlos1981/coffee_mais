@@ -5983,7 +5983,6 @@ export default function RdmPage() {
   const slideBlock = (
     <div
       className={`rdm-slide-inner rdm-anim-${direction} ${animating ? 'rdm-animating' : ''}`}
-      style={{ position: 'relative', overflow: 'hidden', borderRadius: 'inherit' }}
     >
       {renderSlide()}
       {isCurrentSlideOutdated && <RdmOutdatedOverlay />}

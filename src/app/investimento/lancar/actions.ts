@@ -887,7 +887,26 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       tipo_plano_financeiro: finalParcelasToInsert.length > 1 ? "PARCELADO" : "A_VISTA"
     };
 
-    const idempotencyKey = (formData.get("idempotency_key") as string) || `idem_neg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    // Validação estrita e sanitização da chave de idempotência do cliente
+    const rawClientKey = formData.get("idempotency_key");
+    let idempotencyKey: string;
+
+    if (typeof rawClientKey === "string" && rawClientKey.trim()) {
+      const sanitized = rawClientKey.trim();
+      // Validar formato seguro (alfanumérico, hífens, underscores, tamanho entre 8 e 128)
+      if (!/^[a-zA-Z0-9_-]{8,128}$/.test(sanitized)) {
+        return errorResult(
+          ActionErrorCode.VALIDATION_ERROR,
+          "Chave de idempotência inválida. Formato ou tamanho incompatível."
+        );
+      }
+      idempotencyKey = sanitized;
+    } else {
+      // Fallback seguro em chamadas diretas sem chave do formulário
+      console.warn("[IDEMPOTENCY_WARNING] Lançamento recebido sem idempotency_key do formulário. Gerando fallback.");
+      idempotencyKey = `idem_fallback_${user.id}_${Date.now()}`;
+    }
+
     const adminClient = createAdminClient();
     const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_negociacao_completa_v1", {
       p_campanha,
@@ -899,6 +918,15 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
 
     if (rpcError) {
       console.error("Erro na transação criar_negociacao_completa_v1:", rpcError);
+      const errorMsg = rpcError.message || "";
+      if (
+        errorMsg.includes("Inconsistência Financeira") ||
+        errorMsg.includes("Violação de Integridade") ||
+        errorMsg.includes("obrigatórios") ||
+        errorMsg.includes("Ao menos uma ação")
+      ) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, errorMsg);
+      }
       throw rpcError;
     }
 
