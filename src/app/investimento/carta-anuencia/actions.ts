@@ -112,19 +112,31 @@ export interface FarolGerencialRedeItem {
   codigo_matriz: string;
   possui_carta: boolean;
   status_farol_rede: "COM_CARTA" | "SEM_CARTA";
-  carta?: {
-    id: string;
-    numero_carta: string;
-    status: "PENDENTE" | "EMITIDA" | "ENVIADA" | "ASSINADA" | "CANCELADA";
-    competencia: string;
-    data_emissao: string;
-    data_assinatura?: string | null;
-    validade_ate?: string | null;
-    expirada?: boolean;
-    arquivo_assinado_url?: string | null;
-    pdf_url?: string | null;
-    logo_rede_url?: string | null;
-  } | null;
+  carta?: CartaAnuenciaItem | null;
+}
+
+export interface FarolGerencialGerenteItem {
+  id: string;
+  gerente: string;
+  regional: string;
+  esperadas: number;
+  no_sistema: number;
+  faltantes: number;
+  cobertura_pct: number;
+  status_farol: "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO";
+  // Métricas do Ranking de Assinatura (mutuamente exclusivas):
+  cartas_para_assinar: number;
+  cartas_assinadas: number;
+  pct_cartas_assinadas: number;
+  redes: FarolGerencialRedeItem[];
+}
+
+export interface FarolGerencialRankingItem {
+  posicao: number;
+  gerente: string;
+  cartas_para_assinar: number;
+  cartas_assinadas: number;
+  pct_cartas_assinadas: number;
 }
 
 export interface FarolGerencialRegionalItem {
@@ -147,7 +159,11 @@ export interface FarolGerencialResumo {
   status_farol_geral: "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO";
   competencia: string;
   competencias_disponiveis: CompetenciaItem[];
+  gerentes: FarolGerencialGerenteItem[];
+  ranking_assinatura: FarolGerencialRankingItem[];
   regionais: FarolGerencialRegionalItem[];
+  is_gerente_regional: boolean;
+  gerente_logado?: string;
 }
 
 export interface LogoRedeItem {
@@ -1225,20 +1241,26 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
 
   const adminClient = createAdminClient();
 
+  // Buscar estado anterior da carta para RBAC, histórico e auditoria
+  const { data: cartaAnterior, error: fetchErr } = await adminClient
+    .from("cm_cartas_anuencia")
+    .select("id, rede_id, status, arquivo_assinado_url, numero_carta")
+    .eq("id", cartaId)
+    .single();
+
+  if (fetchErr || !cartaAnterior) {
+    throw new Error("Carta de anuência não encontrada.");
+  }
+
   // RBAC: validar se a carta pertence à carteira do gerente
   const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
   if (carteiraGerente !== null) {
-    const { data: cartaCheck, error: fetchErr } = await adminClient
-      .from("cm_cartas_anuencia")
-      .select("id, rede_id")
-      .eq("id", cartaId)
-      .single();
-
-    if (fetchErr || !cartaCheck || !validarAcessoRede(carteiraGerente, cartaCheck.rede_id)) {
+    if (!validarAcessoRede(carteiraGerente, cartaAnterior.rede_id)) {
       throw new Error("403 Forbidden: Não autorizado a registrar carta assinada para rede fora de sua carteira regional.");
     }
   }
 
+  const isSubstituicao = Boolean(cartaAnterior.arquivo_assinado_url || cartaAnterior.status === "ASSINADA");
   let userName = profile?.name || user.email || "Usuário do Sistema";
   const dataAssinatura = new Date().toISOString();
 
@@ -1260,25 +1282,37 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
     throw new Error(`Erro ao registrar carta assinada: ${error.message}`);
   }
 
+  // 14. AUDITORIA DA TROCA / UPLOAD NA TIMELINE
   await adminClient.from("cm_carta_anuencia_timeline").insert({
     carta_id: cartaId,
-    evento: "UPLOAD_ASSINADA",
+    evento: isSubstituicao ? "SUBSTITUICAO_ASSINADA" : "UPLOAD_ASSINADA",
     detalhes: {
-      arquivo_assinado_url: arquivoAssinadoUrl,
+      acao: isSubstituicao ? "TROCA_CARTA_ASSINADA" : "UPLOAD_INICIAL_ASSINADA",
+      arquivo_anterior: cartaAnterior.arquivo_assinado_url || null,
+      novo_arquivo: arquivoAssinadoUrl,
       data_assinatura: dataAssinatura,
+      resultado: isSubstituicao ? "Arquivo assinado substituído com sucesso" : "Arquivo assinado anexado com sucesso",
     },
     usuario_id: user.id,
     usuario_nome: userName,
   });
 
+  // Log de auditoria permanente em cm_audit_logs
   await safeInsertAuditLog(adminClient, {
     user_id: user.id,
-    action: "Upload Carta Assinada (Baixa Automática Farol)",
+    action: isSubstituicao ? "Substituição de Carta Assinada (Troca de Arquivo)" : "Upload Carta Assinada (Baixa Automática Farol)",
     table_name: "cm_cartas_anuencia",
+    old_data: isSubstituicao ? {
+      carta_id: cartaId,
+      numero_carta: cartaAnterior.numero_carta,
+      arquivo_assinado_url: cartaAnterior.arquivo_assinado_url,
+      status: cartaAnterior.status,
+    } : undefined,
     new_data: {
       carta_id: cartaId,
       numero_carta: cartaAtualizada.numero_carta,
       arquivo_assinado_url: arquivoAssinadoUrl,
+      status: "ASSINADA",
     },
   });
 
@@ -1591,30 +1625,52 @@ export async function obterDadosFarolGerencial(filters?: {
   });
 
   // 5. Vincular cada carta física a EXATAMENTE uma operação de rede (cardinalidade 1:1 estrita)
-  const cartasPorRedeChave = new Map<string, any>();
+  const cartasPorRedeChave = new Map<string, CartaAnuenciaItem>();
   const cartasUsadas = new Set<string>();
 
   (cartasAtivasRaw || []).forEach((c) => {
     if (cartasUsadas.has(c.id)) return; // Garantir que uma carta física nunca seja usada duas vezes
 
-    const cartaEnriquecida = {
+    const cartaEnriquecida: CartaAnuenciaItem = {
       id: c.id,
       numero_carta: c.numero_carta,
-      status: c.status,
+      versao: c.versao || 1,
+      carta_origem_id: c.carta_origem_id || null,
+      rede_id: c.rede_id,
+      rede_nome: c.rede_nome || "",
+      cnpj: c.cnpj || null,
+      competencia_id: c.competencia_id || null,
       competencia: c.competencia,
       data_emissao: c.data_emissao,
-      data_assinatura: c.data_assinatura,
-      validade_ate: c.validade_ate,
-      expirada: verificarCartaExpirada(c.validade_ate),
-      arquivo_assinado_url: c.arquivo_assinado_url,
-      pdf_url: c.pdf_url,
+      data_assinatura: c.data_assinatura || null,
+      validade_ate: c.validade_ate || null,
+      status: c.status,
+      logo_id: c.logo_id || null,
+      logo_snapshot_path: c.logo_snapshot_path || null,
       logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
+      logo_coffee_url: c.logo_coffee_url || null,
+      pdf_url: c.pdf_url || null,
+      arquivo_assinado_url: c.arquivo_assinado_url || null,
+      usuario_emissao: c.usuario_emissao || null,
+      usuario_emissao_nome: c.usuario_emissao_nome || null,
+      usuario_assinatura: c.usuario_assinatura || null,
+      usuario_assinatura_nome: c.usuario_assinatura_nome || null,
+      observacoes: c.observacoes || null,
+      assinatura_metodo: c.assinatura_metodo || null,
+      assinatura_hash: c.assinatura_hash || null,
+      assinatura_protocolo: c.assinatura_protocolo || null,
+      qr_code_hash: c.qr_code_hash || null,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+      expirada: verificarCartaExpirada(c.validade_ate),
     };
 
     // Caso 1: Mapeamento canônico explícito (para os 5 casos multiestado)
     if (CARTA_DESTINO_CANONICO[c.numero_carta]) {
       const dest = CARTA_DESTINO_CANONICO[c.numero_carta];
       const key = `${dest.manager}:::${dest.rede}`.toLowerCase();
+      cartaEnriquecida.gerente = dest.manager;
+      cartaEnriquecida.rede_nome = dest.rede;
       cartasPorRedeChave.set(key, cartaEnriquecida);
       cartasUsadas.add(c.id);
       return;
@@ -1639,6 +1695,11 @@ export async function obterDadosFarolGerencial(filters?: {
       if (redeAlvo) {
         const key = `${redeAlvo.manager}:::${redeAlvo.rede}`.toLowerCase();
         if (!cartasPorRedeChave.has(key)) {
+          cartaEnriquecida.gerente = redeAlvo.manager;
+          cartaEnriquecida.uf = redeAlvo.uf || null;
+          if (!cartaEnriquecida.rede_nome) {
+            cartaEnriquecida.rede_nome = redeAlvo.rede;
+          }
           cartasPorRedeChave.set(key, cartaEnriquecida);
           cartasUsadas.add(c.id);
           return;
@@ -1654,6 +1715,11 @@ export async function obterDadosFarolGerencial(filters?: {
     const possui_carta = Boolean(carta);
     const regionalInfo = resolverRegionalPorGerente(r.manager);
 
+    // Garantir que a carta carregue o nome e dados da rede para o PreviewModal
+    if (carta && !carta.rede_nome) {
+      carta.rede_nome = r.rede;
+    }
+
     return {
       rede: r.rede,
       manager: r.manager,
@@ -1666,7 +1732,123 @@ export async function obterDadosFarolGerencial(filters?: {
     };
   });
 
-  // 7. Agrupamento por Regional Oficial
+  // 7. NOVO AGRUPAMENTO PRINCIPAL POR GERENTE RESPONSÁVEL
+  const gerentesMap = new Map<string, {
+    id: string;
+    gerente: string;
+    regional: string;
+    redes: FarolGerencialRedeItem[];
+  }>();
+
+  // Lista dinâmica de gerentes baseada no universo oficial (sem hardcoding)
+  const listaGerentes = isGerenteRegional && gerenteLogado
+    ? [gerenteLogado]
+    : Array.from(new Set(universoRedes.map((r) => r.manager).filter(Boolean))).sort();
+
+  listaGerentes.forEach((m) => {
+    const regInfo = resolverRegionalPorGerente(m);
+    gerentesMap.set(m, {
+      id: m.toLowerCase().replace(/\s+/g, "_"),
+      gerente: m,
+      regional: regInfo.label,
+      redes: [],
+    });
+  });
+
+  // Distribuir as redes em seus respectivos gerentes responsáveis
+  redesDetalhadas.forEach((item) => {
+    const gGroup = gerentesMap.get(item.manager);
+    if (gGroup) {
+      gGroup.redes.push(item);
+    }
+  });
+
+  // 8. Calcular métricas agregadas por Gerente com consistência estrita
+  const gerentesItens: FarolGerencialGerenteItem[] = Array.from(gerentesMap.values()).map((g) => {
+    const esperadas = g.redes.length;
+    const no_sistema = g.redes.filter((r) => r.possui_carta).length;
+    const faltantes = esperadas - no_sistema;
+    const cobertura_pct = esperadas > 0 ? Number(((no_sistema / esperadas) * 100).toFixed(1)) : 0;
+    const status_farol = calcularFarolStatus(cobertura_pct);
+
+    // MÉTIRCAS DO RANKING DE ASSINATURA — ESTRITAMENTE MUTUAMENTE EXCLUSIVAS
+    const redesComCarta = g.redes.filter((r) => r.possui_carta && r.carta);
+    
+    // ASSINADA: somente se status === 'ASSINADA' ou possui arquivo_assinado_url
+    const cartas_assinadas = redesComCarta.filter((r) => 
+      r.carta!.status === "ASSINADA" || Boolean(r.carta!.arquivo_assinado_url)
+    ).length;
+
+    // PARA ASSINAR: carta existe no sistema mas ainda não está assinada
+    const cartas_para_assinar = redesComCarta.filter((r) => 
+      r.carta!.status !== "ASSINADA" && !r.carta!.arquivo_assinado_url
+    ).length;
+
+    // Garantia matemática estrita: cartas_para_assinar + cartas_assinadas === no_sistema
+    const totalCartasNoContexto = cartas_para_assinar + cartas_assinadas;
+    const pct_cartas_assinadas = totalCartasNoContexto > 0 
+      ? Number(((cartas_assinadas / totalCartasNoContexto) * 100).toFixed(1))
+      : 0;
+
+    // Ordenar redes do gerente: 1º faltantes (SEM CARTA), 2º alfabético
+    const redesOrdenadas = [...g.redes].sort((a, b) => {
+      if (a.possui_carta === b.possui_carta) {
+        return a.rede.localeCompare(b.rede, "pt-BR");
+      }
+      return a.possui_carta ? 1 : -1;
+    });
+
+    return {
+      id: g.id,
+      gerente: g.gerente,
+      regional: g.regional,
+      esperadas,
+      no_sistema,
+      faltantes,
+      cobertura_pct,
+      status_farol,
+      cartas_para_assinar,
+      cartas_assinadas,
+      pct_cartas_assinadas,
+      redes: redesOrdenadas,
+    };
+  });
+
+  // Ordenação dos Gerentes no Farol: 1º menor cobertura %, 2º mais faltantes, 3º alfabético
+  gerentesItens.sort((a, b) => {
+    if (a.cobertura_pct !== b.cobertura_pct) {
+      return a.cobertura_pct - b.cobertura_pct;
+    }
+    if (b.faltantes !== a.faltantes) {
+      return b.faltantes - a.faltantes;
+    }
+    return a.gerente.localeCompare(b.gerente, "pt-BR");
+  });
+
+  // 9. Ranking de Assinatura:
+  // Ordenar por:
+  // 1. % de Cartas assinadas — maior para menor (DESC)
+  // 2. Em caso de empate: Cartas assinadas — maior para menor (DESC)
+  // 3. Em caso de novo empate: Gerente — ordem alfabética (ASC)
+  const ranking_assinatura: FarolGerencialRankingItem[] = [...gerentesItens]
+    .sort((a, b) => {
+      if (b.pct_cartas_assinadas !== a.pct_cartas_assinadas) {
+        return b.pct_cartas_assinadas - a.pct_cartas_assinadas;
+      }
+      if (b.cartas_assinadas !== a.cartas_assinadas) {
+        return b.cartas_assinadas - a.cartas_assinadas;
+      }
+      return a.gerente.localeCompare(b.gerente, "pt-BR");
+    })
+    .map((g, idx) => ({
+      posicao: idx + 1,
+      gerente: g.gerente,
+      cartas_para_assinar: g.cartas_para_assinar,
+      cartas_assinadas: g.cartas_assinadas,
+      pct_cartas_assinadas: g.pct_cartas_assinadas,
+    }));
+
+  // 10. Agrupamento por Regional Oficial (compatibilidade reversa)
   const regionaisMap = new Map<string, {
     id: string;
     regional: string;
@@ -1674,7 +1856,6 @@ export async function obterDadosFarolGerencial(filters?: {
     redes: FarolGerencialRedeItem[];
   }>();
 
-  // Inicializar as 4 Regionais Comerciais Oficiais
   const REGIONAIS_ORDEM = [
     { id: "CO_NO", regional: "Centro-Oeste / Norte", gerente: "John Guedes" },
     { id: "SUL", regional: "Sul", gerente: "Leandro Saffi" },
@@ -1683,7 +1864,6 @@ export async function obterDadosFarolGerencial(filters?: {
   ];
 
   REGIONAIS_ORDEM.forEach((reg) => {
-    // Se o usuário logado for Gerente Regional, inicializar apenas a sua Regional
     if (!isGerenteRegional || reg.gerente === gerenteLogado) {
       regionaisMap.set(reg.regional, {
         id: reg.id,
@@ -1694,7 +1874,6 @@ export async function obterDadosFarolGerencial(filters?: {
     }
   });
 
-  // Distribuir as redes nas suas respectivas Regionais
   redesDetalhadas.forEach((item) => {
     let regGroup = regionaisMap.get(item.regional);
     if (!regGroup) {
@@ -1708,21 +1887,12 @@ export async function obterDadosFarolGerencial(filters?: {
     }
   });
 
-  // 8. Calcular métricas agregadas por Regional com consistência estrita
   const regionaisItens: FarolGerencialRegionalItem[] = Array.from(regionaisMap.values()).map((g) => {
     const esperadas = g.redes.length;
     const no_sistema = g.redes.filter((r) => r.possui_carta).length;
     const faltantes = esperadas - no_sistema;
     const cobertura_pct = esperadas > 0 ? Number(((no_sistema / esperadas) * 100).toFixed(1)) : 0;
     const status_farol = calcularFarolStatus(cobertura_pct);
-
-    // Ordenar redes: primeiro as faltantes (SEM CARTA), depois alfabético
-    const redesOrdenadas = [...g.redes].sort((a, b) => {
-      if (a.possui_carta === b.possui_carta) {
-        return a.rede.localeCompare(b.rede, "pt-BR");
-      }
-      return a.possui_carta ? 1 : -1;
-    });
 
     return {
       id: g.id,
@@ -1733,21 +1903,13 @@ export async function obterDadosFarolGerencial(filters?: {
       faltantes,
       cobertura_pct,
       status_farol,
-      redes: redesOrdenadas,
+      redes: g.redes,
     };
   });
 
-  // Ordenação das Regionais: 1º menor cobertura %, 2º mais faltantes
-  regionaisItens.sort((a, b) => {
-    if (a.cobertura_pct !== b.cobertura_pct) {
-      return a.cobertura_pct - b.cobertura_pct;
-    }
-    return b.faltantes - a.faltantes;
-  });
-
-  // 9. Calcular Totais Gerais Consolidados
-  const total_esperadas = regionaisItens.reduce((acc, r) => acc + r.esperadas, 0);
-  const total_no_sistema = regionaisItens.reduce((acc, r) => acc + r.no_sistema, 0);
+  // 11. Calcular Totais Gerais Consolidados (conforme escopo RBAC)
+  const total_esperadas = gerentesItens.reduce((acc, r) => acc + r.esperadas, 0);
+  const total_no_sistema = gerentesItens.reduce((acc, r) => acc + r.no_sistema, 0);
   const total_faltantes = total_esperadas - total_no_sistema;
   const cobertura_geral_pct = total_esperadas > 0 ? Number(((total_no_sistema / total_esperadas) * 100).toFixed(1)) : 0;
   const status_farol_geral = calcularFarolStatus(cobertura_geral_pct);
@@ -1760,6 +1922,10 @@ export async function obterDadosFarolGerencial(filters?: {
     status_farol_geral,
     competencia: competenciaSelecionada,
     competencias_disponiveis: competenciasDisponiveis,
+    gerentes: gerentesItens,
+    ranking_assinatura,
     regionais: regionaisItens,
+    is_gerente_regional: isGerenteRegional,
+    gerente_logado: gerenteLogado,
   };
 }

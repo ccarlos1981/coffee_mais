@@ -17,6 +17,8 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
 
   if (!carta) return null;
 
+  const isTroca = Boolean(carta.status === "ASSINADA" || carta.arquivo_assinado_url);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
@@ -53,7 +55,11 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
 
       await uploadCartaAssinadaServerAction(formData);
 
-      toast.success("Carta de Anuência Assinada anexada com sucesso! Baixa automática realizada no Farol.");
+      if (isTroca) {
+        toast.success("Carta de Anuência Assinada substituída com sucesso! Histórico de auditoria registrado.");
+      } else {
+        toast.success("Carta de Anuência Assinada anexada com sucesso! Baixa automática realizada no Farol.");
+      }
       onSuccess();
     } catch (err: any) {
       console.error("Erro no upload de carta assinada:", err);
@@ -75,7 +81,7 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
             </div>
             <div>
               <h2 className="text-base font-bold text-foreground">
-                Anexar Carta Assinada pela Rede
+                {isTroca ? "Trocar Carta Assinada pela Rede" : "Anexar Carta Assinada pela Rede"}
               </h2>
               <p className="text-xs text-muted-foreground">
                 {carta.numero_carta} — {carta.rede_nome}
@@ -104,7 +110,7 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status Atual:</span>
-              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 font-bold uppercase text-[10px]">
+              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 font-bold uppercase text-[10px]">
                 {carta.status}
               </span>
             </div>
@@ -128,7 +134,7 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
-                  {file ? file.name : "Clique para selecionar o arquivo assinado"}
+                  {file ? file.name : (isTroca ? "Clique para selecionar o novo arquivo assinado" : "Clique para selecionar o arquivo assinado")}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Suporta arquivos PDF ou Imagem (PNG, JPG, WEBP) até 20MB
@@ -137,13 +143,22 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
             </label>
           </div>
 
-          {/* Warning */}
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            <span>
-              Ao anexar o arquivo assinado, o status da carta será alterado automaticamente para <strong>ASSINADA</strong>, dando baixa no <strong>Farol</strong>.
-            </span>
-          </div>
+          {/* Warning / Informational Box */}
+          {isTroca ? (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-700 dark:text-amber-400 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>
+                <strong>Atenção:</strong> Esta carta já possui um documento assinado anexado. Ao confirmar, o arquivo ativo será substituído e a operação será registrada na Linha do Tempo e nos Logs de Auditoria.
+              </span>
+            </div>
+          ) : (
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>
+                Ao anexar o arquivo assinado, o status da carta será alterado automaticamente para <strong>ASSINADA</strong>, dando baixa no <strong>Farol</strong>.
+              </span>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
@@ -159,17 +174,19 @@ export function UploadAssinadaModal({ carta, onClose, onSuccess }: UploadAssinad
             <button
               type="submit"
               disabled={!file || uploading}
-              className="px-5 py-2 text-xs font-semibold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors flex items-center gap-2 disabled:opacity-50"
+              className={`px-5 py-2 text-xs font-semibold rounded-xl text-white transition-colors flex items-center gap-2 disabled:opacity-50 ${
+                isTroca ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700"
+              }`}
             >
               {uploading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Enviando...
+                  {isTroca ? "Substituindo..." : "Enviando..."}
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  Confirmar e Dar Baixa
+                  {isTroca ? "Confirmar Substituição" : "Confirmar e Dar Baixa"}
                 </>
               )}
             </button>

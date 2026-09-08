@@ -648,6 +648,16 @@ export default function CartaAnuenciaPage() {
                                   </button>
                                 )}
 
+                                {item.status === "ASSINADA" && (
+                                  <button
+                                    onClick={() => setUploadCarta(item)}
+                                    className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 transition-colors"
+                                    title="Trocar Carta Assinada (Substituir Arquivo)"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
                                 {item.status !== "CANCELADA" && (
                                   <button
                                     onClick={() => handleCancelar(item.id)}
@@ -685,6 +695,7 @@ export default function CartaAnuenciaPage() {
           <FarolGerencialView
             onEmitirCarta={handleEmitirCartaParaRede}
             onPreviewCarta={(c) => setPreviewCarta(c)}
+            onUploadCarta={(c) => setUploadCarta(c)}
             competenciaDefault={competenciaFiltro !== "TODAS" ? competenciaFiltro : undefined}
           />
         )}

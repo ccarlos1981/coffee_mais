@@ -20,9 +20,9 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
   const cartaPaperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!carta?.rede_nome) return;
+    const nomeRede = carta?.rede_nome || "Documento";
     const originalTitle = document.title;
-    document.title = `Carta de anuência - ${carta.rede_nome}`;
+    document.title = `Carta de anuência - ${nomeRede}`;
     return () => {
       document.title = originalTitle;
     };
@@ -32,11 +32,13 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
 
   const logoRedePublicUrl = getStoragePublicUrl(carta.logo_snapshot_path || carta.logo_rede_url, "logos-redes");
 
-  const dataEmissaoFmt = new Date(carta.data_emissao).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-  });
+  const dataEmissaoFmt = carta.data_emissao
+    ? new Date(carta.data_emissao).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      })
+    : "—";
 
   const dataValidadeFmt = formatarDataValidade(carta.validade_ate);
 
@@ -70,7 +72,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
       // Dimensões A4 exatas (210mm x 297mm) sem margens externas
       pdf.addImage(dataUrl, "PNG", 0, 0, 210, 297, undefined, "FAST");
 
-      const filename = `Carta_de_Anuencia_${carta.numero_carta}_${carta.rede_nome.replace(/\s+/g, "_")}.pdf`;
+      const filename = `Carta_de_Anuencia_${carta.numero_carta || "CA"}_${(carta.rede_nome || "Rede").replace(/\s+/g, "_")}.pdf`;
       pdf.save(filename);
 
       await registrarCompartilhamento(carta.id, "DOWNLOAD", { detalhe: "Download PDF A4 isolado efetuado" });
@@ -92,15 +94,15 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
   };
 
   const handleShareWhatsApp = async () => {
-    const texto = `Prezados,\n\nSegue a Carta de Anuência e Termo de Quitação Financeira N° ${carta.numero_carta} (Versão v${carta.versao}) emitida pela Coffee Mais para a rede ${carta.rede_nome} referente à competência ${carta.competencia}.\n\nAcesse no sistema Coffee++: ${window.location.origin}/investimento/carta-anuencia?busca=${carta.numero_carta}`;
+    const texto = `Prezados,\n\nSegue a Carta de Anuência e Termo de Quitação Financeira N° ${carta.numero_carta || "—"} (Versão v${carta.versao || 1}) emitida pela Coffee Mais para a rede ${carta.rede_nome || "Parceira"} referente à competência ${carta.competencia || "—"}.\n\nAcesse no sistema Coffee++: ${window.location.origin}/investimento/carta-anuencia?busca=${carta.numero_carta || ""}`;
     const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(texto)}`;
     await registrarCompartilhamento(carta.id, "WHATSAPP", { texto });
     window.open(url, "_blank");
   };
 
   const handleShareEmail = async () => {
-    const assunto = `Carta de Anuência N° ${carta.numero_carta} — Coffee++ / ${carta.rede_nome}`;
-    const corpo = `Prezados,\n\nConfirmamos a emissão do Termo de Quitação Financeira e Carta de Anuência N° ${carta.numero_carta} para a competência ${carta.competencia}.\n\nRede: ${carta.rede_nome}\nCNPJ: ${carta.cnpj || "N/A"}\nValidade: ${dataValidadeFmt}\n\nAtenciosamente,\nEquipe Coffee Mais`;
+    const assunto = `Carta de Anuência N° ${carta.numero_carta || "—"} — Coffee++ / ${carta.rede_nome || "Parceira"}`;
+    const corpo = `Prezados,\n\nConfirmamos a emissão do Termo de Quitação Financeira e Carta de Anuência N° ${carta.numero_carta || "—"} para a competência ${carta.competencia || "—"}.\n\nRede: ${carta.rede_nome || "Parceira"}\nCNPJ: ${carta.cnpj || "N/A"}\nValidade: ${dataValidadeFmt}\n\nAtenciosamente,\nEquipe Coffee Mais`;
     const mailto = `mailto:?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
     await registrarCompartilhamento(carta.id, "EMAIL", { assunto });
     window.location.href = mailto;
@@ -285,14 +287,14 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                 <p>
                   Declaramos para os devidos fins de direito e a quem possa interessar que a empresa{" "}
                   <strong className="font-bold text-neutral-900">COFFEE MAIS INDÚSTRIA E COMÉRCIO DE CAFÉ LTDA</strong>,
-                  concede à empresa parceira <strong className="font-bold text-neutral-900">{carta.rede_nome.toUpperCase()}</strong>
+                  concede à empresa parceira <strong className="font-bold text-neutral-900">{(carta.rede_nome || "Rede Parceira").toUpperCase()}</strong>
                   {carta.cnpj ? `, inscrita no CNPJ/MF sob o nº ${carta.cnpj}` : ""}, a presente{" "}
                   <strong className="font-bold text-amber-800">CARTA DE ANUÊNCIA E QUITAÇÃO PLENA, GERAL E IRREVOGÁVEL</strong>.
                 </p>
 
                 <p>
                   Atestamos expressamente que, até a competência de{" "}
-                  <strong className="font-bold text-neutral-900 uppercase bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{carta.competencia}</strong>,
+                  <strong className="font-bold text-neutral-900 uppercase bg-amber-50 px-2 py-0.5 rounded border border-amber-200">{carta.competencia || "—"}</strong>,
                   não existem quaisquer pendências financeiras, débitos vencidos ou vincendos, verbas contratuais,
                   bonificações pendentes de ressarcimento ou divergências comerciais entre as partes.
                 </p>
@@ -313,7 +315,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
 
                 <div className="text-xs text-neutral-500 border-t border-dashed border-neutral-300 pt-3 flex justify-between">
                   <span>Validade deste documento: <strong>{dataValidadeFmt}</strong></span>
-                  <span>Status: <strong className="uppercase">{carta.status}</strong></span>
+                  <span>Status: <strong className="uppercase">{carta.status || "EMITIDA"}</strong></span>
                 </div>
               </div>
             </div>
@@ -350,7 +352,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                     )}
                   </div>
                   <span className="text-xs font-bold text-neutral-900 mt-2">
-                    {carta.rede_nome.toUpperCase()}
+                    {(carta.rede_nome || "Rede Parceira").toUpperCase()}
                   </span>
                   <span className="text-[10px] text-neutral-500">
                     {carta.cnpj ? `CNPJ: ${carta.cnpj}` : "Representante Legal"}
@@ -381,7 +383,7 @@ export function CartaPreviewModal({ carta, onClose }: CartaPreviewModalProps) {
                 </div>
 
                 <div className="text-right font-mono text-[9px] text-neutral-400">
-                  REF: {carta.id.substring(0, 8)} | SISTEMA COFFEE++ V1
+                  REF: {(carta.id || "").substring(0, 8)} | SISTEMA COFFEE++ V1
                 </div>
               </div>
             </div>
