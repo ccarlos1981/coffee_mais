@@ -23,6 +23,7 @@ import {
   Download,
   Edit,
   Lock,
+  Building2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,10 +43,11 @@ import { UploadAssinadaModal } from "./UploadAssinadaModal";
 import { TimelineModal } from "./TimelineModal";
 import { GerenciarCompetenciasModal } from "./GerenciarCompetenciasModal";
 import { FarolExecutivoView } from "./FarolExecutivoView";
+import { FarolGerencialView } from "./FarolGerencialView";
 
 export default function CartaAnuenciaPage() {
-  // Tabs: "CARTAS" | "FAROL"
-  const [activeTab, setActiveTab] = useState<"CARTAS" | "FAROL">("CARTAS");
+  // Tabs: "CARTAS" | "FAROL" | "FAROL_GERENCIAL"
+  const [activeTab, setActiveTab] = useState<"CARTAS" | "FAROL" | "FAROL_GERENCIAL">("CARTAS");
 
   // Data States
   const [cartas, setCartas] = useState<CartaAnuenciaItem[]>([]);
@@ -121,24 +123,33 @@ export default function CartaAnuenciaPage() {
       if (kpisRes.status === "fulfilled") {
         setKpis(kpisRes.value);
       } else if (cartasRes.status === "fulfilled") {
+        // Fallback com a mesma semântica do servidor:
+        // - totalCartas: somente não-canceladas
+        // - emitidas: EMITIDA + ENVIADA + PENDENTE + ASSINADA (toda carta já gerada)
+        // - pendentes: aguardam assinatura (EMITIDA + ENVIADA + PENDENTE)
+        let totalCartas = 0;
         let emitidas = 0;
         let pendentes = 0;
         let assinadasVigentes = 0;
         let assinadasExpiradas = 0;
         let canceladas = 0;
         loadedCartas.forEach((c) => {
+          if (c.status === "CANCELADA") {
+            canceladas++;
+            return;
+          }
+          totalCartas++;
           if (c.status === "ASSINADA") {
+            emitidas++;
             if (c.expirada) assinadasExpiradas++;
             else assinadasVigentes++;
           } else if (c.status === "EMITIDA" || c.status === "ENVIADA" || c.status === "PENDENTE") {
-            pendentes++;
             emitidas++;
-          } else if (c.status === "CANCELADA") {
-            canceladas++;
+            pendentes++;
           }
         });
         setKpis({
-          totalCartas: loadedCartas.length,
+          totalCartas,
           emitidas,
           pendentes,
           assinadasVigentes,
@@ -205,8 +216,11 @@ export default function CartaAnuenciaPage() {
     }
   };
 
-  const handleEmitirCartaParaRede = (redeCode: string) => {
+  const handleEmitirCartaParaRede = (redeCode: string, competencia?: string) => {
     setPreselectedRedeForNova(redeCode);
+    if (competencia) {
+      setPreselectedCompetenciaForNova(competencia);
+    }
     setShowNovaCartaModal(true);
   };
 
@@ -279,16 +293,16 @@ export default function CartaAnuenciaPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Cartas Emitidas</span>
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between" title="Total de cartas geradas (emitidas + assinadas). Exclui canceladas.">
+            <span className="text-xs font-medium text-muted-foreground">Cartas Geradas</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-black text-sky-600 dark:text-sky-400">{kpis.emitidas}</span>
               <Clock className="w-4 h-4 text-sky-500" />
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-medium text-muted-foreground">Pendentes de Assinatura</span>
+          <div className="p-4 rounded-2xl bg-card border border-border shadow-sm flex flex-col justify-between" title="Cartas que ainda aguardam a assinatura da rede (status: Emitida ou Enviada).">
+            <span className="text-xs font-medium text-muted-foreground">Aguard. Assinatura</span>
             <div className="mt-2 flex items-baseline justify-between">
               <span className="text-2xl font-black text-amber-600 dark:text-amber-400">{kpis.pendentes}</span>
               <AlertCircle className="w-4 h-4 text-amber-500" />
@@ -348,6 +362,18 @@ export default function CartaAnuenciaPage() {
             >
               <Sparkles className="w-4 h-4" />
               Farol Executivo (&gt; R$ 80k/mês)
+            </button>
+
+            <button
+              onClick={() => setActiveTab("FAROL_GERENCIAL")}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-2 ${
+                activeTab === "FAROL_GERENCIAL"
+                  ? "bg-primary text-primary-foreground shadow-md"
+                  : "bg-card text-muted-foreground hover:text-foreground border border-border"
+              }`}
+            >
+              <Building2 className="w-4 h-4" />
+              Farol Executivo Gerencial
             </button>
           </div>
 
@@ -651,6 +677,15 @@ export default function CartaAnuenciaPage() {
             onEmitirCarta={handleEmitirCartaParaRede}
             onUploadCarta={(c) => setUploadCarta(c)}
             onPreviewCarta={(c) => setPreviewCarta(c)}
+          />
+        )}
+
+        {/* Tab 3: Farol Executivo Gerencial */}
+        {activeTab === "FAROL_GERENCIAL" && (
+          <FarolGerencialView
+            onEmitirCarta={handleEmitirCartaParaRede}
+            onPreviewCarta={(c) => setPreviewCarta(c)}
+            competenciaDefault={competenciaFiltro !== "TODAS" ? competenciaFiltro : undefined}
           />
         )}
 

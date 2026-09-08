@@ -104,6 +104,52 @@ export interface FarolItem {
   possui_carta_assinada: boolean;
 }
 
+export interface FarolGerencialRedeItem {
+  rede: string;
+  manager: string;
+  regional: string;
+  uf: string | null;
+  codigo_matriz: string;
+  possui_carta: boolean;
+  status_farol_rede: "COM_CARTA" | "SEM_CARTA";
+  carta?: {
+    id: string;
+    numero_carta: string;
+    status: "PENDENTE" | "EMITIDA" | "ENVIADA" | "ASSINADA" | "CANCELADA";
+    competencia: string;
+    data_emissao: string;
+    data_assinatura?: string | null;
+    validade_ate?: string | null;
+    expirada?: boolean;
+    arquivo_assinado_url?: string | null;
+    pdf_url?: string | null;
+    logo_rede_url?: string | null;
+  } | null;
+}
+
+export interface FarolGerencialRegionalItem {
+  id: string;
+  regional: string;
+  gerente: string;
+  esperadas: number;
+  no_sistema: number;
+  faltantes: number;
+  cobertura_pct: number;
+  status_farol: "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO";
+  redes: FarolGerencialRedeItem[];
+}
+
+export interface FarolGerencialResumo {
+  total_esperadas: number;
+  total_no_sistema: number;
+  total_faltantes: number;
+  cobertura_geral_pct: number;
+  status_farol_geral: "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO";
+  competencia: string;
+  competencias_disponiveis: CompetenciaItem[];
+  regionais: FarolGerencialRegionalItem[];
+}
+
 export interface LogoRedeItem {
   id: string;
   rede_id: string;
@@ -479,6 +525,79 @@ export async function executarLimpezaLogosOrfas(): Promise<{
   return { removidos, protegidosSnapshot, erros };
 }
 
+// ---------------------------------------------------------------------------
+// Helper interno: carrega metadados de redes com índice duplo
+// (por nome canônico da view + por rede_nome da carta) para resolução
+// robusta de gerente e UF independente de aliasing.
+// ---------------------------------------------------------------------------
+async function obterMetadadosRedesComCodigo(): Promise<{
+  byNome: Map<string, { manager: string | null; uf: string | null }>;
+}> {
+  let redesMeta: { rede: string; manager: string | null; uf: string | null }[] = [];
+  try {
+    redesMeta = (await AnalyticsEngine.getMapeamentoRedesMeta()) || [];
+  } catch (err) {
+    console.error("[carta-anuencia] Aviso: Falha ao obter metadados de redes:", err);
+  }
+
+  const byNome = new Map<string, { manager: string | null; uf: string | null }>();
+
+  redesMeta.forEach((row) => {
+    if (!row.rede) return;
+    const meta = { manager: row.manager || null, uf: row.uf || null };
+
+    // Índice por nome completo da view (ex: "ZAFFARI (RS)", "DUFRY", "SUPER ADEGA")
+    const keyFull = row.rede.toLowerCase().trim();
+    if (!byNome.has(keyFull)) byNome.set(keyFull, meta);
+
+    // Índice por nome base sem sufixo de UF (ex: "ZAFFARI", "BIG LAR")
+    // Útil para cartas antigas que gravaram o nome sem o sufixo " (RS)"
+    const keyBase = keyFull.replace(/\s*\([^)]+\)\s*$/, "").trim();
+    if (keyBase && keyBase !== keyFull && !byNome.has(keyBase)) {
+      byNome.set(keyBase, meta);
+    }
+  });
+
+  return { byNome };
+}
+
+// ---------------------------------------------------------------------------
+// Helper interno: resolve carteira do gerente logado para RBAC de escopo.
+// Retorna null se o usuário não for Gerente Regional (= visão nacional).
+// ---------------------------------------------------------------------------
+async function resolverCarteiraGerente(adminClient: ReturnType<typeof createAdminClient>, profile: { role?: string | null; name?: string | null; manager_name?: string | null }): Promise<Set<string> | null> {
+  if (profile?.role !== "Gerente Regional") return null;
+
+  const gerenteName = profile.manager_name || profile.name || null;
+  if (!gerenteName) return new Set<string>(); // gerente sem nome → carteira vazia (seguro)
+
+  // Buscar os rede_ids das cartas sob responsabilidade do gerente
+  // via cm_clientes (fonte oficial de ownership comercial)
+  const { data: clientes } = await adminClient
+    .from("cm_clientes")
+    .select("codigo_matriz")
+    .eq("manager_name", gerenteName);
+
+  const codigos = new Set<string>(
+    (clientes || [])
+      .map((c) => String(c.codigo_matriz || "").trim())
+      .filter(Boolean)
+  );
+  return codigos;
+}
+
+// ---------------------------------------------------------------------------
+// Helper interno: valida se um rede_id pertence à carteira do gerente logado.
+// Retorna true se carteiraGerente for null (visão nacional / Admin).
+// ---------------------------------------------------------------------------
+function validarAcessoRede(carteiraGerente: Set<string> | null, redeId: string | null | undefined): boolean {
+  if (carteiraGerente === null) return true; // Admin / visão nacional
+  if (!redeId) return false;
+  const idStr = String(redeId).trim();
+  const idBase = idStr.replace(/\.\d+$/, "").trim();
+  return carteiraGerente.has(idStr) || carteiraGerente.has(idBase);
+}
+
 /**
  * 3. Listar Cartas de Anuência
  */
@@ -491,9 +610,13 @@ export async function listarCartasAnuencia(filters?: {
   busca?: string;
 }): Promise<CartaAnuenciaItem[]> {
   const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+  const profile = await requireApprovedProfile(user.id);
 
   const adminClient = createAdminClient();
+
+  // RBAC: resolver carteira do gerente antes de montar a query
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+
   let query = adminClient.from("cm_cartas_anuencia").select("*").order("created_at", { ascending: false });
 
   if (filters?.status && filters.status !== "TODAS") {
@@ -516,31 +639,14 @@ export async function listarCartasAnuencia(filters?: {
     return [];
   }
 
-  let redesMeta: any[] = [];
-  try {
-    redesMeta = (await AnalyticsEngine.getMapeamentoRedesMeta()) || [];
-  } catch (errAnalytics) {
-    console.error("Aviso: Falha ao obter metadados de redes no AnalyticsEngine:", errAnalytics);
-  }
-
-  const metaMap = new Map<string, { manager: string | null; uf: string | null }>();
-  (redesMeta || []).forEach((row) => {
-    if (row.rede) {
-      const key = row.rede.toLowerCase().trim();
-      if (!metaMap.has(key)) {
-        metaMap.set(key, {
-          manager: row.manager || null,
-          uf: row.uf || null,
-        });
-      }
-    }
-  });
-
-  const hoje = new Date().toISOString().substring(0, 10);
+  // Obter metadados de redes com índice duplo (nome completo + nome base)
+  const { byNome: metaMap } = await obterMetadadosRedesComCodigo();
 
   let result = (data || []).map((item) => {
-    const key = (item.rede_nome || item.rede_id || "").toLowerCase().trim();
-    const meta = metaMap.get(key) || { manager: null, uf: null };
+    // Tentar resolver por nome completo primeiro, depois por nome base
+    const keyFull = (item.rede_nome || "").toLowerCase().trim();
+    const keyId   = (item.rede_id || "").toLowerCase().trim();
+    const meta = metaMap.get(keyFull) || metaMap.get(keyId) || { manager: null, uf: null };
     const expirada = verificarCartaExpirada(item.validade_ate);
 
     const dynamicLogoUrl = getStoragePublicUrl(item.logo_snapshot_path || item.logo_rede_url, "logos-redes");
@@ -554,11 +660,22 @@ export async function listarCartasAnuencia(filters?: {
     };
   });
 
+  // Filtro de gerente solicitado via parâmetro
   if (filters?.gerente && filters.gerente !== "TODOS") {
     result = result.filter((c) => c.gerente === filters.gerente);
   }
   if (filters?.uf && filters.uf !== "TODAS") {
     result = result.filter((c) => c.uf === filters.uf);
+  }
+
+  // RBAC: restringir pela carteira do gerente logado (server-side)
+  if (carteiraGerente !== null) {
+    // Normalizar o rede_id da carta para comparar com os codigos_matriz do cm_clientes
+    // O rede_id pode ter sufixo como ".0", ".1", ".2" — remover para match com codigo_matriz
+    result = result.filter((c) => {
+      const redeIdBase = String(c.rede_id || "").replace(/\.\d+$/, "").trim();
+      return carteiraGerente.has(redeIdBase) || carteiraGerente.has(String(c.rede_id || "").trim());
+    });
   }
 
   return result;
@@ -575,18 +692,48 @@ export async function obterFiltrosGerenteUf() {
 
 /**
  * 4. Resumo Executivo / KPIs
+ *
+ * Definições Semânticas Corretas:
+ * - totalCartas: todas as cartas não canceladas
+ * - emitidas: cartas geradas e disponíveis (EMITIDA + ENVIADA + ASSINADA)
+ * - pendentes: cartas que AGUARDAM assinatura (EMITIDA + ENVIADA + PENDENTE)
+ * - assinadasVigentes: ASSINADA e dentro da validade
+ * - assinadasExpiradas: ASSINADA mas com validade vencida
+ * - canceladas: cartas canceladas
  */
 export async function obterResumoDashboard() {
   const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+  const profile = await requireApprovedProfile(user.id);
 
   const adminClient = createAdminClient();
 
-  const [{ count: totalCartas }, { data: cartas }] = await Promise.all([
-    adminClient.from("cm_cartas_anuencia").select("*", { count: "exact", head: true }),
-    adminClient.from("cm_cartas_anuencia").select("status, data_emissao, data_assinatura, validade_ate"),
-  ]);
+  // RBAC: resolver carteira do gerente
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
 
+  let cartasQuery = adminClient
+    .from("cm_cartas_anuencia")
+    .select("id, rede_id, status, data_emissao, data_assinatura, validade_ate");
+
+  // Filtro de carteira para Gerente Regional
+  if (carteiraGerente !== null) {
+    const codigosList = Array.from(carteiraGerente);
+    if (codigosList.length === 0) {
+      // Gerente sem carteira: retorna zeros
+      return { totalCartas: 0, emitidas: 0, pendentes: 0, assinadasVigentes: 0, assinadasExpiradas: 0, totalAssinadas: 0, canceladas: 0, tempoMedioAssinaturaDias: 0 };
+    }
+    // Filtrar por rede_id que começa com um dos codigos da carteira
+    // (rede_id pode ter sufixo como .0, .1, .2)
+    // Estratégia: buscar tudo e filtrar em memória (registros são poucos ~50)
+  }
+
+  const { data: cartas } = await cartasQuery;
+  const cartasFiltradas = (cartas || []).filter((c) => {
+    if (carteiraGerente === null) return true;
+    const redeIdBase = String(c.rede_id || "").replace(/\.\d+$/, "").trim();
+    return carteiraGerente.has(redeIdBase) || carteiraGerente.has(String(c.rede_id || "").trim());
+  });
+
+  let totalCartas = 0;
   let emitidas = 0;
   let pendentes = 0;
   let assinadasVigentes = 0;
@@ -595,8 +742,17 @@ export async function obterResumoDashboard() {
   let tempoTotalDias = 0;
   let totalAssinadasTempo = 0;
 
-  (cartas || []).forEach((c) => {
+  cartasFiltradas.forEach((c) => {
+    if (c.status === "CANCELADA") {
+      canceladas++;
+      return; // canceladas não entram nos demais KPIs
+    }
+
+    totalCartas++; // contar apenas não canceladas
+
     if (c.status === "ASSINADA") {
+      // Assinada conta em emitidas (já foi gerada e assinada)
+      emitidas++;
       const expirada = verificarCartaExpirada(c.validade_ate);
       if (expirada) {
         assinadasExpiradas++;
@@ -611,17 +767,16 @@ export async function obterResumoDashboard() {
         totalAssinadasTempo++;
       }
     } else if (c.status === "EMITIDA" || c.status === "ENVIADA" || c.status === "PENDENTE") {
-      pendentes++;
+      // Aguardam assinatura: conta em emitidas E em pendentes
       emitidas++;
-    } else if (c.status === "CANCELADA") {
-      canceladas++;
+      pendentes++;
     }
   });
 
   const tempoMedioAssinaturaDias = totalAssinadasTempo > 0 ? Math.round(tempoTotalDias / totalAssinadasTempo) : 0;
 
   return {
-    totalCartas: totalCartas || 0,
+    totalCartas,
     emitidas,
     pendentes,
     assinadasVigentes,
@@ -634,6 +789,15 @@ export async function obterResumoDashboard() {
 
 /**
  * 5. Farol Executivo (> R$ 80k/mês)
+ *
+ * CORREÇÃO CRÍTICA: O bug anterior indexava cartasMap por rede_id (ex: "84906.0")
+ * mas fazia o lookup pelo nome textual da rede da view (ex: "ZAFFARI (RS)").
+ * Isso garantia que NENHUMA carta jamais era vinculada ao Farol.
+ *
+ * A correção indexa por MÚLTIPLAS chaves:
+ *  1. rede_nome da carta (normalizado)
+ *  2. rede_nome sem sufixo UF (ex: "ZAFFARI" → também busca "ZAFFARI (RS)")
+ *  3. rede_id (código numérico, como fallback)
  */
 export async function obterDadosFarolExecutivo(filters?: {
   manager?: string;
@@ -645,14 +809,20 @@ export async function obterDadosFarolExecutivo(filters?: {
   const profile = await requireApprovedProfile(user.id);
   requireRole(profile, ["Trade", "Admin", "Admin Master", "Financeiro", "CEO", "Gerente Regional", "Gerente Nacional", "Diretor"]);
 
+  // RBAC: aplicar filtro de gerente automaticamente se for Gerente Regional
+  const adminClient = createAdminClient();
+  const isGerenteRegional = profile?.role === "Gerente Regional";
+  const gerenteFiltro = isGerenteRegional
+    ? (profile.manager_name || profile.name || undefined)
+    : filters?.manager;
+
   const redesAnalytics = await AnalyticsEngine.getFarolAnuenciaRedes({
-    manager: filters?.manager,
+    manager: gerenteFiltro,
     uf: filters?.uf,
     channel: filters?.channel,
     minMedia: 80000,
   });
 
-  const adminClient = createAdminClient();
   let cartasQuery = adminClient
     .from("cm_cartas_anuencia")
     .select("*")
@@ -665,22 +835,48 @@ export async function obterDadosFarolExecutivo(filters?: {
 
   const { data: cartasAtivas } = await cartasQuery;
 
+  // CORREÇÃO: indexar cartasMap por múltiplas chaves para cobrir todos os casos de aliasing
   const cartasMap = new Map<string, CartaAnuenciaItem>();
 
   (cartasAtivas || []).forEach((c) => {
-    const key = c.rede_id.toLowerCase().trim();
-    if (!cartasMap.has(key)) {
-      cartasMap.set(key, {
-        ...c,
-        logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
-        expirada: verificarCartaExpirada(c.validade_ate),
-      });
+    const cartaEnrichida: CartaAnuenciaItem = {
+      ...c,
+      logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
+      expirada: verificarCartaExpirada(c.validade_ate),
+    };
+
+    // Chave 1: rede_nome completo (ex: "dufry", "super adega", "big lar")
+    const keyNome = (c.rede_nome || "").toLowerCase().trim();
+    if (keyNome && !cartasMap.has(keyNome)) {
+      cartasMap.set(keyNome, cartaEnrichida);
+    }
+
+    // Chave 2: rede_nome normalizado sem caracteres especiais (para "REDE OBA" → "oba", etc.)
+    const keyNomeNorm = keyNome.replace(/^rede\s+/i, "").trim();
+    if (keyNomeNorm && keyNomeNorm !== keyNome && !cartasMap.has(keyNomeNorm)) {
+      cartasMap.set(keyNomeNorm, cartaEnrichida);
+    }
+
+    // Chave 3: rede_id numérico (ex: "84906.0", "31821.2")
+    const keyId = (c.rede_id || "").toLowerCase().trim();
+    if (keyId && !cartasMap.has(keyId)) {
+      cartasMap.set(keyId, cartaEnrichida);
+    }
+
+    // Chave 4: rede_id sem sufixo decimal (ex: "84906", "31821")
+    const keyIdBase = keyId.replace(/\.\d+$/, "").trim();
+    if (keyIdBase && keyIdBase !== keyId && !cartasMap.has(keyIdBase)) {
+      cartasMap.set(keyIdBase, cartaEnrichida);
     }
   });
 
   return redesAnalytics.map((r) => {
-    const key = (r.rede || "").toLowerCase().trim();
-    const carta = cartasMap.get(key) || null;
+    // Tentar match por nome da rede da view (ex: "ZAFFARI (RS)")
+    const keyView = (r.rede || "").toLowerCase().trim();
+    // Tentar também sem sufixo UF (ex: "ZAFFARI")
+    const keyBase = keyView.replace(/\s*\([^)]+\)\s*$/, "").trim();
+
+    const carta = cartasMap.get(keyView) || cartasMap.get(keyBase) || null;
 
     let farol_status: "VERDE" | "AMARELO" | "VERMELHO" = "VERMELHO";
     let possui_carta_assinada = false;
@@ -695,6 +891,7 @@ export async function obterDadosFarolExecutivo(filters?: {
           possui_carta_assinada = true;
         }
       } else {
+        // Carta existe mas ainda não foi assinada
         farol_status = "AMARELO";
       }
     }
@@ -732,6 +929,12 @@ export async function gerarCartaAnuencia(input: {
   requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
+
+  // RBAC: validar se a rede pertence à carteira do gerente (quando aplicável)
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (!validarAcessoRede(carteiraGerente, input.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a criar carta para rede fora de sua carteira regional.");
+  }
 
   let userName = profile?.name || user.email || "Usuário do Sistema";
 
@@ -868,6 +1071,15 @@ export async function editarCartaAnuencia(input: {
     throw new Error("Carta de Anuência não encontrada para edição.");
   }
 
+  // RBAC: validar se a carta atual e a rede pertencem à carteira do gerente
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (!validarAcessoRede(carteiraGerente, cartaAtual.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a editar carta pertencente a outra carteira regional.");
+  }
+  if (!validarAcessoRede(carteiraGerente, input.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a mover carta para rede fora de sua carteira regional.");
+  }
+
   if (cartaAtual.status === "ASSINADA" || cartaAtual.status === "CANCELADA") {
     throw new Error(
       `Documento com status ${cartaAtual.status} é oficial e não pode ser editado. Para modificações, emita uma nova versão.`
@@ -964,8 +1176,18 @@ export async function registrarCompartilhamento(
 
   let userName = profile?.name || user.email || "Usuário do Sistema";
 
-  const { data: carta } = await adminClient.from("cm_cartas_anuencia").select("status").eq("id", cartaId).single();
-  if (carta && carta.status === "EMITIDA" && canal !== "DOWNLOAD") {
+  const { data: carta } = await adminClient.from("cm_cartas_anuencia").select("status, rede_id").eq("id", cartaId).single();
+  if (!carta) {
+    throw new Error("Carta de Anuência não encontrada.");
+  }
+
+  // RBAC: validar se a carta pertence à carteira do gerente
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (!validarAcessoRede(carteiraGerente, carta.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a registrar compartilhamento para carta fora de sua carteira regional.");
+  }
+
+  if (carta.status === "EMITIDA" && canal !== "DOWNLOAD") {
     await adminClient.from("cm_cartas_anuencia").update({ status: "ENVIADA" }).eq("id", cartaId);
   }
 
@@ -1002,6 +1224,20 @@ export async function uploadCartaAssinada(cartaId: string, arquivoAssinadoUrl: s
   requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
 
   const adminClient = createAdminClient();
+
+  // RBAC: validar se a carta pertence à carteira do gerente
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (carteiraGerente !== null) {
+    const { data: cartaCheck, error: fetchErr } = await adminClient
+      .from("cm_cartas_anuencia")
+      .select("id, rede_id")
+      .eq("id", cartaId)
+      .single();
+
+    if (fetchErr || !cartaCheck || !validarAcessoRede(carteiraGerente, cartaCheck.rede_id)) {
+      throw new Error("403 Forbidden: Não autorizado a registrar carta assinada para rede fora de sua carteira regional.");
+    }
+  }
 
   let userName = profile?.name || user.email || "Usuário do Sistema";
   const dataAssinatura = new Date().toISOString();
@@ -1089,14 +1325,21 @@ export async function uploadCartaAssinadaServerAction(formData: FormData): Promi
   }
 
   const adminClient = createAdminClient();
+
+  // RBAC: validar se a carta pertence à carteira do gerente ANTES do upload físico para o Storage corporativo
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
   const { data: carta, error: fetchErr } = await adminClient
     .from("cm_cartas_anuencia")
-    .select("id, numero_carta, status")
+    .select("id, numero_carta, status, rede_id")
     .eq("id", cartaId)
     .single();
 
   if (fetchErr || !carta) {
     throw new Error("Carta de anuência não encontrada.");
+  }
+
+  if (!validarAcessoRede(carteiraGerente, carta.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a realizar upload de arquivo assinado para carta fora de sua carteira regional.");
   }
 
   const arrayBuffer = await file.arrayBuffer();
@@ -1141,6 +1384,22 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
 
   const adminClient = createAdminClient();
 
+  // RBAC: validar se a carta pertence à carteira do gerente
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  const { data: cartaAtual, error: fetchErr } = await adminClient
+    .from("cm_cartas_anuencia")
+    .select("id, rede_id")
+    .eq("id", cartaId)
+    .single();
+
+  if (fetchErr || !cartaAtual) {
+    throw new Error("Carta de Anuência não encontrada para cancelamento.");
+  }
+
+  if (!validarAcessoRede(carteiraGerente, cartaAtual.rede_id)) {
+    throw new Error("403 Forbidden: Não autorizado a cancelar carta pertencente a outra carteira regional.");
+  }
+
   let userName = profile?.name || user.email || "Usuário do Sistema";
 
   const { data, error } = await adminClient
@@ -1183,9 +1442,23 @@ export async function cancelarCartaAnuencia(cartaId: string, motivo: string) {
 export async function obterTimelineCarta(cartaId: string): Promise<TimelineItem[]> {
   if (!cartaId) return [];
   const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+  const profile = await requireApprovedProfile(user.id);
 
   const adminClient = createAdminClient();
+
+  // RBAC: validar se a carta pertence à carteira do gerente antes de expor a timeline
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (carteiraGerente !== null) {
+    const { data: carta, error: fetchErr } = await adminClient
+      .from("cm_cartas_anuencia")
+      .select("id, rede_id")
+      .eq("id", cartaId)
+      .single();
+
+    if (fetchErr || !carta || !validarAcessoRede(carteiraGerente, carta.rede_id)) {
+      throw new Error("403 Forbidden: Não autorizado a consultar timeline de carta fora de sua carteira regional.");
+    }
+  }
   const { data, error } = await adminClient
     .from("cm_carta_anuencia_timeline")
     .select("*")
@@ -1197,4 +1470,296 @@ export async function obterTimelineCarta(cartaId: string): Promise<TimelineItem[
     return [];
   }
   return data || [];
+}
+
+/**
+ * Helpers Internos para o Farol Executivo Gerencial
+ */
+function resolverRegionalPorGerente(manager: string | null | undefined): { id: string; label: string } {
+  const m = (manager || "").trim();
+  if (m === "Leandro Saffi") return { id: "SUL", label: "Sul" };
+  if (m === "Julliano") return { id: "SUDESTE", label: "Sudeste (SP)" };
+  if (m === "Luiz") return { id: "SU_CO_NE", label: "Sudeste / Nordeste" };
+  if (m === "John Guedes") return { id: "CO_NO", label: "Centro-Oeste / Norte" };
+  return { id: "OUTROS", label: "Outros" };
+}
+
+function calcularFarolStatus(pct: number): "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO" {
+  if (pct >= 90) return "VERDE";
+  if (pct >= 70) return "AMARELO";
+  if (pct >= 50) return "LARANJA";
+  return "VERMELHO";
+}
+
+/**
+ * 11. Obter Dados Consolidados do Farol Executivo Gerencial (Cobertura por Regional)
+ * 
+ * Regra de Negócio Homologada (Auditoria Forense):
+ *  - 1 Carta de Anuência = 1 Operação Regional Gerencial (Gerente Responsável × Rede Operacional).
+ *  - Cardinalidade Estrita 1:1: Cada carta física em cm_cartas_anuencia pontua EXATAMENTE 1 VEZ.
+ *  - Universo Esperado: vw_redes_planejaveis_oficiais (is_rede_planejavel = true, expurgando testes e diretoria).
+ *  - Identidade Matemática: ESPERADAS = NO SISTEMA + FALTANTES (0,0000% de divergência).
+ *  - RBAC: Gerente Regional tem escopo restrito à sua Regional/Carteira. Perfis nacionais possuem visão global.
+ */
+export async function obterDadosFarolGerencial(filters?: {
+  competencia?: string;
+  regional?: string;
+  gerente?: string;
+  uf?: string;
+  status_carta?: string;
+  busca?: string;
+}): Promise<FarolGerencialResumo> {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const adminClient = createAdminClient();
+
+  // RBAC: Gerente Regional tem visão restrita à sua própria carteira
+  const isGerenteRegional = profile?.role === "Gerente Regional";
+  const gerenteLogado = isGerenteRegional ? (profile.manager_name || profile.name || undefined) : undefined;
+
+  // 1. Obter Competências Disponíveis
+  const { data: competenciasData } = await adminClient
+    .from("cm_competencias_anuencia")
+    .select("*")
+    .order("data_inicio", { ascending: false });
+
+  const competenciasDisponiveis: CompetenciaItem[] = competenciasData || [];
+  const competenciaSelecionada = filters?.competencia || competenciasDisponiveis[0]?.competencia || "Junho/2026";
+
+  // 2. Obter Cartas Ativas da Competência (não canceladas)
+  const { data: cartasAtivasRaw, error: cartasErr } = await adminClient
+    .from("cm_cartas_anuencia")
+    .select("*")
+    .neq("status", "CANCELADA")
+    .eq("competencia", competenciaSelecionada)
+    .order("created_at", { ascending: false });
+
+  if (cartasErr) {
+    console.error("Erro ao obter cartas para Farol Gerencial:", cartasErr);
+  }
+
+  // 3. Obter Universo Oficial de Redes Planejáveis
+  const { data: redesOficiaisRaw, error: redesErr } = await adminClient
+    .from("vw_redes_planejaveis_oficiais")
+    .select("rede, manager, manager_id, regional, uf, codigo_matriz, is_rede_planejavel")
+    .eq("is_rede_planejavel", true)
+    .neq("codigo_matriz", "11111111") // Expurgar CLIENTE FAKE TESTE
+    .neq("manager", "Cristiano");     // Expurgar DISTRIBUIDORA MARTINS (Diretoria/Canal Distribuidor)
+
+  if (redesErr) {
+    console.error("Erro ao obter redes oficiais para Farol Gerencial:", redesErr);
+  }
+
+  // Se Gerente Regional, forçar filtro estrito à sua carteira
+  const universoRedes = (redesOficiaisRaw || []).filter((r) => {
+    if (isGerenteRegional && gerenteLogado) {
+      return r.manager === gerenteLogado;
+    }
+    return true;
+  });
+
+  // 4. Mapeamento Canônico de Desambiguação de Cartas Multiestado / Multioperação
+  // Auditado e comprovado no relatório forense de cardinalidade
+  const CARTA_DESTINO_CANONICO: Record<string, { manager: string; rede: string }> = {
+    "CA-2026-000001": { manager: "Leandro Saffi", rede: "ZAFFARI (RS)" },
+    "CA-2026-000006": { manager: "Leandro Saffi", rede: "FORT (SC)" },
+    "CA-2026-000012": { manager: "Julliano", rede: "OBA SP" },
+    "CA-2026-000017": { manager: "Luiz", rede: "MATEUS" },
+    "CA-2026-000018": { manager: "John Guedes", rede: "ASSAI" },
+  };
+
+  // Mapeamento de manager por rede_id através de cm_redes_matrizes
+  const codigosCartas = (cartasAtivasRaw || []).map((c: any) => String(c.rede_id).trim()).filter(Boolean);
+  const codigosBases = codigosCartas.map((c: string) => c.replace(/\.\d+$/, ""));
+  const todosCodigos = Array.from(new Set([...codigosCartas, ...codigosBases]));
+
+  const { data: redesMatrizes } = await adminClient
+    .from("cm_redes_matrizes")
+    .select("codigo, nome, manager_id, manager")
+    .in("codigo", todosCodigos);
+
+  const managerPorRedeId = new Map<string, string>();
+  (redesMatrizes || []).forEach((rm) => {
+    if (rm.codigo && rm.manager) {
+      const codeStr = String(rm.codigo).trim();
+      const codeBase = codeStr.replace(/\.\d+$/, "").trim();
+      managerPorRedeId.set(codeStr, rm.manager);
+      managerPorRedeId.set(codeBase, rm.manager);
+    }
+  });
+
+  // 5. Vincular cada carta física a EXATAMENTE uma operação de rede (cardinalidade 1:1 estrita)
+  const cartasPorRedeChave = new Map<string, any>();
+  const cartasUsadas = new Set<string>();
+
+  (cartasAtivasRaw || []).forEach((c) => {
+    if (cartasUsadas.has(c.id)) return; // Garantir que uma carta física nunca seja usada duas vezes
+
+    const cartaEnriquecida = {
+      id: c.id,
+      numero_carta: c.numero_carta,
+      status: c.status,
+      competencia: c.competencia,
+      data_emissao: c.data_emissao,
+      data_assinatura: c.data_assinatura,
+      validade_ate: c.validade_ate,
+      expirada: verificarCartaExpirada(c.validade_ate),
+      arquivo_assinado_url: c.arquivo_assinado_url,
+      pdf_url: c.pdf_url,
+      logo_rede_url: getStoragePublicUrl(c.logo_snapshot_path || c.logo_rede_url, "logos-redes"),
+    };
+
+    // Caso 1: Mapeamento canônico explícito (para os 5 casos multiestado)
+    if (CARTA_DESTINO_CANONICO[c.numero_carta]) {
+      const dest = CARTA_DESTINO_CANONICO[c.numero_carta];
+      const key = `${dest.manager}:::${dest.rede}`.toLowerCase();
+      cartasPorRedeChave.set(key, cartaEnriquecida);
+      cartasUsadas.add(c.id);
+      return;
+    }
+
+    // Caso 2: Resolver manager titular da carta
+    const cIdStr = String(c.rede_id || "").trim();
+    const cIdBase = cIdStr.replace(/\.\d+$/, "").trim();
+    const managerTitular = managerPorRedeId.get(cIdStr) || managerPorRedeId.get(cIdBase);
+
+    if (managerTitular) {
+      // Encontrar a rede oficial daquele manager
+      const redeAlvo = universoRedes.find((r) => {
+        if (r.manager !== managerTitular) return false;
+        const rIdStr = String(r.codigo_matriz || "").trim();
+        const rIdBase = rIdStr.replace(/\.\d+$/, "").trim();
+        const rNomeNorm = (r.rede || "").toLowerCase().trim();
+        const cNomeNorm = (c.rede_nome || "").toLowerCase().trim();
+        return rIdStr === cIdStr || rIdBase === cIdBase || rNomeNorm === cNomeNorm;
+      });
+
+      if (redeAlvo) {
+        const key = `${redeAlvo.manager}:::${redeAlvo.rede}`.toLowerCase();
+        if (!cartasPorRedeChave.has(key)) {
+          cartasPorRedeChave.set(key, cartaEnriquecida);
+          cartasUsadas.add(c.id);
+          return;
+        }
+      }
+    }
+  });
+
+  // 6. Construir lista de redes detalhadas com status 1:1
+  const redesDetalhadas: FarolGerencialRedeItem[] = universoRedes.map((r) => {
+    const key = `${r.manager}:::${r.rede}`.toLowerCase();
+    const carta = cartasPorRedeChave.get(key) || null;
+    const possui_carta = Boolean(carta);
+    const regionalInfo = resolverRegionalPorGerente(r.manager);
+
+    return {
+      rede: r.rede,
+      manager: r.manager,
+      regional: regionalInfo.label,
+      uf: r.uf || null,
+      codigo_matriz: r.codigo_matriz,
+      possui_carta,
+      status_farol_rede: possui_carta ? "COM_CARTA" : "SEM_CARTA",
+      carta,
+    };
+  });
+
+  // 7. Agrupamento por Regional Oficial
+  const regionaisMap = new Map<string, {
+    id: string;
+    regional: string;
+    gerente: string;
+    redes: FarolGerencialRedeItem[];
+  }>();
+
+  // Inicializar as 4 Regionais Comerciais Oficiais
+  const REGIONAIS_ORDEM = [
+    { id: "CO_NO", regional: "Centro-Oeste / Norte", gerente: "John Guedes" },
+    { id: "SUL", regional: "Sul", gerente: "Leandro Saffi" },
+    { id: "SU_CO_NE", regional: "Sudeste / Nordeste", gerente: "Luiz" },
+    { id: "SUDESTE", regional: "Sudeste (SP)", gerente: "Julliano" },
+  ];
+
+  REGIONAIS_ORDEM.forEach((reg) => {
+    // Se o usuário logado for Gerente Regional, inicializar apenas a sua Regional
+    if (!isGerenteRegional || reg.gerente === gerenteLogado) {
+      regionaisMap.set(reg.regional, {
+        id: reg.id,
+        regional: reg.regional,
+        gerente: reg.gerente,
+        redes: [],
+      });
+    }
+  });
+
+  // Distribuir as redes nas suas respectivas Regionais
+  redesDetalhadas.forEach((item) => {
+    let regGroup = regionaisMap.get(item.regional);
+    if (!regGroup) {
+      const regDef = REGIONAIS_ORDEM.find((r) => r.gerente === item.manager);
+      if (regDef && regionaisMap.has(regDef.regional)) {
+        regGroup = regionaisMap.get(regDef.regional);
+      }
+    }
+    if (regGroup) {
+      regGroup.redes.push(item);
+    }
+  });
+
+  // 8. Calcular métricas agregadas por Regional com consistência estrita
+  const regionaisItens: FarolGerencialRegionalItem[] = Array.from(regionaisMap.values()).map((g) => {
+    const esperadas = g.redes.length;
+    const no_sistema = g.redes.filter((r) => r.possui_carta).length;
+    const faltantes = esperadas - no_sistema;
+    const cobertura_pct = esperadas > 0 ? Number(((no_sistema / esperadas) * 100).toFixed(1)) : 0;
+    const status_farol = calcularFarolStatus(cobertura_pct);
+
+    // Ordenar redes: primeiro as faltantes (SEM CARTA), depois alfabético
+    const redesOrdenadas = [...g.redes].sort((a, b) => {
+      if (a.possui_carta === b.possui_carta) {
+        return a.rede.localeCompare(b.rede, "pt-BR");
+      }
+      return a.possui_carta ? 1 : -1;
+    });
+
+    return {
+      id: g.id,
+      regional: g.regional,
+      gerente: g.gerente,
+      esperadas,
+      no_sistema,
+      faltantes,
+      cobertura_pct,
+      status_farol,
+      redes: redesOrdenadas,
+    };
+  });
+
+  // Ordenação das Regionais: 1º menor cobertura %, 2º mais faltantes
+  regionaisItens.sort((a, b) => {
+    if (a.cobertura_pct !== b.cobertura_pct) {
+      return a.cobertura_pct - b.cobertura_pct;
+    }
+    return b.faltantes - a.faltantes;
+  });
+
+  // 9. Calcular Totais Gerais Consolidados
+  const total_esperadas = regionaisItens.reduce((acc, r) => acc + r.esperadas, 0);
+  const total_no_sistema = regionaisItens.reduce((acc, r) => acc + r.no_sistema, 0);
+  const total_faltantes = total_esperadas - total_no_sistema;
+  const cobertura_geral_pct = total_esperadas > 0 ? Number(((total_no_sistema / total_esperadas) * 100).toFixed(1)) : 0;
+  const status_farol_geral = calcularFarolStatus(cobertura_geral_pct);
+
+  return {
+    total_esperadas,
+    total_no_sistema,
+    total_faltantes,
+    cobertura_geral_pct,
+    status_farol_geral,
+    competencia: competenciaSelecionada,
+    competencias_disponiveis: competenciasDisponiveis,
+    regionais: regionaisItens,
+  };
 }
