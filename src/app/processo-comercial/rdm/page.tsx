@@ -27,6 +27,7 @@ import { SlideDreAcumulado } from "./components/SlideDreAcumulado";
 import { RdmSlideAcumuladoData } from "@/lib/dre-gerencial/types";
 import { RdmRedeDrawer } from "./components/RdmRedeDrawer";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
+import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface MetricBlock {
@@ -1565,7 +1566,7 @@ function SlideInvestFases({
 
       filtered.forEach((a: any) => {
         const f = a.fase_atual || 1;
-        const v = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        const v = getValorProjetadoComercial(a);
         if (fasesMap[f]) {
           fasesMap[f].count += 1;
           fasesMap[f].val += v;
@@ -1732,7 +1733,7 @@ function SlideInvestCliente({
 
         const redeKey = (a.rede || "SEM REDE").toUpperCase().trim();
         const gName = a.gerente_responsavel || "Sem Gerente";
-        const val = (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+        const val = getValorProjetadoComercial(a);
         const isRefMonth = a.mes_referencia === mesKey;
         const isAtrasada = a.fase_atual === 3 && a.data_fim && a.data_fim < todayStr;
 
@@ -2004,7 +2005,7 @@ function SlideInvestRede({
         }
 
         const actionVol = Number(a.expectativa_volume) || 1;
-        const totalActionInv = (Number(a.valor_investimento) || 0) * actionVol;
+        const totalActionInv = getValorProjetadoComercial(a);
         redeMap[rKey].invest += totalActionInv;
         totalInvestAll += totalActionInv;
         countAcoes += 1;

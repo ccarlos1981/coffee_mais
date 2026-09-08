@@ -48,6 +48,7 @@ import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento, excluirAcaoInvestimentoTeste, excluirAcaoInvestimentoAdmin, obterAcoesInvestimentoListagem } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
+import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 interface AcaoInvestimento {
   id: string;
@@ -370,13 +371,7 @@ export default function PlanejamentoInvestimentoPage() {
   }, [managerFilteredAcoes, filterRede, filterFamilia, filterDataInicio, filterDataFim, filterMes]);
 
   const getValorTotal = (r: AcaoInvestimento) => {
-    if (r.abrangencia === "SKU" && r.skus_detalhes) {
-      return r.skus_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    if (r.familias_detalhes && r.familias_detalhes.length > 0) {
-      return r.familias_detalhes.reduce((acc, curr) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
+    return getValorProjetadoComercial(r);
   };
 
   const subtotal = useMemo(() => {

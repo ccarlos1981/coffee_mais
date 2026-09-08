@@ -31,13 +31,33 @@ export interface ConsolidadasRetorno {
  * Consolida os campos financeiros e mercadológicos de uma ação de investimento
  * a partir de seus detalhes (Famílias ou SKUs).
  */
+export interface FallbackConsolidados {
+  valor_investimento?: number | null;
+  expectativa_volume?: number | null;
+  preco_flat?: number | null;
+  preco_acao?: number | null;
+}
+
 export function calcularCamposConsolidadosInvestimento(
   familiasDetalhes: FamiliaDetalhe[] | null | undefined,
   skusDetalhes: SKUDetalhe[] | null | undefined,
-  familiaProdutoInput?: string | null
+  familiaProdutoInput?: string | null,
+  fallbackValores?: FallbackConsolidados | null
 ): ConsolidadasRetorno {
   const familias = familiasDetalhes || [];
   const skus = skusDetalhes || [];
+
+  // Se não há detalhes granulares de famílias ou SKUs, mas foram passados valores consolidados pré-existentes,
+  // preserva o valor financeiro total soberano e o volume recebidos (ex: importação por planilha).
+  if (familias.length === 0 && skus.length === 0 && fallbackValores) {
+    return {
+      familia_produto: (familiaProdutoInput || "").trim() || "Geral",
+      preco_flat: Number(fallbackValores.preco_flat) || 0,
+      preco_acao: Number(fallbackValores.preco_acao) || 0,
+      valor_investimento: Number(fallbackValores.valor_investimento) || 0,
+      expectativa_volume: Number(fallbackValores.expectativa_volume) || 0
+    };
+  }
 
   // Regra para definir o familia_produto (nome consolidado)
   let familia_produto = (familiaProdutoInput || "").trim();

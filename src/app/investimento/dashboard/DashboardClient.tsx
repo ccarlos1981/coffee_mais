@@ -21,6 +21,7 @@ import {
   Pie,
   Cell
 } from "recharts";
+import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 const COLORS = ['#10b981', '#6366f1', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
 
@@ -99,10 +100,7 @@ export default function DashboardClient({ acoes, pdvs }: { acoes: any[]; pdvs: a
 
   // 3. Helper to get Expectativa (Valor Projetado)
   const getValorProjetado = (a: any) => {
-    if (a.abrangencia === "SKU" && a.skus_detalhes) {
-      return a.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-    }
-    return (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 0);
+    return getValorProjetadoComercial(a);
   };
 
   // Helper to get Faturamento Estimado (Preço * Volume)

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { requireAuth, requireApprovedProfile, handleAuthError } from "@/lib/supabase/auth-helpers";
+import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 const SYSTEM_PROMPT = `Você é o Coffee_IA, auditor e analista de processos da Coffee Mais.
 
@@ -54,12 +55,7 @@ export async function POST(request: NextRequest) {
       
       faseDistribuicao[faseLabel] = (faseDistribuicao[faseLabel] || 0) + 1;
 
-      let valor = 0;
-      if (inv.abrangencia === "SKU" && inv.skus_detalhes) {
-        valor = inv.skus_detalhes.reduce((acc: number, s: any) => acc + ((Number(s.investimento) || 0) * (Number(s.expectativa_volume) || 0)), 0);
-      } else {
-        valor = (Number(inv.valor_investimento) || 0) * (Number(inv.expectativa_volume) || 0);
-      }
+      const valor = getValorProjetadoComercial(inv);
       totalInvestido += valor;
 
       // By rede

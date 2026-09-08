@@ -12,6 +12,7 @@ import { requireAuth, requireApprovedProfile, requirePermission, requireRole } f
 import { PRODUCT_FAMILIES } from "@/lib/investimento/constants";
 import { resolveNotificationRecipients } from "@/lib/investimento/notification-service";
 import { CommercialDomainService } from "@/lib/domain/commercial-domain-service";
+import { getInvestimentoRealizadoOficial, getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 // --- Divergência Operacional de Calendário ---
 import { MotivoDivergencia } from "../divergencia-constants";
@@ -762,7 +763,7 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
             familia_nome: famName,
             preco_flat,
             preco_acao,
-            investimento: valor_investimento,
+            investimento: Number(s.investimento) || 0,
             expectativa_volume,
             start_date: s.start_date || calculated_data_inicio,
             end_date: s.end_date || calculated_data_fim,
@@ -1393,13 +1394,6 @@ export async function enviarParaTrade(id: string) {
         return mes;
       };
 
-      const getValorTotal = (r: any) => {
-        if (r.abrangencia === "SKU" && r.skus_detalhes) {
-          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-        }
-        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-      };
-
       const subject = `📋 NOVA AÇÃO PARA VALIDAÇÃO — Fase 2 — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
 
       const htmlBody = `
@@ -1477,7 +1471,7 @@ export async function enviarParaTrade(id: string) {
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Valor Estimado:</td>
-                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getValorTotal(actionView))}</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Gerente Regional:</td>
@@ -1617,13 +1611,6 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
         return mes;
       };
 
-      const getValorTotal = (r: any) => {
-        if (r.abrangencia === "SKU" && r.skus_detalhes) {
-          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-        }
-        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-      };
-
       // Se houver divergência de calendário operacional
       let divergenciaInfoHtml = "";
       if (currentAction.possui_divergencia_calendario) {
@@ -1687,7 +1674,7 @@ export async function reprovarAcaoTrade(id: string, reason: string) {
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Valor Investimento:</td>
-                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${formatCurrency(getValorTotal(actionView))}</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #111827;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Gerente Responsável:</td>
@@ -1802,13 +1789,6 @@ export async function validarTrade(id: string, checklist: {
         return mes;
       };
 
-      const getValorTotal = (r: any) => {
-        if (r.abrangencia === "SKU" && r.skus_detalhes) {
-          return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-        }
-        return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-      };
-
       const checkIcon = (val: boolean) => val ? "✅" : "⬜";
 
       const subject = `✅ AÇÃO VALIDADA PELO TRADE — Fase 3 — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
@@ -1905,7 +1885,7 @@ export async function validarTrade(id: string, checklist: {
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Valor Estimado:</td>
-                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getValorTotal(actionView))}</td>
+                <td style="padding: 6px 8px; font-weight: bold; color: #b45309;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
               </tr>
               <tr style="border-bottom: 1px solid #f3f4f6;">
                 <td style="padding: 6px 8px; color: #4b5563;">Gerente Regional:</td>
@@ -2063,14 +2043,7 @@ async function enviarEmailNotificacaoApuracao(
       return mes;
     };
 
-    const getValorTotal = (r: any) => {
-      if (r.abrangencia === "SKU" && r.skus_detalhes) {
-        return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-      }
-      return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-    };
-
-    const valorProjetadoTotal = getValorTotal(acao);
+    const valorProjetadoTotal = getInvestimentoRealizadoOficial(acao);
 
     // 7. Renderizar Detalhes dos SKUs ou Família
     let detalhesInvestimentoHtml = "";
@@ -2544,13 +2517,6 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
           };
 
-          const getValorTotal = (r: any) => {
-            if (r.abrangencia === "SKU" && r.skus_detalhes) {
-              return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-            }
-            return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-          };
-
           const subject = `⚠️ AÇÃO DEVOLVIDA PELO FINANCEIRO — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
           const htmlBody = `
             <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #ef4444; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -2597,7 +2563,7 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
                   </tr>
                   <tr>
                     <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
-                    <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                    <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
                   </tr>
                 </table>
               </div>
@@ -2664,13 +2630,6 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
             return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
           };
 
-          const getValorTotal = (r: any) => {
-            if (r.abrangencia === "SKU" && r.skus_detalhes) {
-              return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-            }
-            return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-          };
-
           const subject = `✅ AÇÃO APROVADA NA CONFERÊNCIA — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
           const htmlBody = `
             <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #10b981; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -2712,7 +2671,7 @@ export async function conferirTrade(id: string, aprovado: boolean, observacao?: 
                   </tr>
                   <tr>
                     <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
-                    <td style="padding: 4px 0; color: #10b981; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                    <td style="padding: 4px 0; color: #10b981; font-weight: bold;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
                   </tr>
                 </table>
               </div>
@@ -2823,13 +2782,6 @@ export async function confirmarPagamento(id: string, formData: FormData) {
           return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
         };
 
-        const getValorTotal = (r: any) => {
-          if (r.abrangencia === "SKU" && r.skus_detalhes) {
-            return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-          }
-          return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-        };
-
         const subject = `💰 PAGAMENTO REALIZADO — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
         
         let comprovanteHtml = "";
@@ -2898,7 +2850,7 @@ export async function confirmarPagamento(id: string, formData: FormData) {
                 </tr>
                 <tr>
                   <td style="padding: 4px 0; color: #4b5563;">Valor Realizado (Apuração):</td>
-                  <td style="padding: 4px 0; color: #059669; font-weight: bold; font-size: 14px;">${formatCurrency(actionView.apuracao_valor_realizado || getValorTotal(actionView))}</td>
+                  <td style="padding: 4px 0; color: #059669; font-weight: bold; font-size: 14px;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
                 </tr>
               </table>
               ${comprovanteHtml}
@@ -3080,7 +3032,13 @@ export async function importarInvestimentosEmLote(
       const consolidados = calcularCamposConsolidadosInvestimento(
         acaoItem.familias_detalhes,
         acaoItem.skus_detalhes,
-        acaoItem.familia_produto
+        acaoItem.familia_produto,
+        {
+          valor_investimento: acaoItem.valor_investimento,
+          expectativa_volume: acaoItem.expectativa_volume,
+          preco_flat: acaoItem.preco_flat,
+          preco_acao: acaoItem.preco_acao
+        }
       );
       return {
         ...acaoItem,
@@ -3667,13 +3625,6 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
           return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
         };
 
-        const getValorTotal = (r: any) => {
-          if (r.abrangencia === "SKU" && r.skus_detalhes) {
-            return r.skus_detalhes.reduce((acc: number, curr: any) => acc + ((Number(curr.investimento) || 0) * (Number(curr.expectativa_volume) || 0)), 0);
-          }
-          return (Number(r.valor_investimento) || 0) * (Number(r.expectativa_volume) || 0);
-        };
-
         const subject = `⚠️ AÇÃO NÃO ACONTECEU — Rota de Revisão — Ação #${actionView.codigo || actionView.id} — ${actionView.rede}`;
         const htmlBody = `
           <div style="font-family: sans-serif; color: #374151; max-width: 650px; margin: 0 auto; background-color: #ffffff; border: 1px solid #ef4444; border-radius: 12px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
@@ -3720,7 +3671,7 @@ export async function marcarAcaoNaoAconteceu(id: string, motivo: string) {
                 </tr>
                 <tr>
                   <td style="padding: 4px 0; color: #4b5563;">Valor Estimado:</td>
-                  <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getValorTotal(actionView))}</td>
+                  <td style="padding: 4px 0; color: #b45309; font-weight: bold;">${formatCurrency(getInvestimentoRealizadoOficial(actionView))}</td>
                 </tr>
                 <tr>
                   <td style="padding: 4px 0; color: #4b5563;">Mês Referência:</td>

@@ -23,6 +23,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
+import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const normalizeGerenteNome = (nome?: string | null): string => {
@@ -329,8 +330,7 @@ export default function InvestClientePage() {
       const gerenteRaw = (a.gerente_responsavel || a.gerente || resolved?.responsavel || gerenteMap[redeKey] || gerenteMap[rawRedeKey] || "Sem Gerente").trim() || "Sem Gerente";
       const gerenteAcao = normalizeGerenteNome(gerenteRaw);
       const compositeKey = `${gerenteAcao}___${redeKey}`;
-      const valor =
-        (Number(a.valor_investimento) || 0) * (Number(a.expectativa_volume) || 1);
+      const valor = getValorProjetadoComercial(a);
 
       if (!redeAgg[compositeKey]) {
         redeAgg[compositeKey] = {

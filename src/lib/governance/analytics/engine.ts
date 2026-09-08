@@ -2685,8 +2685,41 @@ export class AnalyticsEngine {
       const hasRealizadoDirect = a.apuracao_valor_realizado !== null && a.apuracao_valor_realizado !== undefined && Number(a.apuracao_valor_realizado) > 0;
       const hasFamilias = Array.isArray(a.familias_detalhes) && a.familias_detalhes.length > 0;
       const hasSkus = Array.isArray(a.skus_detalhes) && a.skus_detalhes.length > 0;
+      const hasSovereignTotal = a.valor_investimento !== null && a.valor_investimento !== undefined && Number(a.valor_investimento) > 0;
+      const sovereignTotal = hasSovereignTotal ? Number(a.valor_investimento) : null;
+      const targetActionTotal = hasRealizadoDirect 
+        ? Number(a.apuracao_valor_realizado) 
+        : (hasSovereignTotal ? sovereignTotal : null);
 
-      const processItem = (famRawName: string, unitInvest: number, flatPrice: number, promoPrice: number, volNum: number, numItemsInAction: number) => {
+      const calculateItemShares = (items: any[], targetTotal: number, getVol: (item: any) => number) => {
+        const n = items.length;
+        if (n === 0) return [];
+        if (n === 1) return [targetTotal];
+
+        const nominals = items.map(item => {
+          const unit = Number(item.investimento) || 0;
+          const vol = getVol(item);
+          return unit * vol;
+        });
+        const sumNominal = nominals.reduce((acc, val) => acc + val, 0);
+
+        const shares: number[] = [];
+        let allocated = 0;
+
+        for (let i = 0; i < n - 1; i++) {
+          const weight = sumNominal > 0 ? (nominals[i] / sumNominal) : (1 / n);
+          const share = Math.round(weight * targetTotal * 100) / 100;
+          shares.push(share);
+          allocated += share;
+        }
+
+        const lastShare = Math.round((targetTotal - allocated) * 100) / 100;
+        shares.push(lastShare);
+
+        return shares;
+      };
+
+      const processItem = (famRawName: string, unitInvest: number, flatPrice: number, promoPrice: number, volNum: number, numItemsInAction: number, totalInvestDirect?: number) => {
         const { key: famKey, name: famName } = normalizeFamilia(famRawName);
         if (!row.familiasMap[famKey]) {
           row.familiasMap[famKey] = createFamiliaAcc(famName);
@@ -2694,8 +2727,8 @@ export class AnalyticsEngine {
         const fAcc = row.familiasMap[famKey];
         fAcc.acoesCount++;
 
-        const itemInvestExecutado = hasRealizadoDirect 
-          ? (Number(a.apuracao_valor_realizado) / numItemsInAction) 
+        const itemInvestExecutado = totalInvestDirect !== undefined 
+          ? totalInvestDirect 
           : (unitInvest * volNum);
         const itemFlatTeorico = flatPrice * volNum;
         const itemPromoTeorico = promoPrice * volNum;
@@ -2718,30 +2751,45 @@ export class AnalyticsEngine {
       };
 
       if (hasFamilias) {
-        a.familias_detalhes.forEach((fd: any) => {
+        const shares = targetActionTotal !== null
+          ? calculateItemShares(
+              a.familias_detalhes,
+              targetActionTotal,
+              (fd) => Number(fd.volume_real || fd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || fd.expectativa_volume || a.expectativa_volume) || 0
+            )
+          : null;
+        a.familias_detalhes.forEach((fd: any, idx: number) => {
           const famName = fd.familia_nome || fd.familia || a.familia_produto || "Geral";
           const unitInvest = Number(fd.investimento) || 0;
           const volNum = Number(fd.volume_real || fd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || fd.expectativa_volume || a.expectativa_volume) || 0;
           const flatPrice = Number(fd.preco_flat) || 0;
           const promoPrice = Number(fd.preco_acao) || 0;
-          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.familias_detalhes.length);
+          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.familias_detalhes.length, shares ? shares[idx] : undefined);
         });
       } else if (hasSkus) {
-        a.skus_detalhes.forEach((sd: any) => {
+        const shares = targetActionTotal !== null
+          ? calculateItemShares(
+              a.skus_detalhes,
+              targetActionTotal,
+              (sd) => Number(sd.volume_real || sd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || sd.expectativa_volume || a.expectativa_volume) || 0
+            )
+          : null;
+        a.skus_detalhes.forEach((sd: any, idx: number) => {
           const famName = sd.familia || a.familia_produto || "Geral";
           const unitInvest = Number(sd.investimento) || 0;
           const volNum = Number(sd.volume_real || sd.apuracao_qtd_vendida || a.apuracao_qtd_vendida || sd.expectativa_volume || a.expectativa_volume) || 0;
           const flatPrice = Number(sd.preco_flat) || 0;
           const promoPrice = Number(sd.preco_acao) || 0;
-          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.skus_detalhes.length);
+          processItem(famName, unitInvest, flatPrice, promoPrice, volNum, a.skus_detalhes.length, shares ? shares[idx] : undefined);
         });
       } else {
         const famName = a.familia_produto || "Geral";
-        const unitInvest = Number(a.valor_investimento) || 0;
+        const totalInvest = targetActionTotal !== null ? targetActionTotal : (Number(a.valor_investimento) || 0);
         const volNum = Number(a.apuracao_qtd_vendida || a.expectativa_volume) || 0;
         const flatPrice = Number(a.preco_flat) || 0;
         const promoPrice = Number(a.preco_acao) || 0;
-        processItem(famName, unitInvest, flatPrice, promoPrice, volNum, 1);
+        const unitInvest = volNum > 0 ? (totalInvest / volNum) : totalInvest;
+        processItem(famName, unitInvest, flatPrice, promoPrice, volNum, 1, totalInvest);
       }
     });
 
