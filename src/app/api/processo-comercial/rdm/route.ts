@@ -503,6 +503,15 @@ export async function GET(request: Request) {
       // Mês selecionado
       month: isAgosto2026
         ? {
+            vol: {
+              aa:      aaMonth.qty,
+              mAnt:    prevMonth.qty,
+              fct:     prevMonth.qty,
+              desafio: targetSum.tons,
+              real:    realMonth.qty,
+              pct:     volPctMonth,
+              delta:   realMonth.qty - targetSum.tons,
+            },
             fat: {
               aa:      aaMonth.fat,
               mAnt:    prevMonth.fat,
@@ -511,6 +520,15 @@ export async function GET(request: Request) {
               real:    fatRealMonth,
               pct:     fatPctMonth,
               delta:   fatDeltaMonth,
+            },
+            invest: {
+              aa:      0,
+              mAnt:    0,
+              fct:     0,
+              desafio: investDesafio,
+              real:    realMonthInvestPct,
+              pct:     investPctMonth,
+              delta:   investDeltaMonth,
             },
             maco: {
               aa:      dreMacoRow?.anoAnterior ?? 0,
@@ -576,6 +594,15 @@ export async function GET(request: Request) {
       ytd: isAgosto2026
         ? {
             label: quarterLabel,
+            vol: {
+              aa:      aaYtd.qty,
+              mAnt:    prevYtdMonth.qty,
+              fct:     prevYtdMonth.qty,
+              desafio: ytdTargetSum.tons,
+              real:    realYtd.qty,
+              pct:     volPctYtd,
+              delta:   realYtd.qty - ytdTargetSum.tons,
+            },
             fat: {
               aa:      aaYtd.fat,
               mAnt:    prevYtdMonth.fat,
@@ -584,6 +611,15 @@ export async function GET(request: Request) {
               real:    ytdFatReal,
               pct:     ytdFatPct,
               delta:   ytdFatDelta,
+            },
+            invest: {
+              aa:      0,
+              mAnt:    0,
+              fct:     0,
+              desafio: investDesafio,
+              real:    realYtdInvestPct,
+              pct:     investPctYtd,
+              delta:   investDeltaYtd,
             },
             maco: {
               aa:      0,

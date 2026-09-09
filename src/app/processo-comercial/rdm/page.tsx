@@ -3688,12 +3688,13 @@ function SlideProjecao({
 }) {
   const ytdLabel = `YTD - F${String(year).slice(-2)}`;
 
-  const mVol   = farol.month.vol;
-  const mFat   = farol.month.fat;
-  const mInvest = farol.month.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
-  const ytdVol = farol.ytd.vol;
-  const ytdFat = farol.ytd.fat;
-  const ytdInvest = farol.ytd.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
+  const emptyBlock: MetricBlock = { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 };
+  const mVol   = farol?.month?.vol ?? emptyBlock;
+  const mFat   = farol?.month?.fat ?? emptyBlock;
+  const mInvest = farol?.month?.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
+  const ytdVol = farol?.ytd?.vol ?? emptyBlock;
+  const ytdFat = farol?.ytd?.fat ?? emptyBlock;
+  const ytdInvest = farol?.ytd?.invest ?? { aa: 0, mAnt: 0, fct: 0, desafio: 10, real: 0, pct: 0, delta: 0 };
 
   const baseRows = useMemo(() => [
     {
