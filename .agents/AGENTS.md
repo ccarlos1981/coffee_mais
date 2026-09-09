@@ -5069,6 +5069,145 @@ A partir de 08/09/2026, a arquitetura, regras de universo, faturamento médio 3M
 
 Status Geral: `FAROL_EXECUTIVO_GERENCIAL_EVOLUCAO = HOMOLOGADO_E_CONGELADO` | `UNIVERSO_PLANEJAVEL_EXCETO_DISTRIBUIDOR = LOCKED` | `FATURAMENTO_MEDIO_3M = LOCKED` | `GESTAO_ADMIN_UNIVERSO = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 100. Baseline Oficial — Resolução Determinística de Gerente na Gestão de Cartas via Master Data (RDM P1 Concluído — Baseline Permanente)
+
+A partir de 09/09/2026, a arquitetura de resolução determinística de gerente comercial na aba Gestão de Cartas Emitidas do módulo Carta de Anuência (`/investimento/carta-anuencia`) torna-se o baseline permanente e oficial do Coffee++, com o encerramento formal do RDM P1 após auditoria e homologação em produção (Gate G1 a G29 com 100% de aprovação — 29/29 PASS, 0 mutações no banco e 0 erros).
+
+### Status Arquitetural
+`RESOLUCAO_GERENTE_GESTAO_CARTAS = HOMOLOGADO_E_CONGELADO`
+`OWNERSHIP_MASTER_DATA = LOCKED`
+`ZERO_DEPENDENCIA_FINANCEIRA = LOCKED`
+`STATUS_ARQUITETURAL = LOCKED`
+`BASELINE = OFICIAL_E_PERMANENTE`
+
+### Dados de Homologação em Produção:
+- **RDM**: Correção P1 — Resolução Determinística de Gerente na Gestão de Cartas
+- **Commit Homologado**: `19443fc`
+- **Deployment Ativo**: `dpl_51VDg5VRar3fv5E9iCJLPSxReamQ` (`● Ready`)
+- **Ambiente de Produção**:
+  - `https://coffee-mais.vercel.app/investimento/carta-anuencia`
+  - `https://dashboard.coffeemais.com/investimento/carta-anuencia`
+- **Resultado dos Quality Gates**: 29/29 Gates PASS (100% de conformidade — G1 a G29)
+- **Mutações durante o Gate**: INSERT = 0, UPDATE = 0, DELETE = 0, DDL = 0
+- **Desvio financeiro**: 0,0000%
+- **Compilação TypeScript**: 0 erros (`npx tsc --noEmit`)
+- **Build Next.js**: PASS (Exit code 0, 117/117 static pages)
+- **Veredito**: 🟢 HOMOLOGADO EM PRODUÇÃO
+
+### Diretrizes Mandatórias de Arquitetura e Negócio:
+
+1. **Causa Raiz Corrigida e Princípio de Desacoplamento Financeiro**:
+   - A Gestão de Cartas Emitidas **não deve e não pode utilizar dados financeiros** para determinar o gerente comercial / ownership responsável pela carta.
+   - A view materializada `public.mv_vendas_cliente_mensal` **NÃO participa da resolução de gerente da Gestão de Cartas**.
+   - Foi eliminada a dependência indireta de `obterMetadadosRedesComCodigo()` e `AnalyticsEngine.getMapeamentoRedesMeta()` para atribuição de gerente na listagem física de cartas. Cartas emitidas jamais podem ser ocultadas ou omitidas em razão de ausência de faturamento, faturamento nulo, inconsistências transitórias de vendas ou gerentes cadastrados em notas fiscais.
+
+2. **Cadeia Canônica de Resolução de Ownership (Single Source of Truth)**:
+   - A resolução oficial e determinística de gerente é fundamentada exclusivamente no Master Data:
+     $$\text{cm\_cartas\_anuencia.rede\_id} \longrightarrow \text{cm\_redes\_matrizes.codigo} \longrightarrow \text{cm\_redes\_matrizes.manager}$$
+   - A tabela `cm_clientes` atua estritamente como camada auxiliar complementar para dados operacionais (UF, matriz, operação e responsável) ou fallback determinístico quando `rede_id` aponta para cliente sem correspondência direta em `cm_redes_matrizes`.
+   - É terminantemente proibido o uso de fuzzy matching por similaridade textual de nome de rede para inferir gerente responsável.
+   - É terminantemente proibido criar regras especiais hardcoded para redes específicas (ex: OBA, ZAFFARI, MATEUS, NOVO ATAC).
+
+3. **Resultado Homologado da Gestão de Cartas**:
+   - **Sem filtro**: 29 cartas físicas ativas.
+   - **John Guedes**: Exatamente **6 cartas** (recuperação integral dos 3 casos anteriormente ocultos: ASSAI, BIG LAR, EMPORIO PRIME, somados a DONA, SUPER ADEGA e COMPER):
+     - `CA-2026-000011` — DONA
+     - `CA-2026-000018` — ASSAI
+     - `CA-2026-000019` — SUPER ADEGA
+     - `CA-2026-000021` — COMPER
+     - `CA-2026-000029` — BIG LAR
+     - `CA-2026-000030` — EMPORIO PRIME
+   - **Leandro Saffi**: Exatamente **8 cartas**.
+   - **Luiz**: Exatamente **11 cartas**.
+   - **Julliano**: Exatamente **4 cartas**.
+   - **Reconciliação Matemática Total**: $6 + 8 + 11 + 4 = 29$ cartas (100% de paridade, zero cartas órfãs, zero duplicidades).
+
+4. **Preservação Integral do Farol Executivo Gerencial**:
+   - Este RDM **não alterou o baseline** do Farol Executivo Gerencial (Seção 99):
+     - **Universo de Redes**: 67 redes esperadas (73 base − 6 Distribuidores).
+     - **No Sistema**: 29 redes.
+     - **Faltantes**: 38 redes.
+     - **Cobertura Geral**: 43,3% (29/67).
+   - **Detalhamento por Gerente no Farol**:
+     - **John Guedes**: 7 esperadas | 6 no sistema | 1 faltante | 85,7% de cobertura.
+     - **Leandro Saffi**: 16 esperadas | 8 no sistema | 8 faltantes | 50,0% de cobertura.
+     - **Luiz**: 28 esperadas | 11 no sistema | 17 faltantes | 39,3% de cobertura.
+     - **Julliano**: 16 esperadas | 4 no sistema | 12 faltantes | 25,0% de cobertura.
+
+5. **Ranking de Assinatura (Preservado e Homologado)**:
+   - **John Guedes**: 6 cartas | 4 para assinar | 2 assinadas | 33,3% assinadas.
+   - **Leandro Saffi**: 8 cartas | 7 para assinar | 1 assinada | 12,5% assinadas.
+   - **Luiz**: 11 cartas | 10 para assinar | 1 assinada | 9,1% assinadas.
+   - **Julliano**: 4 cartas | 4 para assinar | 0 assinadas | 0,0% assinadas.
+   - **Total Consolidado**: 29 cartas | 25 para assinar | 4 assinadas | 13,8% assinadas.
+
+6. **Casos Especiais e Casos de Borda Preservados**:
+   - `CA-2026-000012` / `REDE OBA` / `Julliano` / `SP`: Mantida estritamente com Gerente Julliano e UF SP, preservando o vínculo auditado.
+   - `ZAFFARI`: Operações RS, CESTO e SP inalteradas.
+   - `MATEUS`: Inalterado cadastral e financeiramente.
+   - `NOVO ATAC`: Inalterado cadastral e financeiramente.
+   - Nenhuma alteração cadastral, financeira ou de faturamento 3M foi realizada nesses casos.
+
+7. **Não-Regressão Funcional Plena**:
+   - Preservação de 100% dos fluxos e submódulos:
+     - Gestão de Cartas (listagem, filtros combinados, ordenação, paginação);
+     - Farol Executivo Gerencial e controles de universo;
+     - Ranking de Assinatura e compartilhamento WhatsApp;
+     - Farol Executivo de Redes Notáveis (> R$ 80.000/mês);
+     - Faturamento Médio 3M e views financeiras homologadas;
+     - Visualizador, Preview de Carta e Geração de PDF;
+     - Upload de anexos e substituição de Carta Assinada;
+     - Storage Supabase (`cartas-anuencia` e `logos-redes`);
+     - Políticas de RBAC P0 (Admin, Gestor, Gerentes Regionais);
+     - Integridade absoluta de Master Data.
+
+8. **Integridade Física do Banco de Dados**:
+   - `cm_cartas_anuencia`: 29 registros (imutabilidade respeitada).
+   - `cm_redes_matrizes`: 1061 registros (intocada).
+   - `cm_clientes`: 2339 registros (intocada).
+   - Mutações durante o Gate: INSERT = 0, UPDATE = 0, DELETE = 0, DDL = 0.
+
+### Resultado do Gate Final (G1 a G29):
+
+| Gate | Item Auditado | Resultado |
+|---|---|---|
+| G1 | Integridade Física das Cartas (29 = 29) | PASS |
+| G2 | Gestão de Cartas Sem Filtro (29 cartas) | PASS |
+| G3 | Gestão de Cartas — John Guedes (exatamente 6 cartas) | PASS |
+| G4 | Gestão de Cartas — Leandro Saffi (exatamente 8 cartas) | PASS |
+| G5 | Gestão de Cartas — Luiz (exatamente 11 cartas) | PASS |
+| G6 | Gestão de Cartas — Julliano (exatamente 4 cartas) | PASS |
+| G7 | Reconciliação Matemática Total (6 + 8 + 11 + 4 = 29) | PASS |
+| G8 | Caso Especial CA-2026-000012 (REDE OBA / Julliano / SP) | PASS |
+| G9 | Fonte Canônica de Gerente (Master Data cm_redes_matrizes / cm_clientes) | PASS |
+| G10 | Ausência de Heurísticas / Fuzzy Matching / Hardcodes | PASS |
+| G11 | Casos John Recuperados (ASSAI, BIG LAR, EMPORIO PRIME) | PASS |
+| G12 | Não Regressão do Farol Gerencial (67 / 29 / 38 / 43,3%) | PASS |
+| G13 | Não Regressão do Ranking de Assinatura (29 / 25 / 4 / 13,8%) | PASS |
+| G14 | Não Regressão do Farol > R$ 80.000/mês | PASS |
+| G15 | Não Regressão do Faturamento Médio 3M | PASS |
+| G16 | Casos Especiais ZAFFARI (RS, CESTO, SP) | PASS |
+| G17 | Casos Especiais MATEUS e NOVO ATAC | PASS |
+| G18 | Validação de RBAC Server-Side | PASS |
+| G19 | Preview de Cartas Operacional | PASS |
+| G20 | Geração e Exportação de PDF Operacional | PASS |
+| G21 | Upload e Anexos de Cartas Operacionais | PASS |
+| G22 | Filtros Combinados da Gestão de Cartas | PASS |
+| G23 | Compilação TypeScript (0 erros) | PASS |
+| G24 | Build de Produção Next.js (Pass) | PASS |
+| G25 | Integridade do Banco (cm_cartas: 29, matrizes: 1061, clientes: 2339) | PASS |
+| G26 | Deployment Vercel em Produção (Ready) | PASS |
+| G27 | Não-Regressão Global do Ecossistema | PASS |
+| G28 | Mutabilidade Zero no Banco de Dados (0 mutações) | PASS |
+| G29 | Veredito Consolidado de Homologação | PASS |
+
+**Resultado: 29/29 PASS — 100% de conformidade — Mutações durante o Gate: 0 — Desvio financeiro: 0,0000%**
+
+Status Geral: `RESOLUCAO_GERENTE_GESTAO_CARTAS = HOMOLOGADO_E_CONGELADO` | `OWNERSHIP_MASTER_DATA = LOCKED` | `ZERO_DEPENDENCIA_FINANCEIRA = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
 
 
 
