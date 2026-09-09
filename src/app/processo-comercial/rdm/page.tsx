@@ -93,6 +93,11 @@ interface RdmApiResponse {
   familias: string[];
   precoCompare: PrecoCompareData;
   prevYear: number;
+  projecaoFarol?: FarolData;
+  currentYear?: number;
+  currentMonth?: number;
+  currentMonthName?: string;
+  projComments?: Record<string, string>;
 }
 
 interface PrecoCompareMonth {
@@ -3759,6 +3764,11 @@ function SlideProjecao({
     });
   }, [baseRows]);
 
+  // Reset projLoaded on manager/competence or value change
+  useEffect(() => {
+    setProjLoaded(false);
+  }, [manager, month, year, projValuesJson]);
+
   // Load saved proj from projValuesJson prop
   useEffect(() => {
     if (projLoaded || !projValuesJson) return;
@@ -5316,9 +5326,10 @@ export default function RdmPage() {
   const barTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Comments
-  const [comments,    setComments]    = useState<Record<string, string>>({});
-  const [savingKey,   setSavingKey]   = useState<string | null>(null);
-  const [savedKey,    setSavedKey]    = useState<string | null>(null);
+  const [comments,     setComments]     = useState<Record<string, string>>({});
+  const [projComments, setProjComments] = useState<Record<string, string>>({});
+  const [savingKey,    setSavingKey]    = useState<string | null>(null);
+  const [savedKey,     setSavedKey]     = useState<string | null>(null);
 
   // Export Modal & Config
   const [showExportModal,     setShowExportModal]     = useState(false);
@@ -5377,6 +5388,7 @@ export default function RdmPage() {
       if (!json.success) throw new Error((json as unknown as { error: string }).error);
       setData(json);
       setComments(json.comments ?? {});
+      setProjComments(json.projComments ?? json.comments ?? {});
       if (json.canConfigureDesafio !== undefined) {
         setCanConfigureDesafio(Boolean(json.canConfigureDesafio));
       }
@@ -5932,17 +5944,45 @@ export default function RdmPage() {
     }
 
     if (slideKey === 'projecao_vendas') {
+      const projFarol = data.projecaoFarol ?? data.farol;
+      const projYear = data.currentYear ?? data.year;
+      const projMonth = data.currentMonth ?? data.month;
+      const projMonthName = data.currentMonthName ?? monthName;
+
       return (
         <SlideProjecao
-          monthName={monthName}
-          month={data.month}
-          year={data.year}
+          monthName={projMonthName}
+          month={projMonth}
+          year={projYear}
           manager={manager}
-          farol={data.farol}
-          projComment={comments['projecao_vendas'] ?? ''}
-          projValuesJson={comments['projecao_proj'] ?? ''}
-          onCommentChange={v => setComments(prev => ({ ...prev, projecao_vendas: v }))}
-          onCommentSave={() => saveComment('projecao_vendas')}
+          farol={projFarol}
+          projComment={projComments['projecao_vendas'] ?? comments['projecao_vendas'] ?? ''}
+          projValuesJson={projComments['projecao_proj'] ?? comments['projecao_proj'] ?? ''}
+          onCommentChange={v => setProjComments(prev => ({ ...prev, projecao_vendas: v }))}
+          onCommentSave={async () => {
+            setSavingKey('projecao_vendas');
+            try {
+              const res = await fetch('/api/processo-comercial/rdm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  year: projYear,
+                  month: projMonth,
+                  manager,
+                  slide_key: 'projecao_vendas',
+                  comment: projComments['projecao_vendas'] ?? '',
+                }),
+              });
+              const json = await res.json();
+              if (!res.ok || !json.success) throw new Error(json.error || 'Erro ao salvar o comentário.');
+              setSavedKey('projecao_vendas');
+              setTimeout(() => setSavedKey(null), 2000);
+            } catch (e: unknown) {
+              setError(e instanceof Error ? e.message : 'Erro ao salvar comentário');
+            } finally {
+              setSavingKey(null);
+            }
+          }}
           saving={savingKey === 'projecao_vendas'}
         />
       );

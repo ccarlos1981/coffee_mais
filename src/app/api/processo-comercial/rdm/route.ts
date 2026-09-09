@@ -6,6 +6,7 @@ import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTota
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
 import { getRdmData, getRdmDreAcumuladoData } from "@/lib/dre-gerencial/engine";
+import { getCurrentBusinessCompetence } from "@/app/processo-comercial/rdm/rdm-business-time";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -691,6 +692,233 @@ export async function GET(request: Request) {
       }
     }
 
+    // ── Slide 26: Projeção de Vendas — Desacoplamento para Mês Corrente ──
+    const { currentYear, currentMonth, currentMonthName } = getCurrentBusinessCompetence();
+    const isCurrentCompetence = (year === currentYear && month === currentMonth);
+
+    let projFarolData: any;
+    let projCommentsMap: Record<string, string> = {};
+
+    if (isCurrentCompetence) {
+      // Reutiliza dados já consolidados para evitar consultas duplicadas
+      projFarolData = farolData;
+      projCommentsMap = { ...commentsMap };
+    } else {
+      // Competência histórica selecionada: buscar dados específicos do mês corrente para o Slide 26
+      const curMonthKey = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+      const curPrevMonthKey = getPrevMonthKey(currentYear, currentMonth);
+      const curPrevYear = currentYear - 1;
+      const curPrevYearMonthKey = `${curPrevYear}-${String(currentMonth).padStart(2, '0')}`;
+      const curQuarterStartMonth = Math.floor((currentMonth - 1) / 3) * 3 + 1;
+
+      const curYtdKeys: string[] = [];
+      const curYtdPrevMonthKeys: string[] = [];
+      const curYtdPrevYearKeys: string[] = [];
+      for (let m = curQuarterStartMonth; m <= currentMonth; m++) {
+        curYtdKeys.push(`${currentYear}-${String(m).padStart(2, '0')}`);
+        curYtdPrevMonthKeys.push(getPrevMonthKey(currentYear, m));
+        curYtdPrevYearKeys.push(`${curPrevYear}-${String(m).padStart(2, '0')}`);
+      }
+
+      const curAllMesKeys = Array.from(new Set([
+        curMonthKey,
+        curPrevMonthKey,
+        curPrevYearMonthKey,
+        ...curYtdKeys,
+        ...curYtdPrevMonthKeys,
+        ...curYtdPrevYearKeys,
+      ]));
+
+      const [resCurSales, resCurTargets, resCurYtdTargets, resCurInvestments, resCurComments] = await Promise.all([
+        supabase.rpc('execute_readonly_query', {
+          query_text: `
+            SELECT mes, COALESCE(manager,'Outros') as manager, SUM(fat) as fat, SUM(qty) as qty
+            FROM ${OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL}
+            WHERE mes IN (${curAllMesKeys.map(k => `'${k}'`).join(',')})
+            GROUP BY mes, COALESCE(manager,'Outros')
+          `
+        }),
+        supabase
+          .from('targets')
+          .select('manager, manager_id, target_revenue, target_tons, target_forecast, target_forecast_qty')
+          .eq('year', currentYear)
+          .eq('month', currentMonth),
+        supabase
+          .from('targets')
+          .select('manager, manager_id, month, target_revenue, target_tons, target_forecast, target_forecast_qty')
+          .eq('year', currentYear)
+          .gte('month', curQuarterStartMonth)
+          .lte('month', currentMonth),
+        supabase
+          .from('v_acoes_investimento_com_gerente')
+          .select('gerente_responsavel, mes_referencia, apuracao_valor_realizado, valor_investimento, expectativa_volume, abrangencia, skus_detalhes, familias_detalhes')
+          .in('mes_referencia', Array.from(new Set([curMonthKey, ...curYtdKeys])))
+          .eq('is_planejamento', false)
+          .is('cancel_reason', null),
+        supabaseServer
+          .from('cm_rdm_comments')
+          .select('slide_key, comment, updated_at')
+          .eq('year', currentYear)
+          .eq('month', currentMonth)
+          .in('manager', Array.from(new Set([manager, resolveCanonicalManager(manager).managerName, ...(isSameManager(manager, 'Leandro Saffi') ? ['Leandro', 'Leandro Saffi'] : [])])))
+          .in('slide_key', ['projecao_vendas', 'projecao_proj'])
+          .order('updated_at', { ascending: false }),
+      ]);
+
+      const curSales = (resCurSales?.data ?? []) as { mes: string; manager: string; fat: string; qty: string }[];
+      const curTargets = (resCurTargets?.data ?? []) as any[];
+      const curYtdTargets = (resCurYtdTargets?.data ?? []) as any[];
+      const curInvestments = (resCurInvestments?.data ?? []) as any[];
+      const curComments = (resCurComments?.data ?? []) as any[];
+
+      const curTargetCanon = targetManagers.map(m => resolveCanonicalManager(m).canonicalKey);
+
+      function sumCurSales(mesKeys: string[]) {
+        return curSales
+          .filter(s => curTargetCanon.includes(resolveCanonicalManager(s.manager).canonicalKey) && mesKeys.includes(s.mes))
+          .reduce((acc, s) => ({ fat: acc.fat + Number(s.fat), qty: acc.qty + Number(s.qty) }), { fat: 0, qty: 0 });
+      }
+
+      function sumCurInvestments(mesKeys: string[]) {
+        return curInvestments
+          .filter(inv => {
+            const canonMgr = resolveCanonicalManager(inv.gerente_responsavel).canonicalKey;
+            return curTargetCanon.includes(canonMgr) && mesKeys.includes(inv.mes_referencia);
+          })
+          .reduce((acc, inv) => acc + getInvestimentoRealizadoOficial(inv), 0);
+      }
+
+      const curRealMonth = sumCurSales([curMonthKey]);
+      const curPrevMonth = sumCurSales([curPrevMonthKey]);
+      const curAaMonth   = sumCurSales([curPrevYearMonthKey]);
+
+      const curRealYtd   = sumCurSales(curYtdKeys);
+      const curPrevYtd   = sumCurSales(curYtdPrevMonthKeys);
+      const curAaYtd     = sumCurSales(curYtdPrevYearKeys);
+
+      const curTargetSum = targetManagers.reduce((acc, m) => {
+        const t = getKaTargetFromList(curTargets, m);
+        return {
+          revenue: acc.revenue + t.revenue,
+          tons:    acc.tons    + t.tons,
+          fctRev:  acc.fctRev  + t.fctRev,
+          fctQty:  acc.fctQty  + t.fctQty,
+        };
+      }, { revenue: 0, tons: 0, fctRev: 0, fctQty: 0 });
+
+      const curYtdTargetSum = targetManagers.reduce((acc, m) => {
+        let rev = 0, tons = 0, fctRev = 0, fctQty = 0;
+        for (let mth = curQuarterStartMonth; mth <= currentMonth; mth++) {
+          const monthRows = curYtdTargets.filter(t => t.month === mth);
+          const t = getKaTargetFromList(monthRows, m);
+          rev += t.revenue;
+          tons += t.tons;
+          fctRev += t.fctRev;
+          fctQty += t.fctQty;
+        }
+        return {
+          revenue: acc.revenue + rev,
+          tons:    acc.tons    + tons,
+          fctRev:  acc.fctRev  + fctRev,
+          fctQty:  acc.fctQty  + fctQty,
+        };
+      }, { revenue: 0, tons: 0, fctRev: 0, fctQty: 0 });
+
+      const curRealMonthInvestRs = sumCurInvestments([curMonthKey]);
+      const curRealYtdInvestRs   = sumCurInvestments(curYtdKeys);
+
+      const curRealMonthInvestPct = curRealMonth.fat > 0 ? (curRealMonthInvestRs / curRealMonth.fat) * 100 : 0;
+      const curRealYtdInvestPct   = curRealYtd.fat > 0 ? (curRealYtdInvestRs / curRealYtd.fat) * 100 : 0;
+
+      const isCurrentAgosto2026 = (currentYear === 2026 && currentMonth === 8);
+      const curVolPctMonth = curTargetSum.tons > 0 ? (curRealMonth.qty / curTargetSum.tons) * 100 : 0;
+      const curFatPctMonth = curTargetSum.revenue > 0 ? (curRealMonth.fat / curTargetSum.revenue) * 100 : 0;
+      const curInvestPctMonth = investDesafio > 0 ? ((curRealMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
+
+      const curVolPctYtd = curYtdTargetSum.tons > 0 ? (curRealYtd.qty / curYtdTargetSum.tons) * 100 : 0;
+      const curFatPctYtd = curYtdTargetSum.revenue > 0 ? (curRealYtd.fat / curYtdTargetSum.revenue) * 100 : 0;
+      const curInvestPctYtd = investDesafio > 0 ? ((curRealYtdInvestPct - investDesafio) / investDesafio) * 100 : 0;
+
+      projFarolData = {
+        managerLabel: manager === CRISTIANO ? "CRISTIANO" : manager,
+        isAgosto2026: isCurrentAgosto2026,
+        weights: isCurrentAgosto2026
+          ? { FAT: 50, MACO: 30, DESP_COMERCIAIS: 20, DEFLATOR: 0, VOL: 0, INVEST: 0 }
+          : { VOL: 0, FAT: 100, INVEST: 0 },
+        month: {
+          vol: {
+            aa:      curAaMonth.qty,
+            mAnt:    curPrevMonth.qty,
+            fct:     curPrevMonth.qty,
+            desafio: curTargetSum.tons,
+            real:    curRealMonth.qty,
+            pct:     curVolPctMonth,
+            delta:   curRealMonth.qty - curTargetSum.tons,
+          },
+          fat: {
+            aa:      curAaMonth.fat,
+            mAnt:    curPrevMonth.fat,
+            fct:     curPrevMonth.fat,
+            desafio: curTargetSum.revenue,
+            real:    curRealMonth.fat,
+            pct:     curFatPctMonth,
+            delta:   curRealMonth.fat - curTargetSum.revenue,
+          },
+          invest: {
+            aa:      0,
+            mAnt:    0,
+            fct:     0,
+            desafio: investDesafio,
+            real:    curRealMonthInvestPct,
+            pct:     curInvestPctMonth,
+            delta:   curRealMonthInvestPct - investDesafio,
+          },
+          maco: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+          despComerciais: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+          deflator: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+          score: 0,
+        },
+        ytd: {
+          label: `ACUM. Q${Math.ceil(currentMonth / 3)}/${String(currentYear).slice(-2)}`,
+          vol: {
+            aa:      curAaYtd.qty,
+            mAnt:    curPrevYtd.qty,
+            fct:     curPrevYtd.qty,
+            desafio: curYtdTargetSum.tons,
+            real:    curRealYtd.qty,
+            pct:     curVolPctYtd,
+            delta:   curRealYtd.qty - curYtdTargetSum.tons,
+          },
+          fat: {
+            aa:      curAaYtd.fat,
+            mAnt:    curPrevYtd.fat,
+            fct:     curPrevYtd.fat,
+            desafio: curYtdTargetSum.revenue,
+            real:    curRealYtd.fat,
+            pct:     curFatPctYtd,
+            delta:   curRealYtd.fat - curYtdTargetSum.revenue,
+          },
+          invest: {
+            aa:      0,
+            mAnt:    0,
+            fct:     0,
+            desafio: investDesafio,
+            real:    curRealYtdInvestPct,
+            pct:     curInvestPctYtd,
+            delta:   curRealYtdInvestPct - investDesafio,
+          },
+          maco: { aa: 0, mAnt: 0, fct: 0, desafio: 0, real: 0, pct: 0, delta: 0 },
+          score: 0,
+        },
+      };
+
+      for (const c of curComments) {
+        if (c.comment && !projCommentsMap[c.slide_key]) {
+          projCommentsMap[c.slide_key] = c.comment;
+        }
+      }
+    }
+
     // ── Dados mensais de faturamento para o gráfico (slide 4) ──
     // Compara: Mês Atual vs. Último Trimestre (média dos 3 meses anteriores no mesmo ano)
     const MONTH_LABELS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -902,6 +1130,13 @@ export async function GET(request: Request) {
       dreGerencialSlideAcumulado,
 
       prevYear,
+
+      // ── Slide 26: Projeção de Vendas (Sempre Mês Corrente) ──
+      projecaoFarol: projFarolData,
+      currentYear,
+      currentMonth,
+      currentMonthName,
+      projComments: projCommentsMap,
     });
   } catch (err: unknown) {
     let message = "Erro desconhecido";
