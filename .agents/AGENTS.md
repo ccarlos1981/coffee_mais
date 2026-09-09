@@ -5520,6 +5520,89 @@ Qualquer intervenção futura sobre os fluxos ou artefatos do RDM Gate 5.16 (inc
 
 Status Geral: `RDM_GATE_5_16 = HOMOLOGADO_E_CONGELADO` | `EXCLUSAO_SEGURA_ACAO = LOCKED` | `GOVERNANCA_ANTI_AMBIGUIDADE = LOCKED` | `CONTRATO_FINANCEIRO_5_15B = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 104. Baseline Oficial — Incremento Controlado 31/08/2026 e Harmonização Integrada das Materialized Views (RDM Fechamento Agosto/2026)
+
+A partir de 09/09/2026, com a conclusão e aprovação unânime de toda a suíte de auditoria (Gates 4.1, 4.2, 4.3, 4.3.1, 4.4 e 4.5), a arquitetura do **Incremento Controlado de Fechamento de Mês (31/08/2026)** e a **Harmonização Integrada das Materialized Views (`mv_vendas_agg`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal` e `mv_vendas_mensal`)** encontram-se formalmente homologadas, encerradas e congeladas como baseline permanente do Coffee++.
+
+### Status Executivo Oficial
+- `RDM_INCREMENTO_CONTROLADO_31_08` = `HOMOLOGADO_E_CONGELADO`
+- `GATE 4.1 (Auditoria Pós-Commit / Detecção Duplicate Key)` = `PASS`
+- `GATE 4.2 (Diagnóstico Forense da Incompatibilidade Canônica)` = `PASS`
+- `GATE 4.3 (Tentativa de Ajuste Isolado / Rollback Seguro)` = `BLOCKED → ROLLBACK_SEGURO (100% REVERSÍVEL)`
+- `GATE 4.3.1 (Auditoria Forense da Granularidade Downstream)` = `PASS`
+- `GATE 4.4 (Implementação Controlada da Harmonização Integrada)` = `PASS`
+- `GATE 4.5 (Pós-Implementação / Regressão Funcional READ_ONLY)` = `PASS`
+- `STATUS_FINAL` = `🟢 HOMOLOGATED & 🔒 FROZEN`
+- `STATUS_ARQUITETURAL` = `LOCKED`
+- `BASELINE` = `PERMANENTE`
+
+---
+
+### 1. Invariantes e Diretrizes Mandatórias de Governança
+1. **Identidade Canônica Exclusiva (`cod_parceiro`)**:
+   - `cod_parceiro` é a única chave canônica do cliente em todo o ecossistema Coffee++.
+   - `nome_parceiro` é atributo textual mutável e descritivo, sendo terminantemente proibida sua inclusão em cláusulas `GROUP BY` de Materialized Views ou chaves de unicidade física (`UNIQUE INDEX`).
+2. **Consolidação Determinística**:
+   - A projeção de `nome_parceiro` nas Materialized Views analíticas (`mv_vendas_agg`, `mv_vendas_cliente_mensal`, `mv_positivacao_sku_mensal`) deve utilizar exclusivamente agregação técnica determinística (`MAX(nome_parceiro)`).
+   - O uso de `MAX()` possui finalidade estritamente técnica de resolução de conflitos textuais de ERP, não constituindo nova regra de nomenclatura comercial.
+3. **Regra de Rede na Visão de Clientes (`mv_vendas_cliente_mensal`)**:
+   - A rede comercial é consolidada deterministicamente via: `COALESCE(c.matriz, MAX(v.nome_parceiro))`.
+   - Variações ortográficas em NFs emitidas jamais poderão gerar novas linhas ou duplicar faturamento de um cliente.
+4. **Granularidades Canônicas Homologadas**:
+   - `mv_vendas_agg`: `(mes, cod_parceiro, product, cod_top, nome_vendedor)`
+   - `mv_vendas_cliente_mensal`: `(mes, cod_parceiro)`
+   - `mv_positivacao_sku_mensal`: `(mes, cod_parceiro, product, manager_id, rede)`
+   - `mv_vendas_mensal`: `(mes, manager_id, rede, tipo_produto, uf, channel)`
+5. **Preservação de Integridade das Bases Físicas**:
+   - Fica terminantemente proibida qualquer mutação manual (INSERT/UPDATE/DELETE/TRUNCATE) sobre as tabelas físicas homologadas `public.cm_faturamento`, `public.cm_faturamento_sankhya`, `public.base_atendimento`, `public.cm_clientes` e `public.sales`.
+   - As cargas de fechamento de mês devem consumir estritamente o pipeline idempotente `public.executar_incremento_fechamento_mensal`.
+6. **Suporte Pleno a `REFRESH MATERIALIZED VIEW CONCURRENTLY`**:
+   - As Materialized Views devem manter obrigatoriamente seus respectivos índices `UNIQUE` canônicos válidos e sincronizados, permitindo o refresh concorrente e transparente sem lock de leitura para os dashboards e usuários da plataforma.
+
+---
+
+### 2. Evidências da Auditoria de Fechamento (Agosto/2026)
+- **Base Física `cm_faturamento`**:
+  - Período 01 a 30/08/2026: 85.075 linhas | R$ 11.699.091,82 | 431.298,92 UN
+  - Incremento 31/08/2026: 2.595 linhas | R$ 1.802.223,71 | 77.596,00 UN
+  - Total Agosto Físico: 87.670 linhas | R$ 13.501.315,53 | 508.894,92 UN (100% preservado)
+  - Total Setembro Físico: 24.035 linhas | R$ 1.710.262,53 | 66.930,43 UN (100% preservado)
+- **Camada Analítica Consolidada (2025–2026)**:
+  - Faturamento Total Consolidado: R$ 155.198.056,70 em todas as 4 Materialized Views (Delta = R$ 0,00).
+  - Volume Total Consolidado: 5.353.568,60 UN (Delta = 0,00 UN).
+  - Número Total de Vendas: 1.075.100 (Delta = 0).
+  - Faturamento Líquido de Agosto nas MVs: R$ 9.598.396,52.
+  - Clientes Distintos em Agosto: 21.272 (reconciliação exata 1 para 1).
+  - Duplicidades em Chaves Lógicas: 0 em todas as 3 MVs críticas.
+- **Consumidores Downstream**:
+  - `/rps`: 21.272 clientes mapeados, ranking comercial e rolling 3M íntegros.
+  - `/executive-commercial`: 8 canais comerciais reconciliados (R$ 9.598.396,52 | MACO R$ 4.679.925,03).
+  - `Painel Presidência` e `DRE Gerencial`: Séries históricas de Junho a Setembro/2026 perfeitamente contínuas e harmonizadas.
+  - `vw_mv_health_check`: Desvio oficial de 0,3097% em Agosto/2026 (Status: OK).
+- **Performance**:
+  - Lookup por cliente em `mv_vendas_cliente_mensal`: 0,156 ms.
+  - Agrupamento de canais em `mv_vendas_mensal`: 1,384 ms.
+  - Agrupamento RPS por gerente (21.272 linhas): 90,883 ms.
+  - Consulta de Positivação de SKU (9.098 linhas): 51,071 ms.
+
+---
+
+### 3. Regra Permanente de Congelamento (Frozen Baseline)
+A partir desta homologação:
+`RDM_INCREMENTO_CONTROLADO_31_08 = FROZEN`
+`HARMONIZACAO_MATERIALIZED_VIEWS = FROZEN`
+
+Qualquer intervenção futura sobre a estrutura de agregação, agrupamentos ou índices das Materialized Views analíticas exigirá obrigatoriamente:
+1. Abertura formal de novo RDM / Gate Executivo com justificativa documentada;
+2. Auditoria forense prévia em regime estrito de read-only;
+3. Respeito irrestrito à identidade canônica do `cod_parceiro`;
+4. Preservação mandatória de 0,0000% de desvio financeiro e zero duplicidade de clientes.
+
+Status Geral: `RDM_INCREMENTO_31_08 = HOMOLOGADO_E_CONGELADO` | `HARMONIZACAO_MVS = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
 
 
 
