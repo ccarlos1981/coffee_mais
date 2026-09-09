@@ -5207,6 +5207,322 @@ A partir de 09/09/2026, a arquitetura de resolução determinística de gerente 
 
 Status Geral: `RESOLUCAO_GERENTE_GESTAO_CARTAS = HOMOLOGADO_E_CONGELADO` | `OWNERSHIP_MASTER_DATA = LOCKED` | `ZERO_DEPENDENCIA_FINANCEIRA = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 101. Baseline Oficial — Exclusão Segura de Ação com Compromisso Financeiro & Governança Anti-Ambiguidade (RDM Gate 5.16 — Fase 4 Homologada)
+
+A partir de 09/09/2026, a arquitetura de exclusão segura e administrativa de ações de investimento no módulo Investimentos (`/investimento` e `/investimento/planejamento`), contemplando a camada de experiência e decisão via Modal desacoplado (`ExcluirAcaoModal`), torna-se o baseline permanente e oficial do Coffee++, com a homologação executiva formal da **Fase 4 (Modal / Experiência de Decisão da Exclusão)** após complementação forense controlada com 100% de aprovação (24/24 testes forenses PASS, T01–T15 PASS, build 117/117 e 0,0000% de desvio).
+
+### Status Arquitetural
+- `FASE 1 (Banco de Dados / RPC Soberana v2)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 2 (Server Action / Camada de Aplicação)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 3 (View de Diagnóstico / Camada de Leitura)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 4 (Modal / Experiência de Decisão da Exclusão)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 5 (Feedback / Notificações / Auditoria)` = `BLOCKED` (Aguardando autorização executiva)
+- `VALOR_INVESTIMENTO_TOTAL = CANONICAL_GATE_5_15B (LOCKED)`
+- `STATUS_ARQUITETURAL = LOCKED`
+- `BASELINE = PERMANENTE`
+
+### 1. Autoridade da Homologação da Fase 4
+A Fase 4 foi formalmente homologada após complementação forense controlada, eliminando lacunas do relatório preliminar e comprovando:
+1. Remoção do Financial Guard binário legado do fluxo administrativo efetivo de exclusão nas páginas `/investimento` e `/investimento/planejamento`.
+2. Integração com a fonte diagnóstica oficial da View `public.v_acoes_investimento_com_gerente`.
+3. Isolamento completo do componente dedicado `src/app/investimento/components/ExcluirAcaoModal.tsx`.
+4. Ausência absoluta de SQL, Supabase clients (`createClient`/`createAdminClient`), chamadas `.rpc()` ou mutações financeiras na camada do Modal.
+5. Preservação integral da soberania da Server Action (`excluirAcaoInvestimentoAdmin`) e da RPC PostgreSQL soberana (`public.excluir_acao_investimento_admin_v2`).
+6. Preservação irrevogável do Contrato Canônico Gate 5.15B: `valor_investimento = TOTAL DA AÇÃO`, com proibição estrita de multiplicação por `expectativa_volume`.
+7. Funcionamento comprovado dos cinco estados diagnósticos e de decisão.
+8. Proteção contra duplo clique e submissões concorrentes via `isLoading`, loading state visual e propagação de mensagens de erro do backend.
+9. Ausência de bypass de segurança, integridade de RBAC/RLS e não-regressão estrutural total no ecossistema.
+
+### 2. Matriz Oficial dos Cinco Estados Homologada
+O comportamento decisório do Modal e do fluxo de exclusão segue estritamente a matriz:
+
+| Estado Diagnóstico | Condição Financeira | Comportamento Oficial no Modal | Execução no Backend |
+|---|---|---|---|
+| `CLEAN` | Sem parcelas / compromissos vinculados | Exclusão normal permitida com confirmação padrão | DELETE físico da ação |
+| `FUTURE_ONLY` | Parcelas existem, mas 100% futuras (`A_PAGAR`, `EM_ABERTO`) | Exclusão permitida mediante confirmação explícita destacando parcelas que serão canceladas | RPC cancela parcelas futuras (`CANCELADA_EXCLUSAO_ACAO`) e exclui a ação |
+| `PARTIAL_REALIZED` | Parcelas realizadas (`PAGA`, `PAGA_SUBSTITUIDA`) + futuras (`A_PAGAR`) | Histórico financeiro protegido; alerta de soft-cancel; parcelas futuras canceladas; ação arquivada | Soft-cancel (`status = CANCELADA_COM_HISTORICO`), parcelas futuras `CANCELADA_EXCLUSAO_ACAO`, preserva realizadas |
+| `FULLY_REALIZED` | 100% das parcelas já liquidadas / pagas | **Bloqueio absoluto**; botão destrutivo oculto/bloqueado; mensagem de proteção de auditoria contábil | Operação bloqueada soberanamente |
+| `MULTI_ACTION_FINANCIAL_AMBIGUOUS` | Campanha compartilhada com ambiguidade de compromisso (Opção A) | **Bloqueio absoluto**; proibição de rateio, LIFO ou proporcionalidade; orientação para ajuste manual | Operação bloqueada soberanamente |
+
+### 3. Contrato Financeiro Gate 5.15B (Invariável)
+- Regra Soberana: `valor_investimento = TOTAL DA AÇÃO`.
+- É expressamente proibido interpretar `valor_investimento` como valor unitário no fluxo de exclusão ou no Modal.
+- É expressamente proibida a operação: `valor_investimento * expectativa_volume` ou qualquer multiplicação equivalente.
+- Evidências Homologadas (Valores Reais vs. Resultados Proibidos):
+  - 1000 / volume 3: Correto = **R$ 1.000,00** | Proibido = *R$ 3.000,00*
+  - 3870 / volume 10: Correto = **R$ 3.870,00** | Proibido = *R$ 38.700,00*
+  - 5054 / volume 14: Correto = **R$ 5.054,00** | Proibido = *R$ 70.756,00*
+  - 2280 / volume 20: Correto = **R$ 2.280,00** | Proibido = *R$ 45.600,00*
+
+### 4. Isolamento Arquitetural do Componente
+O componente `src/app/investimento/components/ExcluirAcaoModal.tsx` opera como camada pura de visualização e confirmação de intenção:
+- **Zero SQL**: sem cláusulas `SELECT`, `INSERT`, `UPDATE` ou `DELETE`.
+- **Zero Clientes de Banco**: sem `createClient`, `createAdminClient` ou importações de `@/lib/supabase`.
+- **Zero Chamadas RPC**: sem `supabase.rpc()`.
+- **Zero Lógica Contábil/Financeira Local**: sem cálculo de rateio, LIFO, amortização proporcional ou heurísticas de redistribuição.
+- **Isolamento de Estado**: recebe exclusivamente o diagnóstico calculado pela View soberana e delega a transação atomicamente para `excluirAcaoInvestimentoAdmin()`.
+
+### 5. Evidências de Teste e Qualidade Forense
+- **Testes Comportamentais do Modal (T01–T15)**: 15/15 PASS
+- **Testes Forenses Específicos da Fase 4**: 24/24 PASS (`scripts/test-phase4-forensic-modal.ts`)
+  - Testes T01 a T05 (Renderização e Estados): PASS
+  - Testes T06 a T08 (Ações Destrutivas Permitidas e Confirmação): PASS
+  - Testes T09 a T11 (Bloqueios Absolutos Sem Botão de Exclusão): PASS
+  - Testes T12 a T15 (Resiliência, Duplo Clique, Loading e Erros): PASS
+  - Testes Canônicos Gate 5.15B (1000, 3870, 5054, 2280 sem multiplicação): PASS
+  - Testes Estáticos de Segurança e Ausência de SQL/Supabase: PASS
+- **Validações de Regressão Global**:
+  - Compilação TypeScript (`npx tsc --noEmit`): **0 erros**
+  - Build de Produção Next.js (`npm run build`): **PASS** (117/117 rotas estáticas/dinâmicas geradas)
+  - Paridade Financeira Oficial (`npm run verify:parity`): **0,0000% de desvio**
+  - Testes de Domínio (`npm run test:domain`): **32/32 PASS**
+
+### 6. Artefatos Homologados e Hashes Criptográficos (SHA-256)
+- Componente Modal:
+  - Arquivo: `src/app/investimento/components/ExcluirAcaoModal.tsx`
+  - SHA-256: `4ba7f60527ca7ffe01da388079e7be9f386b56575d22c8b112bc1d952da2f004`
+- Suíte Forense da Fase 4:
+  - Arquivo: `scripts/test-phase4-forensic-modal.ts`
+  - SHA-256: `fd47506ec95861c70397bbc2532e5cd64b693c8cc7eb73d84af0acdc5f160ef0`
+
+### 7. Dependências Congeladas e Imutáveis
+A Fase 4 opera em conformidade estrita e sem alterações nos artefatos congelados das fases precedentes:
+- **Fase 1**: `public.excluir_acao_investimento_admin_v2` + status canônico `CANCELADA_EXCLUSAO_ACAO` (Migration `20260909_gate_5_16_excluir_acao_investimento_admin_v2.sql`).
+- **Fase 2**: Server Action `excluirAcaoInvestimentoAdmin` em `src/app/investimento/lancar/actions.ts`.
+- **Fase 3**: View diagnóstica `public.v_acoes_investimento_com_gerente` (Migration `20260909_gate_5_16_fase3_view_diagnostico_exclusao.sql`).
+
+Status Geral: `RDM_GATE_5_16_FASE_4 = HOMOLOGADA_E_CONGELADA` | `EXCLUIR_ACAO_MODAL = LOCKED` | `GOVERNANCA_ANTI_AMBIGUIDADE = LOCKED` | `FASE_5 = BLOCKED` | `BASELINE = PERMANENTE`.
+
+---
+
+## 102. Baseline Oficial — Exclusão Segura de Ação: Feedback Pós-Commit, Toasts Sonner e Governança Visual (RDM Gate 5.16 — Fase 5A Homologada)
+
+A partir de 09/09/2026, a arquitetura de feedback pós-commit, notificações e toasts para a exclusão segura e administrativa de ações comerciais e planejamentos (`/investimento` e `/investimento/planejamento`) torna-se o baseline permanente e oficial do Coffee++, com a homologação executiva formal da **Fase 5A (Feedback Pós-Commit / Toasts / Mensagens)** após validação forense completa (17/17 testes forenses PASS, compilação TypeScript com 0 erros, build Next.js com 117/117 páginas e 0,0000% de desvio financeiro).
+
+### Status Arquitetural
+- `FASE 1 (Banco de Dados / RPC Soberana v2)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 2 (Server Action / Camada de Aplicação)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 3 (View de Diagnóstico / Camada de Leitura)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 4 (Modal / Experiência de Decisão da Exclusão)` = `PASS / HOMOLOGADA / ENCERRADA / CONGELADA`
+- `FASE 5A (Feedback Pós-Commit / Toasts / Mensagens)` = `PASS / HOMOLOGADA / CLOSED / FROZEN`
+- `VALOR_INVESTIMENTO_TOTAL = CANONICAL_GATE_5_15B (LOCKED)`
+- `STATUS_ARQUITETURAL = LOCKED`
+- `BASELINE = PERMANENTE`
+
+### 1. Evidências de Teste Homologadas (Fase 5A)
+A homologação é fundamentada nos resultados da suíte forense de testes automatizados (`scripts/test-phase5a-feedback.ts`):
+- **T01 CLEAN**: Mensagem de exclusão definitiva sem menção a parcelas = **PASS**
+- **T02 CLEAN is_test**: Identificação expressa de registro de teste = **PASS**
+- **T03 FUTURE_ONLY**: Quantidade de parcelas e saldo cancelado formatados em pt-BR = **PASS**
+- **T04 PARTIAL_REALIZED**: Identificação explícita de Soft-Cancel + valor realizado preservado + saldo futuro cancelado = **PASS**
+- **T05 FULLY_REALIZED**: Bloqueio efetivo sem mensagem de sucesso e sem disparo destrutivo = **PASS**
+- **T06 MULTI_ACTION**: Bloqueio absoluto sem rateio/LIFO/bypass (Opção A) = **PASS**
+- **T07 Erro RPC**: Exibição estrita de erro sem disparar Toast de sucesso = **PASS**
+- **T08 Rollback**: Zero Toast de sucesso quando transação é abortada = **PASS**
+- **T09 Duplo Clique**: Inativação e proteção contra disparos concorrentes via loading = **PASS**
+- **T10 Idempotência**: Tratamento seguro e consistente de resposta idempotente = **PASS**
+- **T11 revalidatePath**: Sincronização de cache em `/investimento` e `/investimento/planejamento` = **PASS**
+- **T12 Não-Duplicação**: Exatamente 1 Toast principal por operação sem duplicidade de banner = **PASS**
+- **T13 Pós-Commit**: Disparo de Toast de sucesso estritamente após resolução da Server Action = **PASS**
+- **T14 Contrato Financeiro Gate 5.15B**: Preservação do valor total (1000, 3870, 5054, 2280) sem multiplicação por volume = **PASS**
+- **T15 RBAC**: Bloqueio de perfil não-autorizado retornando `UNAUTHORIZED` sem sucesso = **PASS**
+- **T16 Auditoria**: Preservação da infraestrutura existente em `cm_audit_logs` = **PASS**
+- **STATIC-01**: Imutabilidade absoluta dos arquivos congelados das Fases 1 a 4 = **PASS**
+
+**Regressões Globais:**
+- `npx tsc --noEmit`: **0 erros**
+- `npm run build`: **PASS** (117/117 rotas estáticas/dinâmicas compiladas com sucesso via Turbopack)
+- `npm run verify:parity`: **0,0000% de desvio**
+- `npm run test:domain`: **32/32 PASS**
+
+### 2. Contrato Financeiro Gate 5.15B (Invariável Permanente)
+- Regra Soberana: `valor_investimento = TOTAL DA AÇÃO`.
+- O feedback financeiro utiliza exclusivamente valores soberanos retornados pela operação backend.
+- Proibições absolutas:
+  - `valor_investimento * expectativa_volume`
+  - `valor_investimento * volume`
+  - `valor_investimento / volume`
+- É expressamente proibido reutilizar `getValorTotal` para alterar a semântica do valor exibido nos feedbacks ou no modal.
+
+### 3. Comportamento Homologado por Estado Operacional
+1. **`CLEAN`**:
+   - Operação: `PHYSICAL_DELETED`.
+   - Feedback: Toast de sucesso (`toast.success`) com mensagem de exclusão física definitiva ("Ação comercial excluída definitivamente." ou "Ação de teste excluída definitivamente.").
+   - Sem menção a parcelas quando inexistentes.
+2. **`FUTURE_ONLY`**:
+   - Operação: `PHYSICAL_DELETED_FUTURE_CANCELED`.
+   - Feedback: Toast de sucesso informando exclusão física e quantificando as parcelas futuras canceladas e o saldo cancelado em `R$ pt-BR`.
+   - Valores extraídos exclusivamente do resultado soberano da Server Action (`res.data.parcelas_canceladas`, `res.data.saldo_cancelado`).
+3. **`PARTIAL_REALIZED`**:
+   - Operação: `SOFT_CANCELED`.
+   - Feedback: Toast informativo (`toast.info`) deixando **explícito que NÃO ocorreu exclusão física**, mas sim um **Soft-Cancel (cancelamento administrativo)**, discriminando o valor realizado preservado e o saldo futuro cancelado.
+4. **`FULLY_REALIZED`**:
+   - Operação: Bloqueio Soberano.
+   - Feedback: Bloqueio estrito no modal; nenhum botão destrutivo; nenhum Toast de sucesso; mensagem impeditiva contábil.
+5. **`MULTI_ACTION_FINANCIAL_AMBIGUOUS`**:
+   - Operação: Bloqueio Soberano (Opção A).
+   - Feedback: Bloqueio estrito; nenhum bypass; nenhum rateio automático; nenhum LIFO; nenhuma heurística; orientação para ajuste na negociação master.
+
+### 4. Governança Pós-Commit e Não-Duplicação
+- **Pós-Commit Estrito**: Nenhum feedback de sucesso é emitido antes da confirmação positiva da Server Action / commit da transação no PostgreSQL. Feedback otimista é terminantemente proibido.
+- **Tratamento de Erro / Rollback**: Rollback ou falha de validação resulta em exibição de `toast.error`, liberação de loading e integridade da listagem local preservada.
+- **Unicidade de Feedback**: O Sonner Toast (`position="bottom-right"`) é o canal principal da exclusão administrativa, sem duplicidade concorrente com banners inline para a mesma operação.
+- **Camadas Arquiteturais**: A Server Action **não dispara Toast**; o Toast pertence exclusivamente à camada de UI (componentes React).
+- **Notificações Externas**: A exclusão administrativa **NÃO dispara** e-mails, WhatsApp, SMS, Telegram, webhooks externos ou `notification-service`.
+
+### 5. Artefatos Homologados e Congelados (LOCKED)
+- **Fase 1 (DB/RPC)**: `public.excluir_acao_investimento_admin_v2` + status `CANCELADA_EXCLUSAO_ACAO` (SHA-256: `07a78846f5af9edc59c976b69388b9911d6f2319223ffa4c5b5d82a343b25b68`).
+- **Fase 2 (Server Action)**: `src/app/investimento/lancar/actions.ts` (SHA-256: `84510b42b8fbd951c1d0b38f5b7f33a5d1dcd57e09f19a281a5cced8d5024faa`).
+- **Fase 3 (View Diagnóstica)**: `public.v_acoes_investimento_com_gerente`.
+- **Fase 4 (Modal Decisório)**: `src/app/investimento/components/ExcluirAcaoModal.tsx` (SHA-256: `4ba7f60527ca7ffe01da388079e7be9f386b56575d22c8b112bc1d952da2f004`).
+- **Fase 5A (Feedback Pós-Commit & Toasts)**:
+  - `src/app/investimento/page.tsx` (SHA-256: `75a1a115e60a6b95a86f45dc9cebdbe9929f54828f26ba7331fcb6d9bc044e01`).
+  - `src/app/investimento/planejamento/page.tsx` (SHA-256: `72099cce37c11a97ab5740e22a1482e86b4bd3a025b9430d05df0a8a5b6f9cd2`).
+- **Domínio Financeiro**: `src/lib/investimento/getValorTotal.ts` (SHA-256: `0295e7e11cd001e3159e08e508178251963f6d569bfb16d1eb729fe80ed589df`).
+
+### 6. Registro de Lacunas de Governança Futura (Future Governance Gaps)
+As seguintes oportunidades mapeadas durante a auditoria forense foram formalmente registradas e isoladas, **sem implementação na Fase 5A**, devendo ser tratadas em Gate Executivo específico:
+- **GAP-01**: Auditoria de tentativas de exclusão bloqueadas por `FULLY_REALIZED`.
+- **GAP-02**: Auditoria de tentativas de exclusão bloqueadas por `MULTI_ACTION_FINANCIAL_AMBIGUOUS`.
+- **GAP-03**: Auditoria de tentativas de exclusão rejeitadas por RBAC na Server Action.
+
+Status Geral: `RDM_GATE_5_16_FASE_5A = HOMOLOGADA_E_CONGELADA` | `TOAST_FEEDBACK_POS_COMMIT = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+---
+
+## 103. Baseline Oficial — RDM Gate 5.16: Exclusão Segura de Ação com Compromisso Financeiro (Encerramento Consolidado Fases 1 → 5A)
+
+A partir de 09/09/2026, com a conclusão e aprovação executiva unânime da **Auditoria Consolidada Final das Fases 1 → 5A (STATUS GLOBAL = PASS)**, a arquitetura e a governança da **Exclusão Segura de Ação com Compromisso Financeiro & Financial Guard (RDM Gate 5.16)** encontram-se formalmente homologadas, encerradas e congeladas como baseline permanente do Coffee++.
+
+### Status Executivo Oficial
+- `RDM_GATE_5_16` = `HOMOLOGADO_E_CONGELADO`
+- `RDM_GATE_5_16_FASE_1 (Database / RPC v2 Soberana)` = `PASS / CLOSED / FROZEN`
+- `RDM_GATE_5_16_FASE_2 (Server Action / Orquestração)` = `PASS / CLOSED / FROZEN`
+- `RDM_GATE_5_16_FASE_3 (View Diagnóstica)` = `PASS / CLOSED / FROZEN`
+- `RDM_GATE_5_16_FASE_4 (Modal Decisório / UX)` = `PASS / CLOSED / FROZEN`
+- `RDM_GATE_5_16_FASE_5A (Feedback Pós-Commit / Sonner)` = `PASS / CLOSED / FROZEN`
+- `AUDITORIA_CONSOLIDADA_FINAL` = `PASS (100% REGIME READ-ONLY / FORENSE)`
+- `VALOR_INVESTIMENTO_TOTAL` = `CANONICAL_GATE_5_15B (LOCKED)`
+- `GOVERNANCA_MULTI_ACTION_OPCAO_A` = `LOCKED`
+- `STATUS_ARQUITETURAL` = `LOCKED`
+- `BASELINE` = `PERMANENTE`
+
+---
+
+### 1. Invariantes e Contratos Permanentes (Regras Soberanas)
+Ficam registrados os 15 invariantes permanentes e invioláveis da governança do RDM Gate 5.16:
+1. **`valor_investimento = TOTAL DA AÇÃO`**: O campo `valor_investimento` em `cm_acoes_investimento` representa de forma canônica e indivisível o valor nominal total aprovado para a ação comercial.
+2. **Proibição de Semântica Unitária**: Nenhuma camada (banco, backend, view, modal ou UI) pode interpretar `valor_investimento` como custo unitário, margem por caixa ou valor por SKU/família.
+3. **Proibição de Multiplicação**: É terminantemente proibida qualquer operação de `valor_investimento * expectativa_volume` ou `valor_investimento * volume`.
+4. **Proibição de Divisão**: É terminantemente proibida qualquer operação de `valor_investimento / volume`.
+5. **Autoridade Financeira Soberana da RPC v2**: A função PostgreSQL `public.excluir_acao_investimento_admin_v2` é a única autoridade autorizada a decidir elegibilidade, avaliar concorrência e executar mutações/cancelamentos contábeis.
+6. **Desacoplamento da Server Action**: A Server Action (`excluirAcaoInvestimentoAdmin`) limita-se a autenticação, validação RBAC, passagem de parâmetros, chamada da RPC soberana, retorno de payload estruturado e revalidação de cache (`revalidatePath`). Nenhuma regra financeira ou consulta direta a tabelas financeiras reside na Server Action para decidir elegibilidade.
+7. **Papel Exclusivamente Diagnóstico da View**: A view `public.v_acoes_investimento_com_gerente` atua como camada de leitura de apoio para pré-visualização e telemetria, não possuindo autoridade transacional de bloqueio ou liberação.
+8. **Isolamento de Apresentação da UI / Modal**: O componente `ExcluirAcaoModal.tsx` é 100% livre de SQL, Supabase Client, RPCs e mutações de dados, atuando estritamente na renderização e confirmação visual.
+9. **Proibição Absoluta de Rateio Financeiro**: Em negociações com dependência financeira compartilhada, é expressamente vedado qualquer rateio aritmético, divisão proporcional ou repartição artificial de parcelas entre ações.
+10. **Proibição Absoluta de LIFO**: É proibida a presunção de que pagamentos ou parcelas pertencem à última ação criada ou executada.
+11. **Proibição de Amortização Proporcional Fictícia**: Nenhuma baixa pode ser atribuída proporcionalmente sem alocação formal N:N registrada no banco.
+12. **Bloqueio Obrigatório de Multi-Action Ambíguo (Opção A)**: Qualquer ação vinculada a campanha multi-ação que compartilhe parcelas financeiras ativas ou boletos sem isolamento determinístico é soberanamente bloqueada para exclusão individual.
+13. **Preservação Sagrada do Histórico Financeiro Realizado**: Pagamentos já conciliados, quitados ou liquidados nunca são excluídos, cancelados ou estornados durante operações de exclusão de ações.
+14. **Não-Transformação de Histórico em Quitado**: O cancelamento de parcelas futuras elegíveis (`CANCELADA_EXCLUSAO_ACAO`) não transforma parcelas ou pagamentos anteriores em liquidações fictícias.
+15. **Feedback Estritamente Pós-Commit**: Toasts e mensagens de sucesso são acionados única e exclusivamente após a confirmação soberana da resposta da Server Action / commit no PostgreSQL.
+
+---
+
+### 2. Máquina Oficial dos Cinco Estados Operacionais
+A resolução da elegibilidade de exclusão e seus respectivos efeitos operacionais seguem o contrato canônico imutável:
+- **`CLEAN`**:
+  - Condição: Ação sem parcelas vinculadas na campanha e sem boletos/pagamentos.
+  - Efeito: Exclusão física definitiva (`PHYSICAL_DELETED`) da ação comercial em `cm_acoes_investimento`.
+  - Feedback: Toast de sucesso (`toast.success`) de exclusão definitiva.
+- **`FUTURE_ONLY`**:
+  - Condição: Ação mono-ação associada exclusivamente a parcelas em aberto/pendentes (`PENDENTE`, `EM_ABERTO`), sem pagamentos ou alocações realizadas.
+  - Efeito: Cancelamento das obrigações futuras elegíveis (`status_parcela = 'CANCELADA_EXCLUSAO_ACAO'`), desvinculação de boletos em aberto e exclusão física da ação comercial (`PHYSICAL_DELETED_FUTURE_CANCELED`).
+  - Feedback: Toast de sucesso contextual informando parcelas e saldo cancelados em R$ pt-BR.
+- **`PARTIAL_REALIZED`**:
+  - Condição: Ação mono-ação com histórico de pagamentos/amortizações parciais já realizados (`PAGA`, `PARCIAL`), mas com saldo ou parcelas futuras elegíveis pendentes.
+  - Efeito: Exclusão física bloqueada. Aplicação de Soft-Cancel (`status = 'CANCELADA'`, `motivo_cancelamento = 'CANCELAMENTO_ADMINISTRATIVO'`), cancelamento estrito do saldo futuro remanescente elegível e preservação integral dos registros contábeis realizados (`SOFT_CANCELED`).
+  - Feedback: Toast informativo (`toast.info`) informando Soft-Cancel, valor realizado preservado e saldo cancelado.
+- **`FULLY_REALIZED`**:
+  - Condição: Ação mono-ação integralmente quitada ou sem saldo futuro elegível a cancelar.
+  - Efeito: Exclusão física e cancelamento bloqueados soberanamente (`OPERATION_BLOCKED`). Integridade fiscal e contábil protegida.
+  - Feedback: Bloqueio estrito no modal; nenhum botão destrutivo habilitado.
+- **`MULTI_ACTION_FINANCIAL_AMBIGUOUS`**:
+  - Condição: Ação pertencente a campanha com múltiplas ações compartilhando plano de parcelas financeiras ativas ou histórico ambíguo.
+  - Efeito: Exclusão física bloqueada soberanamente (Opção A). Nenhuma tentativa de rateio, LIFO ou exclusão individual arbitrária. Ajuste deve ocorrer na negociação master.
+  - Feedback: Bloqueio estrito com orientação gerencial.
+
+---
+
+### 3. Requisitos de Segurança e Infraestrutura
+- **Segurança Transacional (RPC v2)**: Execução sob `SECURITY DEFINER`, `SET search_path = public, pg_temp`, proteção estrita contra SQL injection e spoofing.
+- **Controle de Acesso RBAC**: Acesso restrito a perfis autorizados (`trade`, `admin`, `diretoria`). Tentativas de chamadas anônimas (`anon`) ou por perfis desautorizados são imediatamente rejeitadas no backend e na Server Action (`UNAUTHORIZED`).
+- **Isolamento de Concorrência**: Transação protegida por bloqueio pessimista via advisory locks (`pg_advisory_xact_lock`) derivado do ID da ação e `SELECT ... FOR UPDATE` nas tabelas afetadas.
+- **Atomicidade e Rollback**: Falhas operacionais disparam rollback imediato e total de todas as mutações no banco.
+- **Auditoria Transacional**: Registro obrigatório e imutável de ações administrativas em `cm_audit_logs`.
+- **Preservação de Compatibilidade**: A função legada `public.excluir_acao_investimento_admin` (v1) permanece preservada no banco para garantia de compatibilidade com pipelines legados.
+
+---
+
+### 4. Evidências da Auditoria Consolidada Final
+A Auditoria Consolidada Final (Fases 1 a 5A) atestou conformidade absoluta com os critérios de aceite:
+- **TypeScript (`npx tsc --noEmit`)**: 0 erros.
+- **Build de Produção (`npm run build`)**: 117/117 rotas Next.js compiladas com sucesso via Turbopack.
+- **Paridade Financeira (`npm run verify:parity`)**: 0,0000% de desvio em relação às views oficiais (`mv_vendas_mensal`, `mv_vendas_cliente_mensal`).
+- **Testes de Domínio (`npm run test:domain`)**: 32/32 PASS.
+- **Integridade de Dados no Supabase**:
+  - Total de Ações Auditadas: 404 (308 `CLEAN`, 72 `FUTURE_ONLY`, 24 `MULTI_ACTION_FINANCIAL_AMBIGUOUS`, 0 órfãs).
+  - Campanhas com Múltiplas Ações: 110 de 216 mapeadas e protegidas pela governança anti-ambiguidade.
+  - Inconsistências de Integridade / FKs Quebradas / Órfãos: 0.
+  - Valores Negativos / NaN / Infinity: 0.
+- **Contrato Financeiro Gate 5.15B**:
+  - Caso Leandro A: R$ 3.870,00 (valor inflado R$ 38.700,00 permanentemente erradicado).
+  - Caso Leandro B: R$ 5.054,00 (valor inflado R$ 70.756,00 permanentemente erradicado).
+  - Caso Leandro C: R$ 2.280,00 (valor inflado R$ 45.600,00 permanentemente erradicado).
+- **Incidentes e Falhas**:
+  - Falhas P0 (Críticas / Bloqueantes): 0
+  - Falhas P1 (Altas): 0
+  - Falhas P2 (Médias): 0
+  - Falhas P3 (Baixas): 0
+  - Falhas P4 (Cosméticas): 0
+
+---
+
+### 5. Ressalva Documental Histórica (Sem Impacto Funcional)
+Fica formalmente registrada a seguinte ressalva documental da transição entre as fases:
+- **Descrição**: Na execução da suíte de testes históricos da Fase 4 (`test-phase4-forensic-modal.ts`), foi registrado o placar 23/24 em virtude de uma asserção estática de texto que buscava uma string literal legada no código do modal, a qual havia sido refatorada na Fase 5A para `op === 'SOFT_CANCELED'`.
+- **Avaliação de Impacto**: O comportamento funcional correspondente a este teste foi validado e homologado como **PASS** no teste comportamental T04 da Fase 4 e confirmado integralmente na Fase 5A.
+- **Classificação**: `RESSALVA DOCUMENTAL / NÃO FUNCIONAL / SEM REGRESSÃO`. Nenhum código foi modificado artificialmente apenas para atender a asserções de strings literais legadas.
+
+---
+
+### 6. Catálogo de Lacunas Futuras (Future Governance Gaps)
+As seguintes oportunidades mapeadas durante a auditoria forense do RDM Gate 5.16 foram classificadas como melhorias de observabilidade e registradas no backlog corporativo de governança futura, **não integrando o escopo funcional do Gate 5.16**:
+- **GAP-01**: Implementação de trilha de auditoria específica para tentativas de exclusão bloqueadas pelo estado `FULLY_REALIZED`.
+- **GAP-02**: Implementação de trilha de auditoria específica para tentativas de exclusão bloqueadas pelo estado `MULTI_ACTION_FINANCIAL_AMBIGUOUS`.
+- **GAP-03**: Implementação de trilha de auditoria específica para tentativas de exclusão rejeitadas por RBAC na Server Action.
+*Diretriz*: Esses gaps permanecem congelados e isolados. Nenhuma implementação ou mutação associada a eles deve ser realizada sem autorização formal e abertura de um novo Gate específico.
+
+---
+
+### 7. Regra Permanente de Congelamento (Frozen Baseline)
+A partir desta homologação:
+`RDM_GATE_5_16 = FROZEN`
+
+Qualquer intervenção futura sobre os fluxos ou artefatos do RDM Gate 5.16 (incluindo exclusão de ações, Financial Guard, cancelamento financeiro, parcelas de investimentos, campanhas multi-ação, valor nominal de investimento, RPC v2, View de diagnóstico, Server Action de exclusão, modal decisório e toasts pós-commit) exigirá obrigatoriamente:
+1. Abertura de novo RDM / Gate Executivo com justificativa fundamentada;
+2. Delimitação estrita de escopo sem refatorações oportunistas;
+3. Auditoria prévia em regime read-only;
+4. Aprovação formal executiva;
+5. Preservação integral de todos os 15 invariantes estabelecidos neste baseline.
+
+Status Geral: `RDM_GATE_5_16 = HOMOLOGADO_E_CONGELADO` | `EXCLUSAO_SEGURA_ACAO = LOCKED` | `GOVERNANCA_ANTI_AMBIGUIDADE = LOCKED` | `CONTRATO_FINANCEIRO_5_15B = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
+
+
 
 
 

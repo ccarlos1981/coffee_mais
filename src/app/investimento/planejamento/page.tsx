@@ -49,6 +49,15 @@ import { ThemeToggle } from "@/components/ThemeProvider";
 import { obterRedesMatrizes, importarInvestimentosEmLote, simularImportacaoInvestimentos, oficializarPlanejamento, promoverPlanejamento, obterPlanilhaModelo, excluirAcaoInvestimento, excluirAcaoInvestimentoTeste, excluirAcaoInvestimentoAdmin, obterAcoesInvestimentoListagem } from "../lancar/actions";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
+import { ExcluirAcaoModal } from "../components/ExcluirAcaoModal";
+import { toast } from "sonner";
+
+const formatBrl = (val: number | null | undefined): string => {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(val || 0);
+};
 
 interface AcaoInvestimento {
   id: string;
@@ -96,6 +105,17 @@ interface AcaoInvestimento {
   is_planejamento?: boolean | null;
   possui_dependencia_financeira?: boolean | null;
   is_test?: boolean | null;
+  // Campos diagnósticos de exclusão (Gate 5.16 Fase 3/4)
+  diagnostico_exclusao?: 'CLEAN' | 'FUTURE_ONLY' | 'PARTIAL_REALIZED' | 'FULLY_REALIZED' | 'MULTI_ACTION_FINANCIAL_AMBIGUOUS' | null;
+  motivo_bloqueio_exclusao?: string | null;
+  elegivel_exclusao_admin?: boolean | null;
+  parcelas_futuras_count?: number | null;
+  parcelas_pagas_count?: number | null;
+  boletos_pagos_count?: number | null;
+  boletos_abertos_count?: number | null;
+  pagamentos_realizados_count?: number | null;
+  outras_acoes_ativas_count?: number | null;
+  total_acoes_historicas_count?: number | null;
 }
 
 interface InvestmentPeriod {
@@ -528,9 +548,11 @@ export default function PlanejamentoInvestimentoPage() {
 
   const canExecuteAdminDelete = (action?: AcaoInvestimento | null): boolean => {
     if (!canShowAdminDelete(action)) return false;
-    // Bloqueio financeiro absoluto: nenhuma dependência financeira permitida
-    if (action?.possui_dependencia_financeira) return false;
+    if (action?.diagnostico_exclusao === "FULLY_REALIZED" || action?.diagnostico_exclusao === "MULTI_ACTION_FINANCIAL_AMBIGUOUS") {
+      return false;
+    }
     if (action?.financeiro_pago_em) return false;
+    if (action?.possui_dependencia_financeira && !action?.diagnostico_exclusao) return false;
     return true;
   };
 
@@ -546,19 +568,18 @@ export default function PlanejamentoInvestimentoPage() {
 
   const handleConfirmAdminDelete = async () => {
     if (!adminDeleteAction) return;
-    if (!canExecuteAdminDelete(adminDeleteAction)) {
-      setFeedback({
-        type: "error",
-        msg: "Este planejamento possui compromisso financeiro vinculado à negociação e não pode ser excluído fisicamente."
-      });
+    const diag = adminDeleteAction.diagnostico_exclusao;
+    if (diag === "FULLY_REALIZED" || diag === "MULTI_ACTION_FINANCIAL_AMBIGUOUS") {
+      toast.error(
+        adminDeleteAction.motivo_bloqueio_exclusao ||
+        "Operação Bloqueada: Este planejamento possui compromissos financeiros que impedem a exclusão individual."
+      );
       setAdminDeleteAction(null);
       return;
     }
     const id = adminDeleteAction.id;
     const isTest = adminDeleteAction.is_test === true;
-    setAdminDeleteAction(null);
     setActionLoading(id);
-    setFeedback(null);
     try {
       const res = await excluirAcaoInvestimentoAdmin(
         id,
@@ -569,20 +590,45 @@ export default function PlanejamentoInvestimentoPage() {
         if (selectedAction?.id === id) {
           setSelectedAction(null);
         }
-        setFeedback({
-          type: "success",
-          msg: isTest
-            ? "Planejamento de teste excluído com sucesso via operação administrativa."
-            : "Planejamento excluído com sucesso via operação administrativa."
-        });
-        setTimeout(() => setFeedback(null), 3000);
+        setAdminDeleteAction(null);
+
+        // Feedback pós-commit discriminado por estado operacional soberano (Gate 5.16 Fase 5A)
+        const op = res.data?.operation;
+        if (op === "SOFT_CANCELED") {
+          const realizadoPreservado = formatBrl(res.data?.valor_realizado_preservado);
+          const saldoCancelado = formatBrl(res.data?.saldo_futuro_cancelado ?? res.data?.saldo_cancelado);
+          toast.info(
+            `Planejamento encerrado via cancelamento administrativo (Soft-Cancel). Histórico realizado de ${realizadoPreservado} preservado. Saldo futuro de ${saldoCancelado} cancelado.`,
+            { duration: 6000 }
+          );
+        } else if (op === "PHYSICAL_DELETED_FUTURE_CANCELED") {
+          const parcelasCount = res.data?.parcelas_canceladas ?? 0;
+          const saldoCancelado = formatBrl(res.data?.saldo_cancelado);
+          const parcelasMsg = parcelasCount > 0
+            ? ` ${parcelasCount} parcela(s) futura(s) cancelada(s), totalizando ${saldoCancelado}.`
+            : "";
+          toast.success(
+            isTest
+              ? `Planejamento de teste excluído definitivamente.${parcelasMsg}`
+              : `Planejamento excluído definitivamente.${parcelasMsg}`,
+            { duration: 5000 }
+          );
+        } else {
+          // CLEAN / PHYSICAL_DELETED
+          toast.success(
+            isTest
+              ? "Planejamento de teste excluído definitivamente."
+              : "Planejamento excluído definitivamente.",
+            { duration: 4000 }
+          );
+        }
       } else {
         const errorMsg = res?.message || res?.error || "Erro ao excluir planejamento.";
-        setFeedback({ type: "error", msg: errorMsg });
+        toast.error(errorMsg);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      setFeedback({ type: "error", msg: "Erro ao excluir: " + errMsg });
+      toast.error("Erro ao excluir: " + errMsg);
     } finally {
       setActionLoading(null);
     }
@@ -2299,115 +2345,15 @@ export default function PlanejamentoInvestimentoPage() {
         </div>
       )}
 
-      {/* Modal de Confirmação de Exclusão Administrativa (Gate 5.10K) */}
-      {adminDeleteAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-card border border-border rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-3">
-              <div className={`p-3 rounded-xl ${canExecuteAdminDelete(adminDeleteAction) ? (adminDeleteAction.is_test ? "bg-amber-500/20 text-amber-400" : "bg-red-500/20 text-red-400") : "bg-red-500/20 text-red-400"}`}>
-                <AlertTriangle className={`w-6 h-6 ${canExecuteAdminDelete(adminDeleteAction) ? (adminDeleteAction.is_test ? "text-amber-400" : "text-red-400") : "text-red-400"}`} />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-foreground">
-                  {canExecuteAdminDelete(adminDeleteAction)
-                    ? (adminDeleteAction.is_test ? "Excluir planejamento de teste?" : "Tem certeza que deseja excluir este planejamento?")
-                    : "EXCLUSÃO BLOQUEADA — Financial Guard"}
-                </h3>
-                <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                  {adminDeleteAction.rede} • {adminDeleteAction.familia_produto || "Planejamento"}
-                </p>
-              </div>
-            </div>
-
-            {/* Action Info Card */}
-            <div className="bg-muted/30 p-3.5 rounded-xl border border-border space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Rede:</span>
-                <span className="font-semibold text-foreground">{adminDeleteAction.rede}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Família:</span>
-                <span className="font-semibold text-foreground">{adminDeleteAction.familia_produto || "—"}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Fase Operacional:</span>
-                <span className="font-semibold text-foreground">Fase {adminDeleteAction.fase_atual || 1}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Valor:</span>
-                <span className="font-semibold text-gold">{formatCurrency(adminDeleteAction.valor_investimento || 0)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ID da Ação:</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{adminDeleteAction.id}</span>
-              </div>
-            </div>
-            
-            {canExecuteAdminDelete(adminDeleteAction) ? (
-              <div className="space-y-2 text-sm text-muted-foreground bg-muted/30 p-3.5 rounded-xl border border-border">
-                <p className="font-medium text-foreground">
-                  {adminDeleteAction.is_test
-                    ? "Este planejamento está identificado como registro de teste/homologação."
-                    : "Este planejamento será excluído permanentemente do sistema."}
-                </p>
-                <p className="text-xs">
-                  {adminDeleteAction.is_test
-                    ? "A exclusão será permanente e deve ser utilizada para limpeza de registros de teste."
-                    : "A exclusão administrativa remove o planejamento físico e recalcula os agregados da campanha."}
-                </p>
-                <p className="text-xs font-semibold text-red-300">
-                  Deseja continuar com a exclusão?
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2 text-sm text-red-200/90 bg-red-950/40 p-3.5 rounded-xl border border-red-500/30">
-                <p className="font-semibold text-red-400 flex items-center gap-1.5">
-                  <span>🛡️</span> Compromisso financeiro vinculado
-                </p>
-                <p className="text-xs leading-relaxed text-red-200/80">
-                  Este planejamento possui compromisso financeiro vinculado à negociação (parcelas, pagamentos confirmados ou boletos) e <strong>não pode ser excluído fisicamente</strong>.
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  O Financial Guard impede a exclusão física para preservar a integridade contábil e fiscal do ecossistema.
-                </p>
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setAdminDeleteAction(null)}
-                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl transition-colors"
-              >
-                {canExecuteAdminDelete(adminDeleteAction) ? "Cancelar" : "Entendido / Fechar"}
-              </button>
-              {canExecuteAdminDelete(adminDeleteAction) && (
-                <button
-                  type="button"
-                  onClick={handleConfirmAdminDelete}
-                  className={`px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors flex items-center gap-2 shadow-lg ${
-                    adminDeleteAction.is_test
-                      ? "bg-amber-600 hover:bg-amber-500 shadow-amber-900/20"
-                      : "bg-red-600 hover:bg-red-500 shadow-red-900/20"
-                  }`}
-                >
-                  {adminDeleteAction.is_test ? (
-                    <>
-                      <span>🧪</span>
-                      <span>Excluir planejamento de teste</span>
-                    </>
-                  ) : (
-                    <>
-                      <Trash2 className="w-4 h-4" />
-                      <span>Excluir planejamento</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal de Confirmação de Exclusão Administrativa (Gate 5.16 Fase 4) */}
+      <ExcluirAcaoModal
+        isOpen={!!adminDeleteAction}
+        onClose={() => setAdminDeleteAction(null)}
+        onConfirm={handleConfirmAdminDelete}
+        action={adminDeleteAction}
+        isLoading={actionLoading === adminDeleteAction?.id}
+        tipoEntidadeLabel="planejamento"
+      />
     </div>
   );
 }
