@@ -4625,16 +4625,35 @@ export async function excluirAcaoInvestimentoTeste(
   }
 }
 
+export interface ExclusaoAcaoResult {
+  acao_id: string;
+  message: string;
+  code?: string;
+  operation?: string;
+  idempotent?: boolean;
+  campanha_id?: string;
+  deleted_rows?: number;
+  is_test?: boolean;
+  parcelas_canceladas?: number;
+  saldo_cancelado?: number;
+  valor_investimento_total?: number;
+  valor_realizado_preservado?: number;
+  saldo_futuro_cancelado?: number;
+}
+
 /**
- * Gate 5.10K: Exclusão Administrativa Universal de Ações de Investimento
- * Permite que os perfis Trade e Admin excluam ações reais ou de teste em qualquer fase (1 a 6),
- * desde que NÃO possuam qualquer compromisso financeiro vinculado à negociação (Financial Guard).
+ * Gate 5.16: Exclusão Segura e Administrativa de Ações de Investimento (V2 Soberana)
+ * Integra a Server Action à RPC soberana public.excluir_acao_investimento_admin_v2,
+ * permitindo exclusão limpa (CLEAN), cancelamento controlado de compromissos futuros (FUTURE_ONLY),
+ * soft-cancel com blindagem de histórico realizado (PARTIAL_REALIZED),
+ * e bloqueio estrito em FULLY_REALIZED e MULTI_ACTION_FINANCIAL_AMBIGUOUS (Opção A).
  * Perfis autorizados: Trade, Admin.
  */
 export async function excluirAcaoInvestimentoAdmin(
   id: string,
-  motivo?: string
-): Promise<ActionResult<{ acao_id: string; message: string }>> {
+  motivo?: string,
+  confirmarCancelamentoFuturo: boolean = true
+): Promise<ActionResult<ExclusaoAcaoResult>> {
   try {
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
@@ -4648,24 +4667,25 @@ export async function excluirAcaoInvestimentoAdmin(
     }
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("excluir_acao_investimento_admin_v1", {
+    const { data, error } = await adminClient.rpc("excluir_acao_investimento_admin_v2", {
       p_acao_id: id,
       p_motivo: motivo || "Exclusão administrativa de ação",
-      p_user_id: user.id
+      p_user_id: user.id,
+      p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo
     });
 
     if (error) {
-      console.error("Erro na RPC excluir_acao_investimento_admin_v1:", error);
+      console.error("Erro na RPC excluir_acao_investimento_admin_v2:", error);
       return errorResult(
         ActionErrorCode.BUSINESS_RULE_VIOLATION,
-        error.message || "Erro ao excluir ação."
+        error.message || "Erro ao executar exclusão soberana de ação."
       );
     }
 
     if (!data?.success) {
       return errorResult(
-        ActionErrorCode.BUSINESS_RULE_VIOLATION,
-        data?.error || "Falha ao excluir ação."
+        data?.code || ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        data?.error || data?.message || "Falha ao processar exclusão administrativa."
       );
     }
 
@@ -4674,7 +4694,18 @@ export async function excluirAcaoInvestimentoAdmin(
 
     return successResult({
       acao_id: id,
-      message: data.message || "Ação excluída com sucesso via operação administrativa."
+      message: data.message || "Operação realizada com sucesso via governança administrativa.",
+      code: data.code,
+      operation: data.operation,
+      idempotent: data.idempotent,
+      campanha_id: data.campanha_id,
+      deleted_rows: data.deleted_rows,
+      is_test: data.is_test,
+      parcelas_canceladas: data.parcelas_canceladas,
+      saldo_cancelado: data.saldo_cancelado,
+      valor_investimento_total: data.valor_investimento_total,
+      valor_realizado_preservado: data.valor_realizado_preservado,
+      saldo_futuro_cancelado: data.saldo_futuro_cancelado
     });
   } catch (err: any) {
     if (err.message === "UNAUTHENTICATED") {
