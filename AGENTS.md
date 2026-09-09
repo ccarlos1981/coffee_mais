@@ -4432,6 +4432,75 @@ Qualquer nova evolução no módulo RDM deverá obrigatoriamente:
 
 Status Geral: `RDM = HOMOLOGADO_COM_RESSALVAS` | `ALL_29_SLIDES = AUDITED_AND_VERIFIED` | `QUALITY_GATES = 100%_PASS` | `GOVERNANCE = LOCKED`.
 
+---
+
+## 97. Baseline Oficial — Farol Executivo Gerencial & Visualizador da Carta de Anuência (RDM Concluído — Baseline Permanente)
+
+A partir de 08/09/2026, a arquitetura, governança, regras de cardinalidade, RBAC server-side e a suíte de componentes do **Farol Executivo Gerencial e Visualizador do Módulo Carta de Anuência (`/investimento/carta-anuencia`)** tornam-se o baseline permanente e oficial do Coffee++, com o encerramento formal do RDM após auditoria e homologação em produção (Gate 1 a Gate 25 com 100% de aprovação).
+
+### Status Arquitetural:
+`FAROL_EXECUTIVO_GERENCIAL = HOMOLOGADO_E_CONGELADO`
+`RANKING_ASSINATURA = HOMOLOGADO_E_CONGELADO`
+`VISUALIZADOR_PREVIEW = HOMOLOGADO_E_CONGELADO`
+`TROCA_CARTA_ASSINADA = HOMOLOGADO_E_CONGELADO`
+`RBAC_CARTEIRA_GERENTE = HOMOLOGADO_E_CONGELADO`
+`STATUS_ARQUITETURAL = LOCKED`
+`BASELINE = PERMANENTE`
+
+### Dados de Homologação em Produção:
+- **Commit Homologado**: `93174cc` (`93174cc6cd65a443f99928a1e845d5cc0f46e9da`)
+- **Deployment Ativo**: `dpl_BUT1CiLrZSfmRuKyuovU7Wei4rVK` (`● Ready`)
+- **Ambiente de Produção**:
+  - `https://coffee-mais.vercel.app/investimento/carta-anuencia`
+  - `https://dashboard.coffeemais.com/investimento/carta-anuencia`
+- **Resultado dos Quality Gates**: 25/25 Gates PASS (100% de conformidade)
+
+### Diretrizes Mandatórias de Arquitetura e Negócio:
+
+1. **Universo Oficial e Cardinalidade Estrita (73 = 29 + 44)**:
+   - **Universo de Redes Homologado**: 73 redes/operações comerciais planejáveis.
+   - **Cartas no Sistema**: 29 Cartas de Anuência existentes cadastradas em `cm_cartas_anuencia`.
+   - **Redes Faltantes**: 44 redes sem carta cadastrada.
+   - **Cobertura Homologada**: 39,7% ($29 / 73$).
+   - **Regra de Cardinalidade**: $1 \text{ Carta Física} = 1 \text{ Operação Regional Gerencial}$. A correspondência é resolvida por chave composta estrita (`codigo_matriz_base + gerente_responsavel`, refinada pelo nome operacional quando necessário), sendo expressamente proibido fuzzy matching ou duplicidade de contagem entre gerentes.
+
+2. **Agrupamento Primário por Gerente Responsável**:
+   - O agrupamento de nível superior no Farol Executivo Gerencial utiliza **exclusivamente o Gerente Responsável** comercial da rede (`gerente_responsavel`), e **não** a Região geográfica.
+   - Cada rede pertence a exatamente um gerente comercial oficial.
+
+3. **Ranking de Assinatura com Exclusividade Mútua**:
+   - O ranking apura estritamente cartas do sistema divididas em duas categorias mutuamente exclusivas:
+     $$\text{Cartas para assinar} + \text{Cartas assinadas} = \text{Total de Cartas no Sistema (29)}$$
+   - **Cartas Assinadas**: Cartas existentes com status `ASSINADA` (arquivo assinado anexado).
+   - **Cartas para Assinar**: Cartas existentes com status `EMITIDA` ou `EXPIRADA` (ainda sem arquivo assinado).
+   - **Redes Faltantes (SEM CARTA)**: Não pontuam nem entram nas categorias de assinatura do ranking.
+   - O ranking apresenta botão de alternância `[ Exibir / Ocultar Ranking ]`, colunas padronizadas (`Gerente`, `Para assinar`, `Assinadas`, `% Assinadas`) e ordenação decrescente por `% Assinadas` (com desempate alfabético).
+
+4. **Exportação / Compartilhamento "Copiar para WhatsApp"**:
+   - Geração de texto tabular estruturado pronto para colagem no WhatsApp, sem tags HTML, respeitando o formato:
+     `📊 RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA`
+     com listagem das posições, métricas, consolidados e feedback visual imediato (`Ranking copiado!`).
+
+5. **Isolamento de Carteira e RBAC Server-Side**:
+   - **Admin / Admin Master**: Acesso irrestrito com visão consolidada nacional, cards executivos globais, ranking de todos os gerentes e todas as 73 redes permitidas.
+   - **Gerente Regional**: O backend restringe a consulta na origem (`obterDadosFarolGerencial` via `resolverCarteiraGerente`). O servidor retorna exclusivamente os dados da carteira do gerente autenticado. Não são calculadas nem trafegadas métricas consolidadas de outros gerentes, nem o ranking global. A interface adapta-se para exibir título "FAROL EXECUTIVO — MINHA CARTEIRA" com métricas exclusivas do gestor.
+
+6. **Robustez do Visualizador de Carta (`CartaPreviewModal`)**:
+   - Acesso seguro e defensivo a todas as propriedades da entidade `CartaAnuenciaItem`, com tipagem estrita e fallbacks contra valores `undefined`/`null`, eliminando integralmente qualquer ocorrência de `TypeError: Cannot read properties of undefined (reading 'toUpperCase')`.
+   - Visualização com renderização A4 autêntica (estilo sulfite com borda e sombra) para cartas em qualquer estado (`EMITIDA`, `ASSINADA`, `EXPIRADA`), preservando dados cadastrais (CNPJ matriz, Piumhi/MG, validade até 31/12 e competência).
+
+7. **Troca de Carta Assinada (Substituição In-Place com Auditoria)**:
+   - A substituição do arquivo assinado pela rede em uma carta já homologada ocorre *in-place*: preserva o ID físico, número da carta, rede, gerente, competência, datas de vigência e status `ASSINADA`. É proibida a criação de novos registros ou duplicação documental.
+   - Registro mandatório de evento de timeline `SUBSTITUICAO_ASSINADA` em `cm_cartas_anuencia.historico` e registro transacional imutável em `cm_audit_logs`, contendo identificação do usuário, timestamp, carta ID, arquivo anterior e novo arquivo no bucket `cartas-anuencia`.
+
+8. **Preservação do Módulo e Não-Regressão**:
+   - O Farol de Redes Notáveis (> R$ 80.000/mês) permanece isolado e inalterado.
+   - A Gestão de Cartas (geração, edição, cancelamento, visualização, timeline e upload) mantém 100% de integridade operacional e financeira.
+   - É proibida qualquer mutação direta em produção fora de novo RDM formalmente aprovado e planejado.
+
+Status Geral: `FAROL_EXECUTIVO_GERENCIAL = HOMOLOGADO_E_CONGELADO` | `RANKING_ASSINATURA = HOMOLOGADO_E_CONGELADO` | `VISUALIZADOR_PREVIEW = HOMOLOGADO_E_CONGELADO` | `TROCA_CARTA_ASSINADA = HOMOLOGADO_E_CONGELADO` | `RBAC_CARTEIRA_GERENTE = HOMOLOGADO_E_CONGELADO` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
 
 
 

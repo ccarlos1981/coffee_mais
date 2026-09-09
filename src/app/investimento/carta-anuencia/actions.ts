@@ -125,6 +125,7 @@ export interface FarolGerencialGerenteItem {
   cobertura_pct: number;
   status_farol: "VERDE" | "AMARELO" | "LARANJA" | "VERMELHO";
   // Métricas do Ranking de Assinatura (mutuamente exclusivas):
+  total_cartas?: number;
   cartas_para_assinar: number;
   cartas_assinadas: number;
   pct_cartas_assinadas: number;
@@ -134,6 +135,7 @@ export interface FarolGerencialGerenteItem {
 export interface FarolGerencialRankingItem {
   posicao: number;
   gerente: string;
+  total_cartas: number;
   cartas_para_assinar: number;
   cartas_assinadas: number;
   pct_cartas_assinadas: number;
@@ -1574,11 +1576,12 @@ export async function obterDadosFarolGerencial(filters?: {
     console.error("Erro ao obter cartas para Farol Gerencial:", cartasErr);
   }
 
-  // 3. Obter Universo Oficial de Redes Planejáveis
+  // 3. Obter Universo Oficial de Redes Planejáveis (Restrito ao Canal KA)
   const { data: redesOficiaisRaw, error: redesErr } = await adminClient
     .from("vw_redes_planejaveis_oficiais")
-    .select("rede, manager, manager_id, regional, uf, codigo_matriz, is_rede_planejavel")
+    .select("rede, manager, manager_id, regional, uf, codigo_matriz, is_rede_planejavel, canal")
     .eq("is_rede_planejavel", true)
+    .eq("canal", "KA") // Filtro Oficial Estrutural do Canal KA
     .neq("codigo_matriz", "11111111") // Expurgar CLIENTE FAKE TESTE
     .neq("manager", "Cristiano");     // Expurgar DISTRIBUIDORA MARTINS (Diretoria/Canal Distribuidor)
 
@@ -1807,6 +1810,7 @@ export async function obterDadosFarolGerencial(filters?: {
       faltantes,
       cobertura_pct,
       status_farol,
+      total_cartas: cartas_para_assinar + cartas_assinadas,
       cartas_para_assinar,
       cartas_assinadas,
       pct_cartas_assinadas,
@@ -1843,6 +1847,7 @@ export async function obterDadosFarolGerencial(filters?: {
     .map((g, idx) => ({
       posicao: idx + 1,
       gerente: g.gerente,
+      total_cartas: g.cartas_para_assinar + g.cartas_assinadas,
       cartas_para_assinar: g.cartas_para_assinar,
       cartas_assinadas: g.cartas_assinadas,
       pct_cartas_assinadas: g.pct_cartas_assinadas,

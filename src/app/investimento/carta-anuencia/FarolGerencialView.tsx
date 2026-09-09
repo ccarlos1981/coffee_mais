@@ -211,6 +211,7 @@ export function FarolGerencialView({
 
       return {
         gerente: g.gerente,
+        total_cartas: total,
         cartas_para_assinar: paraAssinar,
         cartas_assinadas: assinadas,
         pct_cartas_assinadas: pct,
@@ -244,11 +245,23 @@ export function FarolGerencialView({
       return;
     }
 
-    let texto = "📊 RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA\n\n";
+    let texto = "📊 RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA (CANAL KA)\n\n";
+    let totalCartas = 0;
+    let totalParaAssinar = 0;
+    let totalAssinadas = 0;
+
     rankingFiltrado.forEach((item) => {
+      const totalItem = item.total_cartas;
+      totalCartas += totalItem;
+      totalParaAssinar += item.cartas_para_assinar;
+      totalAssinadas += item.cartas_assinadas;
       const pctFmt = item.pct_cartas_assinadas.toFixed(1).replace(".", ",");
-      texto += `${item.posicao}. ${item.gerente} — ${item.cartas_assinadas} assinadas | ${item.cartas_para_assinar} para assinar | ${pctFmt}%\n`;
+      texto += `${item.posicao}. ${item.gerente} — ${totalItem} cartas | ${item.cartas_para_assinar} para assinar | ${item.cartas_assinadas} assinadas | ${pctFmt}%\n`;
     });
+
+    const pctTotal = totalCartas > 0 ? (totalAssinadas / totalCartas) * 100 : 0;
+    const pctTotalFmt = pctTotal.toFixed(1).replace(".", ",");
+    texto += `\nTotal: ${totalCartas} cartas | ${totalParaAssinar} para assinar | ${totalAssinadas} assinadas | ${pctTotalFmt}%`;
 
     try {
       await navigator.clipboard.writeText(texto.trim());
@@ -505,13 +518,13 @@ export function FarolGerencialView({
             </div>
             <div>
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                {isGerenteRegional ? "Ranking da Minha Carteira" : "Ranking de Assinatura — Cartas de Anuência"}
+                {isGerenteRegional ? "Ranking da Minha Carteira (Canal KA)" : "Ranking de Assinatura — Cartas de Anuência (Canal KA)"}
                 <span className="text-[11px] font-semibold text-muted-foreground">
                   ({rankingFiltrado.length} {rankingFiltrado.length === 1 ? "gerente" : "gerentes"})
                 </span>
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Cartas para assinar vs. Cartas assinadas (exclusivo para cartas existentes no sistema)
+                Cartas para assinar vs. Cartas assinadas (exclusivo para cartas existentes no sistema — Canal KA)
               </p>
             </div>
           </div>
@@ -553,6 +566,7 @@ export function FarolGerencialView({
                 <tr className="border-b border-border bg-muted/40 text-muted-foreground font-bold text-[11px] uppercase tracking-wider">
                   <th className="py-3 px-4 w-12 text-center">#</th>
                   <th className="py-3 px-4">Gerente</th>
+                  <th className="py-3 px-4 text-center">Total de Cartas</th>
                   <th className="py-3 px-4 text-center">Cartas para assinar</th>
                   <th className="py-3 px-4 text-center">Cartas assinadas</th>
                   <th className="py-3 px-4 text-right">% de Cartas assinadas</th>
@@ -561,7 +575,7 @@ export function FarolGerencialView({
               <tbody className="divide-y divide-border/60">
                 {rankingFiltrado.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
                       Nenhum dado de ranking para os filtros atuais.
                     </td>
                   </tr>
@@ -589,6 +603,9 @@ export function FarolGerencialView({
                         <td className="py-3 px-4 text-foreground font-bold">
                           {item.gerente}
                         </td>
+                        <td className="py-3 px-4 text-center font-bold text-foreground">
+                          {item.total_cartas}
+                        </td>
                         <td className="py-3 px-4 text-center text-amber-600 dark:text-amber-400 font-semibold">
                           {item.cartas_para_assinar}
                         </td>
@@ -613,6 +630,33 @@ export function FarolGerencialView({
                   })
                 )}
               </tbody>
+              {rankingFiltrado.length > 0 && (
+                <tfoot className="border-t-2 border-border bg-muted/30 font-bold text-xs">
+                  <tr>
+                    <td className="py-3 px-4 text-center text-muted-foreground">—</td>
+                    <td className="py-3 px-4 text-foreground uppercase tracking-wider">
+                      {isGerenteRegional ? "Total Minha Carteira" : "Total Brasil"}
+                    </td>
+                    <td className="py-3 px-4 text-center text-foreground font-extrabold">
+                      {rankingFiltrado.reduce((acc, i) => acc + i.total_cartas, 0)}
+                    </td>
+                    <td className="py-3 px-4 text-center text-amber-600 dark:text-amber-400 font-extrabold">
+                      {rankingFiltrado.reduce((acc, i) => acc + i.cartas_para_assinar, 0)}
+                    </td>
+                    <td className="py-3 px-4 text-center text-emerald-600 dark:text-emerald-400 font-extrabold">
+                      {rankingFiltrado.reduce((acc, i) => acc + i.cartas_assinadas, 0)}
+                    </td>
+                    <td className="py-3 px-4 text-right font-black text-foreground">
+                      {(() => {
+                        const totCartas = rankingFiltrado.reduce((acc, i) => acc + i.total_cartas, 0);
+                        const totAssinadas = rankingFiltrado.reduce((acc, i) => acc + i.cartas_assinadas, 0);
+                        const pctTot = totCartas > 0 ? (totAssinadas / totCartas) * 100 : 0;
+                        return `${pctTot.toFixed(1).replace(".", ",")}%`;
+                      })()}
+                    </td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
           </div>
         )}
