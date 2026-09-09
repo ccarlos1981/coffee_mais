@@ -4500,6 +4500,80 @@ A partir de 08/09/2026, a arquitetura, governança, regras de cardinalidade, RBA
 
 Status Geral: `FAROL_EXECUTIVO_GERENCIAL = HOMOLOGADO_E_CONGELADO` | `RANKING_ASSINATURA = HOMOLOGADO_E_CONGELADO` | `VISUALIZADOR_PREVIEW = HOMOLOGADO_E_CONGELADO` | `TROCA_CARTA_ASSINADA = HOMOLOGADO_E_CONGELADO` | `RBAC_CARTEIRA_GERENTE = HOMOLOGADO_E_CONGELADO` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 98. Baseline Oficial — Farol Executivo Gerencial (Canal KA Exclusivo) & Ranking de Assinatura com Total de Cartas (RDM Concluído — Baseline Permanente)
+
+A partir de 08/09/2026, a arquitetura, governança, regras de cardinalidade do Canal KA, cálculo e ordenação do Ranking de Assinatura, RBAC server-side e a suíte de componentes do **Farol Executivo Gerencial e Ranking de Assinatura do Módulo Carta de Anuência (`/investimento/carta-anuencia`)** tornam-se o baseline permanente e oficial do Coffee++, com o encerramento formal do RDM após auditoria e homologação em produção (Gate G1 a G29 com 100% de aprovação — 29/29 PASS).
+
+### Status Arquitetural
+`FAROL_EXECUTIVO_GERENCIAL_KA = HOMOLOGADO_E_CONGELADO`  
+`RANKING_ASSINATURA_KA = HOMOLOGADO_E_CONGELADO`  
+`UNIVERSO_CANAL_KA = HOMOLOGADO_E_CONGELADO`  
+`STATUS_ARQUITETURAL = LOCKED`  
+`BASELINE = OFICIAL_E_PERMANENTE`  
+
+### Dados de Homologação em Produção:
+- **Commit Homologado**: `f3ea49a` (`f3ea49a3c7e9a8d9a4df54dc53d2d14cbdf77732`)
+- **Deployment Ativo**: `dpl_6BiUNmNsgAizjwj72t5bCAiBtxta` (`● Ready`)
+- **Ambiente de Produção**:
+  - `https://coffee-mais.vercel.app/investimento/carta-anuencia`
+  - `https://dashboard.coffeemais.com/investimento/carta-anuencia`
+- **Resultado dos Quality Gates**: 29/29 Gates PASS (100% de conformidade — G1 a G29)
+
+### Diretrizes Mandatórias de Arquitetura e Negócio:
+
+1. **Universo Exclusivo Canal KA e Cardinalidade Estrita ($66 = 29 + 37$)**:
+   - **Universo de Redes Homologado**: Exclusivamente 66 redes comerciais planejáveis pertencentes ao **Canal KA** (`vw_redes_planejaveis_oficiais` onde `is_rede_planejavel = true` e `canal = 'KA'`).
+   - **Expurgo do Canal Distribuidor**: As 6 redes do Canal Distribuidor (`BRASSOL DF`, `BRASSOL GO`, `VIDA E SAUDE`, `CENTRAL DISTRIBUIDORA CELEIROS DE MINAS LTDA`, `Dist Ita` e `DISTRA ALIMENTOS`) são expurgadas na fonte de dados, possuindo zero ocorrências no Farol.
+   - **Exclusão de Redes Fora de KA**: `ZAFFARI (SP)` possui classificação oficial `canal = 'Outros'` no Master Data (`cm_clientes`) e não integra o universo KA (zero ocorrências no Farol, sem hardcoding ou exceção manual).
+   - **Cartas no Sistema**: 29 Cartas de Anuência ativas cadastradas em `cm_cartas_anuencia`.
+   - **Redes Faltantes**: 37 redes sem carta cadastrada ($66 - 29 = 37$).
+   - **Cobertura Homologada**: 43,9% ($29 / 66$).
+   - **Identidade Matemática Soberana**: $\text{Esperadas (66)} = \text{No Sistema (29)} + \text{Faltantes (37)}$ ($0,0000\%$ de desvio).
+
+2. **Farol Executivo Gerencial Agrupado por Gerente Responsável**:
+   - **John Guedes**: 7 esperadas | 6 no sistema | 1 faltante | 85,7% de cobertura (🟢 Verde).
+   - **Leandro Saffi**: 16 esperadas | 8 no sistema | 8 faltantes | 50,0% de cobertura (🟡 Amarelo).
+   - **Luiz**: 28 esperadas | 11 no sistema | 17 faltantes | 39,3% de cobertura (🔴 Vermelho).
+   - **Julliano**: 15 esperadas | 4 no sistema | 11 faltantes | 26,7% de cobertura (🔴 Vermelho).
+   - **TOTAL GERAL**: 66 esperadas | 29 no sistema | 37 faltantes | 43,9% de cobertura (🟡 Amarelo).
+
+3. **Ranking de Assinatura com Coluna "Total de Cartas" e Exclusividade Mútua**:
+   - Tabela oficial composta por 5 colunas de dados (+ índice `#`): `Gerente`, `Total de Cartas`, `Cartas para assinar`, `Cartas assinadas` e `% de Cartas assinadas`.
+   - **Fórmula Matemática Oficial**:
+     $$\text{Total de Cartas} = \text{Cartas para assinar} + \text{Cartas assinadas}$$
+   - **Fórmula do Percentual Oficial**:
+     $$\% \text{ de Cartas assinadas} = \frac{\text{Cartas assinadas}}{\text{Total de Cartas}} \times 100$$
+   - **Separação Rígida de Conceitos**: Redes faltantes (37) representam redes sem documento e **não** entram na contagem de "Cartas para assinar" (25).
+   - **Valores Homologados**:
+     - John Guedes: Total 6 | Para assinar 4 | Assinadas 2 | 33,3%
+     - Leandro Saffi: Total 8 | Para assinar 7 | Assinadas 1 | 12,5%
+     - Luiz: Total 11 | Para assinar 10 | Assinadas 1 | 9,1%
+     - Julliano: Total 4 | Para assinar 4 | Assinadas 0 | 0,0%
+     - **Total Geral**: Total 29 | Para assinar 25 | Assinadas 4 | 13,8% ($25 + 4 = 29$).
+   - **Ordenação Oficial**: Decrescente por `% assinadas`, desempate por `assinadas DESC` e `gerente ASC` (1º John Guedes, 2º Leandro Saffi, 3º Luiz, 4º Julliano).
+
+4. **Recursos de Usabilidade e Exportação**:
+   - **Copiar para WhatsApp**: Texto formatado com cabeçalho `📊 *RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA (CANAL KA)*`, medalhas por posição, total de cartas em cada linha, linha de rodapé com somatório consolidado e percentual ponderado ($13,8\%$), sem tags HTML e com toast de confirmação (`Ranking copiado!`).
+   - **Exibir / Ocultar Ranking**: Botão toggle intuitivo que permite recolher e expandir o card do Ranking preservando filtros ativos e sem alteração de estado dos dados.
+
+5. **Filtros Combinados em Conjunção Lógica (AND)**:
+   - Filtros de Busca Textual, Gerente, Regional, UF e Status operam cumulativamente (`AND`), garantindo que seleções conjuntas (ex: Gerente + UF + Status) restrinjam perfeitamente a visualização das redes sem contaminação.
+
+6. **Isolamento de Carteira e RBAC Server-Side**:
+   - **Admin / Admin Master**: Visão nacional consolidada de 66 redes KA, 4 gerentes, 29 cartas e Ranking de Assinatura com 4 posições.
+   - **Gerente Regional**: O backend restringe a consulta na origem (`obterDadosFarolGerencial`). O servidor entrega exclusivamente as redes da carteira do gestor logado (Leandro: 16 redes; Julliano: 15 redes; John: 7 redes; Luiz: 28 redes). O Ranking de Assinatura consolidado é omitido (`null`) e o layout adapta-se para visão individual ("MINHA CARTEIRA"), com zero vazamento entre carteiras.
+
+7. **Preservação de Integridade e Não-Regressão**:
+   - As 29 Cartas de Anuência existentes permanecem íntegras (4 assinadas e 25 para assinar), com zero mutações físicas.
+   - A Gestão de Cartas (emissão, edição, cancelamento, visualização, timeline e upload) permanece 100% operacional.
+   - O Farol Executivo de Redes Notáveis (> R$ 80.000/mês) permanece isolado e inalterado.
+   - O módulo de Preview/PDF, troca de cartas assinadas e armazenamento no Supabase Storage permanecem íntegros.
+
+Status Geral: `FAROL_GERENCIAL_CANAL_KA = HOMOLOGADO_E_CONGELADO` | `RANKING_ASSINATURA = HOMOLOGADO_E_CONGELADO` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+
 
 
 
