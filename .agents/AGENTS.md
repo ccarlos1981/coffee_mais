@@ -4976,6 +4976,99 @@ A partir de 08/09/2026, a arquitetura, governança, regras de cardinalidade do C
 
 Status Geral: `FAROL_GERENCIAL_CANAL_KA = HOMOLOGADO_E_CONGELADO` | `RANKING_ASSINATURA = HOMOLOGADO_E_CONGELADO` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
 
+---
+
+## 99. Baseline Oficial — Evolução do Farol Executivo Gerencial: Universo Planejável (Exceto Distribuidor), Faturamento Médio 3M e Gestão Admin do Universo (RDM Concluído — Baseline Permanente)
+
+A partir de 08/09/2026, a arquitetura, regras de universo, faturamento médio 3M, controles administrativos de inclusão/exclusão/reativação de redes, RBAC server-side e a suíte de auditoria do **Farol Executivo Gerencial do Módulo Carta de Anuência (`/investimento/carta-anuencia`)** tornam-se o baseline permanente e oficial do Coffee++, com o encerramento formal do RDM após auditoria e homologação em produção (Gate G1 a G33 com 100% de aprovação — 33/33 PASS).
+
+### Status Arquitetural
+`FAROL_EXECUTIVO_GERENCIAL_EVOLUCAO = HOMOLOGADO_E_CONGELADO`
+`UNIVERSO_PLANEJAVEL_EXCETO_DISTRIBUIDOR = LOCKED`
+`FATURAMENTO_MEDIO_3M = HOMOLOGADO_E_CONGELADO`
+`GESTAO_ADMIN_UNIVERSO = HOMOLOGADO_E_CONGELADO`
+`STATUS_ARQUITETURAL = LOCKED`
+`BASELINE = OFICIAL_E_PERMANENTE`
+
+### Dados de Homologação em Produção:
+- **Commit Homologado**: `1b7b167`
+- **Deployment Ativo**: `dpl_HqVYa52nBNkHpc6k7U2ChVyBicDM` (`● Ready`)
+- **Ambiente de Produção**:
+  - `https://coffee-mais.vercel.app/investimento/carta-anuencia`
+  - `https://dashboard.coffeemais.com/investimento/carta-anuencia`
+- **Resultado dos Quality Gates**: 33/33 Gates PASS (100% de conformidade — G1 a G33)
+- **Mutações durante o Gate**: 0
+- **Desvio financeiro**: 0,0000%
+
+### Diretrizes Mandatórias de Arquitetura e Negócio:
+
+1. **Universo Oficial — Redes Planejáveis Exceto Distribuidor (67 redes)**:
+   - **Regra Oficial e Definitiva**: O universo do Farol Executivo Gerencial é constituído por todas as redes do universo planejável oficial (`vw_redes_planejaveis_oficiais` onde `is_rede_planejavel = true`), **exceto** aquelas com `canal = 'Distribuidor'`.
+   - **Proibição Expressa**: É vedado o uso de `canal = 'KA'` como filtro do universo. A regra correta é `UNIVERSO PLANEJÁVEL MENOS DISTRIBUIDOR`.
+   - **Cardinalidade Homologada**: 73 redes base − 6 Distribuidores = **67 redes** (66 Canal KA + 1 Canal Outros).
+   - **Distribuidores Excluídos (6)**: `BRASSOL (DF)`, `BRASSOL (GO)`, `VIDA E SAUDE`, `DISTRA ALIMENTOS`, `CENTRAL DISTRIBUIDORA CELEIROS DE MINAS LTDA` e `Dist Ita`. Exclusão estrutural na fonte via `.neq("canal", "Distribuidor")`.
+   - **ZAFFARI (SP)**: Rede `canal = 'Outros'`, Gerente Julliano, UF SP, `codigo_matriz = 84906.0`. **Integra organicamente** o universo de 67 redes. Seu retorno é consequência direta da regra de exclusão de Distribuidores, sem hardcoding ou exceção manual.
+   - **Identidade Matemática Soberana**: Esperadas (67) = No Sistema (29) + Faltantes (38). Desvio: 0,0000%.
+   - **Cobertura Homologada**: 43,3% (29/67).
+
+2. **Farol Executivo Gerencial Agrupado por Gerente Responsável — Cardinalidade Homologada**:
+   - **John Guedes**: 7 esperadas | 6 no sistema | 1 faltante | 85,7% de cobertura.
+   - **Leandro Saffi**: 16 esperadas | 8 no sistema | 8 faltantes | 50,0% de cobertura.
+   - **Luiz**: 28 esperadas | 11 no sistema | 17 faltantes | 39,3% de cobertura.
+   - **Julliano**: 16 esperadas | 4 no sistema | 12 faltantes | 25,0% de cobertura.
+   - **TOTAL GERAL**: 67 esperadas | 29 no sistema | 38 faltantes | 43,3% de cobertura.
+
+3. **Faturamento Médio 3M (Baseline Homologado)**:
+   - **Fonte Oficial Exclusiva**: `public.mv_vendas_cliente_mensal` (alinhada à Seção 10 — Governança Financeira Oficial).
+   - **Janela Temporal**: Três meses fechados anteriores à competência ativa. Para competência Junho/2026: Abril/2026, Maio/2026, Junho/2026.
+   - **Fórmula Oficial**: `Faturamento Médio 3M = (Fat Mês −2 + Fat Mês −1 + Fat Mês 0) / 3`.
+   - **Conceito**: Faturamento Líquido Real Comercial. Bonificações preservadas. Devoluções tratadas conforme regras das views oficiais. Mês corrente não utilizado.
+   - **Resolução sem Fuzzy Matching**: JOIN canônico via `TRIM(c.codigo::text) = TRIM(v.cod_parceiro::text)`.
+   - **Exibição**: Por rede, no formato `R$ X.XXX,XX/mês`.
+   - **Casos Críticos Auditados (desvio 0,00 em todos)**:
+     - ZAFFARI (RS): R$ 687.503,53/mês | ZAFFARI (SP): R$ 51.839,19/mês
+     - FORT (SC): R$ 137.355,33/mês | FORT (SP): R$ 8.197,27/mês
+     - OBA SP: R$ 237.824,29/mês | OBA DF: R$ 69.986,73/mês
+     - ASSAI (Luiz): R$ 22.724,00/mês | ASSAI (John Guedes): R$ 14.614,47/mês
+     - MATEUS: R$ 15.873,40/mês | NOVO ATAC: R$ 0,00/mês
+
+4. **Ranking de Assinatura (Preservado e Homologado)**:
+   - Tabela com colunas: `Gerente`, `Total de Cartas`, `Cartas para assinar`, `Cartas assinadas`, `% de Cartas assinadas`.
+   - **Fórmula**: `Total = Para assinar + Assinadas` | `% = Assinadas / Total × 100`.
+   - **Valores Homologados**: John(6|4|2|33,3%) | Leandro(8|7|1|12,5%) | Luiz(11|10|1|9,1%) | Julliano(4|4|0|0,0%) | Total(29|25|4|13,8%).
+   - **Copiar para WhatsApp**: Funcional com valores reais, sem Distribuidores, sem informações indevidas.
+
+5. **Gestão Administrativa do Universo do Farol (Apenas Admin)**:
+   - **Inclusão de Rede**: Admin pode incluir operação existente em `cm_clientes` no universo do Farol. A busca ocorre exclusivamente em `cm_clientes`. Não cria, não altera e não duplica o cadastro de clientes. Inclusão persiste exclusivamente em `cm_carta_anuencia_farol_redes_config`.
+   - **Exclusão de Rede**: Admin pode excluir rede do universo do Farol. Motivo obrigatório. A exclusão afeta somente a participação no Farol. `cm_clientes`, faturamento, Cartas e histórico permanecem 100% intocados.
+   - **Reativação de Rede**: Admin pode desfazer exclusão/inclusão administrativa, restaurando o comportamento padrão do universo base.
+   - **RBAC Server-Side**: `excluirRedeDoFarol`, `incluirRedeNoFarol` e `reativarRedeNoFarol` verificam `profile.role` no servidor e retornam `403 Forbidden` para qualquer perfil que não seja `Admin`, `Admin Master`, `TI`, `CEO` ou `Diretor`.
+
+6. **Regra Estrutural Superior — Distribuidor**:
+   - `canal = 'Distribuidor'` é estruturalmente excluído do universo do Farol. Esta regra é **superior a qualquer override administrativo**. Mesmo que um Admin tente incluir uma operação Distribuidora via `incluirRedeNoFarol`, o backend valida `canal` em `cm_clientes` e rejeita a operação com erro antes de qualquer INSERT.
+
+7. **Auditoria Rastreável**:
+   - Eventos homologados: `FAROL_INCLUSAO_REDE`, `FAROL_EXCLUSAO_REDE`, `FAROL_REATIVACAO_REDE`.
+   - Payload mínimo obrigatório: `usuario`, `email`, `data_hora`, `rede`, `codigo_matriz`, `gerente`, `acao`, `motivo` (quando aplicável).
+   - Persistência em `cm_audit_logs` via `safeInsertAuditLog`.
+
+8. **RBAC Server-Side**:
+   - **Admin / perfis globais**: Visão consolidada de 67 redes, 4 gerentes, ranking completo e controles de gestão do universo.
+   - **Gerente Regional**: O servidor (`obterDadosFarolGerencial`) filtra o universo estritamente por `r.manager === gerenteLogado` antes de qualquer retorno ao cliente. Ranking consolidado omitido. Controles administrativos bloqueados server-side com 403. Zero vazamento entre carteiras.
+
+9. **Integridade das Cartas e Não-Regressão**:
+   - 29 Cartas existentes (4 assinadas, 25 para assinar) permanecem intactas.
+   - Inclusão/exclusão de rede no Farol **não afeta, não cancela e não altera** nenhuma Carta de Anuência.
+   - Gestão de Cartas, emissão, edição, cancelamento, timeline, Preview/PDF, upload, troca de carta assinada, Storage e RBAC P0 permanecem 100% operacionais.
+   - Farol Executivo de Redes Notáveis (> R$ 80.000/mês) permanece isolado e inalterado.
+
+10. **Infraestrutura de Persistência de Overrides**:
+    - Tabela `cm_carta_anuencia_farol_redes_config` (criada em `20260908_create_cm_carta_anuencia_farol_redes_config.sql`).
+    - Colunas: `id (uuid)`, `codigo_matriz (text)`, `rede_nome (text)`, `gerente (text)`, `tipo_acao (text: INCLUSAO|EXCLUSAO)`, `motivo (text)`, `is_ativo (boolean)`, `criado_por (uuid)`, `criado_por_nome (text)`, `created_at`, `updated_at`.
+    - Tabela em estado limpo (0 registros) no momento da homologação.
+
+Status Geral: `FAROL_EXECUTIVO_GERENCIAL_EVOLUCAO = HOMOLOGADO_E_CONGELADO` | `UNIVERSO_PLANEJAVEL_EXCETO_DISTRIBUIDOR = LOCKED` | `FATURAMENTO_MEDIO_3M = LOCKED` | `GESTAO_ADMIN_UNIVERSO = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
 
 
 
