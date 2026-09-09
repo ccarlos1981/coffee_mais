@@ -548,62 +548,58 @@ export async function executarLimpezaLogosOrfas(): Promise<{
 
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
-// Mapeamento Canônico de Desambiguação de Cartas Multiestado / Multioperação
-// Auditado e homologado no Farol Gerencial e no Farol Executivo
-// ---------------------------------------------------------------------------
-const CARTA_DESTINO_CANONICO_MASTER_DATA: Record<string, { manager: string; rede: string; uf?: string }> = {
-  "CA-2026-000001": { manager: "Leandro Saffi", rede: "ZAFFARI (RS)", uf: "RS" },
-  "CA-2026-000006": { manager: "Leandro Saffi", rede: "FORT (SC)", uf: "SC" },
-  "CA-2026-000012": { manager: "Julliano", rede: "OBA SP", uf: "SP" },
-  "CA-2026-000017": { manager: "Luiz", rede: "MATEUS", uf: "PI" },
-  "CA-2026-000018": { manager: "John Guedes", rede: "ASSAI", uf: "GO" },
-};
-
-// ---------------------------------------------------------------------------
 // Helper interno: resolve metadados de redes (manager e UF) via Master Data
 // (cm_redes_matrizes + cm_clientes), sem qualquer dependência de faturamento
 // ou da view mv_vendas_cliente_mensal (Regra Arquitetural RDM P1).
+// Fonte primária: cm_cartas_anuencia.rede_id -> cm_redes_matrizes.codigo -> manager
+// Complemento/Fallback: cm_clientes (matriz/operação, UF, responsavel)
 // ---------------------------------------------------------------------------
 async function obterMetadadosRedesMasterData(
   adminClient: ReturnType<typeof createAdminClient>,
   codigosCartas: string[]
 ): Promise<{
-  rmMap: Map<string, { manager: string | null; nome: string | null }>;
-  cliMap: Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>;
+  rmByCodigo: Map<string, { manager: string | null; nome: string | null }>;
+  rmByNome: Map<string, { manager: string | null; nome: string | null }>;
+  cliByCodigo: Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>;
+  cliByMatriz: Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>;
 }> {
   const codigosBases = codigosCartas.map((c) => c.replace(/\.\d+$/, ""));
   const todosCodigos = Array.from(new Set([...codigosCartas, ...codigosBases])).filter(Boolean);
   const numericCodigos = todosCodigos.map((c) => parseInt(c, 10)).filter((n) => !isNaN(n));
 
-  const rmMap = new Map<string, { manager: string | null; nome: string | null }>();
-  const cliMap = new Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>();
+  const rmByCodigo = new Map<string, { manager: string | null; nome: string | null }>();
+  const rmByNome = new Map<string, { manager: string | null; nome: string | null }>();
+  const cliByCodigo = new Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>();
+  const cliByMatriz = new Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>();
 
   if (todosCodigos.length === 0) {
-    return { rmMap, cliMap };
+    return { rmByCodigo, rmByNome, cliByCodigo, cliByMatriz };
   }
 
   try {
-    // 1. Consultar cm_redes_matrizes (fonte mestre de manager corporativo por rede)
+    // 1. Consultar cm_redes_matrizes (fonte primária de manager corporativo por rede e operação)
     const { data: redesMatrizes, error: rmErr } = await adminClient
       .from("cm_redes_matrizes")
-      .select("codigo, nome, manager")
-      .in("codigo", todosCodigos);
+      .select("codigo, nome, manager");
 
     if (rmErr) {
       console.error("[carta-anuencia] Erro ao consultar cm_redes_matrizes:", rmErr);
     } else {
       (redesMatrizes || []).forEach((rm) => {
+        const meta = { manager: rm.manager || null, nome: rm.nome || null };
         if (rm.codigo) {
-          const meta = { manager: rm.manager || null, nome: rm.nome || null };
           const c = String(rm.codigo).trim();
-          rmMap.set(c, meta);
+          rmByCodigo.set(c, meta);
           const cBase = c.replace(/\.\d+$/, "");
-          if (!rmMap.has(cBase)) rmMap.set(cBase, meta);
+          if (!rmByCodigo.has(cBase)) rmByCodigo.set(cBase, meta);
+        }
+        if (rm.nome) {
+          rmByNome.set(rm.nome.toUpperCase().trim(), meta);
         }
       });
     }
 
-    // 2. Consultar cm_clientes (para UF e fallback de responsável)
+    // 2. Consultar cm_clientes (para complementar matriz/operação, UF e fallback)
     const [resMatriz, resCod] = await Promise.all([
       adminClient
         .from("cm_clientes")
@@ -624,22 +620,21 @@ async function obterMetadadosRedesMasterData(
         uf: cl.uf || null,
         matriz: cl.matriz || null,
       };
+      if (cl.codigo != null) {
+        cliByCodigo.set(String(cl.codigo).trim(), meta);
+      }
       if (cl.codigo_matriz) {
         const c = String(cl.codigo_matriz).trim();
-        if (!cliMap.has(c)) cliMap.set(c, meta);
+        if (!cliByMatriz.has(c)) cliByMatriz.set(c, meta);
         const cBase = c.replace(/\.\d+$/, "");
-        if (!cliMap.has(cBase)) cliMap.set(cBase, meta);
-      }
-      if (cl.codigo != null) {
-        const c = String(cl.codigo).trim();
-        if (!cliMap.has(c)) cliMap.set(c, meta);
+        if (!cliByMatriz.has(cBase)) cliByMatriz.set(cBase, meta);
       }
     });
   } catch (err) {
     console.error("[carta-anuencia] Falha ao resolver metadados via Master Data:", err);
   }
 
-  return { rmMap, cliMap };
+  return { rmByCodigo, rmByNome, cliByCodigo, cliByMatriz };
 }
 
 // ---------------------------------------------------------------------------
@@ -722,29 +717,29 @@ export async function listarCartasAnuencia(filters?: {
 
   // Obter metadados de redes via Master Data (cm_redes_matrizes + cm_clientes)
   const codigosCartas = (data || []).map((c) => String(c.rede_id || "").trim()).filter(Boolean);
-  const { rmMap, cliMap } = await obterMetadadosRedesMasterData(adminClient, codigosCartas);
+  const { rmByCodigo, rmByNome, cliByCodigo, cliByMatriz } = await obterMetadadosRedesMasterData(adminClient, codigosCartas);
 
   let result = (data || []).map((item) => {
-    let manager: string | null = null;
-    let uf: string | null = null;
+    const cId = String(item.rede_id || "").trim();
+    const cIdBase = cId.replace(/\.\d+$/, "");
 
-    // Regra 1: Desambiguação Canônica Homologada (para casos multiestado)
-    if (CARTA_DESTINO_CANONICO_MASTER_DATA[item.numero_carta]) {
-      const dest = CARTA_DESTINO_CANONICO_MASTER_DATA[item.numero_carta];
-      manager = dest.manager;
-      uf = dest.uf || null;
-    } else {
-      // Regra 2: Resolução via cm_redes_matrizes (rede_id -> codigo -> manager)
-      const cId = String(item.rede_id || "").trim();
-      const cIdBase = cId.replace(/\.\d+$/, "");
-      const rm = rmMap.get(cId) || rmMap.get(cIdBase);
+    // 1. Complemento via cm_clientes (matriz/operação e UF)
+    const cli = cliByCodigo.get(cIdBase) || cliByCodigo.get(cId) || cliByMatriz.get(cId) || cliByMatriz.get(cIdBase);
+    const matrizOperacao = cli?.matriz ? cli.matriz.toUpperCase().trim() : null;
+    const uf = cli?.uf || null;
 
-      // Regra 3: Complementação / Fallback via cm_clientes (UF, responsavel)
-      const cli = cliMap.get(cId) || cliMap.get(cIdBase);
+    // 2. Resolução determinística de manager via Master Data:
+    // a. Se cm_clientes identifica a matriz/operação (ex: "ZAFFARI (RS)", "FORT (SC)", "OBA SP"),
+    //    busca o manager dessa operação cadastrada em cm_redes_matrizes
+    const rmOperacao = matrizOperacao ? rmByNome.get(matrizOperacao) : null;
+    // b. Busca direta pelo código em cm_redes_matrizes
+    const rmDireto = rmByCodigo.get(cId) || rmByCodigo.get(cId.replace(/\.\d+$/, ""));
 
-      manager = rm?.manager || cli?.responsavel || null;
-      uf = cli?.uf || null;
-    }
+    // Hierarquia determinística de ownership (sem faturamento e sem hardcode):
+    // 1º rm da operação identificada por cm_clientes
+    // 2º rm direto pelo código de cm_redes_matrizes
+    // 3º responsavel cadastrado em cm_clientes
+    const manager = rmOperacao?.manager || rmDireto?.manager || cli?.responsavel || null;
 
     const expirada = verificarCartaExpirada(item.validade_ate);
     const dynamicLogoUrl = getStoragePublicUrl(item.logo_snapshot_path || item.logo_rede_url, "logos-redes");
