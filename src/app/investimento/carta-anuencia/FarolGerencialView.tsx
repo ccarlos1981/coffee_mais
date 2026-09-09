@@ -22,10 +22,20 @@ import {
   Trophy,
   Users,
   ChevronUp,
+  Plus,
+  Trash2,
+  Settings,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   obterDadosFarolGerencial,
+  excluirRedeDoFarol,
+  incluirRedeNoFarol,
+  reativarRedeNoFarol,
+  listarOverridesFarol,
+  listarRedesDisponiveisParaInclusaoFarol,
   FarolGerencialResumo,
   FarolGerencialGerenteItem,
   FarolGerencialRedeItem,
@@ -61,6 +71,122 @@ export function FarolGerencialView({
   // Expansão de gerentes e toggle de ranking
   const [expandedGerentes, setExpandedGerentes] = useState<Record<string, boolean>>({});
   const [showRanking, setShowRanking] = useState<boolean>(true);
+
+  // Estados Administrativos (Apenas Admin)
+  const [modalExcluirOpen, setModalExcluirOpen] = useState(false);
+  const [redeParaExcluir, setRedeParaExcluir] = useState<FarolGerencialRedeItem | null>(null);
+  const [motivoExclusao, setMotivoExclusao] = useState("");
+  const [salvandoExclusao, setSalvandoExclusao] = useState(false);
+
+  const [modalIncluirOpen, setModalIncluirOpen] = useState(false);
+  const [buscaClientesInclusao, setBuscaClientesInclusao] = useState("");
+  const [clientesDisponiveis, setClientesDisponiveis] = useState<any[]>([]);
+  const [carregandoClientes, setCarregandoClientes] = useState(false);
+  const [clienteSelecionadoParaInclusao, setClienteSelecionadoParaInclusao] = useState<any | null>(null);
+  const [observacaoInclusao, setObservacaoInclusao] = useState("");
+  const [salvandoInclusao, setSalvandoInclusao] = useState(false);
+
+  const [modalOverridesOpen, setModalOverridesOpen] = useState(false);
+  const [overridesList, setOverridesList] = useState<any[]>([]);
+  const [carregandoOverrides, setCarregandoOverrides] = useState(false);
+
+  const formatarMoeda = (val?: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(val || 0);
+  };
+
+  const carregarClientesParaInclusao = async (termo: string) => {
+    setCarregandoClientes(true);
+    try {
+      const data = await listarRedesDisponiveisParaInclusaoFarol(termo);
+      setClientesDisponiveis(data);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao carregar operações de clientes.");
+    } finally {
+      setCarregandoClientes(false);
+    }
+  };
+
+  const carregarListaOverrides = async () => {
+    setCarregandoOverrides(true);
+    try {
+      const data = await listarOverridesFarol();
+      setOverridesList(data);
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao carregar lista de ajustes.");
+    } finally {
+      setCarregandoOverrides(false);
+    }
+  };
+
+  const handleConfirmarExclusao = async () => {
+    if (!redeParaExcluir) return;
+    if (!motivoExclusao.trim()) {
+      toast.error("O motivo da exclusão é obrigatório.");
+      return;
+    }
+
+    setSalvandoExclusao(true);
+    try {
+      await excluirRedeDoFarol({
+        rede_nome: redeParaExcluir.rede,
+        codigo_matriz: redeParaExcluir.codigo_matriz,
+        gerente: redeParaExcluir.manager,
+        motivo: motivoExclusao.trim(),
+      });
+      toast.success(`Rede "${redeParaExcluir.rede}" excluída do Farol com sucesso!`);
+      setModalExcluirOpen(false);
+      setRedeParaExcluir(null);
+      setMotivoExclusao("");
+      await carregarDados();
+    } catch (err: any) {
+      console.error("Erro ao excluir rede do Farol:", err);
+      toast.error(err.message || "Erro ao excluir rede.");
+    } finally {
+      setSalvandoExclusao(false);
+    }
+  };
+
+  const handleConfirmarInclusao = async () => {
+    if (!clienteSelecionadoParaInclusao) {
+      toast.error("Selecione uma operação para incluir.");
+      return;
+    }
+
+    setSalvandoInclusao(true);
+    try {
+      await incluirRedeNoFarol({
+        rede_nome: clienteSelecionadoParaInclusao.rede_nome,
+        codigo_matriz: clienteSelecionadoParaInclusao.codigo_matriz,
+        gerente: clienteSelecionadoParaInclusao.gerente,
+        observacao: observacaoInclusao.trim() || undefined,
+      });
+      toast.success(`Rede "${clienteSelecionadoParaInclusao.rede_nome}" incluída no Farol com sucesso!`);
+      setModalIncluirOpen(false);
+      setClienteSelecionadoParaInclusao(null);
+      setObservacaoInclusao("");
+      await carregarDados();
+    } catch (err: any) {
+      console.error("Erro ao incluir rede no Farol:", err);
+      toast.error(err.message || "Erro ao incluir rede.");
+    } finally {
+      setSalvandoInclusao(false);
+    }
+  };
+
+  const handleReativarOverride = async (configId: string, nomeRede: string) => {
+    try {
+      await reativarRedeNoFarol(configId);
+      toast.success(`Rede "${nomeRede}" restaurada ao universo oficial!`);
+      await carregarListaOverrides();
+      await carregarDados();
+    } catch (err: any) {
+      console.error("Erro ao reativar rede:", err);
+      toast.error(err.message || "Erro ao reativar rede.");
+    }
+  };
 
   const carregarDados = async (comp?: string) => {
     setLoading(true);
@@ -245,7 +371,7 @@ export function FarolGerencialView({
       return;
     }
 
-    let texto = "📊 RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA (CANAL KA)\n\n";
+    let texto = "📊 RANKING DE ASSINATURA — CARTAS DE ANUÊNCIA\n\n";
     let totalCartas = 0;
     let totalParaAssinar = 0;
     let totalAssinadas = 0;
@@ -371,23 +497,62 @@ export function FarolGerencialView({
           </div>
         </div>
 
-        {/* Seletor de Competência */}
-        <div className="flex items-center gap-2 self-end md:self-auto bg-card px-3 py-1.5 rounded-2xl border border-border shadow-sm">
-          <span className="text-xs font-bold text-muted-foreground whitespace-nowrap">
-            Competência:
-          </span>
-          <select
-            value={competenciaSelecionada}
-            onChange={(e) => setCompetenciaSelecionada(e.target.value)}
-            disabled={loading}
-            className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
-          >
-            {resumo?.competencias_disponiveis.map((c) => (
-              <option key={c.id} value={c.competencia} className="bg-popover text-popover-foreground">
-                {c.competencia} {c.encerrada ? "(Encerrada)" : ""}
-              </option>
-            ))}
-          </select>
+        {/* Ações de Topo: Competência e Administração */}
+        <div className="flex items-center gap-2.5 self-end md:self-auto flex-wrap">
+          {/* Seletor de Competência */}
+          <div className="flex items-center gap-2 bg-card px-3 py-1.5 rounded-2xl border border-border shadow-sm">
+            <span className="text-xs font-bold text-muted-foreground whitespace-nowrap">
+              Competência:
+            </span>
+            <select
+              value={competenciaSelecionada}
+              onChange={(e) => setCompetenciaSelecionada(e.target.value)}
+              disabled={loading}
+              className="bg-transparent text-xs font-bold text-foreground focus:outline-none cursor-pointer"
+            >
+              {resumo?.competencias_disponiveis.map((c) => (
+                <option key={c.id} value={c.competencia} className="bg-popover text-popover-foreground">
+                  {c.competencia} {c.encerrada ? "(Encerrada)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Ações de Inclusão/Exclusão Administrativa (Apenas Admin) */}
+          {resumo?.is_admin && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setClienteSelecionadoParaInclusao(null);
+                  setObservacaoInclusao("");
+                  setModalIncluirOpen(true);
+                  carregarClientesParaInclusao("");
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 rounded-2xl shadow-sm transition-all"
+                title="Incluir rede existente no módulo Clientes ao universo do Farol"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Incluir Rede</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setModalOverridesOpen(true);
+                  carregarListaOverrides();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-card border border-border hover:bg-muted text-foreground rounded-2xl shadow-sm transition-all"
+                title="Gerenciar ajustes manuais (inclusões e exclusões)"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Ajustes</span>
+                {resumo.total_overrides_ativos && resumo.total_overrides_ativos > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-bold">
+                    {resumo.total_overrides_ativos}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -518,13 +683,13 @@ export function FarolGerencialView({
             </div>
             <div>
               <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                {isGerenteRegional ? "Ranking da Minha Carteira (Canal KA)" : "Ranking de Assinatura — Cartas de Anuência (Canal KA)"}
+                {isGerenteRegional ? "Ranking da Minha Carteira" : "Ranking de Assinatura — Cartas de Anuência"}
                 <span className="text-[11px] font-semibold text-muted-foreground">
                   ({rankingFiltrado.length} {rankingFiltrado.length === 1 ? "gerente" : "gerentes"})
                 </span>
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Cartas para assinar vs. Cartas assinadas (exclusivo para cartas existentes no sistema — Canal KA)
+                Cartas para assinar vs. Cartas assinadas (exclusivo para cartas existentes no sistema)
               </p>
             </div>
           </div>
@@ -929,13 +1094,29 @@ export function FarolGerencialView({
                                   !temCarta ? "bg-rose-500/[0.02]" : ""
                                 }`}
                               >
-                                {/* Rede */}
-                                <td className="py-3 px-4 font-bold text-foreground">
-                                  <div className="flex items-center gap-2">
-                                    <span>{r.rede}</span>
-                                    {!temCarta && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                                    )}
+                                {/* Rede e Faturamento Médio 3M */}
+                                <td className="py-3 px-4 text-foreground">
+                                  <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-bold">{r.rede}</span>
+                                      {!temCarta && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" title="Sem Carta de Anuência" />
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[11px]">
+                                      {r.faturamento_medio_3m && r.faturamento_medio_3m > 0 ? (
+                                        <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                          {formatarMoeda(r.faturamento_medio_3m)}/mês
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="text-muted-foreground italic cursor-help"
+                                          title="Sem faturamento nos últimos 3 meses fechados"
+                                        >
+                                          R$ 0,00/mês
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </td>
 
@@ -1036,6 +1217,22 @@ export function FarolGerencialView({
                                       Emitir Carta
                                     </button>
                                   )}
+
+                                  {/* Excluir do Farol (Apenas Admin) */}
+                                  {resumo?.is_admin && (
+                                    <button
+                                      onClick={() => {
+                                        setRedeParaExcluir(r);
+                                        setMotivoExclusao("");
+                                        setModalExcluirOpen(true);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-white hover:bg-rose-600 rounded-lg border border-rose-500/20 transition-colors"
+                                      title="Excluir esta rede do Farol (Apenas Admin)"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                      Excluir
+                                    </button>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -1052,6 +1249,278 @@ export function FarolGerencialView({
         </div>
       )}
 
+      {/* MODAL 1: Excluir Rede do Farol (Apenas Admin) */}
+      {modalExcluirOpen && redeParaExcluir && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card w-full max-w-lg rounded-3xl border border-border p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold">
+                <AlertTriangle className="w-5 h-5" />
+                <h3 className="text-base">Excluir Rede do Farol</h3>
+              </div>
+              <button
+                onClick={() => setModalExcluirOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-muted/40 rounded-2xl text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Rede:</span>
+                <span className="font-bold text-foreground">{redeParaExcluir.rede}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Gerente Responsável:</span>
+                <span className="font-bold text-foreground">{redeParaExcluir.manager}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground font-medium">Cód. Matriz:</span>
+                <span className="font-mono text-foreground">{redeParaExcluir.codigo_matriz}</span>
+              </div>
+              {redeParaExcluir.faturamento_medio_3m ? (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground font-medium">Faturamento Médio 3M:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    {formatarMoeda(redeParaExcluir.faturamento_medio_3m)}/mês
+                  </span>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+              <strong>Atenção:</strong> A exclusão afeta apenas a participação desta rede no universo do Farol (deixa de ser esperada e de contar como faltante). Nenhuma Carta existente, faturamento histórico ou cadastro em Clientes será alterado.
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">
+                Motivo da Exclusão <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={motivoExclusao}
+                onChange={(e) => setMotivoExclusao(e.target.value)}
+                placeholder="Informe a justificativa administrativa para exclusão desta rede do Farol..."
+                rows={3}
+                className="w-full p-3 text-xs bg-muted/40 rounded-xl border border-border focus:border-primary focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+              <button
+                onClick={() => setModalExcluirOpen(false)}
+                disabled={salvandoExclusao}
+                className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarExclusao}
+                disabled={salvandoExclusao || !motivoExclusao.trim()}
+                className="px-4 py-2 text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50 rounded-xl shadow-sm transition-colors"
+              >
+                {salvandoExclusao ? "Salvando..." : "Confirmar Exclusão"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2: Incluir Rede no Farol (Apenas Admin) */}
+      {modalIncluirOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card w-full max-w-xl rounded-3xl border border-border p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2 text-primary font-bold">
+                <Plus className="w-5 h-5" />
+                <h3 className="text-base">Incluir Rede no Farol</h3>
+              </div>
+              <button
+                onClick={() => setModalIncluirOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-muted/40 text-[11px] text-muted-foreground leading-relaxed">
+              Busque uma operação existente no módulo Clientes (<code>cm_clientes</code>). Operações classificadas oficialmente como <strong>Distribuidor</strong> não podem ser incluídas no Farol.
+            </div>
+
+            {/* Campo de Busca */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Buscar por rede, gerente ou código da matriz..."
+                value={buscaClientesInclusao}
+                onChange={(e) => {
+                  setBuscaClientesInclusao(e.target.value);
+                  carregarClientesParaInclusao(e.target.value);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-muted/40 rounded-xl border border-border focus:border-primary focus:outline-none"
+              />
+            </div>
+
+            {/* Lista de Clientes */}
+            <div className="max-h-48 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40">
+              {carregandoClientes ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">Buscando operações...</div>
+              ) : clientesDisponiveis.length === 0 ? (
+                <div className="p-4 text-center text-xs text-muted-foreground">Nenhuma operação encontrada.</div>
+              ) : (
+                clientesDisponiveis.map((c) => {
+                  const isSelected =
+                    clienteSelecionadoParaInclusao?.codigo_matriz === c.codigo_matriz &&
+                    clienteSelecionadoParaInclusao?.gerente === c.gerente;
+
+                  return (
+                    <div
+                      key={`${c.gerente}-${c.rede_nome}-${c.codigo_matriz}`}
+                      onClick={() => setClienteSelecionadoParaInclusao(c)}
+                      className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                        isSelected ? "bg-primary/10 border-l-4 border-primary" : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div>
+                        <div className="font-bold text-foreground">{c.rede_nome}</div>
+                        <div className="text-[11px] text-muted-foreground flex items-center gap-2">
+                          <span>Gerente: {c.gerente}</span>
+                          <span>•</span>
+                          <span>Cód: {c.codigo_matriz}</span>
+                          {c.regional && (
+                            <>
+                              <span>•</span>
+                              <span>{c.regional}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-muted text-muted-foreground">
+                        {c.canal}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {clienteSelecionadoParaInclusao && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-foreground">
+                  Observação / Justificativa (opcional)
+                </label>
+                <textarea
+                  value={observacaoInclusao}
+                  onChange={(e) => setObservacaoInclusao(e.target.value)}
+                  placeholder="Justificativa da inclusão manual..."
+                  rows={2}
+                  className="w-full p-2.5 text-xs bg-muted/40 rounded-xl border border-border focus:border-primary focus:outline-none"
+                />
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+              <button
+                onClick={() => setModalIncluirOpen(false)}
+                disabled={salvandoInclusao}
+                className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmarInclusao}
+                disabled={salvandoInclusao || !clienteSelecionadoParaInclusao}
+                className="px-4 py-2 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded-xl shadow-sm transition-colors"
+              >
+                {salvandoInclusao ? "Incluindo..." : "Confirmar Inclusão"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: Gerenciar Overrides / Ajustes do Farol (Apenas Admin) */}
+      {modalOverridesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-card w-full max-w-2xl rounded-3xl border border-border p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2 text-foreground font-bold">
+                <Settings className="w-5 h-5 text-primary" />
+                <h3 className="text-base">Ajustes Administrativos do Farol</h3>
+              </div>
+              <button
+                onClick={() => setModalOverridesOpen(false)}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Histórico de inclusões e exclusões de redes no Farol Executivo Gerencial. Você pode restaurar qualquer operação ao comportamento oficial clicando em "Reativar".
+            </p>
+
+            <div className="max-h-80 overflow-y-auto border border-border/60 rounded-2xl divide-y divide-border/40">
+              {carregandoOverrides ? (
+                <div className="p-6 text-center text-xs text-muted-foreground">Carregando ajustes...</div>
+              ) : overridesList.length === 0 ? (
+                <div className="p-6 text-center text-xs text-muted-foreground">Nenhum ajuste administrativo registrado.</div>
+              ) : (
+                overridesList.map((ov) => (
+                  <div key={ov.id} className="p-3 text-xs flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            ov.tipo_acao === "EXCLUSAO"
+                              ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                              : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                          }`}
+                        >
+                          {ov.tipo_acao}
+                        </span>
+                        <span className="font-bold text-foreground">{ov.rede_nome}</span>
+                        <span className="text-muted-foreground font-mono text-[11px]">({ov.codigo_matriz})</span>
+                        {!ov.is_ativo && (
+                          <span className="text-[10px] text-muted-foreground italic">(Inativo)</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-muted-foreground">
+                        Gerente: <strong>{ov.gerente}</strong> • Por: {ov.usuario_nome || ov.usuario_email || "Admin"} • Motivo: {ov.motivo || "—"}
+                      </div>
+                    </div>
+
+                    <div>
+                      {ov.is_ativo ? (
+                        <button
+                          onClick={() => handleReativarOverride(ov.id, ov.rede_nome)}
+                          className="px-2.5 py-1 text-[11px] font-bold text-primary border border-primary/30 hover:bg-primary hover:text-primary-foreground rounded-lg transition-colors"
+                        >
+                          Restaurar
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">Desativado</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-border">
+              <button
+                onClick={() => setModalOverridesOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+

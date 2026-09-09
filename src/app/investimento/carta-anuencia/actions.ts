@@ -112,6 +112,7 @@ export interface FarolGerencialRedeItem {
   codigo_matriz: string;
   possui_carta: boolean;
   status_farol_rede: "COM_CARTA" | "SEM_CARTA";
+  faturamento_medio_3m?: number;
   carta?: CartaAnuenciaItem | null;
 }
 
@@ -166,6 +167,8 @@ export interface FarolGerencialResumo {
   regionais: FarolGerencialRegionalItem[];
   is_gerente_regional: boolean;
   gerente_logado?: string;
+  is_admin?: boolean;
+  total_overrides_ativos?: number;
 }
 
 export interface LogoRedeItem {
@@ -1527,13 +1530,41 @@ function calcularFarolStatus(pct: number): "VERDE" | "AMARELO" | "LARANJA" | "VE
   return "VERMELHO";
 }
 
+const MESES_MAP: Record<string, number> = {
+  janeiro: 1, fevereiro: 2, marco: 3, março: 3, abril: 4, maio: 5, junho: 6,
+  julho: 7, agosto: 8, setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
+};
+
+function obterMesesFechados3M(competencia: string): string[] {
+  const parts = competencia.split("/");
+  let mesNum = 6;
+  let anoNum = 2026;
+  if (parts.length === 2) {
+    const nomeMes = parts[0].toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    mesNum = MESES_MAP[nomeMes] || 6;
+    anoNum = parseInt(parts[1], 10) || 2026;
+  }
+
+  const closedMonths: string[] = [];
+  for (let i = 2; i >= 0; i--) {
+    let targetM = mesNum - i;
+    let targetY = anoNum;
+    if (targetM <= 0) {
+      targetM += 12;
+      targetY -= 1;
+    }
+    closedMonths.push(`${targetY}-${String(targetM).padStart(2, "0")}`);
+  }
+  return closedMonths;
+}
+
 /**
  * 11. Obter Dados Consolidados do Farol Executivo Gerencial (Cobertura por Regional)
  * 
  * Regra de Negócio Homologada (Auditoria Forense):
  *  - 1 Carta de Anuência = 1 Operação Regional Gerencial (Gerente Responsável × Rede Operacional).
  *  - Cardinalidade Estrita 1:1: Cada carta física em cm_cartas_anuencia pontua EXATAMENTE 1 VEZ.
- *  - Universo Esperado: vw_redes_planejaveis_oficiais (is_rede_planejavel = true, expurgando testes e diretoria).
+ *  - Universo Esperado: vw_redes_planejaveis_oficiais (is_rede_planejavel = true, expurgando testes, diretoria e Canal Distribuidor).
  *  - Identidade Matemática: ESPERADAS = NO SISTEMA + FALTANTES (0,0000% de divergência).
  *  - RBAC: Gerente Regional tem escopo restrito à sua Regional/Carteira. Perfis nacionais possuem visão global.
  */
@@ -1576,21 +1607,76 @@ export async function obterDadosFarolGerencial(filters?: {
     console.error("Erro ao obter cartas para Farol Gerencial:", cartasErr);
   }
 
-  // 3. Obter Universo Oficial de Redes Planejáveis (Restrito ao Canal KA)
+  // 3. Obter Universo Oficial de Redes Planejáveis (Excluindo estritamente Canal Distribuidor)
   const { data: redesOficiaisRaw, error: redesErr } = await adminClient
     .from("vw_redes_planejaveis_oficiais")
     .select("rede, manager, manager_id, regional, uf, codigo_matriz, is_rede_planejavel, canal")
     .eq("is_rede_planejavel", true)
-    .eq("canal", "KA") // Filtro Oficial Estrutural do Canal KA
+    .neq("canal", "Distribuidor") // Exclusão estrita do Canal Distribuidor na fonte
     .neq("codigo_matriz", "11111111") // Expurgar CLIENTE FAKE TESTE
-    .neq("manager", "Cristiano");     // Expurgar DISTRIBUIDORA MARTINS (Diretoria/Canal Distribuidor)
+    .neq("manager", "Cristiano");     // Expurgar Diretoria
 
   if (redesErr) {
     console.error("Erro ao obter redes oficiais para Farol Gerencial:", redesErr);
   }
 
+  // 3.1. Carregar Overrides Administrativos Ativos (Inclusões / Exclusões)
+  const { data: overridesAtivos } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .select("*")
+    .eq("is_ativo", true);
+
+  const exclusoesSet = new Set<string>();
+  const inclusaoMap = new Map<string, any>();
+
+  (overridesAtivos || []).forEach((ov: any) => {
+    const key = `${ov.gerente}:::${ov.rede_nome}:::${ov.codigo_matriz}`.toUpperCase();
+    const keyNome = `${ov.gerente}:::${ov.rede_nome}`.toUpperCase();
+    if (ov.tipo_acao === "EXCLUSAO") {
+      exclusoesSet.add(key);
+      exclusoesSet.add(keyNome);
+    } else if (ov.tipo_acao === "INCLUSAO") {
+      inclusaoMap.set(key, ov);
+      inclusaoMap.set(keyNome, ov);
+    }
+  });
+
+  // Precedência determinística:
+  // 1. Distribuidor = sempre excluído;
+  // 2. Exclusão administrativa = fora do Farol;
+  // 3. Inclusão administrativa = participa (se não for Distribuidor);
+  // 4. Sem override = segue universo base oficial.
+  let redesTrabalho = (redesOficiaisRaw || []).filter((r) => {
+    if (r.canal === "Distribuidor") return false;
+    const key = `${r.manager}:::${r.rede}:::${r.codigo_matriz}`.toUpperCase();
+    const keyNome = `${r.manager}:::${r.rede}`.toUpperCase();
+    if (exclusoesSet.has(key) || exclusoesSet.has(keyNome)) {
+      return false;
+    }
+    return true;
+  });
+
+  // Adicionar inclusões administrativas caso a operação não esteja no universo base oficial
+  inclusaoMap.forEach((ov) => {
+    const jaExiste = redesTrabalho.some(
+      (r) => `${r.manager}:::${r.rede}`.toUpperCase() === `${ov.gerente}:::${ov.rede_nome}`.toUpperCase()
+    );
+    if (!jaExiste) {
+      redesTrabalho.push({
+        rede: ov.rede_nome,
+        manager: ov.gerente,
+        manager_id: "CUSTOM",
+        regional: resolverRegionalPorGerente(ov.gerente).label,
+        uf: null,
+        codigo_matriz: ov.codigo_matriz,
+        is_rede_planejavel: true,
+        canal: "Inclusão Administrativa",
+      });
+    }
+  });
+
   // Se Gerente Regional, forçar filtro estrito à sua carteira
-  const universoRedes = (redesOficiaisRaw || []).filter((r) => {
+  const universoRedes = redesTrabalho.filter((r) => {
     if (isGerenteRegional && gerenteLogado) {
       return r.manager === gerenteLogado;
     }
@@ -1711,7 +1797,43 @@ export async function obterDadosFarolGerencial(filters?: {
     }
   });
 
-  // 6. Construir lista de redes detalhadas com status 1:1
+  // 6. Obter Faturamento Médio 3M na fonte oficial mv_vendas_cliente_mensal (alinhada à Seção 10 do Coffee++)
+  const meses3M = obterMesesFechados3M(competenciaSelecionada);
+  const sqlFaturamento = `
+    SELECT 
+      c.responsavel AS manager,
+      TRIM(c.matriz) AS rede,
+      c.codigo_matriz,
+      v.mes,
+      SUM(v.fat) AS fat_mes
+    FROM public.mv_vendas_cliente_mensal v
+    JOIN public.cm_clientes c ON TRIM(c.codigo::text) = TRIM(v.cod_parceiro::text)
+    WHERE v.mes IN ('${meses3M.join("','")}')
+      AND c.matriz IS NOT NULL AND TRIM(c.matriz) != ''
+    GROUP BY c.responsavel, TRIM(c.matriz), c.codigo_matriz, v.mes
+  `;
+
+  const faturamentoMap = new Map<string, number>();
+  try {
+    const { data: dadosFatRaw, error: fatErr } = await adminClient.rpc("execute_readonly_query", {
+      query_text: sqlFaturamento,
+    });
+    if (!fatErr && dadosFatRaw) {
+      (dadosFatRaw as any[]).forEach((row) => {
+        const val = Number(row.fat_mes || 0);
+        const keyExact = `${row.manager}:::${row.rede}:::${row.codigo_matriz}`.toUpperCase();
+        const keyNome = `${row.manager}:::${row.rede}`.toUpperCase();
+        faturamentoMap.set(keyExact, (faturamentoMap.get(keyExact) || 0) + val);
+        faturamentoMap.set(keyNome, (faturamentoMap.get(keyNome) || 0) + val);
+      });
+    } else if (fatErr) {
+      console.warn("Aviso: Falha ao carregar faturamento 3M do Farol:", fatErr);
+    }
+  } catch (errFat) {
+    console.warn("Erro ao buscar faturamento 3M:", errFat);
+  }
+
+  // 7. Construir lista de redes detalhadas com status 1:1 e Faturamento Médio 3M
   const redesDetalhadas: FarolGerencialRedeItem[] = universoRedes.map((r) => {
     const key = `${r.manager}:::${r.rede}`.toLowerCase();
     const carta = cartasPorRedeChave.get(key) || null;
@@ -1723,6 +1845,11 @@ export async function obterDadosFarolGerencial(filters?: {
       carta.rede_nome = r.rede;
     }
 
+    const fatKey = `${r.manager}:::${r.rede}:::${r.codigo_matriz}`.toUpperCase();
+    const fatKeyNome = `${r.manager}:::${r.rede}`.toUpperCase();
+    const total3M = faturamentoMap.get(fatKey) ?? faturamentoMap.get(fatKeyNome) ?? 0;
+    const faturamento_medio_3m = total3M > 0 ? Number((total3M / 3).toFixed(2)) : 0;
+
     return {
       rede: r.rede,
       manager: r.manager,
@@ -1731,6 +1858,7 @@ export async function obterDadosFarolGerencial(filters?: {
       codigo_matriz: r.codigo_matriz,
       possui_carta,
       status_farol_rede: possui_carta ? "COM_CARTA" : "SEM_CARTA",
+      faturamento_medio_3m,
       carta,
     };
   });
@@ -1932,5 +2060,329 @@ export async function obterDadosFarolGerencial(filters?: {
     regionais: regionaisItens,
     is_gerente_regional: isGerenteRegional,
     gerente_logado: gerenteLogado,
+    is_admin: !isGerenteRegional,
+    total_overrides_ativos: (overridesAtivos || []).length,
   };
 }
+
+/**
+ * 12. Excluir Rede do Farol Executivo Gerencial (Apenas Admin)
+ * 
+ * Regra:
+ * - Apenas ADMIN pode excluir.
+ * - Motivo é estritamente obrigatório.
+ * - Não altera cm_clientes, não exclui nem cancela nenhuma Carta.
+ * - Registra em cm_audit_logs a ação FAROL_EXCLUSAO_REDE.
+ */
+export async function excluirRedeDoFarol(input: {
+  rede_nome: string;
+  codigo_matriz: string;
+  gerente: string;
+  motivo: string;
+}) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const ADMIN_ROLES = ["Admin", "Admin Master", "TI", "CEO", "Diretor"];
+  if (profile?.role === "Gerente Regional" || !ADMIN_ROLES.includes(profile?.role || "")) {
+    throw new Error("403 Forbidden: Apenas administradores podem excluir redes do Farol.");
+  }
+
+  if (!input.motivo || !input.motivo.trim()) {
+    throw new Error("O motivo da exclusão é obrigatório.");
+  }
+
+  const adminClient = createAdminClient();
+  const userName = profile?.name || user.email || "Administrador";
+
+  // Desativar qualquer override ativo anterior para a mesma chave de operação
+  await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .update({ is_ativo: false, updated_at: new Date().toISOString() })
+    .match({
+      gerente: input.gerente,
+      rede_nome: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      is_ativo: true,
+    });
+
+  // Inserir registro de exclusão
+  const { data, error } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .insert({
+      tipo_acao: "EXCLUSAO",
+      rede_nome: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      gerente: input.gerente,
+      motivo: input.motivo.trim(),
+      criado_por: user.id,
+      criado_por_nome: userName,
+      is_ativo: true,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Erro ao registrar exclusão no Farol: ${error.message}`);
+  }
+
+  // Registrar auditoria em cm_audit_logs
+  await safeInsertAuditLog(adminClient, {
+    user_id: user.id,
+    action: "FAROL_EXCLUSAO_REDE",
+    table_name: "cm_carta_anuencia_farol_redes_config",
+    new_data: {
+      usuario: userName,
+      email: user.email,
+      data_hora: new Date().toISOString(),
+      rede: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      gerente: input.gerente,
+      acao: "EXCLUSAO",
+      motivo: input.motivo.trim(),
+    },
+  });
+
+  revalidatePath("/investimento/carta-anuencia");
+  return data;
+}
+
+/**
+ * 13. Incluir Rede no Farol Executivo Gerencial (Apenas Admin)
+ * 
+ * Regra:
+ * - Apenas ADMIN pode incluir.
+ * - A inclusão busca uma operação existente no módulo Clientes (cm_clientes).
+ * - NUNCA altera o cadastro de cm_clientes.
+ * - REGRA SUPERIOR: Operações classificadas oficialmente como canal = 'Distribuidor' NÃO podem ser incluídas.
+ * - Registra em cm_audit_logs a ação FAROL_INCLUSAO_REDE.
+ */
+export async function incluirRedeNoFarol(input: {
+  rede_nome: string;
+  codigo_matriz: string;
+  gerente: string;
+  observacao?: string;
+}) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const ADMIN_ROLES = ["Admin", "Admin Master", "TI", "CEO", "Diretor"];
+  if (profile?.role === "Gerente Regional" || !ADMIN_ROLES.includes(profile?.role || "")) {
+    throw new Error("403 Forbidden: Apenas administradores podem incluir redes no Farol.");
+  }
+
+  const adminClient = createAdminClient();
+
+  // Validar existência da operação no cadastro oficial de Clientes (cm_clientes)
+  const { data: clientesEncontrados, error: cliErr } = await adminClient
+    .from("cm_clientes")
+    .select("canal, responsavel, matriz, codigo_matriz")
+    .eq("codigo_matriz", input.codigo_matriz);
+
+  if (cliErr || !clientesEncontrados || clientesEncontrados.length === 0) {
+    throw new Error("Operação não encontrada no cadastro de Clientes.");
+  }
+
+  // Regra Superior: Distribuidor = sempre fora do Farol (bloqueio estrutural)
+  const isDistribuidor = clientesEncontrados.some(
+    (c) => (c.canal || "").toLowerCase().trim() === "distribuidor"
+  );
+  if (isDistribuidor) {
+    throw new Error("Operações classificadas oficialmente como Distribuidor não podem ser incluídas no Farol.");
+  }
+
+  const userName = profile?.name || user.email || "Administrador";
+
+  // Desativar qualquer override ativo anterior
+  await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .update({ is_ativo: false, updated_at: new Date().toISOString() })
+    .match({
+      gerente: input.gerente,
+      rede_nome: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      is_ativo: true,
+    });
+
+  // Inserir registro de inclusão
+  const { data, error } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .insert({
+      tipo_acao: "INCLUSAO",
+      rede_nome: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      gerente: input.gerente,
+      motivo: input.observacao?.trim() || "Inclusão administrativa autorizada",
+      criado_por: user.id,
+      criado_por_nome: userName,
+      is_ativo: true,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Erro ao registrar inclusão no Farol: ${error.message}`);
+  }
+
+  // Registrar auditoria em cm_audit_logs
+  await safeInsertAuditLog(adminClient, {
+    user_id: user.id,
+    action: "FAROL_INCLUSAO_REDE",
+    table_name: "cm_carta_anuencia_farol_redes_config",
+    new_data: {
+      usuario: userName,
+      email: user.email,
+      data_hora: new Date().toISOString(),
+      rede: input.rede_nome,
+      codigo_matriz: input.codigo_matriz,
+      gerente: input.gerente,
+      acao: "INCLUSAO",
+      motivo: input.observacao?.trim() || "Inclusão administrativa autorizada",
+    },
+  });
+
+  revalidatePath("/investimento/carta-anuencia");
+  return data;
+}
+
+/**
+ * 14. Reativar Rede no Farol (Remover Exclusão/Inclusão Administrativa)
+ */
+export async function reativarRedeNoFarol(configId: string) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const ADMIN_ROLES = ["Admin", "Admin Master", "TI", "CEO", "Diretor"];
+  if (profile?.role === "Gerente Regional" || !ADMIN_ROLES.includes(profile?.role || "")) {
+    throw new Error("403 Forbidden: Apenas administradores podem reativar redes no Farol.");
+  }
+
+  const adminClient = createAdminClient();
+
+  const { data: configItem, error: fetchErr } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .select("*")
+    .eq("id", configId)
+    .single();
+
+  if (fetchErr || !configItem) {
+    throw new Error("Registro de configuração não encontrado.");
+  }
+
+  const { error } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .update({ is_ativo: false, updated_at: new Date().toISOString() })
+    .eq("id", configId);
+
+  if (error) {
+    throw new Error(`Erro ao reativar rede: ${error.message}`);
+  }
+
+  const userName = profile?.name || user.email || "Administrador";
+
+  // Registrar auditoria em cm_audit_logs
+  await safeInsertAuditLog(adminClient, {
+    user_id: user.id,
+    action: "FAROL_REATIVACAO_REDE",
+    table_name: "cm_carta_anuencia_farol_redes_config",
+    new_data: {
+      usuario: userName,
+      email: user.email,
+      data_hora: new Date().toISOString(),
+      rede: configItem.rede_nome,
+      codigo_matriz: configItem.codigo_matriz,
+      gerente: configItem.gerente,
+      acao: "REATIVACAO",
+      motivo: "Reativação administrativa ao universo padrão",
+    },
+  });
+
+  revalidatePath("/investimento/carta-anuencia");
+  return { ok: true };
+}
+
+/**
+ * 15. Listar Configurações / Overrides Ativos do Farol
+ */
+export async function listarOverridesFarol() {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const adminClient = createAdminClient();
+  const { data, error } = await adminClient
+    .from("cm_carta_anuencia_farol_redes_config")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Erro ao listar overrides do Farol:", error);
+    return [];
+  }
+  return data || [];
+}
+
+/**
+ * 16. Listar Operações Disponíveis em cm_clientes para Inclusão Manual no Farol
+ * Exclui estritamente canal = 'Distribuidor' e clientes de teste.
+ */
+export async function listarRedesDisponiveisParaInclusaoFarol(busca?: string) {
+  const user = await requireAuth();
+  const profile = await requireApprovedProfile(user.id);
+  requireRole(profile, CARTA_ANUENCIA_ALLOWED_ROLES);
+
+  const adminClient = createAdminClient();
+
+  let query = adminClient
+    .from("cm_clientes")
+    .select("responsavel, matriz, codigo_matriz, canal, regional")
+    .neq("canal", "Distribuidor")
+    .neq("codigo_matriz", "11111111")
+    .not("matriz", "is", null)
+    .not("responsavel", "is", null)
+    .limit(100);
+
+  if (busca && busca.trim()) {
+    query = query.or(`matriz.ilike.%${busca.trim()}%,responsavel.ilike.%${busca.trim()}%,codigo_matriz.ilike.%${busca.trim()}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error("Erro ao buscar operações disponíveis para inclusão:", error);
+    return [];
+  }
+
+  // Deduplicar operações por (responsavel, matriz, codigo_matriz)
+  const mapOps = new Map<string, {
+    gerente: string;
+    rede_nome: string;
+    codigo_matriz: string;
+    canal: string;
+    regional: string;
+  }>();
+
+  (data || []).forEach((c) => {
+    const gerente = (c.responsavel || "").trim();
+    const rede = (c.matriz || "").trim();
+    const cod = String(c.codigo_matriz || "").trim();
+    const canal = (c.canal || "").trim();
+    if (!gerente || !rede || !cod || canal.toLowerCase() === "distribuidor") return;
+
+    const key = `${gerente}:::${rede}:::${cod}`.toUpperCase();
+    if (!mapOps.has(key)) {
+      mapOps.set(key, {
+        gerente,
+        rede_nome: rede,
+        codigo_matriz: cod,
+        canal: canal || "KA",
+        regional: c.regional || "",
+      });
+    }
+  });
+
+  return Array.from(mapOps.values()).sort((a, b) => a.rede_nome.localeCompare(b.rede_nome, "pt-BR"));
+}
+
