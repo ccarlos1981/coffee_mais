@@ -547,39 +547,99 @@ export async function executarLimpezaLogosOrfas(): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// Helper interno: carrega metadados de redes com índice duplo
-// (por nome canônico da view + por rede_nome da carta) para resolução
-// robusta de gerente e UF independente de aliasing.
 // ---------------------------------------------------------------------------
-async function obterMetadadosRedesComCodigo(): Promise<{
-  byNome: Map<string, { manager: string | null; uf: string | null }>;
+// Mapeamento Canônico de Desambiguação de Cartas Multiestado / Multioperação
+// Auditado e homologado no Farol Gerencial e no Farol Executivo
+// ---------------------------------------------------------------------------
+const CARTA_DESTINO_CANONICO_MASTER_DATA: Record<string, { manager: string; rede: string; uf?: string }> = {
+  "CA-2026-000001": { manager: "Leandro Saffi", rede: "ZAFFARI (RS)", uf: "RS" },
+  "CA-2026-000006": { manager: "Leandro Saffi", rede: "FORT (SC)", uf: "SC" },
+  "CA-2026-000012": { manager: "Julliano", rede: "OBA SP", uf: "SP" },
+  "CA-2026-000017": { manager: "Luiz", rede: "MATEUS", uf: "PI" },
+  "CA-2026-000018": { manager: "John Guedes", rede: "ASSAI", uf: "GO" },
+};
+
+// ---------------------------------------------------------------------------
+// Helper interno: resolve metadados de redes (manager e UF) via Master Data
+// (cm_redes_matrizes + cm_clientes), sem qualquer dependência de faturamento
+// ou da view mv_vendas_cliente_mensal (Regra Arquitetural RDM P1).
+// ---------------------------------------------------------------------------
+async function obterMetadadosRedesMasterData(
+  adminClient: ReturnType<typeof createAdminClient>,
+  codigosCartas: string[]
+): Promise<{
+  rmMap: Map<string, { manager: string | null; nome: string | null }>;
+  cliMap: Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>;
 }> {
-  let redesMeta: { rede: string; manager: string | null; uf: string | null }[] = [];
-  try {
-    redesMeta = (await AnalyticsEngine.getMapeamentoRedesMeta()) || [];
-  } catch (err) {
-    console.error("[carta-anuencia] Aviso: Falha ao obter metadados de redes:", err);
+  const codigosBases = codigosCartas.map((c) => c.replace(/\.\d+$/, ""));
+  const todosCodigos = Array.from(new Set([...codigosCartas, ...codigosBases])).filter(Boolean);
+  const numericCodigos = todosCodigos.map((c) => parseInt(c, 10)).filter((n) => !isNaN(n));
+
+  const rmMap = new Map<string, { manager: string | null; nome: string | null }>();
+  const cliMap = new Map<string, { responsavel: string | null; uf: string | null; matriz: string | null }>();
+
+  if (todosCodigos.length === 0) {
+    return { rmMap, cliMap };
   }
 
-  const byNome = new Map<string, { manager: string | null; uf: string | null }>();
+  try {
+    // 1. Consultar cm_redes_matrizes (fonte mestre de manager corporativo por rede)
+    const { data: redesMatrizes, error: rmErr } = await adminClient
+      .from("cm_redes_matrizes")
+      .select("codigo, nome, manager")
+      .in("codigo", todosCodigos);
 
-  redesMeta.forEach((row) => {
-    if (!row.rede) return;
-    const meta = { manager: row.manager || null, uf: row.uf || null };
-
-    // Índice por nome completo da view (ex: "ZAFFARI (RS)", "DUFRY", "SUPER ADEGA")
-    const keyFull = row.rede.toLowerCase().trim();
-    if (!byNome.has(keyFull)) byNome.set(keyFull, meta);
-
-    // Índice por nome base sem sufixo de UF (ex: "ZAFFARI", "BIG LAR")
-    // Útil para cartas antigas que gravaram o nome sem o sufixo " (RS)"
-    const keyBase = keyFull.replace(/\s*\([^)]+\)\s*$/, "").trim();
-    if (keyBase && keyBase !== keyFull && !byNome.has(keyBase)) {
-      byNome.set(keyBase, meta);
+    if (rmErr) {
+      console.error("[carta-anuencia] Erro ao consultar cm_redes_matrizes:", rmErr);
+    } else {
+      (redesMatrizes || []).forEach((rm) => {
+        if (rm.codigo) {
+          const meta = { manager: rm.manager || null, nome: rm.nome || null };
+          const c = String(rm.codigo).trim();
+          rmMap.set(c, meta);
+          const cBase = c.replace(/\.\d+$/, "");
+          if (!rmMap.has(cBase)) rmMap.set(cBase, meta);
+        }
+      });
     }
-  });
 
-  return { byNome };
+    // 2. Consultar cm_clientes (para UF e fallback de responsável)
+    const [resMatriz, resCod] = await Promise.all([
+      adminClient
+        .from("cm_clientes")
+        .select("codigo, codigo_matriz, matriz, responsavel, uf")
+        .in("codigo_matriz", todosCodigos),
+      numericCodigos.length > 0
+        ? adminClient
+            .from("cm_clientes")
+            .select("codigo, codigo_matriz, matriz, responsavel, uf")
+            .in("codigo", numericCodigos)
+        : Promise.resolve({ data: [] as any[], error: null }),
+    ]);
+
+    const clientesData = [...(resMatriz.data || []), ...(resCod.data || [])];
+    clientesData.forEach((cl) => {
+      const meta = {
+        responsavel: cl.responsavel || null,
+        uf: cl.uf || null,
+        matriz: cl.matriz || null,
+      };
+      if (cl.codigo_matriz) {
+        const c = String(cl.codigo_matriz).trim();
+        if (!cliMap.has(c)) cliMap.set(c, meta);
+        const cBase = c.replace(/\.\d+$/, "");
+        if (!cliMap.has(cBase)) cliMap.set(cBase, meta);
+      }
+      if (cl.codigo != null) {
+        const c = String(cl.codigo).trim();
+        if (!cliMap.has(c)) cliMap.set(c, meta);
+      }
+    });
+  } catch (err) {
+    console.error("[carta-anuencia] Falha ao resolver metadados via Master Data:", err);
+  }
+
+  return { rmMap, cliMap };
 }
 
 // ---------------------------------------------------------------------------
@@ -660,23 +720,40 @@ export async function listarCartasAnuencia(filters?: {
     return [];
   }
 
-  // Obter metadados de redes com índice duplo (nome completo + nome base)
-  const { byNome: metaMap } = await obterMetadadosRedesComCodigo();
+  // Obter metadados de redes via Master Data (cm_redes_matrizes + cm_clientes)
+  const codigosCartas = (data || []).map((c) => String(c.rede_id || "").trim()).filter(Boolean);
+  const { rmMap, cliMap } = await obterMetadadosRedesMasterData(adminClient, codigosCartas);
 
   let result = (data || []).map((item) => {
-    // Tentar resolver por nome completo primeiro, depois por nome base
-    const keyFull = (item.rede_nome || "").toLowerCase().trim();
-    const keyId   = (item.rede_id || "").toLowerCase().trim();
-    const meta = metaMap.get(keyFull) || metaMap.get(keyId) || { manager: null, uf: null };
-    const expirada = verificarCartaExpirada(item.validade_ate);
+    let manager: string | null = null;
+    let uf: string | null = null;
 
+    // Regra 1: Desambiguação Canônica Homologada (para casos multiestado)
+    if (CARTA_DESTINO_CANONICO_MASTER_DATA[item.numero_carta]) {
+      const dest = CARTA_DESTINO_CANONICO_MASTER_DATA[item.numero_carta];
+      manager = dest.manager;
+      uf = dest.uf || null;
+    } else {
+      // Regra 2: Resolução via cm_redes_matrizes (rede_id -> codigo -> manager)
+      const cId = String(item.rede_id || "").trim();
+      const cIdBase = cId.replace(/\.\d+$/, "");
+      const rm = rmMap.get(cId) || rmMap.get(cIdBase);
+
+      // Regra 3: Complementação / Fallback via cm_clientes (UF, responsavel)
+      const cli = cliMap.get(cId) || cliMap.get(cIdBase);
+
+      manager = rm?.manager || cli?.responsavel || null;
+      uf = cli?.uf || null;
+    }
+
+    const expirada = verificarCartaExpirada(item.validade_ate);
     const dynamicLogoUrl = getStoragePublicUrl(item.logo_snapshot_path || item.logo_rede_url, "logos-redes");
 
     return {
       ...item,
       logo_rede_url: dynamicLogoUrl,
-      gerente: meta.manager,
-      uf: meta.uf,
+      gerente: manager,
+      uf: uf,
       expirada,
     };
   });
