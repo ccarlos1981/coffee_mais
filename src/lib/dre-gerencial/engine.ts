@@ -35,6 +35,7 @@ import {
   MESES_LABEL,
 } from './types';
 import { getReferenceRedesPorCompetencia } from './reference-data';
+import { getRdmDrePorRedeData } from './rede-engine';
 
 // ─── Helper de Comparação Canônica de Gerentes ───
 function isSameManagerCanonical(m1?: string, m2?: string): boolean {
@@ -916,8 +917,8 @@ export async function getRdmDreAcumuladoData(year: number, gerente?: string): Pr
 // ─── API: RDM Slide 8 (dre) — DRE Consolidada por Gerente ───
 
 function resolveManagerSlide8(resp?: string, redeUf?: string): 'JULLIANO' | 'LEANDRO' | 'LUIZ' | 'JOHN GUEDES' | 'SEM_GERENTE' {
-  if (!resp) return 'SEM_GERENTE';
-  const clean = resp.trim().toUpperCase();
+  if (!resp && !redeUf) return 'SEM_GERENTE';
+  const clean = `${resp || ''} ${redeUf || ''}`.trim().toUpperCase();
   if (clean.includes('JULLIANO') || clean.includes('JULIANO')) return 'JULLIANO';
   if (clean.includes('LEANDRO')) return 'LEANDRO';
   if (clean.includes('LUIZ') || clean.includes('LUISA')) return 'LUIZ';
@@ -950,13 +951,11 @@ export function consolidarDrePorGerente(
     grupos[mgr].push(r);
   }
 
-  // 1. Somar valores absolutos de todos os 4 gerentes para calcular total nacional de faturamento
   let totalNacionalFatBruto = 0;
   for (const m of MANAGERS_ORDEM) {
     totalNacionalFatBruto += grupos[m].reduce((sum, r) => sum + (r.faturamentoBruto || 0), 0);
   }
 
-  // 2. Construir linha de cada um dos 4 gerentes
   const gerentesConsolidados: RdmSlide8LinhaGerente[] = MANAGERS_ORDEM.map((mgr) => {
     const itens = grupos[mgr];
     const faturamentoBruto = itens.reduce((s, r) => s + (r.faturamentoBruto || 0), 0);
@@ -979,11 +978,22 @@ export function consolidarDrePorGerente(
     const percentualRede = totalNacionalFatBruto > 0 ? (faturamentoBruto / totalNacionalFatBruto) * 100 : 0;
 
     return {
+      ranking: 0,
       gerente: mgr,
-      faturamentoBruto,
+      uf: 'MULTI',
+      volume: 0,
+      fat: faturamentoBruto,
+      impostos: 0,
       investimento,
+      contrato: valorContrato,
+      recLiquida: faturamentoLiquido,
+      cpv: cpvCusto,
+      frete: 0,
+      maco: lucro,
+      macoPct: lucroPct,
+      faturamentoBruto,
       faturamentoLiquido,
-      cpv,
+      cpvPct: cpv,
       investimentoPct,
       lucro,
       lucroPct,
@@ -991,7 +1001,6 @@ export function consolidarDrePorGerente(
       custoRede,
       lojas,
       valorContrato,
-      contrato,
       percentualRede,
       contratoFreteIcms,
       despesas,
@@ -1000,26 +1009,36 @@ export function consolidarDrePorGerente(
     };
   });
 
-  // 3. Gerar linha TOTAL BRASIL consolidando os 4 gerentes comerciais
-  const tbFatBruto = gerentesConsolidados.reduce((s, g) => s + g.faturamentoBruto, 0);
+  const tbFatBruto = gerentesConsolidados.reduce((s, g) => s + (g.fat || 0), 0);
   const tbInvestimento = gerentesConsolidados.reduce((s, g) => s + g.investimento, 0);
   const tbFatLiquido = tbFatBruto - tbInvestimento;
-  const tbCpvCusto = gerentesConsolidados.reduce((s, g) => s + g.cpvCusto, 0);
-  const tbDga = gerentesConsolidados.reduce((s, g) => s + g.dga, 0);
-  const tbCustoRede = gerentesConsolidados.reduce((s, g) => s + g.custoRede, 0);
-  const tbContratoFreteIcms = gerentesConsolidados.reduce((s, g) => s + g.contratoFreteIcms, 0);
+  const tbCpvCusto = gerentesConsolidados.reduce((s, g) => s + (g.cpvCusto || 0), 0);
+  const tbDga = gerentesConsolidados.reduce((s, g) => s + (g.dga || 0), 0);
+  const tbCustoRede = gerentesConsolidados.reduce((s, g) => s + (g.custoRede || 0), 0);
+  const tbContratoFreteIcms = gerentesConsolidados.reduce((s, g) => s + (g.contratoFreteIcms || 0), 0);
   const tbDespesas = tbCpvCusto + tbDga + tbCustoRede + tbContratoFreteIcms;
   const tbLucro = tbFatLiquido - tbDespesas;
-  const tbLojas = gerentesConsolidados.reduce((s, g) => s + g.lojas, 0);
-  const tbValorContrato = gerentesConsolidados.reduce((s, g) => s + g.valorContrato, 0);
+  const tbLojas = gerentesConsolidados.reduce((s, g) => s + (g.lojas || 0), 0);
+  const tbValorContrato = gerentesConsolidados.reduce((s, g) => s + g.contrato, 0);
   const tbRedesCount = gerentesConsolidados.reduce((s, g) => s + (g.redesCount || 0), 0);
 
   const totalBrasil: RdmSlide8LinhaGerente = {
+    ranking: 5,
     gerente: 'TOTAL BRASIL',
-    faturamentoBruto: tbFatBruto,
+    uf: 'BR',
+    volume: 0,
+    fat: tbFatBruto,
+    impostos: 0,
     investimento: tbInvestimento,
+    contrato: tbValorContrato,
+    recLiquida: tbFatLiquido,
+    cpv: tbCpvCusto,
+    frete: 0,
+    maco: tbLucro,
+    macoPct: tbFatLiquido > 0 ? (tbLucro / tbFatLiquido) * 100 : 0,
+    faturamentoBruto: tbFatBruto,
     faturamentoLiquido: tbFatLiquido,
-    cpv: tbFatBruto > 0 ? (tbCpvCusto / tbFatBruto) * 100 : 0,
+    cpvPct: tbFatBruto > 0 ? (tbCpvCusto / tbFatBruto) * 100 : 0,
     investimentoPct: tbFatBruto > 0 ? (tbInvestimento / tbFatBruto) * 100 : 0,
     lucro: tbLucro,
     lucroPct: tbFatLiquido > 0 ? (tbLucro / tbFatLiquido) * 100 : 0,
@@ -1027,7 +1046,6 @@ export function consolidarDrePorGerente(
     custoRede: tbCustoRede,
     lojas: tbLojas,
     valorContrato: tbValorContrato,
-    contrato: tbFatBruto > 0 ? (tbValorContrato / tbFatBruto) * 100 : 0,
     percentualRede: 100.0,
     contratoFreteIcms: tbContratoFreteIcms,
     despesas: tbDespesas,
@@ -1035,86 +1053,203 @@ export function consolidarDrePorGerente(
     redesCount: tbRedesCount,
   };
 
-  // 4. Determinar linhas de exibição com base no filtro de gerente
-  // Se CRISTIANO / Total / KA ou vazio -> exibe todos os 4 gerentes + TOTAL BRASIL
-  // Se gerente individual (ex: Julliano) -> exibe a linha do gerente + TOTAL BRASIL
-  let linhas: RdmSlide8LinhaGerente[] = [];
-  const normalizedSelected = selectedManager ? selectedManager.trim().toUpperCase() : '';
-  const isConsolidado = !normalizedSelected ||
-    normalizedSelected === 'CRISTIANO' ||
-    normalizedSelected.includes('CRISTIANO') ||
-    normalizedSelected === 'KA' ||
-    normalizedSelected === 'TOTAL';
-
-  if (isConsolidado) {
-    linhas = [...gerentesConsolidados, totalBrasil];
-  } else {
-    const targetMgr = resolveManagerSlide8(selectedManager);
-    const found = gerentesConsolidados.find(g => g.gerente === targetMgr);
-    if (found) {
-      linhas = [found, totalBrasil];
-    } else {
-      linhas = [...gerentesConsolidados, totalBrasil];
-    }
-  }
-
   return {
     competencia,
+    status: 'HOMOLOGADO',
     gerentes: gerentesConsolidados,
     totalBrasil,
-    linhas,
+    linhas: [...gerentesConsolidados, totalBrasil],
   };
 }
 
+/**
+ * RDM Slide 08 — DRE Consolidada por Gerente Regional
+ * 
+ * Regra Arquitetural Homologada:
+ * Slide 08 é a consolidação executiva direta das 40 redes homologadas do Slide 10.
+ * Fonte Única: getRdmDrePorRedeData(competencia)
+ * Redes -> Group By Gerente -> 4 Gerentes (FAT DESC) + TOTAL BRASIL
+ */
 export async function getRdmDrePorGerenteData(
-  competencia: string,
+  competencia: string = '2026-08',
   selectedManager?: string
 ): Promise<RdmSlide8Consolidado> {
-  // 1. Tenta dataset de referência auditado
-  const refData = getReferenceRedesPorCompetencia(competencia);
-  if (refData && refData.length > 0) {
-    return consolidarDrePorGerente(refData, selectedManager, competencia);
+  // 1. Consome exclusivamente as 40 redes homologadas do Slide 10
+  const slide10Result = await getRdmDrePorRedeData(competencia);
+  const items = slide10Result?.items || [];
+
+  if (items.length === 0) {
+    return {
+      competencia,
+      status: slide10Result?.status || 'PENDENTE',
+      gerentes: [],
+      totalBrasil: {
+        ranking: 5,
+        gerente: 'TOTAL BRASIL',
+        uf: 'BR',
+        volume: 0,
+        fat: 0,
+        impostos: 0,
+        investimento: 0,
+        contrato: 0,
+        recLiquida: 0,
+        cpv: 0,
+        frete: 0,
+        maco: 0,
+        macoPct: 0,
+        faturamentoBruto: 0,
+        faturamentoLiquido: 0,
+        cpvPct: 0,
+        investimentoPct: 0,
+        lucro: 0,
+        lucroPct: 0,
+        dga: 0,
+        custoRede: 0,
+        lojas: 0,
+        valorContrato: 0,
+        percentualRede: 100,
+        contratoFreteIcms: 0,
+        despesas: 0,
+        cpvCusto: 0,
+        redesCount: 0,
+      },
+      linhas: [],
+    };
   }
 
-  // 2. Fallback via banco de dados (cm_dre_gerencial_rede + mv_vendas_mensal)
-  const [sales, dreRede] = await Promise.all([
-    fetchSales([competencia]),
-    fetchDreRede([competencia]),
-  ]);
+  // 2. Agrupamento das redes pelos 4 gerentes canônicos
+  const MANAGERS_LIST: Array<'JULLIANO' | 'LEANDRO' | 'LUIZ' | 'JOHN GUEDES'> = [
+    'JULLIANO',
+    'LEANDRO',
+    'LUIZ',
+    'JOHN GUEDES',
+  ];
 
-  const dreMap = new Map<string, DreRedeDbRow>();
-  for (const d of dreRede) dreMap.set(d.rede, d);
+  const grupos: Record<'JULLIANO' | 'LEANDRO' | 'LUIZ' | 'JOHN GUEDES', typeof items> = {
+    'JULLIANO': [],
+    'LEANDRO': [],
+    'LUIZ': [],
+    'JOHN GUEDES': [],
+  };
 
-  const dynamicInputs: DreRedeGerencialInput[] = [];
-  const seenRedes = new Set<string>();
+  for (const item of items) {
+    const mgr = resolveManagerSlide8(item.gerente);
+    if (mgr !== 'SEM_GERENTE') {
+      grupos[mgr].push(item);
+    }
+  }
 
-  for (const s of sales) {
-    if (!s.rede || seenRedes.has(s.rede)) continue;
-    seenRedes.add(s.rede);
+  // 3. Consolidação financeira no nível do gerente
+  const gerentesNaoOrdenados: RdmSlide8LinhaGerente[] = MANAGERS_LIST.map((mgr) => {
+    const redes = grupos[mgr];
+    const fat = redes.reduce((s, r) => s + (r.fat || 0), 0);
+    const volume = redes.reduce((s, r) => s + (r.volume || 0), 0);
+    const impostos = redes.reduce((s, r) => s + (r.impostos || 0), 0);
+    const investimento = redes.reduce((s, r) => s + (r.investimento || 0), 0);
+    const contrato = redes.reduce((s, r) => s + (r.contrato || 0), 0);
+    const recLiquida = fat - impostos - investimento - contrato;
+    const cpv = redes.reduce((s, r) => s + (r.cpv || 0), 0);
+    const frete = redes.reduce((s, r) => s + (r.frete || 0), 0);
+    const maco = recLiquida - cpv - frete;
+    const macoPct = fat > 0 ? (maco / fat) * 100 : 0;
 
-    const dre = dreMap.get(s.rede);
-    const fat = s.fat || 0;
-    const invest = (dre?.investimento_valor || 0) + (dre?.contrato_valor || 0);
-    const cpv = dre?.cpv_valor || 0;
-    const icms = fat * (dre?.icms_pct || 0);
-    const frete = fat * 0.03;
-    const vContrato = dre?.contrato_valor || 0;
-
-    dynamicInputs.push({
-      rede: s.rede,
-      redeUf: s.rede,
-      responsavelPlanilha: s.manager || dre?.gerente_atual || '',
+    return {
+      ranking: 0,
+      gerente: mgr,
+      uf: 'MULTI',
+      volume,
+      fat,
+      impostos,
+      investimento,
+      contrato,
+      recLiquida,
+      cpv,
+      frete,
+      maco,
+      macoPct,
+      // Retrocompatibilidade
       faturamentoBruto: fat,
-      investimento: invest,
-      cpvCusto: cpv,
+      faturamentoLiquido: recLiquida,
+      cpvPct: fat > 0 ? (cpv / fat) * 100 : 0,
+      investimentoPct: fat > 0 ? (investimento / fat) * 100 : 0,
+      lucro: maco,
+      lucroPct: macoPct,
       dga: 0,
       custoRede: 0,
-      contratoFreteIcms: vContrato + frete + icms,
       lojas: 0,
-      valorContrato: vContrato,
-    });
-  }
+      valorContrato: contrato,
+      percentualRede: 0,
+      contratoFreteIcms: contrato + frete + impostos,
+      despesas: cpv + frete + impostos + investimento + contrato,
+      cpvCusto: cpv,
+      redesCount: redes.length,
+    };
+  });
 
-  return consolidarDrePorGerente(dynamicInputs, selectedManager, competencia);
+  // 4. Ordenação determinística por FAT DESC e desempate alfabético pt-BR
+  gerentesNaoOrdenados.sort((a, b) => {
+    if (b.fat !== a.fat) return b.fat - a.fat;
+    return a.gerente.localeCompare(b.gerente, 'pt-BR');
+  });
+
+  gerentesNaoOrdenados.forEach((g, idx) => {
+    g.ranking = idx + 1;
+  });
+
+  // 5. Linha TOTAL BRASIL (Soma estrita de todas as 40 redes do Slide 10)
+  const tbFat = items.reduce((s, r) => s + (r.fat || 0), 0);
+  const tbVolume = items.reduce((s, r) => s + (r.volume || 0), 0);
+  const tbImpostos = items.reduce((s, r) => s + (r.impostos || 0), 0);
+  const tbInvestimento = items.reduce((s, r) => s + (r.investimento || 0), 0);
+  const tbContrato = items.reduce((s, r) => s + (r.contrato || 0), 0);
+  const tbRecLiquida = tbFat - tbImpostos - tbInvestimento - tbContrato;
+  const tbCpv = items.reduce((s, r) => s + (r.cpv || 0), 0);
+  const tbFrete = items.reduce((s, r) => s + (r.frete || 0), 0);
+  const tbMaco = tbRecLiquida - tbCpv - tbFrete;
+  const tbMacoPct = tbFat > 0 ? (tbMaco / tbFat) * 100 : 0;
+
+  gerentesNaoOrdenados.forEach((g) => {
+    g.percentualRede = tbFat > 0 ? (g.fat / tbFat) * 100 : 0;
+  });
+
+  const totalBrasil: RdmSlide8LinhaGerente = {
+    ranking: 5,
+    gerente: 'TOTAL BRASIL',
+    uf: 'BR',
+    volume: tbVolume,
+    fat: tbFat,
+    impostos: tbImpostos,
+    investimento: tbInvestimento,
+    contrato: tbContrato,
+    recLiquida: tbRecLiquida,
+    cpv: tbCpv,
+    frete: tbFrete,
+    maco: tbMaco,
+    macoPct: tbMacoPct,
+    // Retrocompatibilidade
+    faturamentoBruto: tbFat,
+    faturamentoLiquido: tbRecLiquida,
+    cpvPct: tbFat > 0 ? (tbCpv / tbFat) * 100 : 0,
+    investimentoPct: tbFat > 0 ? (tbInvestimento / tbFat) * 100 : 0,
+    lucro: tbMaco,
+    lucroPct: tbMacoPct,
+    dga: 0,
+    custoRede: 0,
+    lojas: 0,
+    valorContrato: tbContrato,
+    percentualRede: 100,
+    contratoFreteIcms: tbContrato + tbFrete + tbImpostos,
+    despesas: tbCpv + tbFrete + tbImpostos + tbInvestimento + tbContrato,
+    cpvCusto: tbCpv,
+    redesCount: items.length,
+  };
+
+  return {
+    competencia,
+    status: slide10Result.status,
+    gerentes: gerentesNaoOrdenados,
+    totalBrasil,
+    linhas: [...gerentesNaoOrdenados, totalBrasil],
+  };
 }
 

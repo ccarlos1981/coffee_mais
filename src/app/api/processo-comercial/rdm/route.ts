@@ -146,6 +146,9 @@ export async function GET(request: Request) {
     const prevYear  = year - 1;
     const prevYearMonthKey = `${prevYear}-${String(month).padStart(2, '0')}`;
 
+    // Determinar se é a competência especial de Agosto/2026 (RFC Slide 06)
+    const isAgosto2026 = (year === 2026 && month === 8);
+
     // Meses acumulados do trimestre (Quarter-to-Date / YTD do trimestre)
     const quarterStartMonth = Math.floor((month - 1) / 3) * 3 + 1;
 
@@ -209,7 +212,21 @@ export async function GET(request: Request) {
       dimension: 'rede',
     };
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado, resSlideStatus, dreGerencialPorGerenteData, dreRedesResult] = await Promise.all([
+    const [
+      resSales,
+      resTargets,
+      resProjections,
+      resComments,
+      resSalesByFamily,
+      resInvestments,
+      dreData,
+      dreGerencialData,
+      dreGerencialDataJulho,
+      dreGerencialSlideAcumulado,
+      resSlideStatus,
+      dreGerencialPorGerenteData,
+      dreRedesResult
+    ] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -282,6 +299,19 @@ export async function GET(request: Request) {
         console.error('[RDM API] Erro ao carregar DRE Gerencial:', err);
         return null;
       }),
+
+      // 8b. DRE Gerencial Julho (para apuração do acumulado Julho + Agosto no Farol de Metas Slide 06)
+      isAgosto2026
+        ? getRdmData({
+            ano: year,
+            competencia: prevMonthKey,
+            gerente: isConsolidado ? 'KA' : resolveCanonicalManager(manager).managerName || manager,
+            canal: 'KA',
+          }).catch((err) => {
+            console.error('[RDM API] Erro ao carregar DRE Gerencial Julho:', err);
+            return null;
+          })
+        : Promise.resolve(null),
 
       // 9. DRE Gerencial Acumulado (Trimestres / YTD)
       getRdmDreAcumuladoData(
@@ -441,9 +471,6 @@ export async function GET(request: Request) {
 
     const ytdTargetSum = getYtdTargetSum(targetManagers);
 
-    // Determinar se é a competência especial de Agosto/2026
-    const isAgosto2026 = (year === 2026 && month === 8);
-
     // Pesos dos indicadores
     // Agosto/2026: Faturamento = 50%, MACO = 30%, Despesas Comerciais = 20%, Deflator = -0%
     // Histórico / Outros Meses: Faturamento = 100%, Volume = 0%, Investimento = 0%
@@ -463,6 +490,9 @@ export async function GET(request: Request) {
     const dreFatRow = dreLinhas.find(l => l.kpi === 'Faturamento');
     const dreMacoRow = dreLinhas.find(l => l.kpi === 'Margem de Contribuição');
 
+    const dreLinhasJulho = dreGerencialDataJulho?.slide1?.linhas || [];
+    const dreMacoRowJulho = dreLinhasJulho.find(l => l.kpi === 'Margem de Contribuição');
+
     // Mês - Indicadores de Faturamento e Volume
     const volPctMonth      = targetSum.tons > 0 ? (realMonth.qty / targetSum.tons) * 100 : 0;
     const investPctMonth   = investDesafio > 0 ? ((realMonthInvestPct - investDesafio) / investDesafio) * 100 : 0;
@@ -473,7 +503,11 @@ export async function GET(request: Request) {
     const fatPctMonth     = fatDesafioMonth > 0 ? (fatRealMonth / fatDesafioMonth) * 100 : 0;
     const fatDeltaMonth   = fatRealMonth - fatDesafioMonth;
 
-    const macoDesafioMonth = dreMacoRow?.desafio ?? 0;
+    // Regra oficial Slide 06 (Agosto/2026):
+    // DESAFIO MACO AGOSTO = 35% * DESAFIO FATURAMENTO AGOSTO
+    const macoDesafioMonth = isAgosto2026
+      ? (fatDesafioMonth * 0.35)
+      : (dreMacoRow?.desafio ?? 0);
     const macoRealMonth    = dreMacoRow?.actual ?? 0;
     const macoPctMonth     = macoDesafioMonth > 0 ? (macoRealMonth / macoDesafioMonth) * 100 : 0;
     const macoDeltaMonth   = macoRealMonth - macoDesafioMonth;
@@ -484,7 +518,9 @@ export async function GET(request: Request) {
 
     // Acumulado do Trimestre (Quarter-to-Date / QTD)
     const currentQuarter = Math.ceil(month / 3);
-    const quarterLabel = `ACUM. Q${currentQuarter}/${String(year).slice(-2)}`;
+    const quarterLabel = isAgosto2026
+      ? 'ACUMULADO (JUL/AGO)'
+      : `ACUM. Q${currentQuarter}/${String(year).slice(-2)}`;
 
     const qTrimestre = dreGerencialSlideAcumulado?.trimestres?.find(t => t.trimestre === currentQuarter);
     const qMacoLine = qTrimestre?.linhas?.find(l => l.kpi === 'Margem de Contribuição');
@@ -499,10 +535,24 @@ export async function GET(request: Request) {
     const ytdFatPct     = ytdFatDesafio > 0 ? (ytdFatReal / ytdFatDesafio) * 100 : 0;
     const ytdFatDelta   = ytdFatReal - ytdFatDesafio;
 
-    const ytdMacoDesafio = qMacoVal?.desafio ?? 0;
-    const ytdMacoReal    = qMacoVal?.actual ?? 0;
+    // Regra oficial Slide 06 (Agosto/2026):
+    // ACUMULADO = JULHO FECHADO + AGOSTO FECHADO
+    // DESAFIO MACO ACUMULADO = 35% * DESAFIO FATURAMENTO ACUMULADO
+    const macoRealJul = dreMacoRowJulho?.actual ?? (dreMacoRow?.mesAnterior ?? 0);
+    const macoRealAgo = dreMacoRow?.actual ?? 0;
+    const ytdMacoReal = isAgosto2026 ? (macoRealJul + macoRealAgo) : (qMacoVal?.actual ?? 0);
+
+    const macoAaJul = dreMacoRowJulho?.anoAnterior ?? 0;
+    const macoAaAgo = dreMacoRow?.anoAnterior ?? 0;
+    const ytdMacoAa = isAgosto2026 ? (macoAaJul + macoAaAgo) : 0;
+
+    const macoMAntJul = dreMacoRowJulho?.mesAnterior ?? 0;
+    const macoMAntAgo = dreMacoRow?.mesAnterior ?? 0;
+    const ytdMacoMAnt = isAgosto2026 ? (macoMAntJul + macoMAntAgo) : 0;
+
+    const ytdMacoDesafio = isAgosto2026 ? (ytdFatDesafio * 0.35) : (qMacoVal?.desafio ?? 0);
     const ytdMacoPct     = ytdMacoDesafio > 0 ? (ytdMacoReal / ytdMacoDesafio) * 100 : 0;
-    const ytdMacoDelta   = qMacoVal?.delta ?? (ytdMacoReal - (qMacoVal?.desafio ?? 0));
+    const ytdMacoDelta   = ytdMacoReal - ytdMacoDesafio;
 
     const scoreYtd = isAgosto2026
       ? (ytdFatPct * 0.50) + (ytdMacoPct * 0.30)
@@ -547,7 +597,7 @@ export async function GET(request: Request) {
             maco: {
               aa:      dreMacoRow?.anoAnterior ?? 0,
               mAnt:    dreMacoRow?.mesAnterior ?? 0,
-              fct:     dreMacoRow?.mesAnterior ?? 0,
+              fct:     0,
               desafio: macoDesafioMonth,
               real:    macoRealMonth,
               pct:     macoPctMonth,
@@ -636,8 +686,8 @@ export async function GET(request: Request) {
               delta:   investDeltaYtd,
             },
             maco: {
-              aa:      0,
-              mAnt:    0,
+              aa:      ytdMacoAa,
+              mAnt:    ytdMacoMAnt,
               fct:     0,
               desafio: ytdMacoDesafio,
               real:    ytdMacoReal,

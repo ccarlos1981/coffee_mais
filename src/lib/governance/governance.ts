@@ -1,6 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export async function checkIsGovernanceAdmin(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  if (!userId) return false;
+
   const { data: isAdmin, error } = await supabase.rpc("is_governance_admin", {
     p_user_id: userId,
   });
@@ -11,7 +13,7 @@ export async function checkIsGovernanceAdmin(supabase: SupabaseClient, userId: s
       .select("role")
       .eq("id", userId)
       .maybeSingle();
-    return profile?.role === "admin";
+    return typeof profile?.role === "string" && profile.role.trim().toLowerCase() === "admin";
   }
   return !!isAdmin;
 }

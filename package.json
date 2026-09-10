@@ -38,6 +38,8 @@
     "test:b22": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b22-sales-action-center.ts",
     "test:b23": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-b23-sales-execution-control.ts",
     "test:rdm-contract": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-farol-contract.ts",
+    "test:rdm-slide06": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-slide06-farol.ts",
+    "test:rdm-slide08": "npx tsx scripts/test-rdm-slide08-reconciliation.ts",
     "test:hardening": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave-hardening-rbac-smtp.ts"
   },
   "dependencies": {

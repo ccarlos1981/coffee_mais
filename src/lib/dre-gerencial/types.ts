@@ -136,20 +136,33 @@ export interface RdmSlide10Result {
 }
 
 export interface RdmSlide8LinhaGerente {
+  // ─── Visão Homologada Slide 08 (Espelho Estrutural do Slide 10) ───
+  ranking: number;
   gerente: string;
-  faturamentoBruto: number;
+  uf: string;
+  volume: number;
+  fat: number;
+  impostos: number;
   investimento: number;
+  contrato: number;
+  recLiquida: number;
+  cpv: number;
+  frete: number;
+  maco: number;
+  macoPct: number;
+
+  // ─── Campos Legados (Preservação de Retrocompatibilidade) ───
+  faturamentoBruto: number;
   faturamentoLiquido: number;
-  cpv: number;              // CPV %
-  investimentoPct: number;  // Investimento %
+  cpvPct: number;
+  investimentoPct: number;
   lucro: number;
-  lucroPct: number;         // Lucro %
+  lucroPct: number;
   dga: number;
   custoRede: number;
   lojas: number;
   valorContrato: number;
-  contrato: number;         // Contrato %
-  percentualRede: number;   // % Participação Rede
+  percentualRede: number;
   contratoFreteIcms: number;
   despesas: number;
   cpvCusto: number;
@@ -158,6 +171,7 @@ export interface RdmSlide8LinhaGerente {
 
 export interface RdmSlide8Consolidado {
   competencia: string;
+  status?: string;
   gerentes: RdmSlide8LinhaGerente[];
   totalBrasil: RdmSlide8LinhaGerente;
   linhas: RdmSlide8LinhaGerente[];

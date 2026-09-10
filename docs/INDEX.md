@@ -36,3 +36,4 @@
 | Módulo / Slide | Status | Data | Documento Oficial |
 |----------------|--------|------|-------------------|
 | **RDM — Slide 8 (`key = 'dre'`)** | `HOMOLOGADO / CLOSED` (Baseline: `FALSE`) | 09/09/2026 | [RDM_SLIDE_08_HOMOLOGACAO.md](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/governance/RDM_SLIDE_08_HOMOLOGACAO.md) |
+| **RDM — Slide 10 (`key = 'dre_rede'`)** | `HOMOLOGADO / CLOSED / FROZEN` | 09/09/2026 | [RDM_SLIDE_10_HOMOLOGACAO.md](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/governance/RDM_SLIDE_10_HOMOLOGACAO.md) |

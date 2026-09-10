@@ -999,548 +999,339 @@ function SlideDreResumo({
   dreGerencialPorGerente?: RdmSlide8Consolidado;
   isOutdated?: boolean;
 }) {
-  const linhasGerente = dreGerencialPorGerente?.linhas || [];
-  const hasConsolidadoData = linhasGerente.length > 0;
-
-  if (hasConsolidadoData) {
-    return (
-      <SlideShell title="Resultado DRE" monthName={monthName} isOutdated={isOutdated}>
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', boxSizing: 'border-box', gap: '6px' }}>
-          {/* Subtítulo Executivo */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
-                DRE CONSOLIDADA POR GERENTE COMERCIAL
-              </span>
-              <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
-                · Visão Consolidada ({linhasGerente.filter(l => l.gerente !== 'TOTAL BRASIL').length} {linhasGerente.filter(l => l.gerente !== 'TOTAL BRASIL').length === 1 ? 'gerente' : 'gerentes'} + TOTAL BRASIL)
-              </span>
-            </div>
-            <div style={{ fontSize: '0.68rem', color: '#475569' }}>
-              Competência: <strong style={{ color: '#0f172a' }}>{monthName} / {year || 2026}</strong>
-            </div>
-          </div>
-
-          {/* Tabela Horizontal Executiva de 18 Colunas */}
-          <div style={{
-            flex: 1,
-            background: '#ffffff',
-            borderRadius: '8px',
-            border: '1px solid #cbd5e1',
-            overflowX: 'auto',
-            overflowY: 'auto',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
-              <thead>
-                <tr style={{ background: '#0f172a', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
-                  <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    1. Gerente
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    2. Faturamento Bruto
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    3. Investimento
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155', background: '#1e293b' }}>
-                    4. Faturamento Líquido
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    5. CPV %
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    6. Investimento %
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155', background: '#1e293b' }}>
-                    7. Lucro
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    8. Lucro %
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    9. DGA
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    10. Custo Rede
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    11. Lojas
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    12. Valor Contrato
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    13. Contrato %
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    14. % Participação Rede
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    15. Contrato + Frete + ICMS
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    16. Despesas
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
-                    17. CPV Custo
-                  </th>
-                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    18. Redes
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {linhasGerente.map((row, idx) => {
-                  const isTotal = row.gerente === 'TOTAL BRASIL';
-                  const isLucroPositivo = row.lucro >= 0;
-
-                  return (
-                    <tr
-                      key={row.gerente}
-                      style={{
-                        background: isTotal
-                          ? '#0f172a'
-                          : idx % 2 === 0
-                          ? '#ffffff'
-                          : '#f8fafc',
-                        color: isTotal ? '#ffffff' : '#0f172a',
-                        fontWeight: isTotal ? 800 : 500,
-                        borderTop: isTotal ? '2px solid #c9a96e' : '1px solid #e2e8f0',
-                        borderBottom: isTotal ? '2px solid #0f172a' : '1px solid #e2e8f0',
-                      }}
-                    >
-                      {/* 1. Gerente */}
-                      <td style={{
-                        padding: '9px 8px',
-                        textAlign: 'left',
-                        fontWeight: isTotal ? 900 : 700,
-                        color: isTotal ? '#c9a96e' : '#0f172a',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                        letterSpacing: isTotal ? '0.06em' : '0.02em',
-                      }}>
-                        {isTotal ? 'TOTAL BRASIL' : row.gerente}
-                      </td>
-
-                      {/* 2. Faturamento Bruto */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.faturamentoBruto)}
-                      </td>
-
-                      {/* 3. Investimento */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.investimento)}
-                      </td>
-
-                      {/* 4. Faturamento Líquido */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: 700,
-                        background: isTotal ? 'rgba(255,255,255,0.06)' : 'rgba(100, 116, 139, 0.08)',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #cbd5e1',
-                      }}>
-                        {fmtMoedaPtBr(row.faturamentoLiquido)}
-                      </td>
-
-                      {/* 5. CPV % */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtPctPtBr(row.cpv)}
-                      </td>
-
-                      {/* 6. Investimento % */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtPctPtBr(row.investimentoPct)}
-                      </td>
-
-                      {/* 7. Lucro */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: 800,
-                        color: isTotal ? (isLucroPositivo ? '#4ade80' : '#f87171') : (isLucroPositivo ? '#16a34a' : '#dc2626'),
-                        background: isTotal ? 'rgba(255,255,255,0.06)' : 'rgba(100, 116, 139, 0.08)',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #cbd5e1',
-                      }}>
-                        {fmtMoedaPtBr(row.lucro)}
-                      </td>
-
-                      {/* 8. Lucro % */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: 700,
-                        color: isTotal ? (isLucroPositivo ? '#4ade80' : '#f87171') : (isLucroPositivo ? '#16a34a' : '#dc2626'),
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtPctPtBr(row.lucroPct)}
-                      </td>
-
-                      {/* 9. DGA */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.dga)}
-                      </td>
-
-                      {/* 10. Custo Rede */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.custoRede)}
-                      </td>
-
-                      {/* 11. Lojas */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtIntPtBr(row.lojas)}
-                      </td>
-
-                      {/* 12. Valor Contrato */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.valorContrato)}
-                      </td>
-
-                      {/* 13. Contrato % */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtPctPtBr(row.contrato)}
-                      </td>
-
-                      {/* 14. % Participação Rede */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: isTotal ? 800 : 500,
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtPctPtBr(row.percentualRede)}
-                      </td>
-
-                      {/* 15. Contrato + Frete + ICMS */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.contratoFreteIcms)}
-                      </td>
-
-                      {/* 16. Despesas */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.despesas)}
-                      </td>
-
-                      {/* 17. CPV Custo */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
-                      }}>
-                        {fmtMoedaPtBr(row.cpvCusto)}
-                      </td>
-
-                      {/* 18. Redes */}
-                      <td style={{
-                        padding: '9px 6px',
-                        textAlign: 'right',
-                        fontFamily: 'var(--font-geist-mono, monospace)',
-                        fontVariantNumeric: 'tabular-nums',
-                        fontWeight: isTotal ? 800 : 600,
-                      }}>
-                        {fmtIntPtBr(row.redesCount)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </SlideShell>
-    );
-  }
-
-  const MONTHS_UPPER = [
-    '', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
-    'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
-  ];
-
-  const m = month || 7;
-  const y = year || 2026;
-
-  // Títulos dinâmicos dos 3 blocos
-  const tituloBloco1 = MONTHS_UPPER[m] || (monthName ? monthName.toUpperCase() : 'JULHO');
-  const prevMonthName = m === 1 ? 'DEZEMBRO' : MONTHS_UPPER[m - 1];
-  const tituloBloco2 = m === 1
-    ? `MÊS ANTERIOR (${prevMonthName}/${y - 1})`
-    : `MÊS ANTERIOR (${prevMonthName})`;
-  const tituloBloco3 = `ANO ANTERIOR (${tituloBloco1}/${y - 1})`;
-
-  const LINHAS_PERMITIDAS = [
-    'Volume',
-    'Faturamento',
-    'Impostos',
-    'Invest. Comercial',
-    'Receita Líquida',
-    'CPV',
-    'Frete',
-    'Margem de Contribuição',
-  ];
-
-  const todasLinhas = slide1Data?.linhas || [];
-  const linhas = todasLinhas.filter((l: any) => LINHAS_PERMITIDAS.includes(l.kpi.trim()));
+  const gerentes = dreGerencialPorGerente?.gerentes || [];
+  const totalBrasil = dreGerencialPorGerente?.totalBrasil;
+  const dreStatus = dreGerencialPorGerente?.status || 'HOMOLOGADO';
+  const compKey = year && month ? `${year}-${String(month).padStart(2, '0')}` : '2026-08';
 
   return (
     <SlideShell title="Resultado DRE" monthName={monthName} isOutdated={isOutdated}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%', padding: '2px 0' }}>
+        {/* Subtitle & Header Executivo */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
+              DRE CONSOLIDADA POR GERENTE REGIONAL
+            </span>
+            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+              · Ranking por Faturamento ({gerentes.length} gerentes + TOTAL BRASIL)
+            </span>
+          </div>
+
+          <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+            Competência: <strong style={{ color: '#0f172a' }}>{monthName} / {year || 2026}</strong>
+          </div>
+        </div>
+
+        {/* Tabela Executiva DRE Consolidada por Gerente Regional */}
         <div style={{
           flex: 1,
           background: '#ffffff',
-          borderRadius: '8px',
-          border: '1px solid #cbd5e1',
+          border: '1px solid #e5e7eb',
+          borderRadius: '6px',
           overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
         }}>
-          <table style={{ width: '100%', height: '100%', borderCollapse: 'collapse', fontSize: '0.80rem' }}>
-            <thead>
-              {/* Linha 1: Agrupadores dos 3 Blocos de Comparação */}
-              <tr style={{ background: '#f1f5f9', borderBottom: '1px solid #cbd5e1' }}>
-                <th rowSpan={2} style={{
-                  padding: '8px 10px',
-                  textAlign: 'left',
-                  fontWeight: 800,
-                  fontSize: '0.72rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                  color: '#1e293b',
-                  borderRight: '2px solid #cbd5e1',
-                  verticalAlign: 'middle',
-                  width: '15%',
-                }}>
-                  KPI
-                </th>
-                <th colSpan={4} style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 800,
-                  fontSize: '0.72rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: '#0f172a',
-                  background: '#f8fafc',
-                  borderRight: '3px solid #94a3b8',
-                  borderBottom: '1px solid #cbd5e1',
-                }}>
-                  {tituloBloco1}
-                </th>
-                <th colSpan={3} style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 800,
-                  fontSize: '0.72rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: '#0f172a',
-                  background: '#f1f5f9',
-                  borderRight: '3px solid #94a3b8',
-                  borderBottom: '1px solid #cbd5e1',
-                }}>
-                  {tituloBloco2}
-                </th>
-                <th colSpan={3} style={{
-                  padding: '6px 8px',
-                  textAlign: 'center',
-                  fontWeight: 800,
-                  fontSize: '0.72rem',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.08em',
-                  color: '#0f172a',
-                  background: '#f8fafc',
-                  borderBottom: '1px solid #cbd5e1',
-                }}>
-                  {tituloBloco3}
-                </th>
-              </tr>
+          {dreStatus === 'PENDENTE' && gerentes.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#b45309', background: '#fefce8', borderRadius: '4px', margin: '16px', border: '1px solid #fde047' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '4px' }}>
+                Fechamento Gerencial Pendente
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#78350f' }}>
+                A DRE Consolidada por Gerente Regional para a competência {compKey} aguarda publicação e homologação comercial.
+              </div>
+            </div>
+          ) : gerentes.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
+              Nenhum dado consolidado encontrado para o filtro selecionado.
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.70rem' }}>
+                <thead>
+                  <tr style={{ background: '#111827', color: '#ffffff' }}>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', width: '32px' }}>#</th>
+                    <th style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', borderRight: '1px solid #334155' }}>GERENTE REGIONAL</th>
+                    <th style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem', width: '36px', borderRight: '2px solid #334155' }}>UF</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>VOLUME</th>
 
-              {/* Linha 2: Nomes das Colunas Individuais */}
-              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #94a3b8' }}>
-                {/* Bloco 1: Desafio / Actual */}
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  Desafio
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  Actual
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  Δ
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', borderRight: '3px solid #94a3b8' }}>
-                  %Δ
-                </th>
+                    {/* DESTAQUE 1: FAT */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '1px solid #475569', borderRight: '1px solid #475569', color: '#f8fafc' }}>
+                      FAT
+                    </th>
 
-                {/* Bloco 2: Mês Anterior */}
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9' }}>
-                  Mês Anterior
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9' }}>
-                  Δ
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap', background: '#f1f5f9', borderRight: '3px solid #94a3b8' }}>
-                  %Δ
-                </th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>IMPOSTOS</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>INVEST.</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>CONTRATO</th>
 
-                {/* Bloco 3: Ano Anterior */}
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  Ano Anterior
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  Δ
-                </th>
-                <th style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 700, fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.03em', color: '#475569', whiteSpace: 'nowrap' }}>
-                  %Δ
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((l: any, i: number) => {
-                const kpiName = l.kpi.trim();
-                const isHighlighted = kpiName === 'Faturamento' || kpiName === 'Receita Líquida' || kpiName === 'Margem de Contribuição';
-                const isVolume = kpiName.includes('Volume');
-                const isCost = ['Impostos', 'Invest. Comercial', 'Abatimento', 'Contrato', 'Bonificação', 'CPV', 'Frete'].some(c => kpiName.includes(c));
-                const prefix = isVolume ? '' : 'R$ ';
+                    {/* DESTAQUE 2: RECEITA LÍQUIDA */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '2px solid #64748b', borderRight: '2px solid #64748b', color: '#f8fafc', lineHeight: '1.15' }}>
+                      RECEITA<br />LÍQUIDA
+                    </th>
 
-                // Cálculo de deltas do Ano Anterior
-                const anoAntVal = l.anoAnterior !== null && l.anoAnterior !== undefined ? l.anoAnterior : null;
-                const actualVal = l.actual !== null && l.actual !== undefined ? l.actual : 0;
-                const deltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? actualVal - anoAntVal : null;
-                const pctDeltaAnoAnt = anoAntVal !== null && anoAntVal !== 0 ? ((actualVal / anoAntVal) - 1) * 100 : null;
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>CPV</th>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>FRETE</th>
 
-                return (
-                  <tr
-                    key={i}
-                    style={{
-                      background: isHighlighted ? 'rgba(100, 116, 139, 0.14)' : i % 2 === 0 ? '#ffffff' : '#fafafa',
-                      fontWeight: isHighlighted ? 700 : 400,
-                      borderTop: isHighlighted ? '1px solid rgba(100, 116, 139, 0.3)' : undefined,
-                      borderBottom: isHighlighted ? '1px solid rgba(100, 116, 139, 0.3)' : '1px solid #f1f5f9',
-                    }}
-                  >
-                    {/* KPI */}
-                    <td style={{ padding: '7px 10px', color: '#0f172a', whiteSpace: 'nowrap', borderRight: '2px solid #cbd5e1', fontWeight: isHighlighted ? 800 : 500 }}>
-                      {kpiName}
-                    </td>
+                    {/* DESTAQUE 3: MACO */}
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 800, fontSize: '0.62rem', background: '#1e293b', borderLeft: '2px solid #64748b', borderRight: '2px solid #64748b', color: '#f8fafc' }}>
+                      MACO
+                    </th>
 
-                    {/* Bloco 1: Desafio / Actual */}
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)', color: l.desafio === null ? '#94a3b8' : '#0f172a' }}>
-                      {fmtDreVal(l.desafio, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreVal(l.actual, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaDesafio, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreDelta(l.deltaDesafio, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaDesafio, isCost), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
-                      {fmtDrePct(l.pctDeltaDesafio)}
-                    </td>
-
-                    {/* Bloco 2: Mês Anterior */}
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreVal(l.mesAnterior, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.deltaMesAnterior, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreDelta(l.deltaMesAnterior, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(l.pctDeltaMesAnterior, isCost), fontFamily: 'var(--font-geist-mono, monospace)', borderRight: '3px solid #94a3b8' }}>
-                      {fmtDrePct(l.pctDeltaMesAnterior)}
-                    </td>
-
-                    {/* Bloco 3: Ano Anterior */}
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreVal(l.anoAnterior, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(deltaAnoAnt, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDreDelta(deltaAnoAnt, prefix)}
-                    </td>
-                    <td style={{ padding: '7px 6px', textAlign: 'right', whiteSpace: 'nowrap', color: deltaDreColor(pctDeltaAnoAnt, isCost), fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                      {fmtDrePct(pctDeltaAnoAnt)}
-                    </td>
+                    <th style={{ padding: '6px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.60rem' }}>% MACO</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {gerentes.map((g, idx) => {
+                    const rank = g.ranking || idx + 1;
+                    const isTop1 = rank === 1;
+                    const isTop2 = rank === 2;
+                    const isTop3 = rank === 3;
+
+                    // Semáforo Oficial Margem % (>= 10% Verde, >= 0% Amarelo, < 0% Vermelho)
+                    const semaforoBg = g.macoPct >= 10 ? '#dcfce7' : g.macoPct >= 0 ? '#fef9c3' : '#fee2e2';
+                    const semaforoColor = g.macoPct >= 10 ? '#15803d' : g.macoPct >= 0 ? '#a16207' : '#b91c1c';
+
+                    return (
+                      <tr
+                        key={g.gerente}
+                        style={{
+                          borderBottom: '1px solid #e2e8f0',
+                          background: isTop1
+                            ? '#fffbeb'
+                            : isTop2
+                            ? '#f8fafc'
+                            : isTop3
+                            ? '#fff7ed'
+                            : idx % 2 === 0
+                            ? '#ffffff'
+                            : '#f8fafc',
+                        }}
+                      >
+                        {/* Ranking # */}
+                        <td style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 800 }}>
+                          {isTop1 ? (
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#f59e0b', color: '#ffffff', fontSize: '0.58rem' }}>🥇 1º</span>
+                          ) : isTop2 ? (
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#64748b', color: '#ffffff', fontSize: '0.58rem' }}>🥈 2º</span>
+                          ) : isTop3 ? (
+                            <span style={{ padding: '1px 4px', borderRadius: '4px', background: '#c2410c', color: '#ffffff', fontSize: '0.58rem' }}>🥉 3º</span>
+                          ) : (
+                            <span style={{ color: '#6b7280', fontSize: '0.62rem' }}>{rank}º</span>
+                          )}
+                        </td>
+
+                        {/* Gerente Regional */}
+                        <td style={{ padding: '6px 8px', color: '#111827', fontWeight: 700, borderRight: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                          {g.gerente}
+                        </td>
+
+                        {/* UF (MULTI para gerentes) */}
+                        <td style={{ padding: '6px 4px', textAlign: 'center', fontWeight: 800, borderRight: '2px solid #cbd5e1' }}>
+                          <span style={{ padding: '1px 4px', borderRadius: '3px', background: '#f1f5f9', border: '1px solid #cbd5e1', fontSize: '0.58rem', fontWeight: 800, color: '#334155', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                            {g.uf || 'MULTI'}
+                          </span>
+                        </td>
+
+                        {/* Volume */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatNumber(g.volume || 0)}
+                        </td>
+
+                        {/* DESTAQUE 1: Faturamento */}
+                        <td style={{
+                          padding: '6px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 700,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.09)',
+                          borderLeft: '1px solid #cbd5e1',
+                          borderRight: '1px solid #cbd5e1',
+                        }}>
+                          {formatCurrency(g.fat)}
+                        </td>
+
+                        {/* Impostos */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(g.impostos)}
+                        </td>
+
+                        {/* Investimento Comercial */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(g.investimento)}
+                        </td>
+
+                        {/* Contrato (R$) */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(g.contrato)}
+                        </td>
+
+                        {/* DESTAQUE 2: Receita Líquida */}
+                        <td style={{
+                          padding: '6px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 800,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.14)',
+                          borderLeft: '2px solid #94a3b8',
+                          borderRight: '2px solid #94a3b8',
+                        }}>
+                          {formatCurrency(g.recLiquida)}
+                        </td>
+
+                        {/* CPV */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(g.cpv)}
+                        </td>
+
+                        {/* Frete */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(g.frete)}
+                        </td>
+
+                        {/* DESTAQUE 3: Margem de Contribuição */}
+                        <td style={{
+                          padding: '6px 6px',
+                          textAlign: 'right',
+                          color: g.maco >= 0 ? '#15803d' : '#b91c1c',
+                          fontWeight: 800,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.14)',
+                          borderLeft: '2px solid #94a3b8',
+                          borderRight: '2px solid #94a3b8',
+                        }}>
+                          {formatCurrency(g.maco)}
+                        </td>
+
+                        {/* % Margem com Semáforo Oficial */}
+                        <td style={{ padding: '6px 6px', textAlign: 'right' }}>
+                          <span style={{ padding: '1px 5px', borderRadius: '4px', background: semaforoBg, color: semaforoColor, fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.65rem' }}>
+                            {g.macoPct.toFixed(2)}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {/* Linha Obrigatória: TOTAL BRASIL */}
+                  {totalBrasil && (() => {
+                    const tbSemaforoBg = totalBrasil.macoPct >= 10 ? '#dcfce7' : totalBrasil.macoPct >= 0 ? '#fef9c3' : '#fee2e2';
+                    const tbSemaforoColor = totalBrasil.macoPct >= 10 ? '#15803d' : totalBrasil.macoPct >= 0 ? '#a16207' : '#b91c1c';
+
+                    return (
+                      <tr
+                        style={{
+                          background: '#f1f5f9',
+                          borderTop: '2px solid #0f172a',
+                          borderBottom: '2px solid #0f172a',
+                          fontWeight: 800,
+                        }}
+                      >
+                        {/* Ranking: — */}
+                        <td style={{ padding: '7px 4px', textAlign: 'center', color: '#64748b', fontSize: '0.65rem' }}>
+                          —
+                        </td>
+
+                        {/* GERENTE REGIONAL: TOTAL BRASIL */}
+                        <td style={{ padding: '7px 8px', color: '#0f172a', fontWeight: 900, fontSize: '0.72rem', letterSpacing: '0.04em', borderRight: '1px solid #cbd5e1', whiteSpace: 'nowrap' }}>
+                          TOTAL BRASIL
+                        </td>
+
+                        {/* UF: BR */}
+                        <td style={{ padding: '7px 4px', textAlign: 'center', fontWeight: 800, borderRight: '2px solid #94a3b8' }}>
+                          <span style={{ padding: '1px 5px', borderRadius: '3px', background: '#0f172a', border: '1px solid #0f172a', fontSize: '0.58rem', fontWeight: 800, color: '#ffffff', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                            BR
+                          </span>
+                        </td>
+
+                        {/* Volume */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatNumber(totalBrasil.volume || 0)}
+                        </td>
+
+                        {/* DESTAQUE 1: Faturamento */}
+                        <td style={{
+                          padding: '7px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 900,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.18)',
+                          borderLeft: '1px solid #94a3b8',
+                          borderRight: '1px solid #94a3b8',
+                        }}>
+                          {formatCurrency(totalBrasil.fat)}
+                        </td>
+
+                        {/* Impostos */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(totalBrasil.impostos)}
+                        </td>
+
+                        {/* Investimento Comercial */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(totalBrasil.investimento)}
+                        </td>
+
+                        {/* Contrato */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(totalBrasil.contrato)}
+                        </td>
+
+                        {/* DESTAQUE 2: Receita Líquida */}
+                        <td style={{
+                          padding: '7px 6px',
+                          textAlign: 'right',
+                          color: '#0f172a',
+                          fontWeight: 900,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.22)',
+                          borderLeft: '2px solid #64748b',
+                          borderRight: '2px solid #64748b',
+                        }}>
+                          {formatCurrency(totalBrasil.recLiquida)}
+                        </td>
+
+                        {/* CPV */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(totalBrasil.cpv)}
+                        </td>
+
+                        {/* Frete */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {formatCurrency(totalBrasil.frete)}
+                        </td>
+
+                        {/* DESTAQUE 3: MACO */}
+                        <td style={{
+                          padding: '7px 6px',
+                          textAlign: 'right',
+                          color: totalBrasil.maco >= 0 ? '#15803d' : '#b91c1c',
+                          fontWeight: 900,
+                          fontFamily: 'var(--font-geist-mono, monospace)',
+                          background: 'rgba(100, 116, 139, 0.22)',
+                          borderLeft: '2px solid #64748b',
+                          borderRight: '2px solid #64748b',
+                        }}>
+                          {formatCurrency(totalBrasil.maco)}
+                        </td>
+
+                        {/* % MACO */}
+                        <td style={{ padding: '7px 6px', textAlign: 'right' }}>
+                          <span style={{ padding: '1px 5px', borderRadius: '4px', background: tbSemaforoBg, color: tbSemaforoColor, fontWeight: 900, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.68rem' }}>
+                            {totalBrasil.macoPct.toFixed(2)}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </SlideShell>
@@ -5499,7 +5290,7 @@ function ScoreRow({ score }: { score: number }) {
   );
 }
 
-function FarolTable({ title, block, managerLabel, weights, isAgosto2026 }: {
+function FarolTable({ title, block, managerLabel, weights, isAgosto2026, isAcumulado }: {
   title: string;
   block?: {
     vol?: MetricBlock;
@@ -5513,6 +5304,7 @@ function FarolTable({ title, block, managerLabel, weights, isAgosto2026 }: {
   managerLabel?: string;
   weights?: { VOL?: number; FAT?: number; INVEST?: number; MACO?: number; DESP_COMERCIAIS?: number; DEFLATOR?: number };
   isAgosto2026?: boolean;
+  isAcumulado?: boolean;
 }) {
   const w = weights ?? { VOL: 0, FAT: 100, INVEST: 0 };
   const isAgosto = Boolean(isAgosto2026);
@@ -5556,6 +5348,9 @@ function FarolTable({ title, block, managerLabel, weights, isAgosto2026 }: {
               <MetricRow label="FATURAMENTO"      weight={w.FAT ?? 50}             block={fatBlock} />
               <MetricRow label="MACO"             weight={w.MACO ?? 30}            block={macoBlock} />
               <MetricRow label="DESP. COMERCIAIS" weight={w.DESP_COMERCIAIS ?? 20} block={despBlock} isDespesa />
+              <tr className="rdm-farol-separator-row" style={{ height: '14px', border: 'none' }}>
+                <td colSpan={8} style={{ border: 'none', background: 'transparent', height: '14px', padding: 0 }} />
+              </tr>
               <MetricRow label="DEFLATOR"         weight={w.DEFLATOR ?? 0}         block={deflatorBlock} isDeflator />
               <ScoreRow score={scoreVal} />
             </>
@@ -5591,7 +5386,7 @@ function SlideFarol({
     score: 0,
   };
   const m = farol?.month ?? emptyBlock;
-  const y = farol?.ytd ?? { label: 'ACUM.', ...emptyBlock };
+  const y = farol?.ytd ?? { label: farol?.isAgosto2026 ? 'ACUMULADO (JUL/AGO)' : 'ACUM.', ...emptyBlock };
 
   return (
     <SlideShell title="Farol de Metas" monthName={monthName}>
@@ -5610,6 +5405,7 @@ function SlideFarol({
             managerLabel={farol?.managerLabel ?? ''}
             weights={farol?.weights}
             isAgosto2026={farol?.isAgosto2026}
+            isAcumulado
           />
         </div>
 

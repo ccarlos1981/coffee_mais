@@ -60,17 +60,54 @@ export async function getRdmDrePorRedeData(
     console.error('[getRdmDrePorRedeData] Erro ao carregar volumes de mv_vendas_cliente_mensal:', err);
   }
 
+  /**
+   * RFC-013: Whitelist explícita de tokens canônicos com menos de 3 caracteres.
+   * Resolve especificamente redes canônicas (ex: MG BH) sem relaxar a regra geral
+   * de stop-words para as demais redes.
+   */
+  const SHORT_CANONICAL_TOKENS = new Set(['BH']);
+
+  /**
+   * RFC-013: Mapeamento de identidade canônica para redes com divergência cadastral
+   * ou operação regional integrada (ex: DF RASSOL -> BRASSOL GO/DF).
+   */
+  interface CanonicalRedeResolution {
+    canonicalName: string;
+    allowedUfs?: string[];
+  }
+
+  const CANONICAL_REDE_RESOLUTIONS: Record<string, CanonicalRedeResolution> = {
+    'DF RASSOL': { canonicalName: 'BRASSOL', allowedUfs: ['DF', 'GO'] },
+    'RASSOL': { canonicalName: 'BRASSOL', allowedUfs: ['DF', 'GO'] },
+  };
+
   function matchVol(rowRede: string, rowUf: string, targetNome: string, targetUf: string): boolean {
+    const alias = CANONICAL_REDE_RESOLUTIONS[targetNome];
+    const effTargetNome = alias ? alias.canonicalName : targetNome;
+    const allowedUfs = alias?.allowedUfs ? alias.allowedUfs.map(u => u.toUpperCase()) : null;
+
     const rUf = (rowUf || '').toUpperCase().trim();
     const tUf = (targetUf || '').toUpperCase().trim();
-    if (rUf && tUf && rUf !== 'ND' && tUf !== 'ND' && rUf !== 'BR' && rUf !== tUf) return false;
 
-    const tNorm = targetNome.toUpperCase().replace(/\(.*?\)/g, '').replace(/[^A-Z0-9]/g, ' ').trim();
+    if (allowedUfs) {
+      if (rUf && rUf !== 'ND' && rUf !== 'BR' && !allowedUfs.includes(rUf)) {
+        return false;
+      }
+    } else {
+      if (rUf && tUf && rUf !== 'ND' && tUf !== 'ND' && rUf !== 'BR' && rUf !== tUf) {
+        return false;
+      }
+    }
+
+    const tNorm = effTargetNome.toUpperCase().replace(/\(.*?\)/g, '').replace(/[^A-Z0-9]/g, ' ').trim();
     const rNorm = rowRede.toUpperCase().replace(/\(.*?\)/g, '').replace(/[^A-Z0-9]/g, ' ').trim();
     if (tNorm === rNorm) return true;
 
-    const tTokens = tNorm.split(/\s+/).filter(t => t.length > 2 && t !== tUf && t !== 'REDE' && t !== 'DIST');
-    const rTokens = rNorm.split(/\s+/).filter(t => t.length > 2 && t !== rUf && t !== 'REDE' && t !== 'DIST');
+    const filterTokens = (tokens: string[], ufToExclude: string) =>
+      tokens.filter(t => (t.length > 2 || SHORT_CANONICAL_TOKENS.has(t)) && t !== ufToExclude && t !== 'REDE' && t !== 'DIST');
+
+    const tTokens = filterTokens(tNorm.split(/\s+/), tUf);
+    const rTokens = filterTokens(rNorm.split(/\s+/), rUf);
     return tTokens.some(t => rTokens.includes(t));
   }
 
