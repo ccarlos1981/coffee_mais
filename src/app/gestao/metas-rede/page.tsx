@@ -54,6 +54,14 @@ const YEARS_AVAILABLE = [2025, 2026, 2027];
 
 type WorkflowStatus = "DRAFT" | "REVIEW" | "APPROVED" | "FROZEN";
 
+export type GoalMode = "monthly" | "future";
+
+export const FUTURE_COMPETENCES = [
+  { key: "2026-03", year: 2026, month: 3, label: "Março/2026", shortLabel: "MAR/2026" },
+  { key: "2026-11", year: 2026, month: 11, label: "Novembro/2026", shortLabel: "NOV/2026" },
+  { key: "2028-12", year: 2028, month: 12, label: "Dezembro/2028", shortLabel: "DEZ/2028" },
+] as const;
+
 const WORKFLOW_STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string; bg: string; description: string }> = {
   DRAFT: { label: "Em Edição", color: "#d97706", bg: "rgba(245, 158, 11, 0.12)", description: "Planejamento aberto para edição" },
   REVIEW: { label: "Pendente de Aprovação", color: "#2563eb", bg: "rgba(59, 130, 246, 0.12)", description: "Submetido para avaliação da diretoria" },
@@ -167,9 +175,19 @@ export default function MetasRedePage() {
   const [isGerenteOnly, setIsGerenteOnly] = useState<boolean>(false);
   const [userManagerName, setUserManagerName] = useState<string>("");
 
-  // Editable meta values state & baseline reference
+  // Modalidade de Metas: META MENSAL (Default) vs META FUTURA
+  const [goalMode, setGoalMode] = useState<GoalMode>("monthly");
+
+  // Editable meta values state & baseline reference (META MENSAL)
   const [metaInputs, setMetaInputs] = useState<Record<string, number>>({});
   const savedStateRef = useRef<Record<string, number>>({});
+
+  // Estados Isolados para META FUTURA (Isolamento Absoluto de targets e cm_weekly_projections)
+  const [futureInputs, setFutureInputs] = useState<Record<string, number>>({});
+  const futureSavedStateRef = useRef<Record<string, number>>({});
+  const [futureSaving, setFutureSaving] = useState<boolean>(false);
+  const [futureSaved, setFutureSaved] = useState<boolean>(false);
+  const [loadingFuture, setLoadingFuture] = useState<boolean>(false);
 
   const [managerMetaTargets, setManagerMetaTargets] = useState<Record<string, number>>({});
   const [channelMetaTargets, setChannelMetaTargets] = useState<Record<string, { ka: number; dist: number }>>({});
@@ -307,6 +325,50 @@ export default function MetasRedePage() {
       return r.metaFat || 0;
     },
     [metaInputs]
+  );
+
+  // Contagem de Alterações Pendentes exclusivamente na Meta Futura
+  const futureDirtyKeysCount = useMemo(() => {
+    let count = 0;
+    Object.keys(futureInputs).forEach((k) => {
+      const currentVal = futureInputs[k] || 0;
+      const initialVal = futureSavedStateRef.current[k] || 0;
+      if (Math.abs(currentVal - initialVal) > 0.001) {
+        count++;
+      }
+    });
+    return count;
+  }, [futureInputs]);
+
+  // Setter de Meta Futura em memória
+  const setFutureValue = (
+    managerId: string,
+    codigoMatriz: string,
+    redeName: string,
+    managerName: string,
+    compKey: string,
+    value: number
+  ) => {
+    const key1 = `${managerId}|${codigoMatriz}|${redeName}|${compKey}`;
+    const key2 = `${managerName}|${redeName}|${compKey}`;
+    setFutureInputs((prev) => ({
+      ...prev,
+      [key1]: value,
+      [key2]: value,
+    }));
+    setFutureSaved(false);
+  };
+
+  // Getter de Meta Futura em memória
+  const getFutureValue = useCallback(
+    (r: RedeRow, compKey: string): number => {
+      const key1 = `${r.manager_id}|${r.codigo_matriz}|${r.rede}|${compKey}`;
+      if (futureInputs[key1] !== undefined) return futureInputs[key1];
+      const key2 = `${r.manager}|${r.rede}|${compKey}`;
+      if (futureInputs[key2] !== undefined) return futureInputs[key2];
+      return 0;
+    },
+    [futureInputs]
   );
 
   // Modal de Rateio Proporcional - Preparar Preview
@@ -508,6 +570,37 @@ export default function MetasRedePage() {
     }
   }, []);
 
+  const loadFutureData = useCallback(async () => {
+    setLoadingFuture(true);
+    try {
+      const res = await fetch(`/api/gestao/metas-rede/futura?_t=${Date.now()}`, {
+        cache: "no-store",
+        headers: {
+          "Pragma": "no-cache",
+          "Cache-Control": "no-cache"
+        }
+      });
+      const json = await res.json();
+      if (json.success && Array.isArray(json.futureMetas)) {
+        const initialFuture: Record<string, number> = {};
+        json.futureMetas.forEach((item: any) => {
+          const compKey = `${item.target_year}-${String(item.target_month).padStart(2, "0")}`;
+          const k1 = `${item.manager_id}|${item.codigo_matriz}|${item.rede}|${compKey}`;
+          const k2 = `${item.manager}|${item.rede}|${compKey}`;
+          const val = Number(item.valor_planejado) || 0;
+          initialFuture[k1] = val;
+          initialFuture[k2] = val;
+        });
+        setFutureInputs(initialFuture);
+        futureSavedStateRef.current = { ...initialFuture };
+      }
+    } catch (err) {
+      console.error("Erro ao carregar metas futuras:", err);
+    } finally {
+      setLoadingFuture(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!hasInitializedDateRef.current) {
       hasInitializedDateRef.current = true;
@@ -521,7 +614,8 @@ export default function MetasRedePage() {
       }
     }
     loadData(selectedMonth, selectedYear);
-  }, [loadData, selectedMonth, selectedYear]);
+    loadFutureData();
+  }, [loadData, loadFutureData, selectedMonth, selectedYear]);
 
   // Transição Oficial de Workflow
   const handleWorkflowTransition = async (targetStatus: WorkflowStatus, comments?: string) => {
@@ -601,6 +695,63 @@ export default function MetasRedePage() {
       alert(`Erro ao salvar metas: ${err?.message || "Verifique o console."}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Save handler para Meta Futura (100% isolado de cm_weekly_projections e targets)
+  const handleSaveFuture = async () => {
+    setFutureSaving(true);
+    try {
+      const recordsToSave: any[] = [];
+      managers.forEach((mgr) => {
+        mgr.redes.forEach((r) => {
+          FUTURE_COMPETENCES.forEach((comp) => {
+            const val = getFutureValue(r, comp.key);
+            const k1 = `${r.manager_id}|${r.codigo_matriz}|${r.rede}|${comp.key}`;
+            const initialVal = futureSavedStateRef.current[k1] || 0;
+            if (val > 0 || Math.abs(val - initialVal) > 0.001) {
+              const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+              recordsToSave.push({
+                manager: mgr.manager,
+                manager_id: r.manager_id || mgr.manager_id,
+                codigo_matriz: r.codigo_matriz,
+                rede: r.rede,
+                canal: isDist ? "Distribuidor" : "KA",
+                target_year: comp.year,
+                target_month: comp.month,
+                valor_planejado: val,
+              });
+            }
+          });
+        });
+      });
+
+      if (recordsToSave.length === 0) {
+        setFutureSaved(true);
+        setTimeout(() => setFutureSaved(false), 2000);
+        return;
+      }
+
+      const res = await fetch("/api/gestao/metas-rede/futura", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ records: recordsToSave }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Erro ao salvar projeção futura.");
+      }
+
+      futureSavedStateRef.current = { ...futureInputs };
+      setFutureSaved(true);
+      setTimeout(() => setFutureSaved(false), 3500);
+      await loadFutureData();
+    } catch (err: any) {
+      console.error("Erro ao salvar Meta Futura:", err);
+      alert(`Erro ao salvar Meta Futura: ${err?.message || "Verifique o console."}`);
+    } finally {
+      setFutureSaving(false);
     }
   };
 
@@ -901,6 +1052,35 @@ export default function MetasRedePage() {
     };
   }, [managers, metaInputs, getMetaValue]);
 
+  // Consolidado de Metas Futuras — Visão Executiva por Competência Fixa (Mar/26, Nov/26, Dez/28)
+  const futureConsolidated = useMemo(() => {
+    const totals: Record<string, { total: number; ka: number; dist: number; count: number }> = {
+      "2026-03": { total: 0, ka: 0, dist: 0, count: 0 },
+      "2026-11": { total: 0, ka: 0, dist: 0, count: 0 },
+      "2028-12": { total: 0, ka: 0, dist: 0, count: 0 },
+    };
+
+    managers.forEach((mgr) => {
+      mgr.redes.forEach((r) => {
+        const isDist = (r.canal || "").toLowerCase().includes("dist") || (DISTRIBUTORS_REGISTRY[r.manager_id]?.redes || []).some((d) => r.rede.toUpperCase().includes(d.toUpperCase()));
+        FUTURE_COMPETENCES.forEach((comp) => {
+          const val = getFutureValue(r, comp.key);
+          if (val > 0) {
+            totals[comp.key].total += val;
+            totals[comp.key].count += 1;
+            if (isDist) {
+              totals[comp.key].dist += val;
+            } else {
+              totals[comp.key].ka += val;
+            }
+          }
+        });
+      });
+    });
+
+    return totals;
+  }, [managers, futureInputs, getFutureValue]);
+
   const dynamicPrecedingMonths = useMemo(() => {
     return getPreceding3ClosedMonths(selectedMonth, selectedYear);
   }, [selectedMonth, selectedYear]);
@@ -939,279 +1119,477 @@ export default function MetasRedePage() {
                 </span>
               )}
             </div>
+
+            {/* SELETOR DE MODALIDADE: META MENSAL × META FUTURA (ISOLAMENTO ABSOLUTO) */}
+            <div className="flex items-center bg-neutral-100 p-0.5 rounded-xl border border-neutral-200 text-xs font-bold ml-2">
+              <button
+                type="button"
+                onClick={() => setGoalMode("monthly")}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  goalMode === "monthly"
+                    ? "bg-white text-neutral-900 shadow-xs font-black"
+                    : "text-neutral-500 hover:text-neutral-800"
+                }`}
+              >
+                META MENSAL
+              </button>
+              <button
+                type="button"
+                onClick={() => setGoalMode("future")}
+                className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                  goalMode === "future"
+                    ? "bg-amber-600 text-white shadow-xs font-black"
+                    : "text-neutral-500 hover:text-neutral-800"
+                }`}
+              >
+                META FUTURA
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* ITEM 2: Indicador de Alterações Pendentes na Topbar */}
-            {dirtyKeysCount > 0 && (
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold animate-pulse">
-                <Edit3 className="w-3.5 h-3.5 text-amber-600" />
-                <span>{dirtyKeysCount} {dirtyKeysCount === 1 ? "alteração pendente" : "alterações pendentes"}</span>
-              </div>
-            )}
-
-            {/* Status Simples da Competência & Lock Executivo */}
-            <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
-              <div
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${
-                  workflowStatus === "FROZEN"
-                    ? "bg-purple-50 text-purple-700 border-purple-200"
-                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                }`}
-              >
-                {workflowStatus === "FROZEN" ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Competência Congelada</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Competência Aberta</span>
-                  </>
+            {goalMode === "monthly" ? (
+              <>
+                {/* ITEM 2: Indicador de Alterações Pendentes na Topbar */}
+                {dirtyKeysCount > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-300 text-xs font-bold animate-pulse">
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{dirtyKeysCount} {dirtyKeysCount === 1 ? "alteração pendente" : "alterações pendentes"}</span>
+                  </div>
                 )}
-              </div>
 
-              {isTopDownAuthorized && (
+                {/* Status Simples da Competência & Lock Executivo */}
+                <div className="flex items-center gap-1.5 bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
+                  <div
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black border ${
+                      workflowStatus === "FROZEN"
+                        ? "bg-purple-50 text-purple-700 border-purple-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}
+                  >
+                    {workflowStatus === "FROZEN" ? (
+                      <>
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Competência Congelada</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Competência Aberta</span>
+                      </>
+                    )}
+                  </div>
+
+                  {isTopDownAuthorized && (
+                    <button
+                      type="button"
+                      onClick={() => handleWorkflowTransition(workflowStatus === "FROZEN" ? "DRAFT" : "FROZEN")}
+                      disabled={isWorkflowTransitioning || loading}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer ${
+                        workflowStatus === "FROZEN"
+                          ? "bg-amber-600 hover:bg-amber-700 text-white"
+                          : "bg-neutral-800 hover:bg-neutral-900 text-white"
+                      }`}
+                      title={workflowStatus === "FROZEN" ? "Descongelar esta competência para permitir edições" : "Congelar esta competência contra novas edições"}
+                    >
+                      {workflowStatus === "FROZEN" ? (
+                        <>
+                          <Lock className="w-3 h-3 text-amber-200" />
+                          <span>Descongelar</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3 h-3 text-neutral-300" />
+                          <span>Congelar</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* Alternar Visualização */}
+                <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
+                  <button
+                    onClick={() => setCompactView(false)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                      !compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                    }`}
+                  >
+                    <Maximize2 className="w-3 h-3 text-blue-500" />
+                    <span>Completa (Anual)</span>
+                  </button>
+                  <button
+                    onClick={() => setCompactView(true)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                      compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                    }`}
+                  >
+                    <Minimize2 className="w-3 h-3 text-amber-500" />
+                    <span>Enxuta (3M)</span>
+                  </button>
+                </div>
+
+                {/* Seletores de Período */}
+                <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-xl border border-neutral-200">
+                  <Calendar className="w-3.5 h-3.5 text-neutral-500 ml-1.5" />
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
+                  >
+                    {MONTH_NAMES_PT.map((mName, idx) => (
+                      <option key={idx + 1} value={idx + 1}>
+                        {mName}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
+                  >
+                    {YEARS_AVAILABLE.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Botão de Persistência Sincronizada (ITEM 3) */}
+                <button
+                  onClick={handleSave}
+                  disabled={saving || isEditingLocked}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                    isEditingLocked
+                      ? "bg-neutral-200 text-neutral-500 cursor-not-allowed border border-neutral-300"
+                      : saved
+                      ? "bg-emerald-600 text-white"
+                      : dirtyKeysCount > 0
+                      ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md ring-2 ring-amber-300"
+                      : "bg-neutral-800 text-white hover:bg-neutral-900"
+                  }`}
+                >
+                  {saving ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : isEditingLocked ? (
+                    <Lock className="w-4 h-4 text-neutral-500" />
+                  ) : saved ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>{isEditingLocked ? "Metas Congeladas" : saved ? "Gravado na RPS!" : "Salvar Metas na RPS"}</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Indicador de Alterações Pendentes na Meta Futura */}
+                {futureDirtyKeysCount > 0 && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300 text-xs font-bold animate-pulse">
+                    <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{futureDirtyKeysCount} {futureDirtyKeysCount === 1 ? "projeção alterada" : "projeções alteradas"}</span>
+                  </div>
+                )}
+
+                {/* Badge Informativo de Controle Interno */}
+                <div className="flex items-center gap-1.5 bg-amber-50 px-3 py-1 rounded-xl border border-amber-200 text-xs font-bold text-amber-900">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Projeção Interna (Mar/26 • Nov/26 • Dez/28)</span>
+                </div>
+
+                {/* Alternar Visualização */}
+                <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
+                  <button
+                    onClick={() => setCompactView(false)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                      !compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                    }`}
+                  >
+                    <Maximize2 className="w-3 h-3 text-blue-500" />
+                    <span>Completa (Anual)</span>
+                  </button>
+                  <button
+                    onClick={() => setCompactView(true)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
+                      compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
+                    }`}
+                  >
+                    <Minimize2 className="w-3 h-3 text-amber-500" />
+                    <span>Enxuta (3M)</span>
+                  </button>
+                </div>
+
+                {/* Botão de Salvar Meta Futura */}
                 <button
                   type="button"
-                  onClick={() => handleWorkflowTransition(workflowStatus === "FROZEN" ? "DRAFT" : "FROZEN")}
-                  disabled={isWorkflowTransitioning || loading}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold shadow-xs transition-colors flex items-center gap-1 cursor-pointer ${
-                    workflowStatus === "FROZEN"
-                      ? "bg-amber-600 hover:bg-amber-700 text-white"
-                      : "bg-neutral-800 hover:bg-neutral-900 text-white"
+                  onClick={handleSaveFuture}
+                  disabled={futureSaving}
+                  className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                    futureSaved
+                      ? "bg-emerald-600 text-white"
+                      : futureDirtyKeysCount > 0
+                      ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md ring-2 ring-amber-300"
+                      : "bg-neutral-800 text-white hover:bg-neutral-900"
                   }`}
-                  title={workflowStatus === "FROZEN" ? "Descongelar esta competência para permitir edições" : "Congelar esta competência contra novas edições"}
+                  title="Salvar projeções futuras de faturamento no banco de dados"
                 >
-                  {workflowStatus === "FROZEN" ? (
-                    <>
-                      <Lock className="w-3 h-3 text-amber-200" />
-                      <span>Descongelar</span>
-                    </>
+                  {futureSaving ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : futureSaved ? (
+                    <Check className="w-4 h-4" />
                   ) : (
-                    <>
-                      <Lock className="w-3 h-3 text-neutral-300" />
-                      <span>Congelar</span>
-                    </>
+                    <Save className="w-4 h-4" />
                   )}
+                  <span>{futureSaved ? "Projeção Futura Gravada!" : "Salvar Projeção Futura"}</span>
                 </button>
-              )}
-            </div>
-
-            {/* Alternar Visualização */}
-            <div className="flex items-center bg-neutral-100 p-1 rounded-xl border border-neutral-200 text-xs font-bold">
-              <button
-                onClick={() => setCompactView(false)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
-                  !compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
-                }`}
-              >
-                <Maximize2 className="w-3 h-3 text-blue-500" />
-                <span>Completa (Anual)</span>
-              </button>
-              <button
-                onClick={() => setCompactView(true)}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg transition-all ${
-                  compactView ? "bg-white text-neutral-900 shadow-sm font-black" : "text-neutral-500 hover:text-neutral-800"
-                }`}
-              >
-                <Minimize2 className="w-3 h-3 text-amber-500" />
-                <span>Enxuta (3M)</span>
-              </button>
-            </div>
-
-            {/* Seletores de Período */}
-            <div className="flex items-center gap-2 bg-neutral-100 p-1 rounded-xl border border-neutral-200">
-              <Calendar className="w-3.5 h-3.5 text-neutral-500 ml-1.5" />
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
-              >
-                {MONTH_NAMES_PT.map((mName, idx) => (
-                  <option key={idx + 1} value={idx + 1}>
-                    {mName}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="bg-white border border-neutral-200 text-xs font-bold text-neutral-800 rounded-lg px-2 py-1 cursor-pointer"
-              >
-                {YEARS_AVAILABLE.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Botão de Persistência Sincronizada (ITEM 3) */}
-            <button
-              onClick={handleSave}
-              disabled={saving || isEditingLocked}
-              className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                isEditingLocked
-                  ? "bg-neutral-200 text-neutral-500 cursor-not-allowed border border-neutral-300"
-                  : saved
-                  ? "bg-emerald-600 text-white"
-                  : dirtyKeysCount > 0
-                  ? "bg-amber-500 text-white hover:bg-amber-600 shadow-md ring-2 ring-amber-300"
-                  : "bg-neutral-800 text-white hover:bg-neutral-900"
-              }`}
-            >
-              {saving ? (
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : isEditingLocked ? (
-                <Lock className="w-4 h-4 text-neutral-500" />
-              ) : saved ? (
-                <Check className="w-4 h-4" />
-              ) : (
-                <Save className="w-4 h-4" />
-              )}
-              <span>{isEditingLocked ? "Metas Congeladas" : saved ? "Gravado na RPS!" : "Salvar Metas na RPS"}</span>
-            </button>
+              </>
+            )}
           </div>
         </div>
       </nav>
 
       {/* Main Content */}
       <main className="max-w-[1440px] mx-auto px-6 py-6 space-y-6">
-        {/* 🏛️ CONSOLIDADO DE METAS ABERTAS — VISÃO EXECUTIVA POR GERENTE E BRASIL (KA × DISTRIBUIDOR) */}
-        <div className="bg-white rounded-xl border border-neutral-200 p-5 shadow-xs transition-all">
-          <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4 flex-wrap gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-1.5 rounded-lg bg-neutral-900 text-white font-bold">
-                <Target className="w-4 h-4 text-amber-400" />
+        {/* 🏛️ CONSOLIDADO SUPERIOR: META MENSAL OU META FUTURA */}
+        {goalMode === "monthly" ? (
+          <div className="bg-white rounded-xl border border-neutral-200 p-5 shadow-xs transition-all">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3 mb-4 flex-wrap gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-neutral-900 text-white font-bold">
+                  <Target className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-xs font-black uppercase tracking-wider text-neutral-900">
+                    Consolidado de Metas Abertas — {MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}
+                  </h2>
+                  <p className="text-[11px] text-neutral-500 font-medium">
+                    Acompanhamento executivo das metas comerciais abertas por gerente e consolidado Brasil em tempo real.
+                  </p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xs font-black uppercase tracking-wider text-neutral-900">
-                  Consolidado de Metas Abertas — {MONTH_NAMES_PT[selectedMonth - 1]}/{selectedYear}
-                </h2>
-                <p className="text-[11px] text-neutral-500 font-medium">
-                  Acompanhamento executivo das metas comerciais abertas por gerente e consolidado Brasil em tempo real.
-                </p>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                {/* Botão de Alternância de Visão por Gerente */}
+                <button
+                  type="button"
+                  onClick={() => setShowManagerView((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                    showManagerView
+                      ? "bg-neutral-900 text-white border-neutral-900 shadow-xs"
+                      : "bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 border-neutral-300 shadow-2xs"
+                  }`}
+                  title={showManagerView ? "Ocultar detalhamento por gerente" : "Exibir metas abertas por gerente"}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{showManagerView ? "Ocultar por Gerente" : "Ver por Gerente"}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showManagerView ? "rotate-180" : ""}`} />
+                </button>
+
+                <div className="text-xs font-bold text-neutral-700 bg-neutral-100 px-3.5 py-1.5 rounded-lg border border-neutral-200 flex items-center gap-2">
+                  <span className="text-neutral-500 uppercase text-[10px] tracking-wider font-extrabold">Total Brasil Aberto:</span>
+                  <span className="font-mono font-black text-neutral-950 text-sm">
+                    {formatCurrency(managerConsolidated.totalBrasil)}
+                  </span>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
-              {/* Botão de Alternância de Visão por Gerente */}
-              <button
-                type="button"
-                onClick={() => setShowManagerView((prev) => !prev)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
-                  showManagerView
-                    ? "bg-neutral-900 text-white border-neutral-900 shadow-xs"
-                    : "bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 border-neutral-300 shadow-2xs"
-                }`}
-                title={showManagerView ? "Ocultar detalhamento por gerente" : "Exibir metas abertas por gerente"}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>{showManagerView ? "Ocultar por Gerente" : "Ver por Gerente"}</span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showManagerView ? "rotate-180" : ""}`} />
-              </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Bloco: CANAL KEY ACCOUNT (KA) */}
+              <div className="bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Key Account (KA)</span>
+                    </div>
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100 font-mono">
+                      {managerConsolidated.kaCount} Redes
+                    </span>
+                  </div>
 
-              <div className="text-xs font-bold text-neutral-700 bg-neutral-100 px-3.5 py-1.5 rounded-lg border border-neutral-200 flex items-center gap-2">
-                <span className="text-neutral-500 uppercase text-[10px] tracking-wider font-extrabold">Total Brasil Aberto:</span>
-                <span className="font-mono font-black text-neutral-950 text-sm">
-                  {formatCurrency(managerConsolidated.totalBrasil)}
-                </span>
+                  {/* Visão de Gerentes KA (Recolhida por padrão) */}
+                  {showManagerView ? (
+                    <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
+                      {managerConsolidated.managersSummary.map((m) => (
+                        <div key={`ka-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
+                          <span className="font-semibold text-neutral-700">{m.manager}</span>
+                          <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.kaMeta)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowManagerView(true)}
+                        className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>▸ Ver por Gerente</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
+                  <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (KA)</span>
+                  <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilKa)}</span>
+                </div>
+              </div>
+
+              {/* Bloco: CANAL DISTRIBUIDOR */}
+              <div className="bg-gradient-to-br from-slate-50/80 via-white to-amber-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-800 font-bold">
+                        <Truck className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Distribuidor</span>
+                    </div>
+                    <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100 font-mono">
+                      {managerConsolidated.distCount} Redes
+                    </span>
+                  </div>
+
+                  {/* Visão de Gerentes Distribuidor (Recolhida por padrão) */}
+                  {showManagerView ? (
+                    <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
+                      {managerConsolidated.managersSummary.map((m) => (
+                        <div key={`dist-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
+                          <span className="font-semibold text-neutral-700">{m.manager}</span>
+                          <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.distMeta)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowManagerView(true)}
+                        className="text-amber-700 hover:text-amber-900 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>▸ Ver por Gerente</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
+                  <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (Dist)</span>
+                  <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilDist)}</span>
+                </div>
               </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {/* Bloco: CANAL KEY ACCOUNT (KA) */}
-            <div className="bg-gradient-to-br from-slate-50/80 via-white to-indigo-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-indigo-100 border border-indigo-200 flex items-center justify-center text-indigo-700 font-bold">
-                      <Briefcase className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Key Account (KA)</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-full border border-indigo-100 font-mono">
-                    {managerConsolidated.kaCount} Redes
-                  </span>
+        ) : (
+          <div className="bg-white rounded-xl border border-amber-200 p-5 shadow-xs transition-all bg-gradient-to-br from-white via-amber-50/20 to-orange-50/10">
+            <div className="flex items-center justify-between border-b border-amber-100 pb-3 mb-4 flex-wrap gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-600 text-white font-bold">
+                  <Sparkles className="w-4 h-4 text-white" />
                 </div>
-
-                {/* Visão de Gerentes KA (Recolhida por padrão) */}
-                {showManagerView ? (
-                  <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
-                    {managerConsolidated.managersSummary.map((m) => (
-                      <div key={`ka-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
-                        <span className="font-semibold text-neutral-700">{m.manager}</span>
-                        <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.kaMeta)}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
-                    <button
-                      type="button"
-                      onClick={() => setShowManagerView(true)}
-                      className="text-indigo-600 hover:text-indigo-800 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>▸ Ver por Gerente</span>
-                    </button>
-                  </div>
-                )}
+                <div>
+                  <h2 className="text-xs font-black uppercase tracking-wider text-neutral-900 flex items-center gap-2">
+                    <span>Projeção Futura de Faturamento — Controle Interno</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                      Planejamento Paralelo
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-neutral-500 font-medium">
+                    Acompanhamento das projeções internas de faturamento por rede para os horizontes estratégicos solicitados.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
-                <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (KA)</span>
-                <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilKa)}</span>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowManagerView((prev) => !prev)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+                    showManagerView
+                      ? "bg-neutral-900 text-white border-neutral-900 shadow-xs"
+                      : "bg-white text-neutral-700 hover:text-neutral-950 hover:bg-neutral-50 border-neutral-300 shadow-2xs"
+                  }`}
+                  title={showManagerView ? "Ocultar detalhamento por gerente" : "Exibir detalhamento por gerente"}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>{showManagerView ? "Ocultar por Gerente" : "Ver por Gerente"}</span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showManagerView ? "rotate-180" : ""}`} />
+                </button>
               </div>
             </div>
 
-            {/* Bloco: CANAL DISTRIBUIDOR */}
-            <div className="bg-gradient-to-br from-slate-50/80 via-white to-amber-50/30 rounded-xl border border-slate-200 p-4 shadow-2xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between border-b border-slate-200/80 pb-2.5 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-800 font-bold">
-                      <Truck className="w-3.5 h-3.5" />
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-wider text-neutral-900">Canal Distribuidor</span>
-                  </div>
-                  <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-100 font-mono">
-                    {managerConsolidated.distCount} Redes
-                  </span>
-                </div>
-
-                {/* Visão de Gerentes Distribuidor (Recolhida por padrão) */}
-                {showManagerView ? (
-                  <div className="space-y-1.5 mb-3.5 animate-in fade-in duration-200">
-                    {managerConsolidated.managersSummary.map((m) => (
-                      <div key={`dist-mgr-${m.manager_id || m.manager}`} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-white border border-neutral-200/70 text-xs shadow-2xs">
-                        <span className="font-semibold text-neutral-700">{m.manager}</span>
-                        <span className="font-mono font-bold text-neutral-900">{formatCurrency(m.distMeta)}</span>
+            {/* Grade com os 3 Horizontes Futuros Oficiais */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {FUTURE_COMPETENCES.map((comp) => {
+                const cData = futureConsolidated[comp.key] || { total: 0, ka: 0, dist: 0, count: 0 };
+                return (
+                  <div
+                    key={comp.key}
+                    className="bg-white rounded-xl border border-amber-200/80 p-4 shadow-2xs flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between border-b border-amber-100 pb-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center text-amber-800 font-bold text-xs">
+                            <Calendar className="w-3.5 h-3.5" />
+                          </div>
+                          <span className="text-xs font-black uppercase tracking-wider text-neutral-900">
+                            {comp.label}
+                          </span>
+                        </div>
+                        <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 font-mono">
+                          {cData.count} {cData.count === 1 ? "rede" : "redes"}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-2.5 mb-2.5 text-center text-[11px] text-neutral-500 font-medium bg-white/60 rounded-lg border border-dashed border-neutral-200">
-                    <button
-                      type="button"
-                      onClick={() => setShowManagerView(true)}
-                      className="text-amber-700 hover:text-amber-900 font-bold hover:underline inline-flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>▸ Ver por Gerente</span>
-                    </button>
-                  </div>
-                )}
-              </div>
 
-              <div className="flex items-center justify-between py-2.5 px-3.5 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
-                <span className="uppercase tracking-wider text-[11px] font-black text-neutral-200">Consolidado Brasil (Dist)</span>
-                <span className="font-mono text-sm font-black text-amber-400">{formatCurrency(managerConsolidated.brasilDist)}</span>
-              </div>
+                      {/* Detalhamento de Gerentes quando expandido */}
+                      {showManagerView ? (
+                        <div className="space-y-1.5 mb-3.5 max-h-40 overflow-y-auto pr-1">
+                          {managers.map((m) => {
+                            let sumMgr = 0;
+                            m.redes.forEach((r) => {
+                              sumMgr += getFutureValue(r, comp.key);
+                            });
+                            return (
+                              <div
+                                key={`future-${comp.key}-${m.manager}`}
+                                className="flex items-center justify-between py-1 px-2.5 rounded bg-neutral-50 text-[11px] border border-neutral-200/60"
+                              >
+                                <span className="text-neutral-600 font-medium truncate">{cleanManagerName(m.manager)}</span>
+                                <span className="font-mono font-bold text-neutral-900">{formatCurrency(sumMgr)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 mb-3 text-xs">
+                          <div className="flex items-center justify-between py-1 px-2.5 rounded bg-slate-50 border border-slate-100">
+                            <span className="text-neutral-500 font-semibold">KA (Key Account):</span>
+                            <span className="font-mono font-bold text-indigo-700">{formatCurrency(cData.ka)}</span>
+                          </div>
+                          <div className="flex items-center justify-between py-1 px-2.5 rounded bg-slate-50 border border-slate-100">
+                            <span className="text-neutral-500 font-semibold">Distribuidor:</span>
+                            <span className="font-mono font-bold text-amber-800">{formatCurrency(cData.dist)}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-neutral-900 text-white font-bold text-xs shadow-xs mt-1">
+                      <span className="uppercase tracking-wider text-[10px] font-black text-amber-300">Total Projetado</span>
+                      <span className="font-mono text-sm font-black text-white">{formatCurrency(cData.total)}</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Toolbar de Busca e Ações */}
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-neutral-200 shadow-sm">
@@ -1318,6 +1696,26 @@ export default function MetasRedePage() {
                 }
               });
 
+              // Métricas e dirty cells de Meta Futura por Gerente
+              let hasMgrFutureDirtyCell = false;
+              let mgrFutureMar26 = 0;
+              let mgrFutureNov26 = 0;
+              let mgrFutureDez28 = 0;
+
+              mgr.redes.forEach((r) => {
+                FUTURE_COMPETENCES.forEach((comp) => {
+                  const fVal = getFutureValue(r, comp.key);
+                  if (comp.key === "2026-03") mgrFutureMar26 += fVal;
+                  if (comp.key === "2026-11") mgrFutureNov26 += fVal;
+                  if (comp.key === "2028-12") mgrFutureDez28 += fVal;
+
+                  const fKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}|${comp.key}`;
+                  if (futureSavedStateRef.current[fKey] !== undefined && Math.abs(fVal - (futureSavedStateRef.current[fKey] || 0)) > 0.001) {
+                    hasMgrFutureDirtyCell = true;
+                  }
+                });
+              });
+
               const renderRedesTable = (redesList: RedeRow[], channel: "KA" | "Dist") => (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
@@ -1339,14 +1737,35 @@ export default function MetasRedePage() {
                           </div>
                         </th>
                         <th className="p-3 text-right bg-blue-50/60 text-blue-900 font-bold border-l border-r border-blue-100">PREÇO MÉDIO 3M</th>
-                        <th className="p-3 text-center bg-neutral-50/80 font-black text-neutral-900 w-28">
-                          <div className="leading-tight text-center">
-                            <div>Meta R$</div>
-                            <div className="text-[9px] font-bold text-neutral-500">R$ mil</div>
-                          </div>
-                        </th>
-                        <th className="p-3 text-right bg-emerald-50/60 text-emerald-900 font-bold border-l border-r border-emerald-100">VOL META (Kg)</th>
-                        <th className="p-3 text-right">% vs Média 3M</th>
+                        
+                        {goalMode === "monthly" ? (
+                          <>
+                            <th className="p-3 text-center bg-neutral-50/80 font-black text-neutral-900 w-28">
+                              <div className="leading-tight text-center">
+                                <div>Meta R$</div>
+                                <div className="text-[9px] font-bold text-neutral-500">R$ mil</div>
+                              </div>
+                            </th>
+                            <th className="p-3 text-right bg-emerald-50/60 text-emerald-900 font-bold border-l border-r border-emerald-100">VOL META (Kg)</th>
+                            <th className="p-3 text-right">% vs Média 3M</th>
+                          </>
+                        ) : (
+                          <>
+                            {FUTURE_COMPETENCES.map((comp, cIdx) => (
+                              <th
+                                key={comp.key}
+                                className={`p-3 text-center bg-amber-50/80 text-amber-950 font-black border-l border-amber-200 w-28 ${
+                                  cIdx === FUTURE_COMPETENCES.length - 1 ? "border-r" : ""
+                                }`}
+                              >
+                                <div className="leading-tight text-center">
+                                  <div>{comp.shortLabel}</div>
+                                  <div className="text-[9px] font-bold text-amber-700">R$ mil</div>
+                                </div>
+                              </th>
+                            ))}
+                          </>
+                        )}
                         <th className="p-3 w-10 text-center">Ações</th>
                       </tr>
                     </thead>
@@ -1360,6 +1779,12 @@ export default function MetasRedePage() {
                         const inputKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}`;
                         const isCellDirty = savedStateRef.current[inputKey] !== undefined && Math.abs(val - (savedStateRef.current[inputKey] || 0)) > 0.001;
 
+                        const isRowFutureDirty = FUTURE_COMPETENCES.some((comp) => {
+                          const fKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}|${comp.key}`;
+                          const fVal = getFutureValue(r, comp.key);
+                          return futureSavedStateRef.current[fKey] !== undefined && Math.abs(fVal - (futureSavedStateRef.current[fKey] || 0)) > 0.001;
+                        });
+
                         // Cálculo de Maior e Menor Faturamento Positivo para Destaque
                         const positiveFats = tableDisplayedMonths.map(mon => r.months[mon]?.fat || 0).filter(f => f > 0);
                         const maxFat = positiveFats.length > 1 ? Math.max(...positiveFats) : -1;
@@ -1367,14 +1792,14 @@ export default function MetasRedePage() {
 
                         return (
                           <tr key={`${r.manager_id}-${r.codigo_matriz}-${r.rede}`} className={`border-b border-neutral-100 transition-colors ${
-                            isCellDirty ? "bg-amber-50/30" : "hover:bg-neutral-50/50"
+                            (goalMode === "monthly" ? isCellDirty : isRowFutureDirty) ? "bg-amber-50/30" : "hover:bg-neutral-50/50"
                           }`}>
                             <td className="p-3 text-center text-neutral-400 font-mono text-[11px]">{rIdx + 1}</td>
                             <td className="p-2 text-center w-14">
                               <div className="flex items-center justify-center gap-0.5">
                                 <button
                                   type="button"
-                                  disabled={rIdx === 0 || isEditingLocked || saving}
+                                  disabled={rIdx === 0 || isEditingLocked || saving || futureSaving}
                                   onClick={() => handleMoveNetworkUp(mgr, channel, rIdx)}
                                   className="p-1 rounded hover:bg-neutral-200/60 text-neutral-500 hover:text-neutral-900 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
                                   title="Mover para cima (▲)"
@@ -1383,7 +1808,7 @@ export default function MetasRedePage() {
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={rIdx === redesList.length - 1 || isEditingLocked || saving}
+                                  disabled={rIdx === redesList.length - 1 || isEditingLocked || saving || futureSaving}
                                   onClick={() => handleMoveNetworkDown(mgr, channel, rIdx)}
                                   className="p-1 rounded hover:bg-neutral-200/60 text-neutral-500 hover:text-neutral-900 disabled:opacity-20 disabled:hover:bg-transparent transition-all cursor-pointer"
                                   title="Mover para baixo (▼)"
@@ -1394,7 +1819,7 @@ export default function MetasRedePage() {
                             </td>
                             <td className="p-3 font-bold text-neutral-800 flex items-center gap-2">
                               <span>{r.rede}</span>
-                              {isCellDirty && (
+                              {((goalMode === "monthly" && isCellDirty) || (goalMode === "future" && isRowFutureDirty)) && (
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" title="Alteração pendente" />
                               )}
                             </td>
@@ -1429,38 +1854,76 @@ export default function MetasRedePage() {
                               {pm3M > 0 ? `${formatCurrency(pm3M)} /Kg` : "—"}
                             </td>
 
-                            <td className="p-2 text-center w-28">
-                              <div className="flex justify-center">
-                                <ExecutiveMoneyInput
-                                  value={val}
-                                  inThousands={true}
-                                  disabled={isEditingLocked || saving}
-                                  onChangeValue={(newVal: number) =>
-                                    setMetaValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, newVal)
-                                  }
-                                  className={`w-24 text-center font-mono font-bold bg-white text-neutral-900 border rounded-md px-2 py-1.5 text-xs shadow-xs focus:outline-none focus:ring-2 transition-all ${
-                                    isCellDirty
-                                      ? "border-amber-500 ring-1 ring-amber-400 focus:ring-amber-500 focus:border-amber-500"
-                                      : "border-neutral-300 hover:border-neutral-400 focus:ring-neutral-900 focus:border-neutral-900"
-                                  } disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200`}
-                                />
-                              </div>
-                            </td>
+                            {goalMode === "monthly" ? (
+                              <>
+                                <td className="p-2 text-center w-28">
+                                  <div className="flex justify-center">
+                                    <ExecutiveMoneyInput
+                                      value={val}
+                                      inThousands={true}
+                                      disabled={isEditingLocked || saving}
+                                      onChangeValue={(newVal: number) =>
+                                        setMetaValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, newVal)
+                                      }
+                                      className={`w-24 text-center font-mono font-bold bg-white text-neutral-900 border rounded-md px-2 py-1.5 text-xs shadow-xs focus:outline-none focus:ring-2 transition-all ${
+                                        isCellDirty
+                                          ? "border-amber-500 ring-1 ring-amber-400 focus:ring-amber-500 focus:border-amber-500"
+                                          : "border-neutral-300 hover:border-neutral-400 focus:ring-neutral-900 focus:border-neutral-900"
+                                      } disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200`}
+                                    />
+                                  </div>
+                                </td>
 
-                            <td className="p-3 text-right font-mono font-bold bg-emerald-50/30 text-emerald-800 border-l border-r border-emerald-100">
-                              {volMetaKg > 0 ? `${Math.round(volMetaKg).toLocaleString("pt-BR")} Kg` : "—"}
-                            </td>
+                                <td className="p-3 text-right font-mono font-bold bg-emerald-50/30 text-emerald-800 border-l border-r border-emerald-100">
+                                  {volMetaKg > 0 ? `${Math.round(volMetaKg).toLocaleString("pt-BR")} Kg` : "—"}
+                                </td>
 
-                            <td className={`p-3 text-right font-mono font-semibold ${
-                              pctVsAvg3M > 0 ? "text-emerald-600" : pctVsAvg3M < 0 ? "text-rose-600" : "text-neutral-400"
-                            }`}>
-                              {pctVsAvg3M !== 0 ? `${pctVsAvg3M > 0 ? "+" : ""}${pctVsAvg3M.toFixed(1)}%` : "—"}
-                            </td>
+                                <td className={`p-3 text-right font-mono font-semibold ${
+                                  pctVsAvg3M > 0 ? "text-emerald-600" : pctVsAvg3M < 0 ? "text-rose-600" : "text-neutral-400"
+                                }`}>
+                                  {pctVsAvg3M !== 0 ? `${pctVsAvg3M > 0 ? "+" : ""}${pctVsAvg3M.toFixed(1)}%` : "—"}
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                {FUTURE_COMPETENCES.map((comp, cIdx) => {
+                                  const fVal = getFutureValue(r, comp.key);
+                                  const fKey = `${r.manager_id}|${r.codigo_matriz}|${r.rede}|${comp.key}`;
+                                  const isFCellDirty = futureSavedStateRef.current[fKey] !== undefined &&
+                                    Math.abs(fVal - (futureSavedStateRef.current[fKey] || 0)) > 0.001;
+
+                                  return (
+                                    <td
+                                      key={comp.key}
+                                      className={`p-2 text-center w-28 border-l border-amber-100 ${
+                                        cIdx === FUTURE_COMPETENCES.length - 1 ? "border-r" : ""
+                                      } ${isFCellDirty ? "bg-amber-50/40" : ""}`}
+                                    >
+                                      <div className="flex justify-center">
+                                        <ExecutiveMoneyInput
+                                          value={fVal}
+                                          inThousands={true}
+                                          disabled={futureSaving}
+                                          onChangeValue={(newVal: number) =>
+                                            setFutureValue(r.manager_id, r.codigo_matriz, r.rede, r.manager, comp.key, newVal)
+                                          }
+                                          className={`w-24 text-center font-mono font-bold bg-white text-neutral-900 border rounded-md px-2 py-1.5 text-xs shadow-xs focus:outline-none focus:ring-2 transition-all ${
+                                            isFCellDirty
+                                              ? "border-amber-500 ring-1 ring-amber-400 focus:ring-amber-500 focus:border-amber-500"
+                                              : "border-neutral-300 hover:border-neutral-400 focus:ring-amber-600 focus:border-amber-600"
+                                          } disabled:bg-neutral-100 disabled:text-neutral-400 disabled:border-neutral-200`}
+                                        />
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+                              </>
+                            )}
 
                             <td className="p-3 text-center">
                               <button
                                 type="button"
-                                disabled={isEditingLocked || saving}
+                                disabled={isEditingLocked || saving || futureSaving}
                                 onClick={() => setRemoveRedeModal({ open: true, manager: mgr, rede: r })}
                                 title={`Excluir ${r.rede} do planejamento`}
                                 className="p-1.5 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-30 cursor-pointer"
@@ -1478,7 +1941,7 @@ export default function MetasRedePage() {
 
               return (
                 <div key={mgr.manager} className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden ${
-                  hasMgrDirtyCell ? "border-amber-300 ring-1 ring-amber-200" : "border-neutral-200"
+                  (goalMode === "monthly" ? hasMgrDirtyCell : hasMgrFutureDirtyCell) ? "border-amber-300 ring-1 ring-amber-200" : "border-neutral-200"
                 }`}>
                   {/* Header Consolidado do Gerente */}
                   <div
@@ -1495,59 +1958,113 @@ export default function MetasRedePage() {
                         <div className="flex items-center gap-2">
                           <span className="font-black text-neutral-900 text-base">{cleanManagerName(mgr.manager)}</span>
                           
-                          {hasMgrDirtyCell && (
-                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
-                              <Edit3 className="w-3 h-3 text-amber-600" />
-                              Em Edição
-                            </span>
-                          )}
+                          {goalMode === "monthly" ? (
+                            <>
+                              {hasMgrDirtyCell && (
+                                <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                  Em Edição
+                                </span>
+                              )}
 
-                          {workflowStatus === "FROZEN" && (
-                            <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                              <Lock className="w-3 h-3" />
-                              Congelada
-                            </span>
+                              {workflowStatus === "FROZEN" && (
+                                <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                                  <Lock className="w-3 h-3" />
+                                  Congelada
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              {hasMgrFutureDirtyCell && (
+                                <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                  <Edit3 className="w-3.5 h-3.5 text-amber-600" />
+                                  Projeção Alterada
+                                </span>
+                              )}
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                Meta Futura
+                              </span>
+                            </>
                           )}
                         </div>
-                        <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-3">
+                        <div className="text-xs text-neutral-500 mt-0.5 flex items-center gap-3 flex-wrap">
                           <span>{mgr.redes.length} Redes Planejáveis ({kaRedes.length} KA / {distRedes.length} Dist)</span>
                           <span>•</span>
                           <span>Média 3M Total: {formatCurrency(mgr.grandTotalMed3M)}</span>
                           <span>•</span>
-                          <span className="font-semibold text-emerald-700">Vol Meta Total: {Math.round(totalVolSum).toLocaleString("pt-BR")} Kg</span>
+                          {goalMode === "monthly" ? (
+                            <span className="font-semibold text-emerald-700">Vol Meta Total: {Math.round(totalVolSum).toLocaleString("pt-BR")} Kg</span>
+                          ) : (
+                            <div className="flex items-center gap-2 font-mono font-bold text-neutral-800">
+                              <span className="text-neutral-500 font-sans font-semibold">Projeção:</span>
+                              <span className="text-indigo-600">Mar/26: {formatCurrency(mgrFutureMar26)}</span>
+                              <span>•</span>
+                              <span className="text-amber-600">Nov/26: {formatCurrency(mgrFutureNov26)}</span>
+                              <span>•</span>
+                              <span className="text-purple-600">Dez/28: {formatCurrency(mgrFutureDez28)}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-4 flex-wrap justify-end">
-                      {/* Botão Salvar Metas do Gerente */}
-                      <button
-                        type="button"
-                        disabled={isEditingLocked || saving}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSave();
-                        }}
-                        className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
-                          isEditingLocked
-                            ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
-                            : saved
-                            ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
-                            : hasMgrDirtyCell
-                            ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse shadow-amber-200"
-                            : "bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-900"
-                        }`}
-                        title="Salvar todas as metas editadas na tela"
-                      >
-                        {saving ? (
-                          <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : saved ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <Save className="w-3.5 h-3.5" />
-                        )}
-                        <span>{saved ? "Gravado na RPS!" : "💾 Salvar Metas"}</span>
-                      </button>
+                      {goalMode === "monthly" ? (
+                        <button
+                          type="button"
+                          disabled={isEditingLocked || saving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSave();
+                          }}
+                          className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
+                            isEditingLocked
+                              ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                              : saved
+                              ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
+                              : hasMgrDirtyCell
+                              ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse shadow-amber-200"
+                              : "bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-900"
+                          }`}
+                          title="Salvar todas as metas editadas na tela"
+                        >
+                          {saving ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : saved ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Save className="w-3.5 h-3.5" />
+                          )}
+                          <span>{saved ? "Gravado na RPS!" : "💾 Salvar Metas"}</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={futureSaving}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSaveFuture();
+                          }}
+                          className={`px-4 py-2 text-xs font-black rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
+                            futureSaved
+                              ? "bg-emerald-600 text-white border border-emerald-700 shadow-emerald-200"
+                              : hasMgrFutureDirtyCell
+                              ? "bg-amber-500 hover:bg-amber-600 text-white border border-amber-600 ring-2 ring-amber-300 animate-pulse shadow-amber-200"
+                              : "bg-neutral-900 hover:bg-neutral-800 text-white border border-neutral-900"
+                          }`}
+                          title="Salvar projeções futuras deste gerente e de toda a tela"
+                        >
+                          {futureSaving ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          ) : futureSaved ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Save className="w-3.5 h-3.5" />
+                          )}
+                          <span>{futureSaved ? "Projeção Gravada!" : "💾 Salvar Projeção Futura"}</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -1565,9 +2082,15 @@ export default function MetasRedePage() {
                                 CANAL KA (Key Accounts)
                               </span>
                               <span className="text-xs text-neutral-500 font-semibold">{kaRedes.length} Redes</span>
-                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                Vol: {Math.round(kaVolSum).toLocaleString("pt-BR")} Kg
-                              </span>
+                              {goalMode === "monthly" ? (
+                                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  Vol: {Math.round(kaVolSum).toLocaleString("pt-BR")} Kg
+                                </span>
+                              ) : (
+                                <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                                  Projeção 3 Competências
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -1575,13 +2098,13 @@ export default function MetasRedePage() {
                           <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-indigo-100/60">
                             <button
                               type="button"
-                              disabled={isEditingLocked || saving}
+                              disabled={isEditingLocked || saving || futureSaving}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setAddRedeModal({ open: true, manager: mgr, channel: "KA" });
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer ${
-                                isEditingLocked
+                                isEditingLocked || saving || futureSaving
                                   ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
                                   : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
                               }`}
@@ -1590,27 +2113,29 @@ export default function MetasRedePage() {
                               <span>+ Adicionar Rede</span>
                             </button>
 
-                            <button
-                              type="button"
-                              disabled={isEditingLocked || saving}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenRateioPreview(
-                                  mgr,
-                                  kaOfficialMeta > 0 ? kaOfficialMeta : Math.round(kaRedes.reduce((s, r) => s + (r.avg3M || 0), 0) * 1.1),
-                                  kaRedes,
-                                  "KA (Key Account)"
-                                );
-                              }}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
-                                isEditingLocked
-                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
-                                  : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
-                              }`}
-                            >
-                              <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                              <span>Distribuir Proporcionalmente (KA)</span>
-                            </button>
+                            {goalMode === "monthly" && (
+                              <button
+                                type="button"
+                                disabled={isEditingLocked || saving}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenRateioPreview(
+                                    mgr,
+                                    kaOfficialMeta > 0 ? kaOfficialMeta : Math.round(kaRedes.reduce((s, r) => s + (r.avg3M || 0), 0) * 1.1),
+                                    kaRedes,
+                                    "KA (Key Account)"
+                                  );
+                                }}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
+                                  isEditingLocked
+                                    ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                    : "text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200"
+                                }`}
+                              >
+                                <Zap className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span>Distribuir Proporcionalmente (KA)</span>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1634,9 +2159,15 @@ export default function MetasRedePage() {
                                 CANAL DISTRIBUIDOR
                               </span>
                               <span className="text-xs text-neutral-500 font-semibold">{distRedes.length} Clientes / Distribuidores</span>
-                              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                Vol: {Math.round(distVolSum).toLocaleString("pt-BR")} Kg
-                              </span>
+                              {goalMode === "monthly" ? (
+                                <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                  Vol: {Math.round(distVolSum).toLocaleString("pt-BR")} Kg
+                                </span>
+                              ) : (
+                                <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                  Projeção 3 Competências
+                                </span>
+                              )}
                             </div>
                           </div>
 
@@ -1644,13 +2175,13 @@ export default function MetasRedePage() {
                           <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-amber-100/60">
                             <button
                               type="button"
-                              disabled={isEditingLocked || saving}
+                              disabled={isEditingLocked || saving || futureSaving}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setAddRedeModal({ open: true, manager: mgr, channel: "Dist" });
                               }}
                               className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer ${
-                                isEditingLocked
+                                isEditingLocked || saving || futureSaving
                                   ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
                                   : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
                               }`}
@@ -1659,27 +2190,29 @@ export default function MetasRedePage() {
                               <span>+ Adicionar Rede</span>
                             </button>
 
-                            <button
-                              type="button"
-                              disabled={isEditingLocked || saving}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenRateioPreview(
-                                  mgr,
-                                  distOfficialMeta > 0 ? distOfficialMeta : Math.round(distRedes.reduce((s, r) => s + (r.avg3M || 0), 0) * 1.1),
-                                  distRedes,
-                                  "Distribuidor"
-                                );
-                              }}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
-                                isEditingLocked
-                                  ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
-                                  : "text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
-                              }`}
-                            >
-                              <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                              <span>Distribuir Proporcionalmente (Dist)</span>
-                            </button>
+                            {goalMode === "monthly" && (
+                              <button
+                                type="button"
+                                disabled={isEditingLocked || saving}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenRateioPreview(
+                                    mgr,
+                                    distOfficialMeta > 0 ? distOfficialMeta : Math.round(distRedes.reduce((s, r) => s + (r.avg3M || 0), 0) * 1.1),
+                                    distRedes,
+                                    "Distribuidor"
+                                  );
+                                }}
+                                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer ${
+                                  isEditingLocked
+                                    ? "bg-neutral-100 text-neutral-400 border border-neutral-200 cursor-not-allowed"
+                                    : "text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                                }`}
+                              >
+                                <Zap className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <span>Distribuir Proporcionalmente (Dist)</span>
+                              </button>
+                            )}
                           </div>
                         </div>
 
