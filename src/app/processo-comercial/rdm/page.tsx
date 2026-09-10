@@ -28,6 +28,7 @@ import { RdmSlideAcumuladoData, RdmSlide8Consolidado, RdmSlide10RedeItem } from 
 
 import { RdmRedeDrawer } from "./components/RdmRedeDrawer";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
+import { RdmCartaAnuenciaData } from "@/lib/carta-anuencia/rdm-adapter";
 import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ interface RdmApiResponse {
   currentMonth?: number;
   currentMonthName?: string;
   projComments?: Record<string, string>;
+  cartaAnuencia?: RdmCartaAnuenciaData;
 }
 
 interface PrecoCompareMonth {
@@ -644,18 +646,13 @@ function SlideShell({
   title,
   monthName,
   children,
-  isOutdated,
 }: {
   title: string;
   monthName: string;
   children: React.ReactNode;
-  isOutdated?: boolean;
 }) {
   return (
     <div className="rdm-slide" style={{ position: 'relative' }}>
-      {/* Faixa Diagonal Pública de Slide Desatualizado (quando repassada localmente) */}
-      {isOutdated && <RdmOutdatedOverlay />}
-
       {/* Header */}
       <div className="rdm-slide-header">
         <div className="rdm-slide-title-block">
@@ -990,14 +987,12 @@ function SlideDreResumo({
   month,
   slide1Data,
   dreGerencialPorGerente,
-  isOutdated,
 }: {
   monthName: string;
   year?: number;
   month?: number;
   slide1Data?: any;
   dreGerencialPorGerente?: RdmSlide8Consolidado;
-  isOutdated?: boolean;
 }) {
   const gerentes = dreGerencialPorGerente?.gerentes || [];
   const totalBrasil = dreGerencialPorGerente?.totalBrasil;
@@ -1005,7 +1000,7 @@ function SlideDreResumo({
   const compKey = year && month ? `${year}-${String(month).padStart(2, '0')}` : '2026-08';
 
   return (
-    <SlideShell title="Resultado DRE" monthName={monthName} isOutdated={isOutdated}>
+    <SlideShell title="Resultado DRE" monthName={monthName}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', height: '100%', padding: '2px 0' }}>
         {/* Subtitle & Header Executivo */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
@@ -2380,6 +2375,222 @@ function SlideInvestRede({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+    </SlideShell>
+  );
+}
+
+// ─── Slide 15: Status de Entrega das Cartas de Anuência ───────────────────────
+function SlideCartaAnuencia({
+  monthName,
+  manager,
+  cartaAnuencia,
+}: {
+  monthName: string;
+  manager: string;
+  cartaAnuencia?: RdmCartaAnuenciaData;
+}) {
+  const isConsolidado = manager === 'CRISTIANO' || isSameManager(manager, 'CRISTIANO');
+  const competenciaVigente = cartaAnuencia?.competencia;
+  const rawRanking = cartaAnuencia?.ranking ?? [];
+  const totalBrasil = cartaAnuencia?.totalBrasil ?? {
+    total_cartas: 0,
+    cartas_para_assinar: 0,
+    cartas_assinadas: 0,
+    pct_cartas_assinadas: 0,
+  };
+
+  // Visão individual: quando um gerente específico estiver selecionado,
+  // mostra SOMENTE a linha daquele gerente (sem TOTAL BRASIL, sem totalização da carteira).
+  // Preserva sua posição/medalha oficial no ranking nacional.
+  const displayRanking = useMemo(() => {
+    if (isConsolidado) {
+      return rawRanking;
+    }
+    return rawRanking.filter((item) => isSameManager(item.gerente, manager));
+  }, [isConsolidado, rawRanking, manager]);
+
+  const displayCompetencia = competenciaVigente || 'SEM COMPETÊNCIA VIGENTE';
+
+  return (
+    <SlideShell title="STATUS DE ENTREGA DAS CARTAS" monthName={displayCompetencia}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', height: '100%', padding: '2px 0' }}>
+        {/* Header Executivo */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
+              STATUS DE CARTAS DE ANUÊNCIA POR GERENTE
+            </span>
+            <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+              · Ranking por % de Cartas Assinadas
+            </span>
+          </div>
+
+          <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+            Competência Vigente: <strong style={{ color: '#0f172a' }}>{competenciaVigente || 'Não definida'}</strong>
+          </div>
+        </div>
+
+        {/* Tabela Executiva */}
+        <div style={{
+          flex: 1,
+          background: '#ffffff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '6px',
+          overflow: 'hidden',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+          display: 'flex',
+          flexDirection: 'column',
+        }}>
+          {!competenciaVigente || cartaAnuencia?.status === 'SEM_COMPETENCIA_COM_CARTAS' || cartaAnuencia?.status === 'SEM_COMPETENCIA_VIGENTE' ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#b45309', background: '#fefce8', borderRadius: '4px', margin: '16px', border: '1px solid #fde047' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '4px' }}>
+                Sem Competência Operacional de Cartas de Anuência
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#78350f' }}>
+                Nenhuma competência não encerrada com cartas emitidas foi localizada no sistema.
+              </div>
+            </div>
+          ) : displayRanking.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
+              Nenhum dado encontrado para o gerente selecionado na competência vigente.
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.72rem' }}>
+                <thead>
+                  <tr style={{ background: '#111827', color: '#ffffff' }}>
+                    <th style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem', width: '48px' }}>#</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'left', fontWeight: 700, fontSize: '0.62rem', borderRight: '1px solid #334155' }}>GERENTE</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem' }}>TOTAL DE CARTAS</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem' }}>CARTAS PARA ASSINAR</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: '0.62rem' }}>CARTAS ASSINADAS</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, fontSize: '0.62rem' }}>% DE CARTAS ASSINADAS</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRanking.map((item, idx) => {
+                    const rank = item.posicao;
+                    const isTop1 = rank === 1;
+                    const isTop2 = rank === 2;
+                    const isTop3 = rank === 3;
+
+                    const pct = item.pct_cartas_assinadas;
+                    const badgeBg = pct >= 100 ? '#dcfce7' : pct > 0 ? '#fef3c7' : '#f1f5f9';
+                    const badgeColor = pct >= 100 ? '#15803d' : pct > 0 ? '#b45309' : '#64748b';
+
+                    return (
+                      <tr
+                        key={item.gerente}
+                        style={{
+                          borderBottom: '1px solid #e2e8f0',
+                          background: isTop1
+                            ? '#fffbeb'
+                            : isTop2
+                            ? '#f8fafc'
+                            : isTop3
+                            ? '#fff7ed'
+                            : idx % 2 === 0
+                            ? '#ffffff'
+                            : '#f8fafc',
+                        }}
+                      >
+                        {/* Ranking # */}
+                        <td style={{ padding: '8px 6px', textAlign: 'center', fontWeight: 800 }}>
+                          {isTop1 ? (
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', background: '#f59e0b', color: '#ffffff', fontSize: '0.60rem' }}>🥇 1º</span>
+                          ) : isTop2 ? (
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', background: '#64748b', color: '#ffffff', fontSize: '0.60rem' }}>🥈 2º</span>
+                          ) : isTop3 ? (
+                            <span style={{ padding: '2px 6px', borderRadius: '4px', background: '#c2410c', color: '#ffffff', fontSize: '0.60rem' }}>🥉 3º</span>
+                          ) : (
+                            <span style={{ color: '#6b7280', fontSize: '0.65rem', fontWeight: 700 }}>{rank}º</span>
+                          )}
+                        </td>
+
+                        {/* Gerente */}
+                        <td style={{ padding: '8px 12px', color: '#111827', fontWeight: 700, borderRight: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                          {item.gerente}
+                        </td>
+
+                        {/* Total de Cartas */}
+                        <td style={{ padding: '8px 12px', textAlign: 'center', color: '#0f172a', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {item.total_cartas}
+                        </td>
+
+                        {/* Cartas para Assinar */}
+                        <td style={{ padding: '8px 12px', textAlign: 'center', color: '#d97706', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {item.cartas_para_assinar}
+                        </td>
+
+                        {/* Cartas Assinadas */}
+                        <td style={{ padding: '8px 12px', textAlign: 'center', color: '#059669', fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                          {item.cartas_assinadas}
+                        </td>
+
+                        {/* % de Cartas Assinadas */}
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          <span style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            background: badgeBg,
+                            color: badgeColor,
+                            fontWeight: 800,
+                            fontFamily: 'var(--font-geist-mono, monospace)',
+                          }}>
+                            {pct.toFixed(1).replace('.', ',')}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+
+                {/* Linha TOTAL BRASIL: EXCLUSIVA da visão consolidada CRISTIANO */}
+                {isConsolidado && displayRanking.length > 0 && (
+                  <tfoot style={{ borderTop: '2px solid #334155', background: '#f8fafc', fontWeight: 800 }}>
+                    <tr>
+                      <td style={{ padding: '8px 6px', textAlign: 'center', color: '#64748b' }}>—</td>
+                      <td style={{ padding: '8px 12px', color: '#0f172a', letterSpacing: '0.05em', borderRight: '1px solid #cbd5e1' }}>
+                        TOTAL BRASIL
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#0f172a', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        {totalBrasil.total_cartas}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#d97706', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        {totalBrasil.cartas_para_assinar}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'center', color: '#059669', fontFamily: 'var(--font-geist-mono, monospace)' }}>
+                        {totalBrasil.cartas_assinadas}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        {(() => {
+                          const tbPct = totalBrasil.pct_cartas_assinadas;
+                          const tbBadgeBg = tbPct >= 100 ? '#dcfce7' : tbPct > 0 ? '#fef3c7' : '#f1f5f9';
+                          const tbBadgeColor = tbPct >= 100 ? '#15803d' : tbPct > 0 ? '#b45309' : '#64748b';
+                          return (
+                            <span style={{
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              background: tbBadgeBg,
+                              color: tbBadgeColor,
+                              fontWeight: 900,
+                              fontFamily: 'var(--font-geist-mono, monospace)',
+                            }}>
+                              {tbPct.toFixed(1).replace('.', ',')}%
+                            </span>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
         </div>
       </div>
     </SlideShell>
@@ -5505,7 +5716,7 @@ export default function RdmPage() {
   const [exportScope,         setExportScope]         = useState<'all' | 'current' | 'custom'>('all');
   const [selectedCustomKeys, setSelectedCustomKeys] = useState<Set<string>>(new Set([
     'capa', 'agenda', 'follow_up', 'farol_metas', 'dre', 'dre_rede',
-    'invest_fases', 'invest_cliente', 'invest_rede',
+    'invest_fases', 'invest_cliente', 'invest_rede', 'carta_anuencia',
     'fat_mensal', 'vol_mensal', 'vol_preco_medio', 'preco_yoy',
     'preco_tabela', 'vol_matriz', 'preco_familia', 'plano_acao',
     'projecao_vendas', 'agenda_rotas', 'obrigado'
@@ -5540,6 +5751,8 @@ export default function RdmPage() {
       }
       if (json.outdatedSlides) {
         setOutdatedSlides(json.outdatedSlides);
+      } else {
+        setOutdatedSlides({});
       }
       if (json.isRestrictedManager) {
         setIsRestrictedManager(true);
@@ -5564,6 +5777,13 @@ export default function RdmPage() {
     if (updatingSlideStatus) return;
     setUpdatingSlideStatus(true);
     setOutdatedSlides(prev => ({ ...prev, [sKey]: newOutdated }));
+    setData(prev => prev ? ({
+      ...prev,
+      outdatedSlides: {
+        ...(prev.outdatedSlides ?? {}),
+        [sKey]: newOutdated,
+      },
+    }) : prev);
     try {
       const res = await fetch('/api/processo-comercial/rdm', {
         method: 'POST',
@@ -5580,10 +5800,24 @@ export default function RdmPage() {
       const json = await res.json();
       if (!json.success) {
         setOutdatedSlides(prev => ({ ...prev, [sKey]: !newOutdated }));
+        setData(prev => prev ? ({
+          ...prev,
+          outdatedSlides: {
+            ...(prev.outdatedSlides ?? {}),
+            [sKey]: !newOutdated,
+          },
+        }) : prev);
         alert(json.error || 'Erro ao atualizar status do slide.');
       }
     } catch (err: any) {
       setOutdatedSlides(prev => ({ ...prev, [sKey]: !newOutdated }));
+      setData(prev => prev ? ({
+        ...prev,
+        outdatedSlides: {
+          ...(prev.outdatedSlides ?? {}),
+          [sKey]: !newOutdated,
+        },
+      }) : prev);
       alert(err?.message || 'Erro de conexão ao atualizar status do slide.');
     } finally {
       setUpdatingSlideStatus(false);
@@ -5642,6 +5876,7 @@ export default function RdmPage() {
       { key: 'invest_fases',     label: 'Resumo das Fases' },
       { key: 'invest_cliente',   label: 'Investimento por Cliente' },
       { key: 'invest_rede',      label: 'Investimento por Rede' },
+      { key: 'carta_anuencia',   label: 'Status Cartas de Anuência' },
       { key: 'cover_resultado',  label: '§ Faturamento e Volume' },
       { key: 'fat_mensal',       label: 'Resultado Faturamento' },
       { key: 'vol_mensal',       label: 'Resultado Volume' },
@@ -5899,7 +6134,6 @@ export default function RdmPage() {
           month={month}
           slide1Data={data?.dreGerencialSlide1}
           dreGerencialPorGerente={data?.dreGerencialPorGerente}
-          isOutdated={data?.outdatedSlides?.['dre']}
         />
       );
     }
@@ -5960,6 +6194,16 @@ export default function RdmPage() {
           month={data.month}
           year={data.year}
           manager={manager}
+        />
+      );
+    }
+
+    if (slideKey === 'carta_anuencia') {
+      return (
+        <SlideCartaAnuencia
+          monthName={monthName}
+          manager={manager}
+          cartaAnuencia={data?.cartaAnuencia}
         />
       );
     }

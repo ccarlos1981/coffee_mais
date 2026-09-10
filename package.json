@@ -40,6 +40,8 @@
     "test:rdm-contract": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-farol-contract.ts",
     "test:rdm-slide06": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-slide06-farol.ts",
     "test:rdm-slide08": "npx tsx scripts/test-rdm-slide08-reconciliation.ts",
+    "test:rdm-cartas-anuencia": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-cartas-anuencia.ts",
+    "test:rdm-outdated": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-rdm-outdated-overlay.ts",
     "test:hardening": "npx ts-node -r tsconfig-paths/register -O '{\"module\":\"commonjs\"}' scripts/test-wave-hardening-rbac-smtp.ts"
   },
   "dependencies": {

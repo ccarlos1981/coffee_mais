@@ -8,6 +8,7 @@ import { CommercialDomainService } from "@/lib/domain";
 import { getRdmData, getRdmDreAcumuladoData, getRdmDrePorGerenteData } from "@/lib/dre-gerencial/engine";
 import { getRdmDrePorRedeData } from "@/lib/dre-gerencial/rede-engine";
 import { getCurrentBusinessCompetence } from "@/app/processo-comercial/rdm/rdm-business-time";
+import { getRdmCartaAnuenciaData } from "@/lib/carta-anuencia/rdm-adapter";
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,7 +56,7 @@ const KA_MANAGERS = CommercialDomainService.getFieldManagerList();
 // Opção "CRISTIANO" = total de todos os gerentes KA
 const CRISTIANO = "CRISTIANO";
 
-// Registry Oficial de Slides do RDM (29 slides)
+// Registry Oficial de Slides do RDM (30 slides)
 export const OFFICIAL_RDM_SLIDE_KEYS = [
   'capa',
   'agenda',
@@ -71,6 +72,7 @@ export const OFFICIAL_RDM_SLIDE_KEYS = [
   'invest_fases',
   'invest_cliente',
   'invest_rede',
+  'carta_anuencia',
   'cover_resultado',
   'fat_mensal',
   'vol_mensal',
@@ -225,7 +227,8 @@ export async function GET(request: Request) {
       dreGerencialSlideAcumulado,
       resSlideStatus,
       dreGerencialPorGerenteData,
-      dreRedesResult
+      dreRedesResult,
+      cartaAnuencia,
     ] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
@@ -340,6 +343,17 @@ export async function GET(request: Request) {
       getRdmDrePorRedeData(monthKey, manager).catch((err) => {
         console.error('[RDM API] Erro ao carregar DRE por Rede:', err);
         return null;
+      }),
+
+      // 13. Status de Entrega das Cartas de Anuência (Slide 15 Oficial)
+      getRdmCartaAnuenciaData().catch((err) => {
+        console.error('[RDM API] Erro ao carregar Cartas de Anuência:', err);
+        return {
+          competencia: null,
+          status: "SEM_COMPETENCIA_VIGENTE" as const,
+          ranking: [],
+          totalBrasil: { total_cartas: 0, cartas_para_assinar: 0, cartas_assinadas: 0, pct_cartas_assinadas: 0 },
+        };
       }),
     ]);
 
@@ -1197,6 +1211,9 @@ export async function GET(request: Request) {
 
       prevYear,
 
+      // ── Slide 15: Status de Entrega das Cartas de Anuência ──
+      cartaAnuencia,
+
       // ── Slide 26: Projeção de Vendas (Sempre Mês Corrente) ──
       projecaoFarol: projFarolData,
       currentYear,
@@ -1246,11 +1263,11 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: "Parâmetros inválidos." }, { status: 400 });
       }
 
-      // 2. Validação estrita de registry: aceita apenas os 29 slides oficiais do RDM
+      // 2. Validação estrita de registry: aceita apenas os 30 slides oficiais do RDM
       if (!OFFICIAL_RDM_SLIDE_KEYS_SET.has(slide_key)) {
         return NextResponse.json({
           success: false,
-          error: `Escopo inválido (400 Bad Request): O slide '${slide_key}' não pertence aos 29 slides oficiais do RDM.`
+          error: `Escopo inválido (400 Bad Request): O slide '${slide_key}' não pertence aos 30 slides oficiais do RDM.`
         }, { status: 400 });
       }
 
