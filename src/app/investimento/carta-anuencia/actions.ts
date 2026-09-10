@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { getStoragePublicUrl } from "@/lib/storage-helpers";
 import { calculateBufferHash, getImageDimensionsFromBuffer } from "@/lib/server-image-helpers";
 import { calcularValidadeCartaAnuencia, verificarCartaExpirada } from "./validade-helper";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 
 const CARTA_ANUENCIA_ALLOWED_ROLES = [
   "Trade",
@@ -644,8 +645,9 @@ async function obterMetadadosRedesMasterData(
 async function resolverCarteiraGerente(adminClient: ReturnType<typeof createAdminClient>, profile: { role?: string | null; name?: string | null; manager_name?: string | null }): Promise<Set<string> | null> {
   if (profile?.role !== "Gerente Regional") return null;
 
-  const gerenteName = profile.manager_name || profile.name || null;
-  if (!gerenteName) return new Set<string>(); // gerente sem nome → carteira vazia (seguro)
+  const rawGerente = profile.manager_name || profile.name || null;
+  if (!rawGerente) return new Set<string>(); // gerente sem nome → carteira vazia (seguro)
+  const gerenteName = resolveCanonicalManager(rawGerente).managerName;
 
   // Buscar os rede_ids das cartas sob responsabilidade do gerente
   // via cm_clientes (fonte oficial de ownership comercial)
@@ -905,9 +907,10 @@ export async function obterDadosFarolExecutivo(filters?: {
   // RBAC: aplicar filtro de gerente automaticamente se for Gerente Regional
   const adminClient = createAdminClient();
   const isGerenteRegional = profile?.role === "Gerente Regional";
-  const gerenteFiltro = isGerenteRegional
+  const rawFiltro = isGerenteRegional
     ? (profile.manager_name || profile.name || undefined)
     : filters?.manager;
+  const gerenteFiltro = rawFiltro ? resolveCanonicalManager(rawFiltro).managerName : undefined;
 
   const redesAnalytics = await AnalyticsEngine.getFarolAnuenciaRedes({
     manager: gerenteFiltro,
@@ -1587,7 +1590,7 @@ export async function obterTimelineCarta(cartaId: string): Promise<TimelineItem[
  * Helpers Internos para o Farol Executivo Gerencial
  */
 function resolverRegionalPorGerente(manager: string | null | undefined): { id: string; label: string } {
-  const m = (manager || "").trim();
+  const m = resolveCanonicalManager(manager).managerName;
   if (m === "Leandro Saffi") return { id: "SUL", label: "Sul" };
   if (m === "Julliano") return { id: "SUDESTE", label: "Sudeste (SP)" };
   if (m === "Luiz") return { id: "SU_CO_NE", label: "Sudeste / Nordeste" };
@@ -1656,7 +1659,8 @@ export async function obterDadosFarolGerencial(filters?: {
 
   // RBAC: Gerente Regional tem visão restrita à sua própria carteira
   const isGerenteRegional = profile?.role === "Gerente Regional";
-  const gerenteLogado = isGerenteRegional ? (profile.manager_name || profile.name || undefined) : undefined;
+  const rawGerente = isGerenteRegional ? (profile.manager_name || profile.name || undefined) : undefined;
+  const gerenteLogado = rawGerente ? resolveCanonicalManager(rawGerente).managerName : undefined;
 
   // 1. Obter Competências Disponíveis
   const { data: competenciasData } = await adminClient
