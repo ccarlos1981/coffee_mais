@@ -282,6 +282,14 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
     throw new Error("Arquivo da logo ou ID da Rede não fornecido.");
   }
 
+  const adminClient = createAdminClient();
+
+  // RBAC: validar se a rede pertence à carteira do gerente (quando aplicável)
+  const carteiraGerente = await resolverCarteiraGerente(adminClient, profile);
+  if (!validarAcessoRede(carteiraGerente, redeId)) {
+    throw new Error("403 Forbidden: Não autorizado a enviar logo para rede fora de sua carteira regional.");
+  }
+
   const MAX_SIZE = 10 * 1024 * 1024;
   if (file.size > MAX_SIZE) {
     throw new Error("O arquivo excede o limite máximo permitido de 10MB.");
@@ -313,7 +321,6 @@ export async function processarEUploadLogoRede(formData: FormData): Promise<{
   const cleanFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, "_");
   const storagePath = `${redeId}/${Date.now()}_${cleanFileName}`;
 
-  const adminClient = createAdminClient();
   const { error: uploadErr } = await adminClient.storage
     .from("logos-redes")
     .upload(storagePath, buffer, {

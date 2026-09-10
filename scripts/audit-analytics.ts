@@ -39,6 +39,7 @@ const ALLOWED_PHYSICAL_TABLE_EXCEPTIONS = [
   'ownership', // Domínio de ownership
   'csv-import-service.ts', // Engine de importação CSV Google Drive
   'import-drive/route.ts', // Cron de importação Google Drive
+  'month-end-increment-service.ts', // Engine de incremento de fechamento mensal Staging
 ];
 
 // Arquivos autorizados no Registry de Views

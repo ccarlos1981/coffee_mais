@@ -149,8 +149,8 @@ export class ClientFarolService {
     if (chaveRede) {
       let queryCarta = adminClient
         .from("cm_cartas_anuencia")
-        .select("id, numero_carta, versao, rede_id, rede_nome, competencia, validade_ate, status, deleted_at, created_at")
-        .is("deleted_at", null)
+        .select("id, numero_carta, versao, rede_id, rede_nome, competencia, validade_ate, status, created_at")
+        .neq("status", "CANCELADA")
         .order("versao", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .limit(10);

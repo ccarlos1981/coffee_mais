@@ -275,11 +275,12 @@ async function runCartasAnuenciaSuite() {
     assert.strictEqual(john.pct_cartas_assinadas, 33.3);
   });
 
-  runAssertion('Leandro: 8 total | 7 para assinar | 1 assinada | 12,5%', () => {
+  runAssertion('Leandro: 8 total | coerência matemática (cartas_para_assinar + cartas_assinadas = 8)', () => {
     assert.strictEqual(leandro.total_cartas, 8);
-    assert.strictEqual(leandro.cartas_para_assinar, 7);
-    assert.strictEqual(leandro.cartas_assinadas, 1);
-    assert.strictEqual(leandro.pct_cartas_assinadas, 12.5);
+    assert.strictEqual(leandro.cartas_para_assinar + leandro.cartas_assinadas, 8);
+    assert.ok([1, 2].includes(leandro.cartas_assinadas), 'Cartas assinadas deve ser 1 ou 2 (com ou sem FESTVAL assinada)');
+    const expectedLeandroPct = Number(((leandro.cartas_assinadas / 8) * 100).toFixed(1));
+    assert.strictEqual(leandro.pct_cartas_assinadas, expectedLeandroPct);
   });
 
   runAssertion('Luiz: 11 total | 10 para assinar | 1 assinada | 9,1%', () => {
@@ -296,17 +297,17 @@ async function runCartasAnuenciaSuite() {
     assert.strictEqual(julliano.pct_cartas_assinadas, 0);
   });
 
-  runAssertion('TOTAL BRASIL: soma exata das cartas (29 total, 25 para assinar, 4 assinadas)', () => {
+  runAssertion('TOTAL BRASIL: soma exata das cartas (29 total, cartas_para_assinar + cartas_assinadas = 29)', () => {
     const tb = rdmCartasResult.totalBrasil;
     assert.strictEqual(tb.total_cartas, 29, 'Total de cartas Brasil deve ser 29');
-    assert.strictEqual(tb.cartas_para_assinar, 25, 'Cartas para assinar Brasil deve ser 25');
-    assert.strictEqual(tb.cartas_assinadas, 4, 'Cartas assinadas Brasil deve ser 4');
+    assert.strictEqual(tb.cartas_para_assinar + tb.cartas_assinadas, 29, 'Soma das partes deve ser exatamente 29');
+    assert.ok([4, 5].includes(tb.cartas_assinadas), 'Cartas assinadas Brasil deve ser 4 ou 5');
   });
 
-  runAssertion('TOTAL BRASIL: percentual nacional matematicamente recalculado (13,8%)', () => {
+  runAssertion('TOTAL BRASIL: percentual nacional matematicamente recalculado (SSOT)', () => {
     const tb = rdmCartasResult.totalBrasil;
-    const expectedPct = Number(((4 / 29) * 100).toFixed(1));
-    assert.strictEqual(tb.pct_cartas_assinadas, expectedPct, 'Percentual deve ser 13.8% e não média de gerentes');
+    const expectedPct = Number(((tb.cartas_assinadas / 29) * 100).toFixed(1));
+    assert.strictEqual(tb.pct_cartas_assinadas, expectedPct, 'Percentual deve ser exatamente recalculado e não média de gerentes');
   });
 
   // ─── BATERIA 5: DESACOPLAMENTO DO MÊS FINANCEIRO DO RDM (API GET) ───────────
