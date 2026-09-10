@@ -4851,6 +4851,97 @@ Status Geral: `RESOLUCAO_GERENTE_GESTAO_CARTAS = HOMOLOGADO_E_CONGELADO` | `OWNE
 
 ---
 
+## 101. Baseline Oficial — RDM P3 — Hardening Carta de Anuência × RDM (Baseline Permanente)
+
+A partir de 10/09/2026, as correções de integridade analítica e blindagem de segurança do **RDM P3 — Hardening Carta de Anuência × RDM** tornam-se o baseline permanente e oficial do Coffee++, com homologação integral e publicação em produção sob o commit `a4bfc2a` e deployment oficial `dpl_8hKMvYf2QxdtMw35bYU76jFC7bUU` (`READY / PRODUCTION`).
+
+### 1. Identificação Oficial do Ciclo
+- **RDM:** RDM P3 — Hardening Carta de Anuência × RDM
+- **Commit:** `a4bfc2a98fa2eff36885127989fd75be5cb5fb78`
+- **Deployment ID:** `dpl_8hKMvYf2QxdtMw35bYU76jFC7bUU`
+- **Ambiente:** Produção ([https://coffee-mais.vercel.app](https://coffee-mais.vercel.app))
+- **Status Operacional:** `READY / PRODUCTION`
+- **Status Arquitetural:** `HOMOLOGADO / CLOSED / FROZEN / OFICIAL_PERMANENTE`
+
+### 2. Achado P2 — Farol 360° & RdmRedeDrawer (`client-farol-service.ts`)
+1. **Eliminação do Erro PostgREST 42703:**
+   - Foi removida em definitivo a referência à coluna inexistente `deleted_at` na consulta à tabela `cm_cartas_anuencia`.
+   - O filtro oficial passou a utilizar estritamente `.neq("status", "CANCELADA")`.
+   - A falha silenciosa que atribuía `status: "DADOS_INDISPONIVEIS"` em todos os 13 drawers de rede da plataforma foi completamente sanada.
+2. **Resolução Dinâmica do Status Real:**
+   - `RdmRedeDrawer` e `ClientFarolService.getFarol()` passam a refletir o status real e calculado da carta (ex: `VIGENTE`, `PENDENTE`, `EXPIRADA`).
+   - Redes sem carta continuam retornando deterministamente `SEM_CARTA` com `numero_carta: null`.
+   - Cartas com status `CANCELADA` permanecem estritamente expurgadas de qualquer exibição de documento ativo.
+
+### 3. Achado P3 — Blindagem de RBAC em Upload de Logos (`actions.ts`)
+1. **Validação Estrita de Carteira Regional:**
+   - A Server Action `processarEUploadLogoRede` passou a consumir obrigatoriamente os mecanismos canônicos `resolverCarteiraGerente(adminClient, profile)` e `validarAcessoRede(carteiraGerente, redeId)`.
+   - A validação de escopo ocorre antes de `file.arrayBuffer()`, antes do processamento com `sharp` e antes de qualquer gravação física no bucket de Storage `logos-redes`.
+2. **Bloqueio Cross-Wallet:**
+   - Gerentes Regionais estão estritamente autorizados a enviar logos apenas para redes pertencentes à sua carteira homologada no Master Data.
+   - Qualquer tentativa de envio para rede externa à sua carteira é rejeitada com exceção explícita `403 Forbidden` (`Não autorizado a enviar logo para rede fora de sua carteira regional`).
+3. **Preservação de Papéis Globais:**
+   - Perfis corporativos (`Admin`, `Diretoria`, `Trade`, `CEO`, `TI`, `Financeiro`) mantêm `carteiraGerente = null` e preservam visão e atuação irrestritas sobre todas as redes do Brasil.
+
+### 4. Baseline Consolidada e Preservada
+O universo e os indicadores oficiais do Farol Executivo Gerencial permanecem matematicamente inviolados (0,0000% de desvio):
+- **Redes Planejáveis Oficiais:** 67 redes
+- **Cartas no Sistema:** 29 cartas ativas
+- **Cartas Faltantes:** 38 cartas
+- **Cobertura Comercial Geral:** 43,3%
+
+#### Distribuição Canônica por Gerente Regional:
+- **John Guedes:** 7 esperadas / 6 no sistema / 1 faltante / **85,7% de cobertura**
+- **Leandro Saffi:** 16 esperadas / 8 no sistema / 8 faltantes / **50,0% de cobertura**
+- **Luiz:** 28 esperadas / 11 no sistema / 17 faltantes / **39,3% de cobertura**
+- **Julliano:** 16 esperadas / 4 no sistema / 12 faltantes / **25,0% de cobertura**
+
+### 5. RDM / Carta de Anuência & Continuidade de Governança
+- **Seção 99 do AGENTS.md:** Permanece 100% intacta e congelada.
+- **Seção 100 do AGENTS.md:** Permanece 100% intacta e congelada.
+- **RDM P1 & RDM P2:** Permanece 100% homologado e inalterado.
+- **Ownership Comercial:** Soberania absoluta do Master Data (`cm_clientes.manager_name` / `cm_redes_matrizes.manager`).
+- **RDM Slide 15 Oficial:** 100% operacional no Index 14 / Slide 15 consumindo a fonte única `obterDadosFarolGerencial(competenciaOperacional)`.
+- **Regras Comerciais e Financeiras:** Nenhuma regra de negócio ou fórmula financeira foi modificada.
+
+### 6. Evidências de Homologação e Testes
+- `test:rdm-p3-hardening`: **10/10 PASS (100% SUCESSO)**
+- `tsc --noEmit`: **0 erros de tipagem estática**
+- `test:rdm-cartas-anuencia`: **25/25 PASS (100% SUCESSO)**
+- `test:b15`: **20/20 PASS (100% SUCESSO)**
+- `test:domain`: **32/32 PASS (100% SUCESSO)**
+- `health:analytics`: **5/5 etapas concluídas com 100% de conformidade**
+- `npm run build`: **117/117 páginas estáticas geradas com sucesso (Turbopack)**
+
+### 7. Segurança, Persistência e Integridade de Dados
+- **Mutações em DDL:** 0
+- **Migrations SQL:** 0
+- **Alterações em RLS:** 0
+- **Alterações em Storage Policies:** 0
+- **Alterações Estruturais no Banco:** 0 (zero modificações físicas no Supabase)
+- O RDM P3 consistiu exclusivamente em hardening na camada de código de aplicação Next.js.
+
+### 8. Declaração de Estado e Encerramento
+```
+RDM_P3 = HOMOLOGATED
+RDM_P3_STATUS = CLOSED
+ACHADO_P2_DELETED_AT = RESOLVED
+ACHADO_P3_RBAC_LOGO = ENFORCED
+FAROL_360_STATUS = REAL_TIME_SSOT
+MASTER_DATA_OWNERSHIP = LOCKED
+CROSS_WALLET_LOGO_UPLOAD = BLOCKED_403
+BASELINE_67_REDES = CONFIRMED
+BASELINE_29_CARTAS = CONFIRMED
+GOVERNANCE = LOCKED
+BASELINE = PERMANENT
+```
+
+Qualquer evolução futura nos componentes de Carta de Anuência ou RDM deverá ser tratada em **NOVA RDM**, sendo expressamente vedada qualquer alteração retroativa nesta baseline permanente.
+
+Status Geral: `RDM_P3 = CLOSED / LOCKED / FROZEN / OFFICIAL_PERMANENT` | `GOVERNANÇA = PERMANENTE`.
+
+---
+
 ## 101. Baseline Oficial — Exclusão Segura de Ação com Compromisso Financeiro & Governança Anti-Ambiguidade (RDM Gate 5.16 — Fase 4 Homologada)
 
 A partir de 09/09/2026, a arquitetura de exclusão segura e administrativa de ações de investimento no módulo Investimentos (`/investimento` e `/investimento/planejamento`), contemplando a camada de experiência e decisão via Modal desacoplado (`ExcluirAcaoModal`), torna-se o baseline permanente e oficial do Coffee++, com a homologação executiva formal da **Fase 4 (Modal / Experiência de Decisão da Exclusão)** após complementação forense controlada com 100% de aprovação (24/24 testes forenses PASS, T01–T15 PASS, build 117/117 e 0,0000% de desvio).
@@ -5243,6 +5334,70 @@ Qualquer intervenção futura sobre a estrutura de agregação, agrupamentos ou 
 4. Preservação mandatória de 0,0000% de desvio financeiro e zero duplicidade de clientes.
 
 Status Geral: `RDM_INCREMENTO_31_08 = HOMOLOGADO_E_CONGELADO` | `HARMONIZACAO_MVS = LOCKED` | `STATUS_ARQUITETURAL = LOCKED` | `BASELINE = PERMANENTE`.
+
+---
+
+## 105. Baseline Oficial — META FUTURA por Rede (Controle Interno de Projeção) — Baseline Permanente
+
+A partir de 10/09/2026, a arquitetura, persistência segregada, contrato de dados e diretrizes de governança da modalidade **META FUTURA** no módulo `/gestao/metas-rede` tornam-se o baseline permanente e oficial do Coffee++.
+
+### 1. Diretrizes Mandatórias de Isolamento e Governança:
+1. **Preservação Soberana da META MENSAL**:
+   - A modalidade `META MENSAL` é a única fonte oficial de metas mensais comerciais do Coffee++. Permanece 100% congelada e inalterada, mantendo seu fluxo oficial de gravação em `cm_weekly_projections` (`kpi = 'META'`), conciliação com `targets`, médias 3M, volume (Kg) e integração com a RPS.
+   - O modo padrão (`default`) ao inicializar a interface `/gestao/metas-rede` é obrigatoriamente `goalMode = "monthly"`.
+2. **Finalidade Estrita da META FUTURA**:
+   - A `META FUTURA` constitui exclusivamente um ambiente de **Controle Interno de Projeção Corporativa** de faturamento de longo prazo por rede.
+   - A `META FUTURA` NÃO substitui a Meta Mensal.
+   - A `META FUTURA` NÃO alimenta `public.targets`, `public.cm_weekly_projections`, RPS, Forecast Oficial, Desafio por Rede, PACE, DRE Comercial nem Cockpit Comercial.
+3. **Competências Oficiais Imutáveis**:
+   - A `META FUTURA` opera estrita e exclusivamente sobre três horizontes estratégicos fixos definidos pela diretoria:
+     - **Março/2026 (`2026-03`)**
+     - **Novembro/2026 (`2026-11`)**
+     - **Dezembro/2028 (`2028-12`)**
+   - É expressamente proibida a adição, remoção ou alteração dessas competências sem nova RFC formal e deliberação diretiva.
+4. **Tabela Exclusiva e Segregação Física de Dados**:
+   - A persistência é realizada exclusivamente na tabela dedicada `public.cm_metas_futuras_rede`.
+   - Chave única lógica e física: `(manager_id, codigo_matriz, rede, target_year, target_month)` sob constraint `uq_cm_metas_futuras_rede`.
+   - É proibida a criação de triggers ou foreign keys que propaguem mutações desta tabela para as estruturas oficiais de vendas ou metas.
+5. **API e Camada de Acesso Dedicada**:
+   - Leitura e gravação ocorrem unicamente pelos handlers `GET` e `POST` em `/api/gestao/metas-rede/futura`.
+   - Validação mandatória de RBAC (`ALLOWED_METAS_ROLES`), autenticação de sessão, verificação estrita das 3 competências oficiais, bloqueio de valores negativos e registro rastreável de auditoria via `logAuditAction` (`METAS_REDE_SALVAR_META_FUTURA`).
+6. **Proibição de Alteração sem Governança**:
+   - Qualquer evolução futura que pretenda conectar a `META FUTURA` ao Forecast, RPS, Targets, Desafio ou regras financeiras da plataforma exigirá obrigatoriamente nova RFC/RDM formal, aprovação arquitetural prévia, homologação com zero regressão e atualização explícita desta baseline.
+
+### 2. Evidências de Homologação Funcional:
+- **Testes de Homologação**: 20/20 PASS | 0 FAILs | 0 Regressões.
+- **Isolamento de Estruturas Oficiais**:
+  - `public.targets`: 168 registros (100% INTACTO).
+  - `public.cm_weekly_projections`: 5.569 registros (100% INTACTO).
+  - RPS, Forecast Oficial, Desafio por Rede, PACE, DRE e Cockpit Comercial: 100% INTACTOS.
+- **Validação Matemática**: Delta entre soma das redes e total projetado por competência = R$ 0,00.
+- **Tipagem e Build**: `npx tsc --noEmit` = 0 erros | `npm run build` = Sucesso.
+
+### 3. Declaração Oficial de Estado:
+```
+META_MENSAL = OFFICIAL
+META_FUTURA = HOMOLOGATED
+META_FUTURA_PURPOSE = INTERNAL_CONTROL
+FUTURE_COMPETENCES = 2026-03, 2026-11, 2028-12
+META_FUTURA_ISOLATION = ENFORCED
+TARGETS_IMPACT = ZERO
+RPS_IMPACT = ZERO
+FORECAST_IMPACT = ZERO
+DESAFIO_IMPACT = ZERO
+PACE_IMPACT = ZERO
+DRE_IMPACT = ZERO
+COCKPIT_IMPACT = ZERO
+REGRESSION = PASS
+DUPLICATION = ZERO
+DATA_LOSS = ZERO
+MATHEMATICAL_IDENTITY = PASS
+AUDIT = PASS
+BASELINE = PERMANENT
+GOVERNANCE = LOCKED
+```
+
+Status Arquitetural: `META_FUTURA = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
 
 
