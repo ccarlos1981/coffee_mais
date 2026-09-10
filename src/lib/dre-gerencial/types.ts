@@ -81,6 +81,88 @@ export interface RdmSlide2Data {
   grupos: RdmSlide2Grupo[];
 }
 
+// ─── RDM Slide 8 (dre) — DRE Consolidada por Gerente ───
+
+export interface DreRedeGerencialInput {
+  rede: string;
+  redeUf: string;
+  responsavelPlanilha: string;
+  faturamentoBruto: number;
+  investimento: number;
+  cpvCusto: number;
+  dga: number;
+  custoRede: number;
+  contratoFreteIcms: number;
+  lojas: number;
+  valorContrato: number;
+  cpvPct?: number;
+  contratoPct?: number;
+  fretePct?: number;
+  icmsPct?: number;
+  imposto?: number;
+  frete?: number;
+}
+
+// ─── RDM Slide 10 (dre_rede) — DRE por Rede / Matriz ───
+
+export interface RdmSlide10RedeItem {
+  id: string;
+  ranking: number;
+  nome: string;
+  uf: string;
+  gerente: string;
+  volume: number;
+  fat: number;
+  impostos: number;
+  investimento: number;
+  contrato: number;
+  recLiquida: number;
+  cpv: number;
+  frete: number;
+  maco: number;
+  macoPct: number;
+  codigo_matriz?: string;
+  icmsPct?: number;
+  contratoPct?: number;
+  cpvPct?: number;
+  fretePct?: number;
+}
+
+export interface RdmSlide10Result {
+  items: RdmSlide10RedeItem[];
+  status: 'HOMOLOGADO' | 'PENDENTE';
+  competencia: string;
+  totalRedes: number;
+}
+
+export interface RdmSlide8LinhaGerente {
+  gerente: string;
+  faturamentoBruto: number;
+  investimento: number;
+  faturamentoLiquido: number;
+  cpv: number;              // CPV %
+  investimentoPct: number;  // Investimento %
+  lucro: number;
+  lucroPct: number;         // Lucro %
+  dga: number;
+  custoRede: number;
+  lojas: number;
+  valorContrato: number;
+  contrato: number;         // Contrato %
+  percentualRede: number;   // % Participação Rede
+  contratoFreteIcms: number;
+  despesas: number;
+  cpvCusto: number;
+  redesCount: number;
+}
+
+export interface RdmSlide8Consolidado {
+  competencia: string;
+  gerentes: RdmSlide8LinhaGerente[];
+  totalBrasil: RdmSlide8LinhaGerente;
+  linhas: RdmSlide8LinhaGerente[];
+}
+
 // ─── DRE Consolidado (mensal) ───
 
 export interface DreMensalColuna {

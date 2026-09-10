@@ -19,6 +19,14 @@ export class RdmDataAdapter implements IDataProvider {
     return this.rdmPayload.dre || null;
   }
 
+  public getDreRedesData(): any[] {
+    return this.rdmPayload.dreRedes || [];
+  }
+
+  public getDreRedesStatus(): string {
+    return this.rdmPayload.dreRedesStatus || 'PENDENTE';
+  }
+
   public getWidgetData(widget: WidgetConfig): NormalizedWidgetData {
     const farol = this.rdmPayload.farol || {};
     const monthlyFat = this.rdmPayload.monthlyFat || [];

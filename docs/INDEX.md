@@ -28,3 +28,11 @@
 - [ADR-003 — Customer Ownership Engine](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/adr/ADR-003-Customer-Ownership.md)
 - [ADR-002 — Dashboard User Favorites](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/adr/ADR-002-Favorites.md)
 - [ADR-001 — Analytics Engine V1](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/adr/ADR-001-Analytics-Engine.md)
+
+---
+
+## 3. Homologações e Fechamentos Formais de Módulos
+
+| Módulo / Slide | Status | Data | Documento Oficial |
+|----------------|--------|------|-------------------|
+| **RDM — Slide 8 (`key = 'dre'`)** | `HOMOLOGADO / CLOSED` (Baseline: `FALSE`) | 09/09/2026 | [RDM_SLIDE_08_HOMOLOGACAO.md](file:///Users/cristiano/Projetos/Coffe%20Mais/docs/governance/RDM_SLIDE_08_HOMOLOGACAO.md) |

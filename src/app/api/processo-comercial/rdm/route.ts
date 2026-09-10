@@ -5,7 +5,8 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { getInvestimentoRealizadoOficial } from "@/lib/investimento/getValorTotal";
 import { resolveCanonicalManager } from "@/lib/domain/canonical";
 import { CommercialDomainService } from "@/lib/domain";
-import { getRdmData, getRdmDreAcumuladoData } from "@/lib/dre-gerencial/engine";
+import { getRdmData, getRdmDreAcumuladoData, getRdmDrePorGerenteData } from "@/lib/dre-gerencial/engine";
+import { getRdmDrePorRedeData } from "@/lib/dre-gerencial/rede-engine";
 import { getCurrentBusinessCompetence } from "@/app/processo-comercial/rdm/rdm-business-time";
 
 export const runtime = 'nodejs';
@@ -208,7 +209,7 @@ export async function GET(request: Request) {
       dimension: 'rede',
     };
 
-    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado, resSlideStatus] = await Promise.all([
+    const [resSales, resTargets, resProjections, resComments, resSalesByFamily, resInvestments, dreData, dreGerencialData, dreGerencialSlideAcumulado, resSlideStatus, dreGerencialPorGerenteData, dreRedesResult] = await Promise.all([
       // 1. Vendas agregadas por mês e gerente (inclui todos os 12 meses dos 2 anos)
       supabase.rpc('execute_readonly_query', {
         query_text: `
@@ -298,6 +299,18 @@ export async function GET(request: Request) {
         .eq('year', year)
         .eq('month', month)
         .in('manager', Array.from(new Set([manager, resolveCanonicalManager(manager).managerName, ...(isSameManager(manager, 'Leandro Saffi') ? ['Leandro', 'Leandro Saffi'] : [])]))),
+
+      // 11. DRE Gerencial Consolidada por Gerente (Slide 8)
+      getRdmDrePorGerenteData(monthKey, manager).catch((err) => {
+        console.error('[RDM API] Erro ao carregar DRE por Gerente:', err);
+        return null;
+      }),
+
+      // 12. DRE Gerencial por Rede / Matriz (Slide 10)
+      getRdmDrePorRedeData(monthKey, manager).catch((err) => {
+        console.error('[RDM API] Erro ao carregar DRE por Rede:', err);
+        return null;
+      }),
     ]);
 
     if (resSales.error) throw new Error("Erro vendas: " + resSales.error.message);
@@ -1033,6 +1046,9 @@ export async function GET(request: Request) {
       comments:  commentsMap,
       dre:       dreData,
       dreGerencialSlide1: (dreGerencialData as any)?.slide1 || null,
+      dreGerencialPorGerente: dreGerencialPorGerenteData || null,
+      dreRedes: dreRedesResult?.items || [],
+      dreRedesStatus: dreRedesResult?.status || 'PENDENTE',
       monthlyFat,
       acum: { fatCur: acumCur, fatUltTrim: acumUltTrim },
       recordFat,

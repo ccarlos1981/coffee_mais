@@ -24,7 +24,8 @@ import { RdmDataAdapter } from "./providers/RdmDataAdapter";
 import { RdmStorageAdapter } from "./providers/RdmStorageAdapter";
 import { ModalConfigDesafioPct } from "./components/ModalConfigDesafioPct";
 import { SlideDreAcumulado } from "./components/SlideDreAcumulado";
-import { RdmSlideAcumuladoData } from "@/lib/dre-gerencial/types";
+import { RdmSlideAcumuladoData, RdmSlide8Consolidado, RdmSlide10RedeItem } from "@/lib/dre-gerencial/types";
+
 import { RdmRedeDrawer } from "./components/RdmRedeDrawer";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
@@ -82,6 +83,7 @@ interface RdmApiResponse {
   comments: Record<string, string>;
   dre?: any;
   dreGerencialSlide1?: any;
+  dreGerencialPorGerente?: RdmSlide8Consolidado;
   dreGerencialSlideAcumulado?: RdmSlideAcumuladoData;
   monthlyFat: { label: string; m: number; fatCur: number; fatUltTrim: number }[];
   acum: { fatCur: number; fatUltTrim: number };
@@ -960,20 +962,373 @@ function deltaDreColor(v: number | null | undefined, isCost = false): string {
   return v >= 0 ? '#16a34a' : '#dc2626';
 }
 
-// ─── Slide DRE 1: Resultado DRE ─────────────────────────────────────────────
+// ─── Helpers de Formatação para o Slide 8 (DRE por Gerente) ───
+function fmtMoedaPtBr(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return 'R$ 0,00';
+  return val.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function fmtPctPtBr(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return '0,00%';
+  return `${val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+function fmtIntPtBr(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return '0';
+  return Math.round(val).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+}
+
+// ─── Slide DRE 1: Resultado DRE / DRE Gerencial Consolidada por Gerente ──────
 function SlideDreResumo({
   monthName,
   year,
   month,
   slide1Data,
+  dreGerencialPorGerente,
   isOutdated,
 }: {
   monthName: string;
   year?: number;
   month?: number;
   slide1Data?: any;
+  dreGerencialPorGerente?: RdmSlide8Consolidado;
   isOutdated?: boolean;
 }) {
+  const linhasGerente = dreGerencialPorGerente?.linhas || [];
+  const hasConsolidadoData = linhasGerente.length > 0;
+
+  if (hasConsolidadoData) {
+    return (
+      <SlideShell title="Resultado DRE" monthName={monthName} isOutdated={isOutdated}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', boxSizing: 'border-box', gap: '6px' }}>
+          {/* Subtítulo Executivo */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#b91c1c' }}>
+                DRE CONSOLIDADA POR GERENTE COMERCIAL
+              </span>
+              <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
+                · Visão Consolidada ({linhasGerente.filter(l => l.gerente !== 'TOTAL BRASIL').length} {linhasGerente.filter(l => l.gerente !== 'TOTAL BRASIL').length === 1 ? 'gerente' : 'gerentes'} + TOTAL BRASIL)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+              Competência: <strong style={{ color: '#0f172a' }}>{monthName} / {year || 2026}</strong>
+            </div>
+          </div>
+
+          {/* Tabela Horizontal Executiva de 18 Colunas */}
+          <div style={{
+            flex: 1,
+            background: '#ffffff',
+            borderRadius: '8px',
+            border: '1px solid #cbd5e1',
+            overflowX: 'auto',
+            overflowY: 'auto',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.06)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.68rem', whiteSpace: 'nowrap' }}>
+              <thead>
+                <tr style={{ background: '#0f172a', color: '#ffffff', position: 'sticky', top: 0, zIndex: 10 }}>
+                  <th style={{ padding: '8px 8px', textAlign: 'left', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    1. Gerente
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    2. Faturamento Bruto
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    3. Investimento
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155', background: '#1e293b' }}>
+                    4. Faturamento Líquido
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    5. CPV %
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    6. Investimento %
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155', background: '#1e293b' }}>
+                    7. Lucro
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    8. Lucro %
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    9. DGA
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    10. Custo Rede
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    11. Lojas
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    12. Valor Contrato
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    13. Contrato %
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    14. % Participação Rede
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    15. Contrato + Frete + ICMS
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    16. Despesas
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em', borderRight: '1px solid #334155' }}>
+                    17. CPV Custo
+                  </th>
+                  <th style={{ padding: '8px 6px', textAlign: 'right', fontWeight: 800, fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    18. Redes
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {linhasGerente.map((row, idx) => {
+                  const isTotal = row.gerente === 'TOTAL BRASIL';
+                  const isLucroPositivo = row.lucro >= 0;
+
+                  return (
+                    <tr
+                      key={row.gerente}
+                      style={{
+                        background: isTotal
+                          ? '#0f172a'
+                          : idx % 2 === 0
+                          ? '#ffffff'
+                          : '#f8fafc',
+                        color: isTotal ? '#ffffff' : '#0f172a',
+                        fontWeight: isTotal ? 800 : 500,
+                        borderTop: isTotal ? '2px solid #c9a96e' : '1px solid #e2e8f0',
+                        borderBottom: isTotal ? '2px solid #0f172a' : '1px solid #e2e8f0',
+                      }}
+                    >
+                      {/* 1. Gerente */}
+                      <td style={{
+                        padding: '9px 8px',
+                        textAlign: 'left',
+                        fontWeight: isTotal ? 900 : 700,
+                        color: isTotal ? '#c9a96e' : '#0f172a',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                        letterSpacing: isTotal ? '0.06em' : '0.02em',
+                      }}>
+                        {isTotal ? 'TOTAL BRASIL' : row.gerente}
+                      </td>
+
+                      {/* 2. Faturamento Bruto */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.faturamentoBruto)}
+                      </td>
+
+                      {/* 3. Investimento */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.investimento)}
+                      </td>
+
+                      {/* 4. Faturamento Líquido */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: 700,
+                        background: isTotal ? 'rgba(255,255,255,0.06)' : 'rgba(100, 116, 139, 0.08)',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #cbd5e1',
+                      }}>
+                        {fmtMoedaPtBr(row.faturamentoLiquido)}
+                      </td>
+
+                      {/* 5. CPV % */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtPctPtBr(row.cpv)}
+                      </td>
+
+                      {/* 6. Investimento % */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtPctPtBr(row.investimentoPct)}
+                      </td>
+
+                      {/* 7. Lucro */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: 800,
+                        color: isTotal ? (isLucroPositivo ? '#4ade80' : '#f87171') : (isLucroPositivo ? '#16a34a' : '#dc2626'),
+                        background: isTotal ? 'rgba(255,255,255,0.06)' : 'rgba(100, 116, 139, 0.08)',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #cbd5e1',
+                      }}>
+                        {fmtMoedaPtBr(row.lucro)}
+                      </td>
+
+                      {/* 8. Lucro % */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: 700,
+                        color: isTotal ? (isLucroPositivo ? '#4ade80' : '#f87171') : (isLucroPositivo ? '#16a34a' : '#dc2626'),
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtPctPtBr(row.lucroPct)}
+                      </td>
+
+                      {/* 9. DGA */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.dga)}
+                      </td>
+
+                      {/* 10. Custo Rede */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.custoRede)}
+                      </td>
+
+                      {/* 11. Lojas */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtIntPtBr(row.lojas)}
+                      </td>
+
+                      {/* 12. Valor Contrato */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.valorContrato)}
+                      </td>
+
+                      {/* 13. Contrato % */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtPctPtBr(row.contrato)}
+                      </td>
+
+                      {/* 14. % Participação Rede */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: isTotal ? 800 : 500,
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtPctPtBr(row.percentualRede)}
+                      </td>
+
+                      {/* 15. Contrato + Frete + ICMS */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.contratoFreteIcms)}
+                      </td>
+
+                      {/* 16. Despesas */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.despesas)}
+                      </td>
+
+                      {/* 17. CPV Custo */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        borderRight: isTotal ? '1px solid #334155' : '1px solid #e2e8f0',
+                      }}>
+                        {fmtMoedaPtBr(row.cpvCusto)}
+                      </td>
+
+                      {/* 18. Redes */}
+                      <td style={{
+                        padding: '9px 6px',
+                        textAlign: 'right',
+                        fontFamily: 'var(--font-geist-mono, monospace)',
+                        fontVariantNumeric: 'tabular-nums',
+                        fontWeight: isTotal ? 800 : 600,
+                      }}>
+                        {fmtIntPtBr(row.redesCount)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </SlideShell>
+    );
+  }
+
   const MONTHS_UPPER = [
     '', 'JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
     'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'
@@ -1216,22 +1571,18 @@ function SlideDreRede({
   year?: number;
   month?: number;
 }) {
-  const dreData = adapter.getDreData();
-  const rawDimensionais = dreData?.dimensionais || [];
-  
-  // REGRA ABSOLUTA DE RANKING: Ordenar por Faturamento Bruto / Receita Líquida DESC
-  const dimensionais = useMemo(() => {
-    return [...rawDimensionais].sort((a: any, b: any) => (b.faturamentoBruto || b.faturamentoLiquido || 0) - (a.faturamentoBruto || a.faturamentoLiquido || 0));
-  }, [rawDimensionais]);
+  const dimensionais: RdmSlide10RedeItem[] = adapter.getDreRedesData();
+  const dreRedesStatus: string = adapter.getDreRedesStatus();
+  const compKey = year && month ? `${year}-${String(month).padStart(2, '0')}` : '2026-08';
 
-  // Paginação inteligente para redes no Slide 2 (11 redes por página após remoção do input)
+  // Paginação: 10 redes por página conforme referência visual oficial do Slide 10
   const [page, setPage] = useState(1);
-  const pageSize = 11;
+  const pageSize = 10;
   const totalPages = Math.max(1, Math.ceil(dimensionais.length / pageSize));
   
   useEffect(() => {
     setPage(1);
-  }, [monthName, dimensionais.length]);
+  }, [monthName, dimensionais.length, manager]);
 
   const currentPageItems = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -1285,7 +1636,16 @@ function SlideDreRede({
 
         {/* Tabela Executiva DRE por Rede */}
         <div style={{ flex: 1, background: '#ffffff', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column' }}>
-          {dimensionais.length === 0 ? (
+          {dreRedesStatus === 'PENDENTE' && dimensionais.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: '#b45309', background: '#fefce8', borderRadius: '4px', margin: '16px', border: '1px solid #fde047' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '4px' }}>
+                Fechamento Gerencial Pendente
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#78350f' }}>
+                O modelo de DRE Gerencial por Rede / Matriz para a competência {compKey} aguarda publicação e homologação comercial.
+              </div>
+            </div>
+          ) : dimensionais.length === 0 ? (
             <div style={{ padding: '32px', textAlign: 'center', color: '#6b7280', fontSize: '0.8rem' }}>
               Nenhuma rede encontrada para o filtro selecionado.
             </div>
@@ -1325,32 +1685,19 @@ function SlideDreRede({
                   </tr>
                 </thead>
                 <tbody>
-                  {currentPageItems.map((dim: any, idx: number) => {
-                    const globalRank = (page - 1) * pageSize + idx + 1;
+                  {currentPageItems.map((dim: RdmSlide10RedeItem, idx: number) => {
+                    const globalRank = dim.ranking || ((page - 1) * pageSize + idx + 1);
                     const isTop1 = globalRank === 1;
                     const isTop2 = globalRank === 2;
                     const isTop3 = globalRank === 3;
 
-                    // Fórmulas Oficiais Homologadas:
-                    // 1. Receita Líquida = Faturamento - Impostos - Invest. Comercial
-                    // 2. Margem de Contribuição = Receita Líquida - CPV - Frete
-                    const fat = dim.faturamentoBruto || dim.faturamento || 0;
-                    const impostos = dim.impostos || 0;
-                    const invest = dim.investimentoComercial || 0;
-                    const recLiquida = fat - impostos - invest;
-
-                    const cpv = dim.cpv || 0;
-                    const frete = dim.frete || 0;
-                    const mc = recLiquida - cpv - frete;
-                    const mcPct = fat > 0 ? (mc / fat) * 100 : 0;
-
                     // Semáforo Oficial Margem %
-                    const semaforoBg = mcPct >= 10 ? '#dcfce7' : mcPct >= 0 ? '#fef9c3' : '#fee2e2';
-                    const semaforoColor = mcPct >= 10 ? '#15803d' : mcPct >= 0 ? '#a16207' : '#b91c1c';
+                    const semaforoBg = dim.macoPct >= 10 ? '#dcfce7' : dim.macoPct >= 0 ? '#fef9c3' : '#fee2e2';
+                    const semaforoColor = dim.macoPct >= 10 ? '#15803d' : dim.macoPct >= 0 ? '#a16207' : '#b91c1c';
 
                     return (
                       <tr
-                        key={dim.id || idx}
+                        key={`${dim.nome}-${dim.uf}-${idx}`}
                         style={{
                           borderBottom: '1px solid #e2e8f0',
                           background: isTop1
@@ -1383,15 +1730,15 @@ function SlideDreRede({
                             if (onSelectRede) {
                               onSelectRede({
                                 nome: dim.nome,
-                                codigo_matriz: dim.codigo_matriz || dim.id,
+                                codigo_matriz: dim.codigo_matriz || dim.nome,
                                 uf: dim.uf,
-                                gerente: manager || "",
-                                faturamentoReal: dim.faturamentoBruto || dim.faturamento || 0,
-                                metaFaturamento: dim.meta || 0,
-                                volumeReal: dim.volume || 0,
-                                metaVolume: dim.metaVolume || 0,
-                                maco: dim.maco || 0,
-                                macoPct: dim.macoPct || 0,
+                                gerente: dim.gerente || manager || "",
+                                faturamentoReal: dim.fat,
+                                metaFaturamento: 0,
+                                volumeReal: dim.volume,
+                                metaVolume: 0,
+                                maco: dim.maco,
+                                macoPct: dim.macoPct,
                                 year: year || 2026,
                                 month: month || 8,
                               });
@@ -1443,22 +1790,22 @@ function SlideDreRede({
                           borderLeft: '1px solid #cbd5e1',
                           borderRight: '1px solid #cbd5e1',
                         }}>
-                          {formatCurrency(fat)}
+                          {formatCurrency(dim.fat)}
                         </td>
 
                         {/* Impostos */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(impostos)}
+                          {formatCurrency(dim.impostos)}
                         </td>
 
                         {/* Investimento Comercial */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(invest)}
+                          {formatCurrency(dim.investimento)}
                         </td>
 
                         {/* CONTRATO (R$) */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(dim.contratoValor ?? dim.contrato_valor ?? dim.contrato ?? 0)}
+                          {formatCurrency(dim.contrato)}
                         </td>
 
                         {/* DESTAQUE 2: Receita Líquida */}
@@ -1472,37 +1819,37 @@ function SlideDreRede({
                           borderLeft: '2px solid #94a3b8',
                           borderRight: '2px solid #94a3b8',
                         }}>
-                          {formatCurrency(recLiquida)}
+                          {formatCurrency(dim.recLiquida)}
                         </td>
 
                         {/* CPV */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(cpv)}
+                          {formatCurrency(dim.cpv)}
                         </td>
 
                         {/* Frete */}
                         <td style={{ padding: '5px 6px', textAlign: 'right', color: '#4b5563', fontFamily: 'var(--font-geist-mono, monospace)' }}>
-                          {formatCurrency(frete)}
+                          {formatCurrency(dim.frete)}
                         </td>
 
                         {/* DESTAQUE 3: Margem de Contribuição */}
                         <td style={{
                           padding: '5px 6px',
                           textAlign: 'right',
-                          color: mc >= 0 ? '#15803d' : '#b91c1c',
+                          color: dim.maco >= 0 ? '#15803d' : '#b91c1c',
                           fontWeight: 800,
                           fontFamily: 'var(--font-geist-mono, monospace)',
                           background: 'rgba(100, 116, 139, 0.14)',
                           borderLeft: '2px solid #94a3b8',
                           borderRight: '2px solid #94a3b8',
                         }}>
-                          {formatCurrency(mc)}
+                          {formatCurrency(dim.maco)}
                         </td>
 
                         {/* % Margem com Semáforo Oficial */}
                         <td style={{ padding: '5px 6px', textAlign: 'right' }}>
                           <span style={{ padding: '1px 5px', borderRadius: '4px', background: semaforoBg, color: semaforoColor, fontWeight: 800, fontFamily: 'var(--font-geist-mono, monospace)', fontSize: '0.65rem' }}>
-                            {mcPct.toFixed(2)}%
+                            {dim.macoPct.toFixed(2)}%
                           </span>
                         </td>
                       </tr>
@@ -5755,6 +6102,8 @@ export default function RdmPage() {
           year={year}
           month={month}
           slide1Data={data?.dreGerencialSlide1}
+          dreGerencialPorGerente={data?.dreGerencialPorGerente}
+          isOutdated={data?.outdatedSlides?.['dre']}
         />
       );
     }
