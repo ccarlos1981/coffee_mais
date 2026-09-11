@@ -5399,9 +5399,121 @@ GOVERNANCE = LOCKED
 
 Status Arquitetural: `META_FUTURA = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
+---
 
+## 106. Baseline Oficial — RDM Gate 5.17: Consolidação Visual de Investimentos (VLR INVEST. × PPC × EXP. VOL.) — Baseline Permanente
 
+A partir de 11/09/2026, a correção da consolidação visual de investimentos do **RDM Gate 5.17** torna-se o baseline permanente e oficial do Coffee++.
 
+### Problema Original
+A tela `/investimento` apresentava valores incorretos de **VLR INVEST.**, **PPC** e **EXP. VOL.** na linha-mãe (campanha), causados por: (a) ausência de acumulação de `expectativa_volume` entre ações, (b) ausência de normalização e consolidação de `preco_acao` (PPC), e (c) inconsistências de dados em 303 ações Classe B cujo `valor_investimento` não refletia o total canônico (saneado na Fase 1B).
+
+### Causa Raiz
+O código de consolidação da campanha somava apenas `valor_investimento` (via `getValorTotal`), mas ignorava `expectativa_volume` e `preco_acao`. Adicionalmente, 303 ações históricas possuíam `valor_investimento` com valor unitário (não multiplicado), divergindo do contrato canônico onde `valor_investimento = TOTAL FINANCEIRO DA AÇÃO`.
+
+### Saneamento (Fase 1B)
+- 303 ações Classe B saneadas via UPDATE controlado.
+- Delta financeiro global: +R$ 1.677.614,96.
+- Snapshot de segurança: `public.cm_investimento_saneamento_snapshot_517`.
+- Hash do lote: `c8f49889ba2762306762c340a466895a7fbb133056897b54bfe2cbf077426d7c`.
+- 303/303 atualizadas, 0 erros, 0 rollback, 0 elegíveis restantes.
+
+### Regra Canônica Permanente (INVARIANTE)
+
+**VLR INVEST.** = `Σ valor_investimento` das ações da campanha (soma simples).
+
+**EXP. VOL.** = `Σ expectativa_volume` das ações da campanha.
+
+**PPC (Preço Por Caixa)**:
+- Um PPC válido único → valor formatado (ex: `R$ 22,99`).
+- Múltiplos PPCs válidos distintos → `"Múltiplos"`.
+- Nenhum PPC válido → `"-"`.
+
+**Normalização de PPC**: `Math.round(Number(preco_acao) * 100) / 100` para eliminação de artefatos de ponto flutuante.
+
+### Proibição Permanente (INVARIANTE ABSOLUTO)
+É **expressamente proibido** em qualquer camada (UI, Server Action, RPC, DB, Analytics, Dashboard, RDM, DRE, Coffee IA, e-mails) calcular o total financeiro da ação como:
+
+```
+valor_investimento × expectativa_volume   ← PROIBIDO
+```
+
+O campo `valor_investimento` é, por definição canônica, o **total financeiro da ação** (nunca valor unitário).
+
+### Golden Case OBA SP (Homologado em Produção)
+
+| Ação | valor_investimento | expectativa_volume | preco_acao |
+| :--- | :--- | :--- | :--- |
+| #10681 | R$ 1.400 | 200 | R$ 22,99 |
+| #10682 | R$ 4.200 | 600 | R$ 22,99 |
+
+**Consolidado**: VLR INVEST. = R$ 5.600 | PPC = R$ 22,99 | EXP. VOL. = 800.
+
+### Arquivo Funcional
+`src/app/investimento/page.tsx` (1 arquivo, +48/-7 linhas).
+
+### Commit Oficial
+`cbd0d0d1bc746aee54c7b15d1d9c8ce32c89bf8f` — `RDM Gate 5.17: corrigir consolidação visual de investimentos`.
+
+### Deploy Oficial
+- Deployment ID: `dpl_ApEo4YrEzDdnL6mrB4gQTq9guKey`.
+- Target: Production.
+- URL: `https://dashboard.coffeemais.com`.
+
+### Remediação da História Git
+A história Git foi remediada para remoção de `backups/` (blobs >100 MB incompatíveis com GitHub). Push realizado via `git push --force-with-lease origin main`. Zero blobs >100 MB na história publicada. Não reverter essa história.
+
+### Smoke Test de Produção (Fase 4D)
+- 30 campanhas amostradas: 10 single-action, 9 multi-action, 11 vazias.
+- PPC: 14 único, 4 múltiplo, 1 sem PPC.
+- Divergências UI vs DB: **ZERO**.
+- Valores proibidos (38.700 / 70.756 / 45.600): **AUSENTES**.
+- Gate 5.15B: 34/34 PASS. Gate 5.14B: 12/12 PASS.
+- Mutations pelo smoke test: ZERO.
+
+### Suítes de Homologação Aprovadas
+- Fase 3 Golden + 173 campanhas + 2.000 metamórficos: ALL PASS.
+- Gate 5.15B: 34/34. Gate 5.14B: 12/12. Gate 5.11C: 21/21. Gate 5.10K: 32/32.
+- Commercial Intelligence: 16/16. Commercial Planning: 20/20.
+- Analytics parity: 0,0000%. TypeScript: 0 erros. Build: sucesso.
+
+### Limitações Registradas
+- Gate 5.11C (concorrência/idempotência) e Gate 5.10K (exclusão): NOT EXECUTABLE em modo read-only da Fase 4D — requerem operações mutáveis.
+- Casos Leandro A/B/C: dados originais não localizados por busca exata (possivelmente reprocessados), porém valores proibidos confirmados ausentes.
+
+### Fases do Gate 5.17
+| Fase | Resultado |
+| :--- | :--- |
+| Fase 0 — Forense | PASS |
+| Fase 1A — Diagnóstico | PASS |
+| Fase 1A.1 — Reconciliação | PASS |
+| Fase 1B — Saneamento | PASS / 303 ações |
+| Fase 2 — Forense da UI | PASS |
+| Fase 3 — Correção Controlada | PASS |
+| Fase 3.1 — Pré-Release Audit | PASS |
+| Fase 4A — Commit Controlado | PASS |
+| Fase 4B.1 — Remediação da História | PASS |
+| Fase 4B.2 — Push da História Remediada | PASS |
+| Fase 4C — Deploy Controlado | PASS |
+| Fase 4D — Smoke Test de Produção | PASS |
+
+### Diretrizes Mandatórias
+1. **Invariante Financeiro**: `valor_investimento` é SEMPRE o total financeiro da ação. Proibida qualquer multiplicação por volume.
+2. **Consolidação Visual**: VLR INVEST., EXP. VOL. e PPC seguem exclusivamente as regras canônicas acima.
+3. **Contrato `getValorTotal`**: Preservar o contrato canônico de `getValorTotal(acao)` conforme Gate 5.15.
+4. **Não Regressão**: Toda evolução futura do módulo de investimentos deve manter paridade com os Gates 5.14B, 5.15B e 5.17.
+5. **Auditoria**: Toda alteração em `/investimento` deve comprovar aprovação prévia em `npx tsc --noEmit`, `npm run build`, e suítes de regressão aplicáveis.
+
+```
+GATE_5_17 = HOMOLOGADO
+CONSOLIDACAO_VISUAL = FROZEN
+INVARIANTE_FINANCEIRO = LOCKED
+SANEAMENTO = PERMANENTE
+BASELINE = PERMANENTE
+GOVERNANCE = LOCKED
+```
+
+Status Arquitetural: `GATE_5_17 = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
 
 
