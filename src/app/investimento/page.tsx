@@ -1818,6 +1818,9 @@ export default function InvestimentoPage() {
       valor_homologado: number;
       valor_pago: number;
       saldo: number;
+      expectativa_volume: number;
+      ppc: number | null;
+      is_multiplos_ppc: boolean;
       data_registro?: string | null;
       acoes: any[];
     } | {
@@ -1852,6 +1855,9 @@ export default function InvestimentoPage() {
             valor_homologado: 0,
             valor_pago: 0,
             saldo: 0,
+            expectativa_volume: 0,
+            ppc: null,
+            is_multiplos_ppc: false,
             data_registro: null,
             acoes: []
           };
@@ -1864,6 +1870,8 @@ export default function InvestimentoPage() {
         // Calcular valores consolidados
         const val = getValorTotal(action);
         group.valor_previsto += val;
+        group.expectativa_volume += (Number(action.expectativa_volume) || 0);
+
         if ((action.fase_atual || 1) >= 3) {
           group.valor_homologado += val;
         }
@@ -1873,7 +1881,7 @@ export default function InvestimentoPage() {
       }
     });
 
-    // Calcular saldos consolidados e data de registro derivada (MIN(created_at) das ações)
+    // Calcular saldos consolidados, data de registro derivada e consolidação visual de PPC (Regras A, B e C)
     items.forEach((item) => {
       if (item.type === "campaign") {
         item.saldo = Math.max(0, item.valor_homologado - item.valor_pago);
@@ -1881,6 +1889,37 @@ export default function InvestimentoPage() {
           .map((ac: any) => ac.created_at || ac.data_registro)
           .filter(Boolean);
         item.data_registro = dates.length > 0 ? [...dates].sort()[0] : null;
+
+        // Normalização numérica de PPC para evitar falsos "Múltiplos" por floating point
+        const normalizePpc = (val: any): number | null => {
+          if (val === null || val === undefined || val === "") return null;
+          const num = typeof val === "string" ? parseFloat(val.replace(",", ".")) : Number(val);
+          if (isNaN(num) || num <= 0) return null;
+          return Math.round(num * 100) / 100;
+        };
+
+        const validPpcs: number[] = [];
+        item.acoes.forEach((ac: any) => {
+          const norm = normalizePpc(ac.preco_acao);
+          if (norm !== null) {
+            validPpcs.push(norm);
+          }
+        });
+
+        const uniquePpcs = Array.from(new Set(validPpcs));
+        if (uniquePpcs.length === 1) {
+          // REGRA A: Todas as ações válidas possuem o mesmo preco_acao comum
+          item.ppc = uniquePpcs[0];
+          item.is_multiplos_ppc = false;
+        } else if (uniquePpcs.length > 1) {
+          // REGRA B: Dois ou mais preco_acao distintos
+          item.ppc = null;
+          item.is_multiplos_ppc = true;
+        } else {
+          // REGRA C: Nenhum preco_acao válido
+          item.ppc = null;
+          item.is_multiplos_ppc = false;
+        }
       }
     });
 
@@ -1925,8 +1964,8 @@ export default function InvestimentoPage() {
           valA = a.type === "campaign" ? a.valor_previsto : getValorTotal(a.action);
           valB = b.type === "campaign" ? b.valor_previsto : getValorTotal(b.action);
         } else if (sortField === "exp_vol") {
-          valA = a.type === "campaign" ? a.acoes.reduce((sum, ac) => sum + (ac.expectativa_volume || 0), 0) : (a.action.expectativa_volume || 0);
-          valB = b.type === "campaign" ? b.acoes.reduce((sum, ac) => sum + (ac.expectativa_volume || 0), 0) : (b.action.expectativa_volume || 0);
+          valA = a.type === "campaign" ? a.expectativa_volume : (a.action.expectativa_volume || 0);
+          valB = b.type === "campaign" ? b.expectativa_volume : (b.action.expectativa_volume || 0);
         }
 
         if (typeof valA === "number" && typeof valB === "number") {
@@ -3764,11 +3803,13 @@ export default function InvestimentoPage() {
                               <td className="px-3 xl:px-4 py-3 text-right font-bold text-foreground">
                                 {formatCurrency(item.valor_previsto, false)}
                               </td>
-                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-blue-500">
-                                {formatCurrency(item.valor_homologado, false)}
+                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-foreground">
+                                {item.ppc !== null
+                                  ? formatCurrency(item.ppc)
+                                  : (item.is_multiplos_ppc ? 'Múltiplos' : '-')}
                               </td>
-                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-emerald-500">
-                                {formatCurrency(item.valor_pago, false)}
+                              <td className="px-3 xl:px-4 py-3 text-right font-bold text-foreground">
+                                {item.expectativa_volume > 0 ? item.expectativa_volume.toLocaleString('pt-BR') : '-'}
                               </td>
                               <td className="px-3 xl:px-4 py-3 text-center">
                                 <div className="flex items-center justify-center gap-2">
