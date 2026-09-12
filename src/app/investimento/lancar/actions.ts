@@ -4724,6 +4724,115 @@ export async function excluirAcaoInvestimentoAdmin(
   }
 }
 
+/**
+ * RDM Gate 5.17 - Fase 2: Define o plano financeiro da campanha de forma atômica no fechamento/apuração (Fase 3).
+ * Perfis autorizados: Admin, Admin Master, Gerente Regional, Trade, Financeiro, Diretor, CEO.
+ */
+export async function definirPlanoFinanceiroCampanhaAction(params: {
+  campanhaId: string;
+  tipoPlano: "A_VISTA" | "PARCELADO";
+  parcelas: Array<{
+    numero_parcela?: number;
+    valor_previsto: number | string;
+    data_vencimento?: string;
+    tipo_pagamento?: string;
+    observacoes?: string;
+  }>;
+  boletos?: Array<{
+    boleto_id: string;
+    acao_id?: string;
+    valor_associado?: number;
+  }>;
+  idempotencyKey?: string;
+}): Promise<ActionResult<{
+  campanha_id: string;
+  tipo_plano: string;
+  valor_total: number;
+  total_parcelas: number;
+  saldo_financeiro_devedor: number;
+  boletos_vinculados: number;
+  idempotent?: boolean;
+}>> {
+  try {
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, [
+      "Gerente Regional",
+      "Trade",
+      "Financeiro",
+      "Admin",
+      "Admin Master",
+      "CEO",
+      "Diretor",
+    ]);
+
+    if (!params.campanhaId) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "ID da campanha é obrigatório.");
+    }
+
+    if (!["A_VISTA", "PARCELADO"].includes(params.tipoPlano)) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Tipo de plano deve ser A_VISTA ou PARCELADO.");
+    }
+
+    if (!params.parcelas || !Array.isArray(params.parcelas) || params.parcelas.length === 0) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma parcela deve ser informada.");
+    }
+
+    const adminClient = createAdminClient();
+    const { data, error } = await adminClient.rpc("definir_plano_financeiro_campanha_v1", {
+      p_campanha_id: params.campanhaId,
+      p_tipo_plano: params.tipoPlano,
+      p_parcelas: params.parcelas,
+      p_boletos: params.boletos || [],
+      p_user_id: user.id,
+      p_idempotency_key: params.idempotencyKey || null,
+    });
+
+    if (error) {
+      console.error("[DEFINIR_PLANO_FINANCEIRO] Erro na RPC:", error);
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        error.message || "Erro ao definir plano financeiro da campanha."
+      );
+    }
+
+    if (!data?.success) {
+      return errorResult(
+        ActionErrorCode.BUSINESS_RULE_VIOLATION,
+        data?.error || "Falha ao definir plano financeiro da campanha."
+      );
+    }
+
+    revalidatePath("/investimento");
+    revalidatePath(`/investimento/${params.campanhaId}`);
+
+    return successResult({
+      campanha_id: data.campanha_id,
+      tipo_plano: data.tipo_plano,
+      valor_total: Number(data.valor_total),
+      total_parcelas: Number(data.total_parcelas),
+      saldo_financeiro_devedor: Number(data.saldo_financeiro_devedor),
+      boletos_vinculados: Number(data.boletos_vinculados || 0),
+      idempotent: data.idempotent || false,
+    });
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sessão expirada. Faça login novamente.");
+    }
+    if (err.message === "PROFILE_NOT_APPROVED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Perfil de usuário não está aprovado.");
+    }
+    if (err.message === "PROFILE_NOT_FOUND") {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Perfil de usuário não encontrado.");
+    }
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      err?.message || "Erro inesperado ao definir plano financeiro da campanha."
+    );
+  }
+}
+
+
 
 
 
