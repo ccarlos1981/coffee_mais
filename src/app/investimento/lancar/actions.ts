@@ -4832,9 +4832,234 @@ export async function definirPlanoFinanceiroCampanhaAction(params: {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RDM GATE 5.17 - FASE 3.2: SERVER ACTION DO FECHAMENTO ATÔMICO
+// Fechamento Unificado (Apuração + Plano Financeiro) via RPC Transacional Única
+// ─────────────────────────────────────────────────────────────────────────────
 
+export interface ConcluirFechamentoBoletoItem {
+  boleto_id: string;
+  valor_associado: number;
+}
 
+export interface ConcluirFechamentoParcelaItem {
+  numero_parcela?: number;
+  valor_previsto: number | string;
+  data_vencimento?: string;
+  tipo_pagamento?: string;
+  observacoes?: string;
+}
 
+export interface ConcluirFechamentoPlanoFinanceiroPayload {
+  tipo_plano: "A_VISTA" | "PARCELADO";
+  parcelas: ConcluirFechamentoParcelaItem[];
+}
 
+export interface ConcluirFechamentoInvestimentoPayload {
+  acaoId: string;
+  numeroAcordo: string;
+  qtdVendida?: number | null;
+  valorRealizado?: number | null;
+  evidencias?: string | null;
+  condicaoPagamento?: string | null;
+  semBoleto?: boolean;
+  postActionNotes?: string | null;
+  vinculos?: ConcluirFechamentoBoletoItem[];
+  planoFinanceiro?: ConcluirFechamentoPlanoFinanceiroPayload | null;
+  idempotencyKey?: string;
+}
 
+export interface ConcluirFechamentoInvestimentoResult {
+  action_id: string;
+  campanha_id: string;
+  fase_atual: number;
+  caminho: "CAMINHO_A" | "CAMINHO_B";
+  tipo_plano: string;
+  valor_total: number;
+  total_parcelas: number;
+  saldo_financeiro_devedor: number;
+  total_boletos_vinculados: number;
+  primeiro_boleto_id: string | null;
+  idempotent: boolean;
+  message?: string;
+}
 
+/**
+ * Mapeamento estruturado de erros emitidos pelo PostgreSQL / RPC
+ * para códigos e mensagens canônicos de ActionErrorCode.
+ */
+function mapFechamentoRpcError(errMessage: string): { code: ActionErrorCode; message: string } {
+  if (errMessage.includes("Ação de investimento") && errMessage.includes("não encontrada")) {
+    return { code: ActionErrorCode.NOT_FOUND, message: "Ação de investimento não encontrada." };
+  }
+  if (errMessage.includes("Campanha") && errMessage.includes("não encontrada")) {
+    return { code: ActionErrorCode.NOT_FOUND, message: "Campanha associada à ação não encontrada." };
+  }
+  if (errMessage.includes("Acesso negado") || errMessage.includes("Security Violation")) {
+    return { code: ActionErrorCode.UNAUTHORIZED, message: "Acesso negado: Usuário não autorizado a realizar o fechamento." };
+  }
+  if (errMessage.includes("Dados do Acordo é obrigatório")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Dados do Acordo é obrigatório para concluir o fechamento." };
+  }
+  if (errMessage.includes("Boleto ID") && errMessage.includes("não existe")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Boleto informado não existe no sistema." };
+  }
+  if (errMessage.includes("não está na fase de Apuração")) {
+    return { code: ActionErrorCode.BUSINESS_RULE_VIOLATION, message: "Ação não está apta para apuração (deve estar na Fase 3)." };
+  }
+  if (errMessage.includes("não atingiram a Fase 3")) {
+    return { code: ActionErrorCode.BUSINESS_RULE_VIOLATION, message: "Campanha não está apta ao fechamento financeiro: existem ações ativas que ainda não atingiram a Fase 3 (Apuração)." };
+  }
+  if (errMessage.includes("Tipo de plano financeiro inválido")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Tipo de plano financeiro inválido. Deve ser A_VISTA ou PARCELADO." };
+  }
+  if (errMessage.includes("Plano A_VISTA deve conter exatamente 1 parcela")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Plano A_VISTA deve conter exatamente 1 parcela." };
+  }
+  if (errMessage.includes("Ao menos uma parcela deve ser informada")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Ao menos uma parcela deve ser informada no plano financeiro." };
+  }
+  if (errMessage.includes("Inconsistência Financeira: Todas as parcelas devem conter o campo valor_previsto")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "Todas as parcelas devem conter o campo valor_previsto preenchido." };
+  }
+  if (errMessage.includes("Inconsistência Financeira: O valor_previsto da parcela deve ser maior que zero")) {
+    return { code: ActionErrorCode.VALIDATION_ERROR, message: "O valor previsto de cada parcela deve ser maior que zero." };
+  }
+  if (errMessage.includes("Inconsistência Financeira: A soma das parcelas") || errMessage.includes("diverge do valor total consolidado")) {
+    return { code: ActionErrorCode.BUSINESS_RULE_VIOLATION, message: "Inconsistência Financeira: A soma das parcelas diverge do valor total consolidado da campanha." };
+  }
+  if (errMessage.includes("histórico financeiro amortizado/liquidado")) {
+    return { code: ActionErrorCode.BUSINESS_RULE_VIOLATION, message: "Operação Bloqueada: Campanha já possui histórico financeiro amortizado ou liquidado." };
+  }
+  if (errMessage.includes("cancelada/inativa")) {
+    return { code: ActionErrorCode.BUSINESS_RULE_VIOLATION, message: "Ação cancelada ou inativa. Não é permitido realizar fechamento." };
+  }
+  return { code: ActionErrorCode.INTERNAL_ERROR, message: errMessage || "Erro inesperado ao concluir fechamento de investimento." };
+}
+
+/**
+ * RDM Gate 5.17 - Fase 3.2: Server Action atômica para fechamento de investimento.
+ * Executa a apuração e, se a campanha estiver elegível, o plano financeiro em UMA ÚNICA chamada à RPC:
+ * public.concluir_fechamento_investimento_completo_v1(...)
+ */
+export async function concluirFechamentoInvestimentoCompletoAction(
+  payload: ConcluirFechamentoInvestimentoPayload
+): Promise<ActionResult<ConcluirFechamentoInvestimentoResult>> {
+  try {
+    // 1. Validações preliminares de parâmetros obrigatórios
+    if (!payload.acaoId || typeof payload.acaoId !== "string" || !payload.acaoId.trim()) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "ID da ação é obrigatório.");
+    }
+
+    if (!payload.numeroAcordo || typeof payload.numeroAcordo !== "string" || !payload.numeroAcordo.trim()) {
+      return errorResult(ActionErrorCode.VALIDATION_ERROR, "Dados do Acordo é obrigatório.");
+    }
+
+    // 2. Estratégia de Idempotency Key (UUID v4)
+    let finalIdempotencyKey: string;
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (payload.idempotencyKey && payload.idempotencyKey.trim()) {
+      const trimmedKey = payload.idempotencyKey.trim();
+      if (!uuidRegex.test(trimmedKey)) {
+        return errorResult(ActionErrorCode.VALIDATION_ERROR, "Formato de idempotencyKey inválido. Deve ser um UUID v4 válido.");
+      }
+      finalIdempotencyKey = trimmedKey;
+    } else {
+      finalIdempotencyKey = crypto.randomUUID();
+    }
+
+    // 3. Identidade e Autorização Soberana via Token
+    const user = await requireAuth();
+    const profile = await requireApprovedProfile(user.id);
+    requireRole(profile, [
+      "Gerente Regional",
+      "Gerente Nacional",
+      "Trade",
+      "Financeiro",
+      "Admin",
+      "Admin Master",
+      "CEO",
+      "Diretor",
+      "Supervisor",
+    ]);
+
+    // 4. Execução atômica sob ÚNICA chamada à RPC PostgreSQL
+    const adminClient = createAdminClient();
+    const { data: rpcRes, error: rpcErr } = await adminClient.rpc(
+      "concluir_fechamento_investimento_completo_v1",
+      {
+        p_acao_id: payload.acaoId.trim(),
+        p_apuracao_numero_acordo: payload.numeroAcordo.trim(),
+        p_apuracao_qtd_vendida: payload.qtdVendida ?? null,
+        p_apuracao_valor_realizado: payload.valorRealizado ?? null,
+        p_apuracao_evidencias_url: payload.evidencias ?? null,
+        p_condicao_pagamento: payload.condicaoPagamento ?? null,
+        p_sem_boleto: payload.semBoleto ?? false,
+        p_post_action_notes: payload.postActionNotes ?? null,
+        p_vinculos: payload.vinculos || [],
+        p_plano_financeiro: payload.planoFinanceiro || null,
+        p_user_email: user.email || "unknown",
+        p_user_id: user.id,
+        p_idempotency_key: finalIdempotencyKey,
+      }
+    );
+
+    if (rpcErr) {
+      console.error("[FECHAMENTO_COMPLETO_ACTION] Erro na RPC concluir_fechamento_investimento_completo_v1:", rpcErr);
+      const rawMsg = rpcErr.message || rpcErr.details || rpcErr.hint || JSON.stringify(rpcErr);
+      const mapped = mapFechamentoRpcError(rawMsg);
+      return errorResult(mapped.code, mapped.message);
+    }
+
+    if (!rpcRes?.success) {
+      const rawMsg = rpcRes?.error || rpcRes?.message || "Falha na execução do fechamento de investimento.";
+      const mapped = mapFechamentoRpcError(rawMsg);
+      return errorResult(mapped.code, mapped.message);
+    }
+
+    // 5. Revalidação de Cache
+    revalidatePath("/investimento");
+    revalidatePath(`/investimento/${payload.acaoId}`);
+    if (rpcRes.campanha_id) {
+      revalidatePath(`/investimento/${rpcRes.campanha_id}`);
+    }
+
+    // 6. Envio de E-mail Desacoplado / Não-Bloqueante
+    try {
+      const primeiroBoletoId = rpcRes.primeiro_boleto_id || payload.vinculos?.[0]?.boleto_id || null;
+      await enviarEmailNotificacaoApuracao(payload.acaoId, user.email || "unknown", primeiroBoletoId);
+    } catch (mailErr) {
+      console.error("[FECHAMENTO_COMPLETO_ACTION] Falha não-bloqueante no envio de notificação por e-mail:", mailErr);
+    }
+
+    // 7. Retorno Tipado Canônico
+    return successResult<ConcluirFechamentoInvestimentoResult>({
+      action_id: rpcRes.action_id,
+      campanha_id: rpcRes.campanha_id,
+      fase_atual: Number(rpcRes.fase_atual || 4),
+      caminho: rpcRes.caminho || (payload.planoFinanceiro ? "CAMINHO_B" : "CAMINHO_A"),
+      tipo_plano: rpcRes.tipo_plano,
+      valor_total: Number(rpcRes.valor_total || 0),
+      total_parcelas: Number(rpcRes.total_parcelas || 0),
+      saldo_financeiro_devedor: Number(rpcRes.saldo_financeiro_devedor || 0),
+      total_boletos_vinculados: Number(rpcRes.total_boletos_vinculados || 0),
+      primeiro_boleto_id: rpcRes.primeiro_boleto_id || null,
+      idempotent: Boolean(rpcRes.idempotent),
+      message: rpcRes.message,
+    });
+  } catch (err: any) {
+    if (err.message === "UNAUTHENTICATED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Sessão expirada. Faça login novamente.");
+    }
+    if (err.message === "PROFILE_NOT_APPROVED") {
+      return errorResult(ActionErrorCode.UNAUTHORIZED, "Perfil de usuário não está aprovado.");
+    }
+    if (err.message === "PROFILE_NOT_FOUND") {
+      return errorResult(ActionErrorCode.NOT_FOUND, "Perfil de usuário não encontrado.");
+    }
+    return errorResult(
+      ActionErrorCode.INTERNAL_ERROR,
+      err?.message || "Erro inesperado ao processar fechamento de investimento."
+    );
+  }
+}
