@@ -8,14 +8,8 @@ import { criarAcaoInvestimento, atualizarAcaoInvestimento } from "./actions";
 import { MultiSelect } from "@/components/MultiSelect";
 import { LaunchInvestmentAdvisor } from "./LaunchInvestmentAdvisor";
 import { cleanMatrixCode } from "@/lib/utils/excel-import";
-import { PlanoFinanceiroSection } from "../components/PlanoFinanceiroSection";
 import { MultiplasAcoesSection } from "../components/MultiplasAcoesSection";
-import { 
-  ParcelaFinanceira, 
-  AcaoComercialItem, 
-  gerarGradeParcelasIguais, 
-  validarParidadeNegociacao 
-} from "@/lib/investimento/plano-financeiro-service";
+import { AcaoComercialItem } from "@/lib/investimento/plano-financeiro-service";
 import { validarIntersecaoCompetencia } from "@/lib/investimento/consolidacao";
 
 interface InvestmentFormProps {
@@ -323,7 +317,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
   const [tipoPagamento, setTipoPagamento] = useState<string>(initialData?.tipo_pagamento || "Transf. Bancária");
   const [tipoAcaoDetalhe, setTipoAcaoDetalhe] = useState<string>(initialData?.tipo_acao_detalhe || "Ação de Vendas");
 
-  // Modo Multi-Ações & Plano Financeiro
+  // Modo Multi-Ações
   const [modoMultiplasAcoes, setModoMultiplasAcoes] = useState<boolean>(false);
   const [multiplasAcoes, setMultiplasAcoes] = useState<AcaoComercialItem[]>(() => {
     const defaultFam = (familias && familias[0]) ? familias[0] : "Linhas Especiais";
@@ -348,8 +342,6 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
       is_materializada_futura: false
     }];
   });
-
-  const [parcelasPlano, setParcelasPlano] = useState<ParcelaFinanceira[]>([]);
 
   // Aniversário states (somente ativo quando tipoAcaoDetalhe === "Aniversário")
   const [tipoAniversario, setTipoAniversario] = useState<"Pagamento Único" | "Ação na Família">(() => {
@@ -519,23 +511,6 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
     return Math.round((totFam + totSku) * 100) / 100;
   }, [isAniversarioPagamentoUnico, valorPagamentoUnico, modoMultiplasAcoes, multiplasAcoes, showFamilias, selectedFamilias, familiaDetails, showSkus, selectedSkus, skuDetails]);
 
-  // Sincronização inicial da parcela à vista
-  useEffect(() => {
-    if (parcelasPlano.length <= 1) {
-      setParcelasPlano([{
-        numero_parcela: 1,
-        total_parcelas: 1,
-        valor_previsto_original: totalInvestimentoCalculado,
-        valor_previsto: totalInvestimentoCalculado,
-        valor_pago_acumulado: 0,
-        saldo_remanescente: totalInvestimentoCalculado,
-        data_vencimento: globalStart || new Date().toISOString().slice(0, 10),
-        tipo_pagamento: tipoPagamento || "Transf. Bancária",
-        status_parcela: "PENDENTE"
-      }]);
-    }
-  }, [totalInvestimentoCalculado, globalStart, tipoPagamento]);
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
@@ -548,15 +523,6 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
     const mes_referencia = new FormData(e.currentTarget).get("mes_referencia") as string;
     if (!mes_referencia) {
       setError("Por favor, selecione o mês de referência.");
-      return;
-    }
-
-    // Validação de paridade financeira entre ações e parcelas
-    const somaParcelasAtuais = Math.round(parcelasPlano.reduce((acc, p) => acc + (Number(p.valor_previsto) || 0), 0) * 100) / 100;
-    const diferencaCentavos = Math.abs(Math.round((totalInvestimentoCalculado - somaParcelasAtuais) * 100) / 100);
-
-    if (totalInvestimentoCalculado > 0 && diferencaCentavos > 0.01) {
-      setError(`Divergência Financeira: O plano financeiro totaliza R$ ${somaParcelasAtuais.toFixed(2)}, mas as ações comerciais somam R$ ${totalInvestimentoCalculado.toFixed(2)}. Por favor, equilibre as parcelas antes de salvar.`);
       return;
     }
 
@@ -617,7 +583,6 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
       formData.append("skus_detalhes", "[]");
       formData.append("is_planejamento", isPlanejamento ? "true" : "false");
       formData.append("is_test", isTest ? "true" : "false");
-      formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
       formData.append("idempotency_key", idempotencyKey);
 
       startTransition(async () => {
@@ -837,7 +802,6 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
     }
 
     formData.append("is_planejamento", isPlanejamento ? "true" : "false");
-    formData.append("plano_parcelas", JSON.stringify(parcelasPlano));
     formData.append("idempotency_key", idempotencyKey);
     if (modoMultiplasAcoes) {
       formData.append("multiplas_acoes", JSON.stringify(multiplasAcoes));
@@ -1643,19 +1607,7 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
           </div>
         ))}
 
-        {/* SEÇÃO INTEGRADA: Plano Financeiro & Parcelamento */}
-        {totalInvestimentoCalculado > 0 && (
-          <div className="pt-4 border-t border-border">
-            <PlanoFinanceiroSection
-              totalAcoes={totalInvestimentoCalculado}
-              dataInicioGlobal={globalStart}
-              tipoPagamentoGlobal={tipoPagamento}
-              parcelas={parcelasPlano}
-              onChangeParcelas={setParcelasPlano}
-              disabled={isLocked}
-            />
-          </div>
-        )}
+
 
         </fieldset>
 

@@ -843,27 +843,6 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       }
     }
 
-    // 4. Processar Grade de Parcelas se enviada via FormData
-    const planoParcelasStr = formData.get("plano_parcelas") as string;
-    let finalParcelasToInsert: any[] = [];
-    if (planoParcelasStr) {
-      try {
-        const parsedParcelas = JSON.parse(planoParcelasStr);
-        if (Array.isArray(parsedParcelas) && parsedParcelas.length > 0) {
-          finalParcelasToInsert = parsedParcelas.map((p: any, idx: number) => ({
-            numero_parcela: p.numero_parcela || (idx + 1),
-            total_parcelas: p.total_parcelas || parsedParcelas.length,
-            valor_previsto: Number(p.valor_previsto) || 0,
-            data_vencimento: p.data_vencimento || calculated_data_inicio,
-            tipo_pagamento: p.tipo_pagamento || tipo_pagamento,
-            observacoes: p.observacoes || null
-          }));
-        }
-      } catch (e) {
-        console.error("Erro ao fazer parse de plano_parcelas:", e);
-      }
-    }
-
     if (finalActionsToInsert.length === 0) {
       return errorResult(ActionErrorCode.VALIDATION_ERROR, "Ao menos uma ação válida deve ser gerada a partir do lançamento.");
     }
@@ -878,19 +857,9 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       }
     }
 
-    const totalInvestimentoAcoes = finalActionsToInsert.reduce((acc, a) => acc + (Number(a.valor_investimento) || 0), 0);
-
-    // Se não houver parcelas configuradas, gerar parcela única à vista
-    if (finalParcelasToInsert.length === 0) {
-      finalParcelasToInsert = [{
-        numero_parcela: 1,
-        total_parcelas: 1,
-        valor_previsto: totalInvestimentoAcoes,
-        data_vencimento: calculated_data_inicio,
-        tipo_pagamento,
-        observacoes: null
-      }];
-    }
+    // 4. [GATE 5.17 - FASE 3.3] No fluxo de lançamento, toda nova campanha nasce sem plano financeiro (PENDENTE) e com ZERO parcelas.
+    // A definição do plano financeiro (À VISTA / PARCELADO, vencimentos e parcelas) é transferida oficialmente para o Fechamento (Fase 3).
+    const finalParcelasToInsert: any[] = [];
 
     // 5. Executar criação atômica via RPC PostgreSQL criar_negociacao_completa_v1
     const p_campanha = {
@@ -903,7 +872,8 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       gerente_id: gerenteId || null,
       is_planejamento,
       is_test,
-      tipo_plano_financeiro: finalParcelasToInsert.length > 1 ? "PARCELADO" : "A_VISTA"
+      tipo_plano_financeiro: "PENDENTE",
+      criar_sem_plano_financeiro: true
     };
 
     // Validação estrita e sanitização da chave de idempotência do cliente

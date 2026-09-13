@@ -2,21 +2,45 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Upload, CheckCircle2, Package, X, RefreshCw, DollarSign, CreditCard, Link as LinkIcon, AlertCircle } from "lucide-react";
+import { ArrowLeft, Upload, CheckCircle2, Package, X, RefreshCw, DollarSign, CreditCard, Link as LinkIcon, AlertCircle, Layers, ShieldAlert, CheckCircle } from "lucide-react";
 import Link from "next/link";
-import { preencherApuracao } from "../../lancar/actions";
+import { concluirFechamentoInvestimentoCompletoAction } from "../../lancar/actions";
+import { PlanoFinanceiroSection } from "@/app/investimento/components/PlanoFinanceiroSection";
+import { ParcelaFinanceira } from "@/lib/investimento/plano-financeiro-service";
 import { supabase } from "@/lib/supabase";
 
 interface ApuracaoFormProps {
   investment: any;
   matrizNome?: string;
   initialBoletos?: any[];
+  campanha?: any;
+  isMultiAction?: boolean;
+  todasAcoesProntas?: boolean;
+  totalCampanha?: number;
+  acoesAtivasCount?: number;
+  acoesNaoProntasCount?: number;
 }
 
-export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: ApuracaoFormProps) {
+export function ApuracaoForm({ 
+  investment, 
+  matrizNome, 
+  initialBoletos = [],
+  campanha,
+  isMultiAction = false,
+  todasAcoesProntas = true,
+  totalCampanha,
+  acoesAtivasCount = 1,
+  acoesNaoProntasCount = 0
+}: ApuracaoFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // Idempotency Key gerada uma única vez na montagem do componente (prevenção de duplo clique e retries)
+  const [idempotencyKey] = useState<string>(() => crypto.randomUUID());
+
+  // SSOT: Total financeiro canônico da campanha: SUM(valor_investimento das ações ativas)
+  const valorTotalCampanha = Math.round((totalCampanha ?? Number(investment.valor_investimento) ?? 0) * 100) / 100;
   
   const [numeroAcordo, setNumeroAcordo] = useState(investment.apuracao_numero_acordo || investment.numero_acordo || "");
   const [volumeVendido, setVolumeVendido] = useState(
@@ -39,7 +63,7 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
   const [semBoleto, setSemBoleto] = useState<boolean>(Boolean(investment.sem_boleto));
   const [postActionNotes, setPostActionNotes] = useState(investment.post_action_notes || "");
   
-  // Boletos vinculados
+  // Boletos vinculados (Ownership: Apuração Comercial)
   const [boletosAbertos] = useState<any[]>(initialBoletos);
   const [vinculosBoletos, setVinculosBoletos] = useState<Array<{ boleto_id: string; valor_associado: number }>>(() => {
     if (investment.apuracao_boleto_id) {
@@ -50,6 +74,34 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
     }
     return [];
   });
+
+  // Estado das parcelas financeiras para o fechamento
+  const [parcelas, setParcelas] = useState<ParcelaFinanceira[]>(() => {
+    return [{
+      numero_parcela: 1,
+      total_parcelas: 1,
+      valor_previsto_original: valorTotalCampanha,
+      valor_previsto: valorTotalCampanha,
+      valor_pago_acumulado: 0,
+      saldo_remanescente: valorTotalCampanha,
+      data_vencimento: investment.data_inicio || new Date().toISOString().slice(0, 10),
+      tipo_pagamento: investment.tipo_pagamento || "Transf. Bancária",
+      status_parcela: "PENDENTE"
+    }];
+  });
+
+  // Reconciliação das parcelas
+  const totalParcelasSoma = useMemo(() => {
+    return Math.round(parcelas.reduce((acc, p) => acc + (Number(p.valor_previsto) || 0), 0) * 100) / 100;
+  }, [parcelas]);
+
+  const diferencaParcelas = useMemo(() => {
+    return Math.round((valorTotalCampanha - totalParcelasSoma) * 100) / 100;
+  }, [valorTotalCampanha, totalParcelasSoma]);
+
+  const isPlanoEquilibrado = useMemo(() => {
+    return Math.abs(diferencaParcelas) < 0.01;
+  }, [diferencaParcelas]);
 
   // File uploads
   const [evidencias, setEvidencias] = useState<string[]>(() => {
@@ -146,31 +198,73 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
       return;
     }
 
-    const cleanQtd = volumeVendido.replace(/\./g, "").replace(",", ".");
-    const cleanVal = valorRealizado.replace(/\./g, "").replace(",", ".");
+    // Validações do Plano Financeiro quando elegível (Caminho B)
+    if (todasAcoesProntas) {
+      if (!isPlanoEquilibrado) {
+        setError(`A soma das parcelas (R$ ${totalParcelasSoma.toFixed(2)}) diverge do valor consolidado da campanha (R$ ${valorTotalCampanha.toFixed(2)}). Por favor, equilibre o plano financeiro antes de concluir.`);
+        return;
+      }
 
-    const formData = new FormData();
-    formData.append("apuracao_numero_acordo", numeroAcordo.trim());
-    formData.append("numero_acordo", numeroAcordo.trim());
-    formData.append("apuracao_qtd_vendida", cleanQtd);
-    formData.append("volume_vendido_sellout", cleanQtd);
-    formData.append("apuracao_valor_realizado", cleanVal);
-    formData.append("valor_realizado", cleanVal);
-    formData.append("condicao_pagamento", condicaoPagamento);
-    formData.append("sem_boleto", semBoleto ? "true" : "false");
-    formData.append("post_action_notes", postActionNotes);
-    formData.append("vinculos_boletos", JSON.stringify(vinculosBoletos));
-    formData.append("apuracao_boleto_id", vinculosBoletos[0]?.boleto_id || "");
-    formData.append("apuracao_evidencias_url", JSON.stringify(evidencias));
-    formData.append("evidencias_urls", JSON.stringify(evidencias));
+      if (parcelas.length === 0) {
+        setError("Ao menos uma parcela deve ser informada no plano financeiro.");
+        return;
+      }
+
+      if (parcelas.some(p => Number(p.valor_previsto) <= 0)) {
+        setError("O valor previsto de cada parcela deve ser maior que zero.");
+        return;
+      }
+    }
+
+    const cleanQtd = volumeVendido.trim() 
+      ? parseInt(volumeVendido.replace(/\./g, "")) || null 
+      : null;
+    const cleanVal = valorRealizado.trim() 
+      ? parseFloat(valorRealizado.replace(/\./g, "").replace(",", ".")) || null 
+      : null;
+
+    // Estruturação do Payload do Plano Financeiro:
+    // Se todasAcoesProntas for true: envia plano financeiro completo (CAMINHO B)
+    // Se não (Multi-Action parcial): envia planoFinanceiro = null (CAMINHO A)
+    const planoFinanceiroPayload = todasAcoesProntas ? {
+      tipo_plano: (parcelas.length > 1 ? "PARCELADO" : "A_VISTA") as "A_VISTA" | "PARCELADO",
+      parcelas: parcelas.map((p, idx) => ({
+        numero_parcela: p.numero_parcela || idx + 1,
+        valor_previsto: Number(p.valor_previsto),
+        data_vencimento: p.data_vencimento || new Date().toISOString().slice(0, 10),
+        tipo_pagamento: p.tipo_pagamento || "Transf. Bancária",
+        observacoes: p.observacoes || undefined
+      }))
+    } : null;
 
     startTransition(async () => {
       try {
-        await preencherApuracao(investment.id, formData);
+        const res = await concluirFechamentoInvestimentoCompletoAction({
+          acaoId: investment.id,
+          numeroAcordo: numeroAcordo.trim(),
+          qtdVendida: cleanQtd,
+          valorRealizado: cleanVal,
+          evidencias: evidencias.length > 0 ? JSON.stringify(evidencias) : null,
+          condicaoPagamento: condicaoPagamento || null,
+          semBoleto: semBoleto,
+          postActionNotes: postActionNotes || null,
+          vinculos: vinculosBoletos.map(v => ({
+            boleto_id: v.boleto_id,
+            valor_associado: Number(v.valor_associado) || 0
+          })),
+          planoFinanceiro: planoFinanceiroPayload,
+          idempotencyKey: idempotencyKey
+        });
+
+        if (!res.success) {
+          setError(res.error || res.message || "Falha ao concluir fechamento da ação.");
+          return;
+        }
+
         router.push("/investimento");
         router.refresh();
       } catch (err: any) {
-        setError(err.message || "Ocorreu um erro ao salvar a apuração.");
+        setError(err.message || "Ocorreu um erro ao salvar o fechamento.");
       }
     });
   };
@@ -212,13 +306,37 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
           </span>
         </div>
         <div>
-          <span className="text-xs text-muted block">Investimento Planejado</span>
+          <span className="text-xs text-muted block">Investimento da Ação</span>
           <span className="font-black text-gold">{formatCurrency(Number(investment.valor_investimento) || 0)}</span>
         </div>
+        {isMultiAction && (
+          <div>
+            <span className="text-xs text-muted block">Total Consolidado Campanha</span>
+            <span className="font-black text-emerald-400 flex items-center gap-1">
+              {formatCurrency(valorTotalCampanha)}
+              <span className="text-[10px] font-medium text-muted">({acoesAtivasCount} ações)</span>
+            </span>
+          </div>
+        )}
         <div>
           <span className="text-xs text-muted block">Pagamento</span>
           <span className="font-medium text-foreground">{investment.tipo_pagamento || 'Abatimento'}</span>
         </div>
+        {isMultiAction && (
+          <div className="w-full pt-2 border-t border-border/60 flex items-center gap-2">
+            <span className="text-xs font-bold text-muted flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-gold" />
+              Negociação Multi-Ação:
+            </span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
+              todasAcoesProntas 
+                ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" 
+                : "bg-amber-500/10 text-amber-400 border border-amber-500/30"
+            }`}>
+              {todasAcoesProntas ? "Todas as ações em apuração (Plano Financeiro Elegível)" : `${acoesNaoProntasCount} ação(ões) ainda em execução`}
+            </span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -290,7 +408,7 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
           </div>
         </div>
 
-        {/* Seção de Vínculo de Boletos */}
+        {/* Seção de Vínculo de Boletos (Ownership: Apuração Comercial) */}
         <div className="space-y-3 pt-2 border-t border-border">
           <div className="flex items-center justify-between">
             <div>
@@ -448,11 +566,51 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
           />
         </div>
 
+        {/* Seção de Situação e Plano Financeiro da Campanha */}
+        <div className="space-y-3 pt-2 border-t border-border">
+          {!todasAcoesProntas ? (
+            /* CAMINHO A: Multi-Ação Parcial */
+            <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 space-y-2">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 flex-shrink-0 text-amber-400" />
+                <h3 className="text-sm font-bold text-amber-200">NEGOCIAÇÃO MULTI-AÇÃO EM EXECUÇÃO</h3>
+              </div>
+              <p className="text-xs text-amber-300/90 leading-relaxed">
+                Esta campanha possui <strong>{acoesNaoProntasCount}</strong> outra(s) ação(ões) que ainda não atingiram a etapa de apuração (fase atual abaixo de 3).
+              </p>
+              <p className="text-xs text-amber-300/80 leading-relaxed">
+                Ao concluir esta apuração, a ação atual avançará para a <strong>Fase 4 (Conferência Trade)</strong> e seus boletos vinculados serão salvos. A campanha permanecerá com status <strong>PENDENTE</strong> e zero parcelas. O Plano Financeiro definitivo da negociação master (valor consolidado de <strong>{formatCurrency(valorTotalCampanha)}</strong>) será configurado assim que todas as ações elegíveis chegarem à etapa de apuração.
+              </p>
+            </div>
+          ) : (
+            /* CAMINHO B: Single Action ou Multi-Ação 100% Pronta */
+            <div className="space-y-3">
+              {isMultiAction && (
+                <div className="p-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-300 flex items-start gap-2.5">
+                  <CheckCircle className="w-5 h-5 flex-shrink-0 text-emerald-400 mt-0.5" />
+                  <div className="text-xs leading-relaxed">
+                    <strong className="block text-emerald-200 font-bold mb-0.5">Campanha Pronta para Fechamento Financeiro</strong>
+                    Todas as <strong>{acoesAtivasCount}</strong> ações ativas desta campanha atingiram a fase de apuração. O valor consolidado da campanha é de <strong>{formatCurrency(valorTotalCampanha)}</strong>. Defina abaixo o plano financeiro para quitação contábil.
+                  </div>
+                </div>
+              )}
+              <PlanoFinanceiroSection
+                totalAcoes={valorTotalCampanha}
+                dataInicioGlobal={investment.data_inicio || new Date().toISOString().slice(0, 10)}
+                tipoPagamentoGlobal={condicaoPagamento || investment.tipo_pagamento || "Transf. Bancária"}
+                parcelas={parcelas}
+                onChangeParcelas={setParcelas}
+                disabled={isPending || uploading}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Submit */}
         <div className="pt-3 border-t border-border">
           <button 
             type="submit"
-            disabled={isPending || uploading}
+            disabled={isPending || uploading || !numeroAcordo.trim() || (!semBoleto && vinculosBoletos.length === 0 && boletosAbertos.length > 0) || (todasAcoesProntas && !isPlanoEquilibrado)}
             className="w-full bg-purple-600 text-white font-bold text-base rounded-xl py-3.5 flex items-center justify-center gap-2 hover:bg-purple-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-purple-600/20"
           >
             {isPending ? (
@@ -460,7 +618,10 @@ export function ApuracaoForm({ investment, matrizNome, initialBoletos = [] }: Ap
             ) : (
               <>
                 <CheckCircle2 className="w-6 h-6" />
-                Enviar para Conferência (Fase 4)
+                {todasAcoesProntas 
+                  ? "Concluir Apuração & Fechamento Financeiro (Fase 4)" 
+                  : "Concluir Apuração da Ação (Fase 4)"
+                }
               </>
             )}
           </button>

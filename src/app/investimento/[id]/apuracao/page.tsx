@@ -90,10 +90,60 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
     console.error("Erro ao buscar boletos para apuração:", err);
   }
 
+  // Buscar contexto da Campanha e Ações Irmãs para avaliação de Multi-Action e Prontidão Financeira
+  let campanha: any = null;
+  let isMultiAction = false;
+  let todasAcoesProntas = true;
+  let totalCampanha = Math.round((Number(investment.valor_investimento) || 0) * 100) / 100;
+  let acoesAtivasCount = 1;
+  let acoesNaoProntasCount = 0;
+
+  if (investment.campanha_id) {
+    const [campanhaRes, acoesRes] = await Promise.all([
+      supabase
+        .from("cm_campanhas")
+        .select("id, tipo_plano_financeiro, saldo_financeiro_devedor, valor_total_projetado, status_financeiro")
+        .eq("id", investment.campanha_id)
+        .single(),
+      supabase
+        .from("cm_acoes_investimento")
+        .select("id, fase_atual, valor_investimento, cancel_reason, tipo_acao")
+        .eq("campanha_id", investment.campanha_id)
+        .is("cancel_reason", null)
+    ]);
+
+    campanha = campanhaRes.data || null;
+    const acoesAtivas = (acoesRes.data || []).filter((a: any) => !a.cancel_reason);
+    acoesAtivasCount = Math.max(1, acoesAtivas.length);
+    isMultiAction = acoesAtivas.length > 1;
+
+    // Regra oficial: todasAcoesProntas = COUNT(ações ativas com fase_atual < 3) = 0
+    const acoesAbaixoFase3 = acoesAtivas.filter((a: any) => Number(a.fase_atual || 1) < 3);
+    acoesNaoProntasCount = acoesAbaixoFase3.length;
+    todasAcoesProntas = acoesNaoProntasCount === 0;
+
+    // Total financeiro canônico da campanha: SUM(valor_investimento das ações ativas)
+    // PROIBIDO multiplicar por volume ou alterar valor_investimento (SSOT Gate 5.15)
+    if (acoesAtivas.length > 0) {
+      const sumTotal = acoesAtivas.reduce((acc: number, a: any) => acc + (Number(a.valor_investimento) || 0), 0);
+      totalCampanha = Math.round(sumTotal * 100) / 100;
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <main className="pb-16 pt-8">
-        <ApuracaoForm investment={investment} matrizNome={resolvedMatriz} initialBoletos={boletosAbertos} />
+        <ApuracaoForm 
+          investment={investment} 
+          matrizNome={resolvedMatriz} 
+          initialBoletos={boletosAbertos}
+          campanha={campanha}
+          isMultiAction={isMultiAction}
+          todasAcoesProntas={todasAcoesProntas}
+          totalCampanha={totalCampanha}
+          acoesAtivasCount={acoesAtivasCount}
+          acoesNaoProntasCount={acoesNaoProntasCount}
+        />
       </main>
     </div>
   );

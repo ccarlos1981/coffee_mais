@@ -43,6 +43,7 @@ import {
   Sparkles,
   HelpCircle,
   Layers,
+  CreditCard,
   Paperclip,
   ArrowUpDown,
   ArrowUp,
@@ -2652,8 +2653,30 @@ export default function InvestimentoPage() {
       fd.append('sem_boleto', semBoleto ? 'true' : 'false');
       fd.append('post_action_notes', postActionNotes || '');
       
-      const { preencherApuracao } = await import('./lancar/actions');
-      await preencherApuracao(selectedAction.id, fd);
+      const { concluirFechamentoInvestimentoCompletoAction } = await import('./lancar/actions');
+      const cleanQtd = apuracaoForm.qtd_vendida ? parseInt(apuracaoForm.qtd_vendida.replace(/\./g, '')) || null : null;
+      const cleanVal = apuracaoForm.valor_realizado ? parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || null : null;
+
+      const res = await concluirFechamentoInvestimentoCompletoAction({
+        acaoId: selectedAction.id,
+        numeroAcordo: apuracaoForm.numero_acordo.trim(),
+        qtdVendida: cleanQtd,
+        valorRealizado: cleanVal,
+        evidencias: apuracaoForm.evidencias_url || null,
+        condicaoPagamento: apuracaoForm.condicao_pagamento || null,
+        semBoleto: semBoleto,
+        postActionNotes: postActionNotes || null,
+        vinculos: vinculosBoletos.map(v => ({
+          boleto_id: v.boleto_id,
+          valor_associado: parseFloat(String(v.valor_associado).replace(',', '.')) || 0
+        })),
+        planoFinanceiro: null,
+        idempotencyKey: crypto.randomUUID()
+      });
+
+      if (!res.success) {
+        throw new Error(res.error || res.message || "Erro ao salvar apuração.");
+      }
       
       setFeedback({ type: "success", msg: "Apuração salva com sucesso!" });
       loadData();
@@ -6723,13 +6746,29 @@ export default function InvestimentoPage() {
                           })()}
                         </div>
                       </div>
+                      <div className="p-3 bg-gold/10 border border-gold/30 rounded-xl flex flex-col gap-2 mt-2">
+                        <div className="text-xs text-foreground font-semibold flex items-center gap-1.5 text-gold">
+                          <CreditCard className="w-4 h-4" />
+                          Dossiê Completo & Plano Financeiro
+                        </div>
+                        <p className="text-[11px] text-muted leading-tight">
+                          Para definir o parcelamento financeiro da negociação ou visualizar o dossiê em tela cheia, utilize a página dedicada.
+                        </p>
+                        <Link
+                          href={`/investimento/${selectedAction.id}/apuracao`}
+                          className="w-full text-center py-2 px-3 bg-gold text-black font-bold text-xs rounded-lg hover:bg-gold/90 transition-all shadow-sm flex items-center justify-center gap-1.5"
+                        >
+                          Abrir Apuração Completa ↗
+                        </Link>
+                      </div>
+
                       <button
                         onClick={handleApuracaoSubmit}
                         disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto)}
                         className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                        Concluir Apuração
+                        Concluir Apuração Rápida
                       </button>
                     </div>
                   )}
