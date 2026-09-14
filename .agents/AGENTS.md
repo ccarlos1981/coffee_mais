@@ -5757,6 +5757,202 @@ GOVERNANCE = LOCKED
 
 Status Arquitetural: `META_FUTURA = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
+---
+
+## 106. Baseline Oficial — RDM Gate 5.17: Consolidação Visual de Investimentos (VLR INVEST. × PPC × EXP. VOL.) — Baseline Permanente
+
+A partir de 11/09/2026, a correção da consolidação visual de investimentos do **RDM Gate 5.17** torna-se o baseline permanente e oficial do Coffee++.
+
+### Problema Original
+A tela `/investimento` apresentava valores incorretos de **VLR INVEST.**, **PPC** e **EXP. VOL.** na linha-mãe (campanha), causados por: (a) ausência de acumulação de `expectativa_volume` entre ações, (b) ausência de normalização e consolidação de `preco_acao` (PPC), e (c) inconsistências de dados em 303 ações Classe B cujo `valor_investimento` não refletia o total canônico (saneado na Fase 1B).
+
+### Causa Raiz
+O código de consolidação da campanha somava apenas `valor_investimento` (via `getValorTotal`), mas ignorava `expectativa_volume` e `preco_acao`. Adicionalmente, 303 ações históricas possuíam `valor_investimento` com valor unitário (não multiplicado), divergindo do contrato canônico onde `valor_investimento = TOTAL FINANCEIRO DA AÇÃO`.
+
+### Saneamento (Fase 1B)
+- 303 ações Classe B saneadas via UPDATE controlado.
+- Delta financeiro global: +R$ 1.677.614,96.
+- Snapshot de segurança: `public.cm_investimento_saneamento_snapshot_517`.
+- Hash do lote: `c8f49889ba2762306762c340a466895a7fbb133056897b54bfe2cbf077426d7c`.
+- 303/303 atualizadas, 0 erros, 0 rollback, 0 elegíveis restantes.
+
+### Regra Canônica Permanente (INVARIANTE)
+
+**VLR INVEST.** = `Σ valor_investimento` das ações da campanha (soma simples).
+
+**EXP. VOL.** = `Σ expectativa_volume` das ações da campanha.
+
+**PPC (Preço Por Caixa)**:
+- Um PPC válido único → valor formatado (ex: `R$ 22,99`).
+- Múltiplos PPCs válidos distintos → `"Múltiplos"`.
+- Nenhum PPC válido → `"-"`.
+
+**Normalização de PPC**: `Math.round(Number(preco_acao) * 100) / 100` para eliminação de artefatos de ponto flutuante.
+
+### Proibição Permanente (INVARIANTE ABSOLUTO)
+É **expressamente proibido** em qualquer camada (UI, Server Action, RPC, DB, Analytics, Dashboard, RDM, DRE, Coffee IA, e-mails) calcular o total financeiro da ação como:
+
+```
+valor_investimento × expectativa_volume   ← PROIBIDO
+```
+
+O campo `valor_investimento` é, por definição canônica, o **total financeiro da ação** (nunca valor unitário).
+
+### Golden Case OBA SP (Homologado em Produção)
+
+| Ação | valor_investimento | expectativa_volume | preco_acao |
+| :--- | :--- | :--- | :--- |
+| #10681 | R$ 1.400 | 200 | R$ 22,99 |
+| #10682 | R$ 4.200 | 600 | R$ 22,99 |
+
+**Consolidado**: VLR INVEST. = R$ 5.600 | PPC = R$ 22,99 | EXP. VOL. = 800.
+
+### Arquivo Funcional
+`src/app/investimento/page.tsx` (1 arquivo, +48/-7 linhas).
+
+### Commit Oficial
+`cbd0d0d1bc746aee54c7b15d1d9c8ce32c89bf8f` — `RDM Gate 5.17: corrigir consolidação visual de investimentos`.
+
+### Deploy Oficial
+- Deployment ID: `dpl_ApEo4YrEzDdnL6mrB4gQTq9guKey`.
+- Target: Production.
+- URL: `https://dashboard.coffeemais.com`.
+
+### Remediação da História Git
+A história Git foi remediada para remoção de `backups/` (blobs >100 MB incompatíveis com GitHub). Push realizado via `git push --force-with-lease origin main`. Zero blobs >100 MB na história publicada. Não reverter essa história.
+
+### Smoke Test de Produção (Fase 4D)
+- 30 campanhas amostradas: 10 single-action, 9 multi-action, 11 vazias.
+- PPC: 14 único, 4 múltiplo, 1 sem PPC.
+- Divergências UI vs DB: **ZERO**.
+- Valores proibidos (38.700 / 70.756 / 45.600): **AUSENTES**.
+- Gate 5.15B: 34/34 PASS. Gate 5.14B: 12/12 PASS.
+- Mutations pelo smoke test: ZERO.
+
+### Suítes de Homologação Aprovadas
+- Fase 3 Golden + 173 campanhas + 2.000 metamórficos: ALL PASS.
+- Gate 5.15B: 34/34. Gate 5.14B: 12/12. Gate 5.11C: 21/21. Gate 5.10K: 32/32.
+- Commercial Intelligence: 16/16. Commercial Planning: 20/20.
+- Analytics parity: 0,0000%. TypeScript: 0 erros. Build: sucesso.
+
+### Limitações Registradas
+- Gate 5.11C (concorrência/idempotência) e Gate 5.10K (exclusão): NOT EXECUTABLE em modo read-only da Fase 4D — requerem operações mutáveis.
+- Casos Leandro A/B/C: dados originais não localizados por busca exata (possivelmente reprocessados), porém valores proibidos confirmados ausentes.
+
+### Fases do Gate 5.17
+| Fase | Resultado |
+| :--- | :--- |
+| Fase 0 — Forense | PASS |
+| Fase 1A — Diagnóstico | PASS |
+| Fase 1A.1 — Reconciliação | PASS |
+| Fase 1B — Saneamento | PASS / 303 ações |
+| Fase 2 — Forense da UI | PASS |
+| Fase 3 — Correção Controlada | PASS |
+| Fase 3.1 — Pré-Release Audit | PASS |
+| Fase 4A — Commit Controlado | PASS |
+| Fase 4B.1 — Remediação da História | PASS |
+| Fase 4B.2 — Push da História Remediada | PASS |
+| Fase 4C — Deploy Controlado | PASS |
+| Fase 4D — Smoke Test de Produção | PASS |
+
+### Diretrizes Mandatórias
+1. **Invariante Financeiro**: `valor_investimento` é SEMPRE o total financeiro da ação. Proibida qualquer multiplicação por volume.
+2. **Consolidação Visual**: VLR INVEST., EXP. VOL. e PPC seguem exclusivamente as regras canônicas acima.
+3. **Contrato `getValorTotal`**: Preservar o contrato canônico de `getValorTotal(acao)` conforme Gate 5.15.
+4. **Não Regressão**: Toda evolução futura do módulo de investimentos deve manter paridade com os Gates 5.14B, 5.15B e 5.17.
+5. **Auditoria**: Toda alteração em `/investimento` deve comprovar aprovação prévia em `npx tsc --noEmit`, `npm run build`, e suítes de regressão aplicáveis.
+
+```
+GATE_5_17 = HOMOLOGADO
+CONSOLIDACAO_VISUAL = FROZEN
+INVARIANTE_FINANCEIRO = LOCKED
+SANEAMENTO = PERMANENTE
+BASELINE = PERMANENTE
+GOVERNANCE = LOCKED
+```
+
+Status Arquitetural: `GATE_5_17 = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
+
+---
+
+## 107. Baseline Oficial — Gate D.3: Cadastramento dos Grandes Clientes KA & Reconciliação Definitiva (Baseline Permanente)
+
+A partir de 14/09/2026, a homologação dos **Gates D.1, D.2, D.3, D.3.1 e D.3.2** torna-se o baseline permanente e oficial do Coffee++ para a carteira de Key Account (KA) e a governança financeira de Setembro/2026 e Agosto/2026.
+
+### Status Arquitetural Oficial
+- `GATE_D_3` = `HOMOLOGADO_E_CONGELADO`
+- `GATE_D_3_1` = `PASS`
+- `GATE_D_3_2` = `CLOSED_LOCKED_FROZEN`
+- `REGIME` = `GOVERNANÇA / ZERO ALTERAÇÃO FUNCIONAL`
+- `ZERO_REGRESSION` = `CONFIRMED`
+- `ZERO_IMPACT_AUGUST` = `CONFIRMED`
+- `ZERO_UNEXPLAINED_DELTA` = `CONFIRMED`
+- `BASELINE` = `PERMANENTE`
+
+### 1. Clientes Oficiais Homologados em Key Account (Setembro/2026)
+Foram oficialmente cadastrados em `public.cm_clientes` com `tipo_parceiro = 'KA'` e matriz/gestores canônicos unicamente os 3 grandes clientes comprovadamente Key Account:
+1. **`79698`** — SENDAS DISTRIBUIDORA S/A (Matriz: `ASSAI` | Gerente: John Guedes / `1003` | UF: `DF` | Código Matriz: `115595.0`)
+   - Faturamento Líquido Setembro: **R$ 41.986,00** (TOP 1100)
+2. **`236908`** — SUPERMERCADOS ABC (Matriz: `ABC` | Gerente: Luiz / `1002` | UF: `MG` | Código Matriz: `202427.2`)
+   - Faturamento Líquido Setembro: **R$ 22.648,12** (TOP 1100)
+3. **`233675`** — TAUSTE SUPERMERCADOS LTDA (Matriz: `TAUSTE` | Gerente: Julliano / `1000` | UF: `SP` | Código Matriz: `233675.0`)
+   - Faturamento Líquido Setembro: **R$ 21.000,00** (TOP 1100)
+
+**Incremento Consolidado KA Setembro:** **+ R$ 85.634,12**
+
+### 2. Composição Oficial Homologada de Setembro/2026 pós-D.3
+- **Key Account (KA):** **R$ 1.098.657,98**
+  - Anterior: R$ 1.013.023,86 + Incremento D.3: R$ 85.634,12 = **R$ 1.098.657,98**
+- **Distribuidor:** **R$ 761,55** (100% Preservado, $\Delta = 0,00$)
+- **Outros (Canal Residual):** **R$ 66.136,25** (Recomposto set-based)
+- **Subdivisão por Gerente KA (Setembro/2026):**
+  - **Luiz:** R$ 494.854,80
+  - **John:** R$ 220.682,96
+  - **Julliano:** R$ 195.591,56
+  - **Leandro:** R$ 187.528,66
+  - **Total KA Gerentes:** R$ 1.098.657,98
+
+### 3. Preservação Estrita dos Clientes Regionais
+Os 5 clientes regionais auditados permanecem rigorosamente classificados como `tipo_parceiro = 'Outros'`, mantendo integridade comercial e financeira:
+- `160879` — SUPER CENTRAL (R$ 10.976,00)
+- `17014` — EMPORIO PRIME (R$ 7.915,20)
+- `17015` — BEIRAMAR (R$ 4.544,44)
+- `22194` — COMPER (R$ 4.320,00)
+- `17013` — SUPERMERCADO SAO LUIZ (R$ 3.960,00)
+- **Total Preservado em Outros:** R$ 31.715,64 (Zero migração indevida para KA)
+
+### 4. Reconciliação Definitiva de Agosto/2026 (Gate D.3.1)
+- **Valor Oficial Coffee++:** **`KA = R$ 4.778.003,79`** (183.132 UN | 1.133 vendas em `public.mv_vendas_mensal`).
+- **Impacto do Gate D.3 sobre Agosto:** **ZERO (R$ 0,00)**. Os 3 parceiros não faturaram em Agosto/2026. O valor de R$ 4.778.003,79 já se encontrava homologado desde 09/09/2026 (Gate 4.4).
+- **Resolução Exata da Divergência Histórica (R$ 2.553,73 vs DRE Antiga de R$ 4.775.450,06):**
+  - `+ R$ 51.043,28`: Inclusão obrigatória de Bonificações TOP 1117 no KA Oficial (Regra Permanente Seção 9).
+  - `- R$ 49.082,18`: Expurgo de TOP 1716 (BIG LAR - NF 25777), operação não autorizada na whitelist de receita mercantil.
+  - `+ R$    251,88`: Atribuição do cliente `17014` (EMPORIO PRIME, devolução TOP 1201) em `Outros` via Master Data `cm_clientes`.
+  - `+ R$    340,75`: Variação de arredondamento/descontos comerciais documentada no Gate Comercial de 09/09/2026.
+  - **Delta Total Auditado ao Centavo:** **`+ R$ 2.553,73`** (Erro residual: R$ 0,0000).
+- **Diretriz de Imutabilidade:** O valor de Agosto/2026 permanece imutável em **R$ 4.778.003,79**. É expressamente proibida qualquer tentativa de reconciliação reversa contra DREs desatualizadas ou bases externas que desconsiderem as regras financeiras das Seções 9 e 10.
+
+### 5. Diretrizes Permanentes de Governança
+1. **Single Source of Truth de Carteira**: `cm_clientes` é o único regulador do canal comercial (`tipo_parceiro`). Nomes de vendedores de ERP (`nome_vendedor`) não sobrepõem a classificação corporativa cadastrada.
+2. **Imutabilidade de Estruturas**: Nenhuma alteração de schema, trigger, função, view materializada ou Missing Invoice Guard decorre deste fechamento.
+3. **Zero Deploy / Zero Mutation**: O Gate D.3.2 é um encerramento formal de governança, sem modificações em código ou banco de dados.
+
+```
+GATE_D_3 = APPROVED
+GATE_D_3_1 = PASS
+GATE_D_3_2 = CLOSED_LOCKED_FROZEN
+SETEMBRO_KA_OFICIAL = 1098657.98
+AGOSTO_KA_OFICIAL = 4778003.79
+HISTORIC_DELTA = RECONCILED_EXACT
+REGRESSION = ZERO
+MUTATION = ZERO
+BASELINE = PERMANENTE
+GOVERNANCE = LOCKED
+```
+
+Status Arquitetural: `GATE_D_3_CONSOLIDADO = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
+
+
 
 
 

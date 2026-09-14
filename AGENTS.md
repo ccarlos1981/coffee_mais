@@ -5515,6 +5515,86 @@ GOVERNANCE = LOCKED
 
 Status Arquitetural: `GATE_5_17 = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
+---
+
+## 107. Baseline Oficial — Gate D.3: Cadastramento dos Grandes Clientes KA & Reconciliação Definitiva (Baseline Permanente)
+
+A partir de 14/09/2026, a homologação dos **Gates D.1, D.2, D.3, D.3.1 e D.3.2** torna-se o baseline permanente e oficial do Coffee++ para a carteira de Key Account (KA) e a governança financeira de Setembro/2026 e Agosto/2026.
+
+### Status Arquitetural Oficial
+- `GATE_D_3` = `HOMOLOGADO_E_CONGELADO`
+- `GATE_D_3_1` = `PASS`
+- `GATE_D_3_2` = `CLOSED_LOCKED_FROZEN`
+- `REGIME` = `GOVERNANÇA / ZERO ALTERAÇÃO FUNCIONAL`
+- `ZERO_REGRESSION` = `CONFIRMED`
+- `ZERO_IMPACT_AUGUST` = `CONFIRMED`
+- `ZERO_UNEXPLAINED_DELTA` = `CONFIRMED`
+- `BASELINE` = `PERMANENTE`
+
+### 1. Clientes Oficiais Homologados em Key Account (Setembro/2026)
+Foram oficialmente cadastrados em `public.cm_clientes` com `tipo_parceiro = 'KA'` e matriz/gestores canônicos unicamente os 3 grandes clientes comprovadamente Key Account:
+1. **`79698`** — SENDAS DISTRIBUIDORA S/A (Matriz: `ASSAI` | Gerente: John Guedes / `1003` | UF: `DF` | Código Matriz: `115595.0`)
+   - Faturamento Líquido Setembro: **R$ 41.986,00** (TOP 1100)
+2. **`236908`** — SUPERMERCADOS ABC (Matriz: `ABC` | Gerente: Luiz / `1002` | UF: `MG` | Código Matriz: `202427.2`)
+   - Faturamento Líquido Setembro: **R$ 22.648,12** (TOP 1100)
+3. **`233675`** — TAUSTE SUPERMERCADOS LTDA (Matriz: `TAUSTE` | Gerente: Julliano / `1000` | UF: `SP` | Código Matriz: `233675.0`)
+   - Faturamento Líquido Setembro: **R$ 21.000,00** (TOP 1100)
+
+**Incremento Consolidado KA Setembro:** **+ R$ 85.634,12**
+
+### 2. Composição Oficial Homologada de Setembro/2026 pós-D.3
+- **Key Account (KA):** **R$ 1.098.657,98**
+  - Anterior: R$ 1.013.023,86 + Incremento D.3: R$ 85.634,12 = **R$ 1.098.657,98**
+- **Distribuidor:** **R$ 761,55** (100% Preservado, $\Delta = 0,00$)
+- **Outros (Canal Residual):** **R$ 66.136,25** (Recomposto set-based)
+- **Subdivisão por Gerente KA (Setembro/2026):**
+  - **Luiz:** R$ 494.854,80
+  - **John:** R$ 220.682,96
+  - **Julliano:** R$ 195.591,56
+  - **Leandro:** R$ 187.528,66
+  - **Total KA Gerentes:** R$ 1.098.657,98
+
+### 3. Preservação Estrita dos Clientes Regionais
+Os 5 clientes regionais auditados permanecem rigorosamente classificados como `tipo_parceiro = 'Outros'`, mantendo integridade comercial e financeira:
+- `160879` — SUPER CENTRAL (R$ 10.976,00)
+- `17014` — EMPORIO PRIME (R$ 7.915,20)
+- `17015` — BEIRAMAR (R$ 4.544,44)
+- `22194` — COMPER (R$ 4.320,00)
+- `17013` — SUPERMERCADO SAO LUIZ (R$ 3.960,00)
+- **Total Preservado em Outros:** R$ 31.715,64 (Zero migração indevida para KA)
+
+### 4. Reconciliação Definitiva de Agosto/2026 (Gate D.3.1)
+- **Valor Oficial Coffee++:** **`KA = R$ 4.778.003,79`** (183.132 UN | 1.133 vendas em `public.mv_vendas_mensal`).
+- **Impacto do Gate D.3 sobre Agosto:** **ZERO (R$ 0,00)**. Os 3 parceiros não faturaram em Agosto/2026. O valor de R$ 4.778.003,79 já se encontrava homologado desde 09/09/2026 (Gate 4.4).
+- **Resolução Exata da Divergência Histórica (R$ 2.553,73 vs DRE Antiga de R$ 4.775.450,06):**
+  - `+ R$ 51.043,28`: Inclusão obrigatória de Bonificações TOP 1117 no KA Oficial (Regra Permanente Seção 9).
+  - `- R$ 49.082,18`: Expurgo de TOP 1716 (BIG LAR - NF 25777), operação não autorizada na whitelist de receita mercantil.
+  - `+ R$    251,88`: Atribuição do cliente `17014` (EMPORIO PRIME, devolução TOP 1201) em `Outros` via Master Data `cm_clientes`.
+  - `+ R$    340,75`: Variação de arredondamento/descontos comerciais documentada no Gate Comercial de 09/09/2026.
+  - **Delta Total Auditado ao Centavo:** **`+ R$ 2.553,73`** (Erro residual: R$ 0,0000).
+- **Diretriz de Imutabilidade:** O valor de Agosto/2026 permanece imutável em **R$ 4.778.003,79**. É expressamente proibida qualquer tentativa de reconciliação reversa contra DREs desatualizadas ou bases externas que desconsiderem as regras financeiras das Seções 9 e 10.
+
+### 5. Diretrizes Permanentes de Governança
+1. **Single Source of Truth de Carteira**: `cm_clientes` é o único regulador do canal comercial (`tipo_parceiro`). Nomes de vendedores de ERP (`nome_vendedor`) não sobrepõem a classificação corporativa cadastrada.
+2. **Imutabilidade de Estruturas**: Nenhuma alteração de schema, trigger, função, view materializada ou Missing Invoice Guard decorre deste fechamento.
+3. **Zero Deploy / Zero Mutation**: O Gate D.3.2 é um encerramento formal de governança, sem modificações em código ou banco de dados.
+
+```
+GATE_D_3 = APPROVED
+GATE_D_3_1 = PASS
+GATE_D_3_2 = CLOSED_LOCKED_FROZEN
+SETEMBRO_KA_OFICIAL = 1098657.98
+AGOSTO_KA_OFICIAL = 4778003.79
+HISTORIC_DELTA = RECONCILED_EXACT
+REGRESSION = ZERO
+MUTATION = ZERO
+BASELINE = PERMANENTE
+GOVERNANCE = LOCKED
+```
+
+Status Arquitetural: `GATE_D_3_CONSOLIDADO = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
+
+
 
 
 
