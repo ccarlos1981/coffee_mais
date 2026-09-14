@@ -471,7 +471,7 @@ export default function AgendaPage() {
                         setEditingCell(`${mgr}_${day.dateStr}`);
                       }
                     }}
-                    className={`h-[125px] max-h-[125px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border overflow-hidden ${
+                    className={`h-[140px] min-h-[140px] p-2 flex flex-col group relative transition-all duration-200 border-r border-b border-border overflow-hidden ${
                       day.isToday ? 'bg-accent-gold/[0.04]' : ''
                     } ${
                       !day.isCurrentMonth ? 'bg-elevated/10 opacity-40' : ''
@@ -515,57 +515,75 @@ export default function AgendaPage() {
                           </span>
                         )}
                       </div>
+                      {value && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEvent360({
+                              dateStr: day.dateStr,
+                              manager: mgr,
+                              description: value,
+                              redeNome: null,
+                              codigoMatriz: null,
+                            });
+                          }}
+                          title="Diagnóstico 360° da Visita"
+                          className="opacity-80 hover:opacity-100 p-0.5 px-1.5 rounded bg-black/20 hover:bg-black/40 text-[9px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0 text-white/90 hover:text-white transition-colors"
+                        >
+                          <ShieldCheck className="w-3 h-3 text-accent-gold" />
+                          <span>360°</span>
+                        </button>
+                      )}
                     </div>
 
-                    {/* Conteúdo/Evento */}
-                    <div className="flex-1 flex flex-col justify-start overflow-y-auto pr-0.5">
+                    {/* Conteúdo/Evento - Ocupa 100% da largura útil da célula */}
+                    <div className="flex-1 w-full flex flex-col justify-start overflow-y-auto">
                       {isEditing ? (
                         <textarea
                           autoFocus
                           defaultValue={value}
-                          placeholder="Digite a rota..."
+                          placeholder="Digite a rota... (Shift+Enter para nova linha)"
                           onBlur={(e) => handleSaveCell(mgr, day.dateStr, e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                            if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
                               handleSaveCell(mgr, day.dateStr, e.currentTarget.value);
+                            } else if (e.key === 'Enter' && e.shiftKey) {
+                              // Permite quebra de linha natural no textarea sem fechar
                             } else if (e.key === 'Escape') {
                               setEditingCell(null);
                             }
                           }}
-                          className="w-full text-xs p-1 rounded border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold h-14 shrink-0"
+                          className="w-full h-full min-h-[90px] text-xs p-2 rounded-lg border border-accent-gold bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold leading-relaxed"
                           onClick={(e) => e.stopPropagation()}
                         />
                       ) : value ? (
                         <div
-                          className="px-2 py-1 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-center justify-between gap-1 shrink-0"
+                          onClick={(e) => {
+                            if (isEditable) {
+                              e.stopPropagation();
+                              setEditingCell(`${mgr}_${day.dateStr}`);
+                            }
+                          }}
+                          className={`w-full h-full p-2 rounded-lg text-[11px] font-semibold tracking-wide transition-all shadow-sm flex flex-col justify-start overflow-y-auto leading-snug whitespace-pre-wrap break-words ${
+                            isEditable ? 'cursor-pointer hover:brightness-95' : ''
+                          }`}
                           style={{
                             backgroundColor: cellColors?.badge || 'var(--accent-gold)',
                             color: cellColors?.badgeText || '#ffffff',
                           }}
                         >
-                          <span className="truncate flex-1">{value}</span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedEvent360({
-                                dateStr: day.dateStr,
-                                manager: mgr,
-                                description: value,
-                                redeNome: null,
-                                codigoMatriz: null,
-                              });
-                            }}
-                            title="Diagnóstico 360° da Visita"
-                            className="opacity-80 hover:opacity-100 p-0.5 rounded bg-black/20 hover:bg-black/40 text-[9px] font-bold inline-flex items-center gap-0.5 cursor-pointer shrink-0"
-                          >
-                            <ShieldCheck className="w-3 h-3" />
-                            <span>360°</span>
-                          </button>
+                          {value}
                         </div>
                       ) : (
                         isEditable && (
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center justify-center py-1.5 text-[10px] font-bold text-accent-gold/60 border border-dashed border-accent-gold/20 rounded transition-opacity shrink-0">
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell(`${mgr}_${day.dateStr}`);
+                            }}
+                            className="w-full h-full min-h-[70px] opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] font-bold text-accent-gold/60 border border-dashed border-accent-gold/20 hover:border-accent-gold/50 rounded-lg transition-all cursor-pointer"
+                          >
                             + Rota
                           </div>
                         )
@@ -673,8 +691,8 @@ export default function AgendaPage() {
                     <textarea
                       value={val}
                       onChange={(e) => handleRouteChange(mgr, selectedDateStr || '', e.target.value)}
-                      placeholder="Digite a rota..."
-                      className="w-full text-xs p-2 rounded border border-border bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold focus:border-accent-gold h-16"
+                      placeholder="Digite a rota... (Shift+Enter para nova linha)"
+                      className="w-full text-xs p-2 rounded border border-border bg-background text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold focus:border-accent-gold min-h-[70px]"
                     />
                   </div>
                 );
@@ -687,7 +705,7 @@ export default function AgendaPage() {
                     {val ? (
                       <div
                         key="has-route-badge"
-                        className="px-2 py-1.5 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-start gap-1"
+                        className="px-2 py-1.5 rounded text-[10px] font-semibold tracking-wide transition-all shadow-sm flex items-start gap-1 whitespace-pre-wrap break-words"
                         style={{
                           backgroundColor: MANAGER_COLORS[mgr]?.badge || 'var(--accent-gold)',
                           color: MANAGER_COLORS[mgr]?.badgeText || '#ffffff',
@@ -828,9 +846,11 @@ export default function AgendaPage() {
                                 placeholder="Rota..."
                                 onBlur={(e) => handleSaveCell(mgr, day.dateStr, e.target.value)}
                                 onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
                                     e.preventDefault();
                                     handleSaveCell(mgr, day.dateStr, e.currentTarget.value);
+                                  } else if (e.key === 'Enter' && e.shiftKey) {
+                                    // Permite quebra de linha natural com Shift+Enter
                                   } else if (e.key === 'Escape') {
                                     setEditingCell(null);
                                   }
@@ -860,7 +880,7 @@ export default function AgendaPage() {
                               }}
                             >
                               <span className="truncate flex-1">
-                                {mgr.split(' ')[0]}: {value}
+                                {mgr.split(' ')[0]}: {value.replace(/\n/g, ' ')}
                               </span>
                               <button
                                 onClick={(e) => {
@@ -1023,7 +1043,7 @@ export default function AgendaPage() {
                         className="w-full text-xs p-1.5 rounded border border-border bg-elevated/20 text-foreground outline-none resize-none focus:ring-1 focus:ring-accent-gold focus:border-accent-gold h-12"
                       />
                     ) : val ? (
-                      <span key={`val-text-${m}`} className="text-xs font-semibold text-foreground-secondary leading-relaxed">
+                      <span key={`val-text-${m}`} className="text-xs font-semibold text-foreground-secondary leading-relaxed whitespace-pre-wrap break-words">
                         {val}
                       </span>
                     ) : (
@@ -1248,7 +1268,7 @@ export default function AgendaPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {filterManager === 'ALL' && managers.length > 1 ? (
+              {managers.length > 1 ? (
                 <div key="consolidated-calendar-view">
                   {renderAllManagersView()}
                 </div>
