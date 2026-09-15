@@ -5,11 +5,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-// GAP-W16-03: Allowlist restrita para auto-cadastro público
-const ALLOWED_SELF_REGISTRATION_ROLES = new Set([
-  "Promotor",
+// Allowlist oficial para auto-cadastro de colaboradores
+const ALLOWED_REGISTRATION_ROLES = new Set([
+  "Gerente Regional",
+  "Trade",
+  "Supervisor",
   "Vendedor",
-  "Visitante"
+  "Promotor",
+  "Financeiro",
+  "RH",
+  "TI"
 ]);
 
 export async function signUp(formData: FormData) {
@@ -33,8 +38,13 @@ export async function signUp(formData: FormData) {
     return { error: "O número de celular é obrigatório." };
   }
 
-  // GAP-W16-03: Validação estrita da allowlist de auto-cadastro
-  if (!rawRole || !ALLOWED_SELF_REGISTRATION_ROLES.has(rawRole)) {
+  // 1. Validação estrita de e-mail corporativo
+  if (!email.endsWith("@coffeemais.com")) {
+    return { error: "Este e-mail não faz parte da companhia. Utilize seu e-mail @coffeemais.com." };
+  }
+
+  // 2. Validação estrita da função (permite as 8 funções oficiais do cadastro)
+  if (!rawRole || !ALLOWED_REGISTRATION_ROLES.has(rawRole)) {
     return {
       error: "A função selecionada não é permitida para auto-cadastro público. Solicite seu acesso à administração."
     };
@@ -48,10 +58,6 @@ export async function signUp(formData: FormData) {
 
   if (!password || !/^\d+$/.test(password)) {
     return { error: "A senha deve conter apenas números." };
-  }
-
-  if (!email.endsWith("@coffeemais.com")) {
-    return { error: "Este e-mail não faz parte da companhia. Utilize seu e-mail @coffeemais.com." };
   }
 
   // Create user via Admin API with email_confirm: true (auto-confirmed)

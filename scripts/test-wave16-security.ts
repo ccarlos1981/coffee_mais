@@ -158,28 +158,36 @@ async function runSecurityTests() {
     // ------------------------------------------------------------
     console.log("\n--- 2. Testing Self-Registration Allowlist & Restrictions ---");
 
-    const ALLOWED_SELF_REGISTRATION_ROLES = new Set(["Promotor", "Vendedor", "Visitante"]);
+    const ALLOWED_REGISTRATION_ROLES = new Set([
+      "Gerente Regional",
+      "Trade",
+      "Supervisor",
+      "Vendedor",
+      "Promotor",
+      "Financeiro",
+      "RH",
+      "TI"
+    ]);
 
     // [CADASTRO-ROLE-01] Allowlist strictly defined in cadastro/actions.ts
-    const hasAllowlist = cadastroActionsCode.includes("const ALLOWED_SELF_REGISTRATION_ROLES = new Set([") &&
-      cadastroActionsCode.includes('"Promotor"') &&
+    const hasAllowlist = cadastroActionsCode.includes("const ALLOWED_REGISTRATION_ROLES = new Set([") &&
+      cadastroActionsCode.includes('"Gerente Regional"') &&
+      cadastroActionsCode.includes('"Trade"') &&
+      cadastroActionsCode.includes('"Supervisor"') &&
       cadastroActionsCode.includes('"Vendedor"') &&
-      cadastroActionsCode.includes('"Visitante"') &&
-      !cadastroActionsCode.includes('"Financeiro"') &&
-      !cadastroActionsCode.includes('"RH"') &&
-      !cadastroActionsCode.includes('"TI"') &&
+      cadastroActionsCode.includes('"Promotor"') &&
+      cadastroActionsCode.includes('"Financeiro"') &&
+      cadastroActionsCode.includes('"RH"') &&
+      cadastroActionsCode.includes('"TI"') &&
       !cadastroActionsCode.includes('"Admin"');
-    recordTest("CADASTRO-ROLE-01", "Auto-cadastro contains strict operational allowlist (Promotor, Vendedor, Visitante)", "Auto-Cadastro", hasAllowlist);
+    recordTest("CADASTRO-ROLE-01", "Auto-cadastro contains official form allowlist (8 roles)", "Auto-Cadastro", hasAllowlist);
 
-    // [CADASTRO-ROLE-02] Reject privileged roles
-    const rejectsPrivilegedRoles = !ALLOWED_SELF_REGISTRATION_ROLES.has("Admin") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("Admin Master") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("CEO") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("Financeiro") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("TI") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("RH") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("Supervisor") &&
-      !ALLOWED_SELF_REGISTRATION_ROLES.has("Gerente Regional");
+    // [CADASTRO-ROLE-02] Reject privileged administrative roles
+    const rejectsPrivilegedRoles = !ALLOWED_REGISTRATION_ROLES.has("Admin") &&
+      !ALLOWED_REGISTRATION_ROLES.has("Admin Master") &&
+      !ALLOWED_REGISTRATION_ROLES.has("CEO") &&
+      !ALLOWED_REGISTRATION_ROLES.has("Diretor") &&
+      !ALLOWED_REGISTRATION_ROLES.has("Gerente Nacional");
     recordTest("CADASTRO-ROLE-02", "Privileged administrative roles are excluded from self-registration", "Auto-Cadastro", rejectsPrivilegedRoles);
 
     // [CADASTRO-APPROVED-01] Backend forces approved: false
