@@ -98,6 +98,8 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
   let acoesAtivasCount = 1;
   let acoesNaoProntasCount = 0;
 
+  let acoesCampanha: any[] = [];
+
   if (investment.campanha_id) {
     const [campanhaRes, acoesRes] = await Promise.all([
       supabase
@@ -107,13 +109,14 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
         .single(),
       supabase
         .from("cm_acoes_investimento")
-        .select("id, fase_atual, valor_investimento, cancel_reason, tipo_acao")
+        .select("id, fase_atual, valor_investimento, cancel_reason, tipo_acao, apuracao_valor_realizado, apuracao_qtd_vendida")
         .eq("campanha_id", investment.campanha_id)
         .is("cancel_reason", null)
     ]);
 
     campanha = campanhaRes.data || null;
     const acoesAtivas = (acoesRes.data || []).filter((a: any) => !a.cancel_reason);
+    acoesCampanha = acoesAtivas;
     acoesAtivasCount = Math.max(1, acoesAtivas.length);
     isMultiAction = acoesAtivas.length > 1;
 
@@ -128,6 +131,8 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
       const sumTotal = acoesAtivas.reduce((acc: number, a: any) => acc + (Number(a.valor_investimento) || 0), 0);
       totalCampanha = Math.round(sumTotal * 100) / 100;
     }
+  } else {
+    acoesCampanha = [investment];
   }
 
   return (
@@ -143,6 +148,7 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
           totalCampanha={totalCampanha}
           acoesAtivasCount={acoesAtivasCount}
           acoesNaoProntasCount={acoesNaoProntasCount}
+          acoesCampanha={acoesCampanha}
         />
       </main>
     </div>

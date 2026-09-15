@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useMemo } from "react";
+import { useState, useTransition, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Upload, CheckCircle2, Package, X, RefreshCw, DollarSign, CreditCard, Link as LinkIcon, AlertCircle, Layers, ShieldAlert, CheckCircle } from "lucide-react";
 import Link from "next/link";
@@ -8,6 +8,7 @@ import { concluirFechamentoInvestimentoCompletoAction } from "../../lancar/actio
 import { PlanoFinanceiroSection } from "@/app/investimento/components/PlanoFinanceiroSection";
 import { ParcelaFinanceira } from "@/lib/investimento/plano-financeiro-service";
 import { supabase } from "@/lib/supabase";
+import { resolverApuracaoAcao, calcularDeltaApuracao } from "@/lib/investimento/apuracao-calculator";
 
 interface ApuracaoFormProps {
   investment: any;
@@ -19,6 +20,7 @@ interface ApuracaoFormProps {
   totalCampanha?: number;
   acoesAtivasCount?: number;
   acoesNaoProntasCount?: number;
+  acoesCampanha?: any[];
 }
 
 export function ApuracaoForm({ 
@@ -30,7 +32,8 @@ export function ApuracaoForm({
   todasAcoesProntas = true,
   totalCampanha,
   acoesAtivasCount = 1,
-  acoesNaoProntasCount = 0
+  acoesNaoProntasCount = 0,
+  acoesCampanha = []
 }: ApuracaoFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -39,24 +42,122 @@ export function ApuracaoForm({
   // Idempotency Key gerada uma única vez na montagem do componente (prevenção de duplo clique e retries)
   const [idempotencyKey] = useState<string>(() => crypto.randomUUID());
 
-  // SSOT: Total financeiro canônico da campanha: SUM(valor_investimento das ações ativas)
-  const valorTotalCampanha = Math.round((totalCampanha ?? Number(investment.valor_investimento) ?? 0) * 100) / 100;
-  
+  // Diagnóstico inicial canônico
+  const initialDiag = useMemo(() => {
+    const rawQtd = investment.apuracao_qtd_vendida != null 
+      ? Number(investment.apuracao_qtd_vendida) 
+      : (investment.volume_vendido_sellout != null ? Number(investment.volume_vendido_sellout) : null);
+    return resolverApuracaoAcao(investment, rawQtd);
+  }, [investment]);
+
+  // Se a ação não puder ser calculada automaticamente ou tiver override salvo
+  const [overrideGastoEfetivo, setOverrideGastoEfetivo] = useState<boolean>(() => {
+    if (!initialDiag.podeCalcularAutomatico) return true;
+    if (investment.apuracao_valor_realizado != null && initialDiag.valorAutomatico !== null) {
+      return Math.abs(Number(investment.apuracao_valor_realizado) - initialDiag.valorAutomatico) > 0.009;
+    }
+    return false;
+  });
+
+  const [valorGastoEfetivo, setValorGastoEfetivo] = useState<string>(() => {
+    if (investment.apuracao_valor_realizado != null) {
+      return Number(investment.apuracao_valor_realizado).toFixed(2);
+    }
+    return "";
+  });
+
   const [numeroAcordo, setNumeroAcordo] = useState(investment.apuracao_numero_acordo || investment.numero_acordo || "");
-  const [volumeVendido, setVolumeVendido] = useState(
-    investment.apuracao_qtd_vendida 
-      ? investment.apuracao_qtd_vendida.toString().replace(".", ",") 
-      : investment.volume_vendido_sellout 
-        ? investment.volume_vendido_sellout.toString().replace(".", ",") 
-        : ""
-  );
-  const [valorRealizado, setValorRealizado] = useState(
-    investment.apuracao_valor_realizado 
-      ? investment.apuracao_valor_realizado.toString().replace(".", ",") 
-      : investment.valor_realizado 
-        ? investment.valor_realizado.toString().replace(".", ",") 
-        : (investment.valor_investimento ? Number(investment.valor_investimento).toFixed(2).replace(".", ",") : "")
-  );
+  const [volumeVendido, setVolumeVendido] = useState<string>(() => {
+    if (investment.apuracao_qtd_vendida != null) return investment.apuracao_qtd_vendida.toString().replace(".", ",");
+    if (investment.volume_vendido_sellout != null) return investment.volume_vendido_sellout.toString().replace(".", ",");
+    return "";
+  });
+
+  const [valorRealizado, setValorRealizado] = useState<string>(() => {
+    if (investment.apuracao_valor_realizado != null) {
+      return Number(investment.apuracao_valor_realizado).toFixed(2).replace(".", ",");
+    }
+    if (initialDiag.podeCalcularAutomatico && initialDiag.valorAutomatico !== null) {
+      return initialDiag.valorAutomatico.toFixed(2).replace(".", ",");
+    }
+    return "";
+  });
+
+  const currentQtd = useMemo(() => {
+    return volumeVendido ? parseFloat(volumeVendido.replace(/\./g, "").replace(",", ".")) : null;
+  }, [volumeVendido]);
+
+  const currentDiag = useMemo(() => {
+    return resolverApuracaoAcao(investment, currentQtd);
+  }, [investment, currentQtd]);
+
+  const currentValorRealizadoNum = useMemo(() => {
+    return valorRealizado ? parseFloat(valorRealizado.replace(/\./g, "").replace(",", ".")) || 0 : 0;
+  }, [valorRealizado]);
+
+  const currentDelta = useMemo(() => {
+    return calcularDeltaApuracao(currentValorRealizadoNum, Number(investment.valor_investimento) || 0);
+  }, [currentValorRealizadoNum, investment.valor_investimento]);
+
+  // Total canônico da campanha: soma dos realizados das ações elegíveis
+  const valorTotalCampanha = useMemo(() => {
+    if (!acoesCampanha || acoesCampanha.length === 0) {
+      return Math.round(currentValorRealizadoNum * 100) / 100;
+    }
+
+    const somaOutras = acoesCampanha
+      .filter((a: any) => a.id !== investment.id)
+      .reduce((acc: number, a: any) => {
+        const val = a.apuracao_valor_realizado != null 
+          ? Number(a.apuracao_valor_realizado) 
+          : (Number(a.valor_investimento) || 0);
+        return acc + val;
+      }, 0);
+
+    return Math.round((somaOutras + currentValorRealizadoNum) * 100) / 100;
+  }, [acoesCampanha, investment.id, currentValorRealizadoNum]);
+
+  const handleVolumeChange = (raw: string) => {
+    const masked = maskVolume(raw);
+    setVolumeVendido(masked);
+    const cleanQtd = masked ? parseFloat(masked.replace(/\./g, "").replace(",", ".")) : null;
+    const diag = resolverApuracaoAcao(investment, cleanQtd);
+
+    if (!overrideGastoEfetivo && diag.podeCalcularAutomatico) {
+      if (diag.valorAutomatico !== null) {
+        setValorRealizado(diag.valorAutomatico.toFixed(2).replace(".", ","));
+      } else {
+        setValorRealizado("");
+      }
+    }
+  };
+
+  const handleOverrideToggle = (checked: boolean) => {
+    setOverrideGastoEfetivo(checked);
+    const cleanQtd = volumeVendido ? parseFloat(volumeVendido.replace(/\./g, "").replace(",", ".")) : null;
+    const diag = resolverApuracaoAcao(investment, cleanQtd);
+
+    if (checked) {
+      const val = valorGastoEfetivo || (valorRealizado ? valorRealizado.replace(/\./g, "").replace(",", ".") : "");
+      setValorGastoEfetivo(val);
+      if (val) {
+        setValorRealizado(parseFloat(val).toFixed(2).replace(".", ","));
+      }
+    } else {
+      if (diag.podeCalcularAutomatico && diag.valorAutomatico !== null) {
+        setValorRealizado(diag.valorAutomatico.toFixed(2).replace(".", ","));
+      } else {
+        setValorRealizado("");
+      }
+    }
+  };
+
+  const handleGastoEfetivoChange = (raw: string) => {
+    setValorGastoEfetivo(raw);
+    const cleanNum = parseFloat(raw) || 0;
+    setValorRealizado(cleanNum > 0 ? cleanNum.toFixed(2).replace(".", ",") : (raw === "0" ? "0,00" : ""));
+  };
+
   const [condicaoPagamento, setCondicaoPagamento] = useState(
     investment.condicao_pagamento || investment.tipo_pagamento || "Abatimento em Boleto"
   );
@@ -77,18 +178,31 @@ export function ApuracaoForm({
 
   // Estado das parcelas financeiras para o fechamento
   const [parcelas, setParcelas] = useState<ParcelaFinanceira[]>(() => {
+    const initialTotal = Math.round((totalCampanha ?? Number(investment.valor_investimento) ?? 0) * 100) / 100;
     return [{
       numero_parcela: 1,
       total_parcelas: 1,
-      valor_previsto_original: valorTotalCampanha,
-      valor_previsto: valorTotalCampanha,
+      valor_previsto_original: initialTotal,
+      valor_previsto: initialTotal,
       valor_pago_acumulado: 0,
-      saldo_remanescente: valorTotalCampanha,
+      saldo_remanescente: initialTotal,
       data_vencimento: investment.data_inicio || new Date().toISOString().slice(0, 10),
       tipo_pagamento: investment.tipo_pagamento || "Transf. Bancária",
       status_parcela: "PENDENTE"
     }];
   });
+
+  // Sincronização automática para plano à vista (1 parcela) quando o total realizado da campanha atualiza
+  useEffect(() => {
+    if (parcelas.length === 1 && parcelas[0].status_parcela === "PENDENTE") {
+      setParcelas(prev => [{
+        ...prev[0],
+        valor_previsto_original: valorTotalCampanha,
+        valor_previsto: valorTotalCampanha,
+        saldo_remanescente: valorTotalCampanha
+      }]);
+    }
+  }, [valorTotalCampanha]);
 
   // Reconciliação das parcelas
   const totalParcelasSoma = useMemo(() => {
@@ -220,8 +334,18 @@ export function ApuracaoForm({
       ? parseInt(volumeVendido.replace(/\./g, "")) || null 
       : null;
     const cleanVal = valorRealizado.trim() 
-      ? parseFloat(valorRealizado.replace(/\./g, "").replace(",", ".")) || null 
+      ? parseFloat(valorRealizado.replace(/\./g, "").replace(",", ".")) 
       : null;
+
+    if (cleanVal === null || isNaN(cleanVal) || cleanVal < 0) {
+      setError("Por favor, informe um valor realizado válido para a apuração.");
+      return;
+    }
+
+    if (!currentDiag.podeCalcularAutomatico && cleanVal <= 0) {
+      setError(currentDiag.motivoExigenciaEfetivo || "É obrigatório informar o Valor Efetivamente Gasto para esta ação.");
+      return;
+    }
 
     // Estruturação do Payload do Plano Financeiro:
     // Se todasAcoesProntas for true: envia plano financeiro completo (CAMINHO B)
@@ -362,34 +486,105 @@ export function ApuracaoForm({
           />
         </div>
 
-        {/* Volume Vendido e Valor Realizado */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Volume Vendido (Sell-out / Unidades)</label>
-            <div className="relative">
-              <Package className="absolute left-3 top-3 w-4 h-4 text-muted" />
-              <input
-                type="text"
-                value={volumeVendido}
-                onChange={(e) => setVolumeVendido(maskVolume(e.target.value))}
-                placeholder="0"
-                className="w-full bg-elevated border border-border rounded-xl py-2.5 pl-9 pr-3 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-gold/50"
-              />
+        {/* Volume Vendido, Valor Realizado e Override */}
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-muted">Volume Vendido (Sell-out / Unidades)</label>
+              <div className="relative">
+                <Package className="absolute left-3 top-3 w-4 h-4 text-muted" />
+                <input
+                  type="text"
+                  value={volumeVendido}
+                  onChange={(e) => handleVolumeChange(e.target.value)}
+                  placeholder="0"
+                  className="w-full bg-elevated border border-border rounded-xl py-2.5 pl-9 pr-3 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-gold/50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-muted">Valor Realizado Automático</label>
+                <span className="text-[10px] text-muted font-medium" title={currentDiag.descricaoVerba}>
+                  {currentDiag.descricaoVerba}
+                </span>
+              </div>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-3 w-4 h-4 text-muted" />
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    currentDiag.valorAutomatico !== null
+                      ? formatCurrency(currentDiag.valorAutomatico)
+                      : (currentDiag.podeCalcularAutomatico ? "Aguardando volume" : "Não determinável automaticamente")
+                  }
+                  className={`w-full bg-elevated border border-border rounded-xl py-2.5 pl-9 pr-3 font-bold text-sm cursor-not-allowed ${
+                    !currentDiag.podeCalcularAutomatico
+                      ? "text-amber-500 text-xs"
+                      : "text-emerald-400"
+                  }`}
+                  placeholder="0,00"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-muted">Valor Realizado (R$)</label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-3 w-4 h-4 text-muted" />
+          {/* Bloco de Override: Valor Efetivamente Gasto */}
+          <div className="p-3.5 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-3">
+            <div className="flex items-start gap-2.5">
               <input
-                type="text"
-                value={valorRealizado}
-                onChange={(e) => setValorRealizado(maskCurrency(e.target.value))}
-                placeholder="0,00"
-                className="w-full bg-elevated border border-border rounded-xl py-2.5 pl-9 pr-3 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-gold/50"
+                id="form_check_override_gasto"
+                type="checkbox"
+                checked={overrideGastoEfetivo || !currentDiag.podeCalcularAutomatico}
+                disabled={!currentDiag.podeCalcularAutomatico}
+                onChange={(e) => handleOverrideToggle(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-purple-500/30 text-purple-600 focus:ring-purple-500/50 bg-background cursor-pointer"
               />
+              <label htmlFor="form_check_override_gasto" className="text-xs text-foreground cursor-pointer select-none">
+                <span className="font-bold text-purple-300 block">
+                  Informar valor efetivamente gasto
+                </span>
+                <span className="text-muted block text-[11px] mt-0.5">
+                  {!currentDiag.podeCalcularAutomatico
+                    ? (currentDiag.motivoExigenciaEfetivo || "Obrigatório informar o valor efetivo nesta modalidade.")
+                    : "Marque para registrar o desembolso real quando divergir do cálculo automático."}
+                </span>
+              </label>
             </div>
+
+            {(overrideGastoEfetivo || !currentDiag.podeCalcularAutomatico) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold text-purple-300">Valor Efetivamente Gasto (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-purple-300" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={valorGastoEfetivo}
+                      onChange={(e) => handleGastoEfetivoChange(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-background border border-purple-500/40 rounded-xl py-2 pl-9 pr-3 text-sm font-bold text-gold focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                    />
+                  </div>
+                </div>
+
+                {currentDelta && (
+                  <div className="flex flex-col justify-center bg-background/50 p-2.5 rounded-lg border border-border">
+                    <span className="text-[11px] text-muted font-medium">Variação vs Planejado:</span>
+                    <span className={`text-xs font-bold ${
+                      currentDelta.tipo === "MENOR" ? "text-emerald-400" :
+                      currentDelta.tipo === "MAIOR" ? "text-amber-400" : "text-foreground"
+                    }`}>
+                      {currentDelta.formatado}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -610,7 +805,14 @@ export function ApuracaoForm({
         <div className="pt-3 border-t border-border">
           <button 
             type="submit"
-            disabled={isPending || uploading || !numeroAcordo.trim() || (!semBoleto && vinculosBoletos.length === 0 && boletosAbertos.length > 0) || (todasAcoesProntas && !isPlanoEquilibrado)}
+            disabled={
+              isPending || 
+              uploading || 
+              !numeroAcordo.trim() || 
+              (!semBoleto && vinculosBoletos.length === 0 && boletosAbertos.length > 0) || 
+              (todasAcoesProntas && !isPlanoEquilibrado) ||
+              (!currentDiag.podeCalcularAutomatico && (!valorRealizado || currentValorRealizadoNum <= 0))
+            }
             className="w-full bg-purple-600 text-white font-bold text-base rounded-xl py-3.5 flex items-center justify-center gap-2 hover:bg-purple-700 active:scale-[0.98] transition-all disabled:opacity-50 shadow-lg shadow-purple-600/20"
           >
             {isPending ? (

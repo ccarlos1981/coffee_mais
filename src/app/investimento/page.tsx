@@ -58,6 +58,7 @@ import { ptBR } from "date-fns/locale";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { getValorTotal } from "@/lib/investimento/getValorTotal";
 import { isAcaoAtrasada } from "@/lib/investimento/consolidacao";
+import { resolverApuracaoAcao, calcularDeltaApuracao } from "@/lib/investimento/apuracao-calculator";
 import { buildMatrizLookup, resolveClienteMatriz, matchesActionToNetwork, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { InvestimentoAcaoDrawer } from "./components/InvestimentoAcaoDrawer";
 import { ExcluirAcaoModal } from "./components/ExcluirAcaoModal";
@@ -384,6 +385,8 @@ export default function InvestimentoPage() {
   const [isImportPending, startImportTransition] = useTransition();
   const [detailsExpanded, setDetailsExpanded] = useState(true);
   const [apuracaoForm, setApuracaoForm] = useState({ numero_acordo: "", qtd_vendida: "", valor_realizado: "", evidencias_url: "", boleto_id: "", condicao_pagamento: "" });
+  const [overrideGastoEfetivo, setOverrideGastoEfetivo] = useState(false);
+  const [valorGastoEfetivo, setValorGastoEfetivo] = useState("");
   const [boletosAbertos, setBoletosAbertos] = useState<any[]>([]);
   const [boletoSearchTerm, setBoletoSearchTerm] = useState("");
   const [boletoSearchResults, setBoletoSearchResults] = useState<any[]>([]);
@@ -854,10 +857,24 @@ export default function InvestimentoPage() {
         };
         setTradeDivergencia(initialDivergencia);
         tradeDivergenciaRef.current = initialDivergencia;
+
+        const diagInicial = resolverApuracaoAcao(selectedAction, selectedAction.apuracao_qtd_vendida);
+        const hasExistingRealizado = selectedAction.apuracao_valor_realizado !== null && selectedAction.apuracao_valor_realizado !== undefined;
+        const isAmbiguo = !diagInicial.podeCalcularAutomatico;
+        const differsFromAuto = hasExistingRealizado && diagInicial.valorAutomatico !== null && Math.abs(Number(selectedAction.apuracao_valor_realizado) - diagInicial.valorAutomatico) > 0.01;
+        
+        const shouldOverride = isAmbiguo || differsFromAuto;
+        setOverrideGastoEfetivo(shouldOverride);
+        setValorGastoEfetivo(selectedAction.apuracao_valor_realizado != null ? selectedAction.apuracao_valor_realizado.toString() : "");
+
+        const initialValorRealizado = selectedAction.apuracao_valor_realizado != null
+          ? selectedAction.apuracao_valor_realizado.toString()
+          : (diagInicial.valorAutomatico !== null ? diagInicial.valorAutomatico.toFixed(2) : "");
+
         setApuracaoForm({
           numero_acordo: selectedAction.apuracao_numero_acordo || "",
           qtd_vendida: selectedAction.apuracao_qtd_vendida?.toString() || "",
-          valor_realizado: selectedAction.apuracao_valor_realizado?.toString() || "",
+          valor_realizado: initialValorRealizado,
           evidencias_url: selectedAction.apuracao_evidencias_url || "",
           boleto_id: selectedAction.apuracao_boleto_id || "",
           condicao_pagamento: selectedAction.condicao_pagamento || ""
@@ -2655,7 +2672,16 @@ export default function InvestimentoPage() {
       
       const { concluirFechamentoInvestimentoCompletoAction } = await import('./lancar/actions');
       const cleanQtd = apuracaoForm.qtd_vendida ? parseInt(apuracaoForm.qtd_vendida.replace(/\./g, '')) || null : null;
-      const cleanVal = apuracaoForm.valor_realizado ? parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) || null : null;
+      const cleanVal = apuracaoForm.valor_realizado ? parseFloat(apuracaoForm.valor_realizado.replace(',', '.')) : null;
+
+      if (cleanVal === null || isNaN(cleanVal) || cleanVal < 0) {
+        throw new Error("Por favor, informe um valor realizado válido para a apuração.");
+      }
+
+      const diag = resolverApuracaoAcao(selectedAction, cleanQtd);
+      if (!diag.podeCalcularAutomatico && cleanVal <= 0) {
+        throw new Error(diag.motivoExigenciaEfetivo || "É obrigatório informar o Valor Efetivamente Gasto para esta ação.");
+      }
 
       const res = await concluirFechamentoInvestimentoCompletoAction({
         acaoId: selectedAction.id,
@@ -6319,23 +6345,143 @@ export default function InvestimentoPage() {
                           <label className="block text-xs font-medium text-muted mb-1">Condição de pagamento do Cliente</label>
                           <input type="text" value={apuracaoForm.condicao_pagamento} onChange={e => setApuracaoForm({...apuracaoForm, condicao_pagamento: e.target.value})} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Ex: 30 dias, Crédito em Nota, etc." />
                         </div>
-                        <div>
-                          <label className="block text-xs font-medium text-muted mb-1">Qtd. Vendida (Sell-out)</label>
-                          <input type="number" value={apuracaoForm.qtd_vendida} onChange={e => {
-                            const qtd = e.target.value;
-                            const valInvest = selectedAction.valor_investimento || 0;
-                            const calcValor = qtd ? (parseFloat(qtd) * valInvest).toFixed(2) : '';
-                            setApuracaoForm({...apuracaoForm, qtd_vendida: qtd, valor_realizado: calcValor});
-                          }} className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" placeholder="Quantidade" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-muted mb-1">Valor Projetado (Comercial)</label>
-                          <input type="text" readOnly value={formatCurrency(getValorTotal(selectedAction), false)} className="w-full bg-elevated text-muted border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed font-medium" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-muted mb-1">Valor Realizado (R$) - Automático</label>
-                          <input type="text" readOnly value={apuracaoForm.valor_realizado ? formatCurrency(Number(apuracaoForm.valor_realizado), false) : ''} className="w-full bg-elevated text-emerald-600 dark:text-emerald-400 font-bold border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed" placeholder="Calculado" />
-                        </div>
+                        {/* Resolução de Verba e Cálculo Canônico */}
+                        {(() => {
+                          const qtdNum = apuracaoForm.qtd_vendida ? parseFloat(apuracaoForm.qtd_vendida) : null;
+                          const diag = resolverApuracaoAcao(selectedAction, qtdNum);
+                          const valRealizadoNum = parseFloat(apuracaoForm.valor_realizado?.replace(',', '.') || '0') || 0;
+                          const delta = calcularDeltaApuracao(valRealizadoNum, Number(selectedAction.valor_investimento) || 0);
+
+                          return (
+                            <>
+                              <div>
+                                <label className="block text-xs font-medium text-muted mb-1">Qtd. Vendida (Sell-out)</label>
+                                <input 
+                                  type="number" 
+                                  value={apuracaoForm.qtd_vendida} 
+                                  onChange={e => {
+                                    const qtdStr = e.target.value;
+                                    const qNum = qtdStr ? parseFloat(qtdStr) : null;
+                                    const currentDiag = resolverApuracaoAcao(selectedAction, qNum);
+                                    let newRealizado = apuracaoForm.valor_realizado;
+
+                                    if (!overrideGastoEfetivo && currentDiag.podeCalcularAutomatico) {
+                                      newRealizado = currentDiag.valorAutomatico !== null ? currentDiag.valorAutomatico.toFixed(2) : '';
+                                    }
+
+                                    setApuracaoForm(prev => ({
+                                      ...prev,
+                                      qtd_vendida: qtdStr,
+                                      valor_realizado: newRealizado
+                                    }));
+                                  }} 
+                                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50" 
+                                  placeholder="Quantidade vendida" 
+                                />
+                              </div>
+
+                              <div>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="block text-xs font-medium text-muted">Valor Projetado (Comercial)</label>
+                                  <span className="text-[10px] text-muted font-medium" title={diag.descricaoVerba}>
+                                    {diag.descricaoVerba}
+                                  </span>
+                                </div>
+                                <input 
+                                  type="text" 
+                                  readOnly 
+                                  value={formatCurrency(getValorTotal(selectedAction), false)} 
+                                  className="w-full bg-elevated text-muted border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed font-medium" 
+                                />
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-medium text-muted mb-1">Valor Realizado (R$) - Automático</label>
+                                <input 
+                                  type="text" 
+                                  readOnly 
+                                  value={
+                                    diag.valorAutomatico !== null 
+                                      ? formatCurrency(diag.valorAutomatico, false) 
+                                      : (diag.podeCalcularAutomatico ? '' : 'Não determinável automaticamente')
+                                  } 
+                                  className={`w-full bg-elevated border border-border rounded-lg px-3 py-2 text-sm cursor-not-allowed font-bold ${
+                                    !diag.podeCalcularAutomatico 
+                                      ? 'text-amber-500 text-xs' 
+                                      : 'text-emerald-600 dark:text-emerald-400'
+                                  }`} 
+                                  placeholder="Calculado" 
+                                />
+                              </div>
+
+                              {/* Bloco de Override: Valor Efetivamente Gasto */}
+                              <div className="md:col-span-2 p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-2.5">
+                                <div className="flex items-start gap-2.5">
+                                  <input 
+                                    id="modal_check_override_gasto"
+                                    type="checkbox"
+                                    checked={overrideGastoEfetivo || !diag.podeCalcularAutomatico}
+                                    disabled={!diag.podeCalcularAutomatico}
+                                    onChange={e => {
+                                      const checked = e.target.checked;
+                                      setOverrideGastoEfetivo(checked);
+                                      if (checked) {
+                                        const val = valorGastoEfetivo || apuracaoForm.valor_realizado;
+                                        setApuracaoForm(prev => ({ ...prev, valor_realizado: val }));
+                                      } else {
+                                        const valAuto = diag.valorAutomatico !== null ? diag.valorAutomatico.toFixed(2) : '';
+                                        setApuracaoForm(prev => ({ ...prev, valor_realizado: valAuto }));
+                                      }
+                                    }}
+                                    className="mt-0.5 w-4 h-4 rounded border-purple-500/30 text-purple-600 focus:ring-purple-500/50 bg-background cursor-pointer"
+                                  />
+                                  <label htmlFor="modal_check_override_gasto" className="text-xs text-foreground cursor-pointer select-none">
+                                    <span className="font-bold text-purple-300 block">
+                                      Informar valor efetivamente gasto
+                                    </span>
+                                    <span className="text-muted block text-[11px] mt-0.5">
+                                      {!diag.podeCalcularAutomatico
+                                        ? (diag.motivoExigenciaEfetivo || 'Obrigatório informar o valor efetivo nesta modalidade.')
+                                        : 'Marque para registrar o desembolso real quando divergir do cálculo automático.'}
+                                    </span>
+                                  </label>
+                                </div>
+
+                                {(overrideGastoEfetivo || !diag.podeCalcularAutomatico) && (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                      <label className="block text-xs font-bold text-purple-300 mb-1">Valor Efetivamente Gasto (R$)</label>
+                                      <input 
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={valorGastoEfetivo}
+                                        onChange={e => {
+                                          const val = e.target.value;
+                                          setValorGastoEfetivo(val);
+                                          setApuracaoForm(prev => ({ ...prev, valor_realizado: val }));
+                                        }}
+                                        placeholder="0.00"
+                                        className="w-full bg-background border border-purple-500/40 rounded-lg px-3 py-2 text-sm font-bold text-gold focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+                                      />
+                                    </div>
+                                    {delta && (
+                                      <div className="flex flex-col justify-center">
+                                        <span className="text-[11px] text-muted font-medium">Variação vs Planejado:</span>
+                                        <span className={`text-xs font-bold ${
+                                          delta.tipo === 'MENOR' ? 'text-emerald-400' :
+                                          delta.tipo === 'MAIOR' ? 'text-amber-400' : 'text-foreground'
+                                        }`}>
+                                          {delta.formatado}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                         <div className="md:col-span-2">
                           <label className="block text-xs font-medium text-muted mb-1">Observações</label>
                           <textarea
@@ -6764,7 +6910,13 @@ export default function InvestimentoPage() {
 
                       <button
                         onClick={handleApuracaoSubmit}
-                        disabled={actionLoading === selectedAction.id || !apuracaoForm.numero_acordo || (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto)}
+                        disabled={
+                          actionLoading === selectedAction.id || 
+                          !apuracaoForm.numero_acordo || 
+                          !apuracaoForm.valor_realizado || 
+                          isNaN(parseFloat(apuracaoForm.valor_realizado.replace(',', '.'))) ||
+                          (clientHasBoletoCondition && vinculosBoletos.length === 0 && !semBoleto)
+                        }
                         className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
