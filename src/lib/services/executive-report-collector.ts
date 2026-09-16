@@ -398,27 +398,43 @@ export class ExecutiveReportCollector {
 
     // 2.1 Busca investimentos comerciais aprovados (verba_aprovada = true) para paridade com Baseline 57 MACO
     const kaInvestRows = await AnalyticsEngine.executeSql<any>(`
+      WITH distinct_matriz_mgr AS (
+        SELECT DISTINCT ON (codigo_matriz)
+          codigo_matriz,
+          responsavel
+        FROM cm_clientes
+        WHERE codigo_matriz IS NOT NULL
+        ORDER BY codigo_matriz, created_at DESC
+      ),
+      distinct_rede_mgr AS (
+        SELECT DISTINCT ON (UPPER(TRIM(matriz)))
+          UPPER(TRIM(matriz)) as matriz_key,
+          responsavel
+        FROM cm_clientes
+        WHERE matriz IS NOT NULL AND matriz <> ''
+        ORDER BY UPPER(TRIM(matriz)), created_at DESC
+      )
       SELECT
         CASE
-          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
-          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
-          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
-          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
-          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(dm.responsavel, dr.responsavel, 'OUTROS'))
         END AS manager,
         SUM(a.valor_investimento) as invest
       FROM cm_acoes_investimento a
-      LEFT JOIN cm_campanhas camp ON camp.id = a.campanha_id
-      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(camp.cod_parceiro AS TEXT)
+      LEFT JOIN distinct_matriz_mgr dm ON dm.codigo_matriz = a.codigo_matriz
+      LEFT JOIN distinct_rede_mgr dr ON dr.matriz_key = UPPER(TRIM(a.rede))
       WHERE a.verba_aprovada = true
         AND ((a.data_inicio >= '${dtStart}' AND a.data_inicio <= '${dtCutoff}') OR (a.data_fim >= '${dtStart}' AND a.data_fim <= '${dtCutoff}'))
       GROUP BY
         CASE
-          WHEN c.responsavel ILIKE '%Julliano%' THEN 'Julliano'
-          WHEN c.responsavel ILIKE '%Leandro%' THEN 'Leandro'
-          WHEN c.responsavel ILIKE '%Luiz%' THEN 'Luiz'
-          WHEN c.responsavel ILIKE '%John%' THEN 'John Guedes'
-          ELSE UPPER(COALESCE(c.responsavel, 'OUTROS'))
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Julliano%' THEN 'Julliano'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Leandro%' THEN 'Leandro'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%Luiz%' THEN 'Luiz'
+          WHEN COALESCE(dm.responsavel, dr.responsavel) ILIKE '%John%' THEN 'John Guedes'
+          ELSE UPPER(COALESCE(dm.responsavel, dr.responsavel, 'OUTROS'))
         END
     `);
     const kaInvestMap = new Map<string, number>();
@@ -648,20 +664,45 @@ export class ExecutiveReportCollector {
 
     // Busca investimentos comerciais de distribuidores para dedução na margem de contribuição (Baseline 57)
     const distInvestRows = await AnalyticsEngine.executeSql<any>(`
+      WITH distinct_matriz_dist AS (
+        SELECT DISTINCT ON (codigo_matriz)
+          codigo_matriz,
+          nome_parceiro,
+          responsavel,
+          tipo_parceiro
+        FROM cm_clientes
+        WHERE codigo_matriz IS NOT NULL
+        ORDER BY codigo_matriz, created_at DESC
+      ),
+      distinct_rede_dist AS (
+        SELECT DISTINCT ON (UPPER(TRIM(matriz)))
+          UPPER(TRIM(matriz)) as matriz_key,
+          nome_parceiro,
+          responsavel,
+          tipo_parceiro
+        FROM cm_clientes
+        WHERE matriz IS NOT NULL AND matriz <> ''
+        ORDER BY UPPER(TRIM(matriz)), created_at DESC
+      )
       SELECT
-        c.nome_fantasia as cliente,
+        COALESCE(dm.nome_parceiro, dr.nome_parceiro, a.rede) as cliente,
+        a.rede as rede,
         SUM(a.valor_investimento) as invest
       FROM cm_acoes_investimento a
-      LEFT JOIN cm_campanhas camp ON camp.id = a.campanha_id
-      LEFT JOIN cm_clientes c ON CAST(c.codigo AS TEXT) = CAST(camp.cod_parceiro AS TEXT)
+      LEFT JOIN distinct_matriz_dist dm ON dm.codigo_matriz = a.codigo_matriz
+      LEFT JOIN distinct_rede_dist dr ON dr.matriz_key = UPPER(TRIM(a.rede))
       WHERE a.verba_aprovada = true
         AND ((a.data_inicio >= '${dtStart}' AND a.data_inicio < '${dtNext}') OR (a.data_fim >= '${dtStart}' AND a.data_fim < '${dtNext}'))
-        AND (c.tipo_parceiro ILIKE '%DISTRIB%' OR COALESCE(c.responsavel, '') ILIKE '%DISTRIB%')
-      GROUP BY c.nome_fantasia
+        AND (
+          COALESCE(dm.tipo_parceiro, dr.tipo_parceiro, '') ILIKE '%DISTRIB%'
+          OR COALESCE(dm.responsavel, dr.responsavel, '') ILIKE '%DISTRIB%'
+        )
+      GROUP BY COALESCE(dm.nome_parceiro, dr.nome_parceiro, a.rede), a.rede
     `);
     const distInvestMap = new Map<string, number>();
     (distInvestRows || []).forEach((r: any) => {
       if (r.cliente) distInvestMap.set(String(r.cliente).toUpperCase(), Number(r.invest || 0));
+      if (r.rede) distInvestMap.set(String(r.rede).toUpperCase(), Number(r.invest || 0));
     });
 
     const topDistClientes = (distClientsRows || []).map((r: any) => {
