@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleDriveService } from "@/lib/services/google-drive-service";
-import { CsvImportService } from "@/lib/services/csv-import-service";
+import { CsvImportService, CsvBarrierError } from "@/lib/services/csv-import-service";
 import { EmailNotificationService } from "@/lib/services/email-notification-service";
 import { assertCronAccess } from "@/lib/supabase/auth-helpers";
 
@@ -139,7 +139,7 @@ async function handleImportCron(request: NextRequest) {
     console.error("[CronImportDrive] Erro na execução da rota cron:", error);
     const durationSeconds = (Date.now() - startTime) / 1000;
 
-    if (batchId) {
+    if (batchId && !(error instanceof CsvBarrierError)) {
       try {
         const { createAdminClient } = await import("@/lib/supabase/admin");
         const supabase = createAdminClient();
@@ -167,7 +167,10 @@ async function handleImportCron(request: NextRequest) {
       status: "BLOCKED",
       fileName: "CFOP.CSV",
       blockReason: error.message || "Erro durante o processamento do pipeline",
-      errorDetails: error.stack,
+      errorDetails:
+        error instanceof CsvBarrierError && error.details
+          ? JSON.stringify(error.details, null, 2)
+          : error.stack,
       durationSeconds,
     });
 
