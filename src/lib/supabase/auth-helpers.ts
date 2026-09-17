@@ -106,7 +106,7 @@ export async function requireApprovedProfile(userId: string) {
     }
   }
 
-  if (error || !profile) {
+  if (!profile) {
     throw new Error("PROFILE_NOT_FOUND");
   }
   if (!profile.approved) {

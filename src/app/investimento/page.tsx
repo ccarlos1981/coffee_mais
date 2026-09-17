@@ -553,10 +553,10 @@ export default function InvestimentoPage() {
           if (userIds.length > 0) {
             const { data: profiles } = await supabase
               .from('cm_user_profiles')
-              .select('id, nome')
+              .select('id, name')
               .in('id', userIds);
             if (profiles) {
-              profiles.forEach((p: any) => { userMap[p.id] = p.nome; });
+              profiles.forEach((p: any) => { userMap[p.id] = p.name; });
             }
           }
           setAuditLogs(logs.map((l: any) => ({ ...l, user_name: userMap[l.user_id] || 'Sistema' })));

@@ -44,13 +44,14 @@ export function InvestmentForm({ redes: rawRedes, familias, skus, initialData, c
   
   const redes = useMemo<Array<{ codigo: string; nome: string; canal: string; uf?: string | null; regional?: string | null; gerente?: string | null; displayCode: string }>>(() => {
     const baseCounts: Record<string, number> = {};
-    rawRedes.forEach(r => {
+    const safeRedes = Array.isArray(rawRedes) ? rawRedes : [];
+    safeRedes.forEach(r => {
       const base = cleanMatrixCode(r.codigo).split(".")[0];
       baseCounts[base] = (baseCounts[base] || 0) + 1;
     });
 
     const runningIndices: Record<string, number> = {};
-    return rawRedes.map(r => {
+    return safeRedes.map(r => {
       const base = cleanMatrixCode(r.codigo).split(".")[0];
       const total = baseCounts[base] || 0;
       const displayCode = r.displayCode || (total > 1

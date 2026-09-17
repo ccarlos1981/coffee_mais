@@ -2889,9 +2889,15 @@ export async function confirmarPagamento(id: string, formData: FormData) {
 }
 
 export async function obterRedesMatrizes() {
-  const user = await requireAuth();
-  await requireApprovedProfile(user.id);
-  const supabase = await createClient();
+  try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
+  } catch (authErr) {
+    console.warn("[obterRedesMatrizes] Auth notice:", authErr);
+  }
+
+  try {
+    const supabase = await createClient();
 
   // 1. Carregar cm_redes_matrizes para indexação canônica exata da FK
   const { data: dbMatrices } = await supabase
@@ -3012,6 +3018,10 @@ export async function obterRedesMatrizes() {
   );
 
   return result;
+  } catch (err) {
+    console.error("[obterRedesMatrizes] Erro ao carregar matrizes:", err);
+    return [];
+  }
 }
 
 export async function importarInvestimentosEmLote(
