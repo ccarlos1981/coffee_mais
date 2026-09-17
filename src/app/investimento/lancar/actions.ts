@@ -531,10 +531,15 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
       };
 
       const adminClient = createAdminClient();
-      const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_campanha_e_acoes_v2", {
+      const rpcPayload = {
         p_campanha,
         p_acoes: actionsToInsert
-      });
+      };
+      let rpcResponse = await adminClient.rpc("criar_campanha_e_acoes_v2", rpcPayload);
+      if (rpcResponse.error && (rpcResponse.error.code === "42501" || rpcResponse.error.message?.includes("permission denied"))) {
+        rpcResponse = await supabase.rpc("criar_campanha_e_acoes_v2", rpcPayload);
+      }
+      const { data: rpcResult, error: rpcError } = rpcResponse;
 
       if (rpcError) {
         console.error("Erro na transação de criação de campanha/ações (Pagamento Único):", rpcError);
@@ -897,13 +902,26 @@ export async function criarAcaoInvestimento(formData: FormData): Promise<ActionR
     }
 
     const adminClient = createAdminClient();
-    const { data: rpcResult, error: rpcError } = await adminClient.rpc("criar_negociacao_completa_v1", {
+    let rpcResponse = await adminClient.rpc("criar_negociacao_completa_v1", {
       p_campanha,
       p_acoes: finalActionsToInsert,
       p_parcelas: finalParcelasToInsert,
       p_user_id: user.id,
       p_idempotency_key: idempotencyKey
     });
+
+    // Fallback resiliente para ambiente local (onde SUPABASE_SERVICE_ROLE_KEY não está presente e createAdminClient opera sob anon)
+    if (rpcResponse.error && (rpcResponse.error.code === "42501" || rpcResponse.error.message?.includes("permission denied"))) {
+      rpcResponse = await supabase.rpc("criar_negociacao_completa_v1", {
+        p_campanha,
+        p_acoes: finalActionsToInsert,
+        p_parcelas: finalParcelasToInsert,
+        p_user_id: user.id,
+        p_idempotency_key: idempotencyKey
+      });
+    }
+
+    const { data: rpcResult, error: rpcError } = rpcResponse;
 
     if (rpcError) {
       console.error("Erro na transação criar_negociacao_completa_v1:", rpcError);
@@ -1272,7 +1290,7 @@ export async function atualizarChecklistTrade(id: string, checklist: {
   }
 
   // Invoca a RPC atômica registrar_excecao_auditoria_trade para salvar o checklist
-  const { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_excecao_auditoria_trade", {
+  const rpcParams = {
     p_acao_id: id,
     p_checklist_comunicacao: checklist.comunicacao,
     p_checklist_logistica: checklist.logistica,
@@ -1284,7 +1302,14 @@ export async function atualizarChecklistTrade(id: string, checklist: {
     p_motivo_divergencia: div?.possui ? div.motivo : null,
     p_observacao_divergencia: div?.possui ? div.observacao : null,
     p_user_id: user?.id ?? null,
-  });
+  };
+  let { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_excecao_auditoria_trade", rpcParams);
+  if (rpcErr && (rpcErr.code === "42501" || rpcErr.message?.includes("permission denied"))) {
+    const supabase = await createClient();
+    const resAuth = await supabase.rpc("registrar_excecao_auditoria_trade", rpcParams);
+    rpcRes = resAuth.data;
+    rpcErr = resAuth.error;
+  }
 
   if (rpcErr) {
     console.error("[EXCECAO_TRADE] Erro ao atualizar checklist do Trade:", rpcErr);
@@ -2365,7 +2390,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
 
   // Executa a conclusão da apuração via RPC atômica transacional no PostgreSQL
   const adminClient = createAdminClient();
-  const { data: rpcRes, error: rpcErr } = await adminClient.rpc("concluir_apuracao_investimento", {
+  const rpcParams = {
     p_acao_id: id,
     p_apuracao_numero_acordo: apuracao_numero_acordo,
     p_apuracao_qtd_vendida: apuracao_qtd_vendida,
@@ -2377,7 +2402,14 @@ export async function preencherApuracao(id: string, formData: FormData) {
     p_vinculos: vinculos,
     p_user_email: user?.email || "unknown",
     p_user_id: user?.id || null,
-  });
+  };
+  let { data: rpcRes, error: rpcErr } = await adminClient.rpc("concluir_apuracao_investimento", rpcParams);
+  if (rpcErr && (rpcErr.code === "42501" || rpcErr.message?.includes("permission denied"))) {
+    const supabase = await createClient();
+    const resAuth = await supabase.rpc("concluir_apuracao_investimento", rpcParams);
+    rpcRes = resAuth.data;
+    rpcErr = resAuth.error;
+  }
 
   if (rpcErr) {
     console.error("[APURACAO_ATOMICA] Erro na RPC concluir_apuracao_investimento:", rpcErr);
@@ -3480,19 +3512,36 @@ export async function oficializarPlanejamento(
     let rpcResult: any = null;
     let rpcError: any = null;
 
-    const resV2 = await adminClient.rpc("oficializar_planejamento_v2", {
+    let resV2 = await adminClient.rpc("oficializar_planejamento_v2", {
       p_planejamento_id: id,
       p_user_id: user.id,
       p_idempotency_key: finalKey
     });
 
-    if (resV2.error) {
-      console.warn("Falha na RPC oficializar_planejamento_v2, tentando fallback para v1:", resV2.error);
-      const resV1 = await adminClient.rpc("oficializar_planejamento_v1", {
+    if (resV2.error && (resV2.error.code === "42501" || resV2.error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      resV2 = await supabase.rpc("oficializar_planejamento_v2", {
         p_planejamento_id: id,
         p_user_id: user.id,
         p_idempotency_key: finalKey
       });
+    }
+
+    if (resV2.error) {
+      console.warn("Falha na RPC oficializar_planejamento_v2, tentando fallback para v1:", resV2.error);
+      let resV1 = await adminClient.rpc("oficializar_planejamento_v1", {
+        p_planejamento_id: id,
+        p_user_id: user.id,
+        p_idempotency_key: finalKey
+      });
+      if (resV1.error && (resV1.error.code === "42501" || resV1.error.message?.includes("permission denied"))) {
+        const supabase = await createClient();
+        resV1 = await supabase.rpc("oficializar_planejamento_v1", {
+          p_planejamento_id: id,
+          p_user_id: user.id,
+          p_idempotency_key: finalKey
+        });
+      }
       rpcResult = resV1.data;
       rpcError = resV1.error;
     } else {
@@ -4319,8 +4368,7 @@ export async function registrarPagamentoFinanceiro(params: {
 
     const adminClient = createAdminClient();
     const idempotencyKey = params.idempotencyKey || `idem_pag_${params.campanhaId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    const { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_baixa_financeira_v1", {
+    const rpcPayload = {
       p_campanha_id: params.campanhaId,
       p_valor_pago: params.valorPago,
       p_data_pagamento: params.dataPagamento,
@@ -4328,7 +4376,15 @@ export async function registrarPagamentoFinanceiro(params: {
       p_observacoes: params.observacoes || null,
       p_user_id: user.id,
       p_idempotency_key: idempotencyKey
-    });
+    };
+
+    let { data: rpcRes, error: rpcErr } = await adminClient.rpc("registrar_baixa_financeira_v1", rpcPayload);
+    if (rpcErr && (rpcErr.code === "42501" || rpcErr.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("registrar_baixa_financeira_v1", rpcPayload);
+      rpcRes = resAuth.data;
+      rpcErr = resAuth.error;
+    }
 
     if (rpcErr) {
       console.error("Erro na RPC registrar_baixa_financeira_v1:", rpcErr);
@@ -4356,11 +4412,18 @@ export async function cancelarParcelasFuturas(
     requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("cancelar_parcelas_futuras_v1", {
+    const rpcPayload = {
       p_campanha_id: campanhaId,
       p_user_id: user.id,
       p_motivo: motivo || "Quitação antecipada confirmada pelo Financeiro"
-    });
+    };
+    let { data, error } = await adminClient.rpc("cancelar_parcelas_futuras_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("cancelar_parcelas_futuras_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
 
     if (error) {
       return errorResult(ActionErrorCode.INTERNAL_ERROR, error.message || "Erro ao cancelar parcelas futuras.");
@@ -4437,9 +4500,16 @@ export async function reconciliarFinanceiroCampanha(campanhaId: string): Promise
     await requireApprovedProfile(user.id);
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("reconciliar_financeiro_campanha_v1", {
+    const rpcPayload = {
       p_campanha_id: campanhaId
-    });
+    };
+    let { data, error } = await adminClient.rpc("reconciliar_financeiro_campanha_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("reconciliar_financeiro_campanha_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
 
     if (error) {
       return errorResult(ActionErrorCode.INTERNAL_ERROR, error.message || "Erro ao reconciliar financeiro.");
@@ -4463,11 +4533,18 @@ export async function excluirAcaoInvestimento(
     await requireApprovedProfile(user.id);
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", {
+    const rpcPayload = {
       p_acao_id: id,
       p_motivo: motivo || "Exclusão solicitada pelo usuário",
       p_user_id: user.id
-    });
+    };
+    let { data, error } = await adminClient.rpc("excluir_acao_investimento_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("excluir_acao_investimento_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
 
     if (error) {
       console.error("Erro na RPC excluir_acao_investimento_v1:", error);
@@ -4516,10 +4593,17 @@ export async function obterAcoesInvestimentoListagem(isPlanejamento: boolean = f
   await requireApprovedProfile(user.id);
 
   const adminClient = createAdminClient();
-  const { data, error } = await adminClient.rpc("obter_acoes_investimento_v1", {
+  const rpcPayload = {
     p_is_planejamento: isPlanejamento,
     p_user_id: user.id
-  });
+  };
+  let { data, error } = await adminClient.rpc("obter_acoes_investimento_v1", rpcPayload);
+  if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+    const supabase = await createClient();
+    const resAuth = await supabase.rpc("obter_acoes_investimento_v1", rpcPayload);
+    data = resAuth.data;
+    error = resAuth.error;
+  }
 
   if (error) {
     console.error("Erro na RPC obter_acoes_investimento_v1:", error);
@@ -4550,11 +4634,18 @@ export async function excluirAcaoInvestimentoTeste(
     }
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("excluir_acao_investimento_teste_v1", {
+    const rpcPayload = {
       p_acao_id: id,
       p_motivo: motivo || "Exclusão administrativa de ação de teste",
       p_user_id: user.id
-    });
+    };
+    let { data, error } = await adminClient.rpc("excluir_acao_investimento_teste_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("excluir_acao_investimento_teste_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
 
     if (error) {
       console.error("Erro na RPC excluir_acao_investimento_teste_v1:", error);
@@ -4637,12 +4728,24 @@ export async function excluirAcaoInvestimentoAdmin(
     }
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("excluir_acao_investimento_admin_v2", {
+    let rpcResponse = await adminClient.rpc("excluir_acao_investimento_admin_v2", {
       p_acao_id: id,
       p_motivo: motivo || "Exclusão administrativa de ação",
       p_user_id: user.id,
       p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo
     });
+
+    if (rpcResponse.error && (rpcResponse.error.code === "42501" || rpcResponse.error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      rpcResponse = await supabase.rpc("excluir_acao_investimento_admin_v2", {
+        p_acao_id: id,
+        p_motivo: motivo || "Exclusão administrativa de ação",
+        p_user_id: user.id,
+        p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo
+      });
+    }
+
+    const { data, error } = rpcResponse;
 
     if (error) {
       console.error("Erro na RPC excluir_acao_investimento_admin_v2:", error);
@@ -4749,14 +4852,21 @@ export async function definirPlanoFinanceiroCampanhaAction(params: {
     }
 
     const adminClient = createAdminClient();
-    const { data, error } = await adminClient.rpc("definir_plano_financeiro_campanha_v1", {
+    const rpcPayload = {
       p_campanha_id: params.campanhaId,
       p_tipo_plano: params.tipoPlano,
       p_parcelas: params.parcelas,
       p_boletos: params.boletos || [],
       p_user_id: user.id,
       p_idempotency_key: params.idempotencyKey || null,
-    });
+    };
+    let { data, error } = await adminClient.rpc("definir_plano_financeiro_campanha_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("definir_plano_financeiro_campanha_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
 
     if (error) {
       console.error("[DEFINIR_PLANO_FINANCEIRO] Erro na RPC:", error);
@@ -4955,24 +5065,37 @@ export async function concluirFechamentoInvestimentoCompletoAction(
 
     // 4. Execução atômica sob ÚNICA chamada à RPC PostgreSQL
     const adminClient = createAdminClient();
-    const { data: rpcRes, error: rpcErr } = await adminClient.rpc(
+    const rpcPayload = {
+      p_acao_id: payload.acaoId.trim(),
+      p_apuracao_numero_acordo: payload.numeroAcordo.trim(),
+      p_apuracao_qtd_vendida: payload.qtdVendida ?? null,
+      p_apuracao_valor_realizado: payload.valorRealizado ?? null,
+      p_apuracao_evidencias_url: payload.evidencias ?? null,
+      p_condicao_pagamento: payload.condicaoPagamento ?? null,
+      p_sem_boleto: payload.semBoleto ?? false,
+      p_post_action_notes: payload.postActionNotes ?? null,
+      p_vinculos: payload.vinculos || [],
+      p_plano_financeiro: payload.planoFinanceiro || null,
+      p_user_email: user.email || "unknown",
+      p_user_id: user.id,
+      p_idempotency_key: finalIdempotencyKey,
+    };
+
+    let rpcResponse = await adminClient.rpc(
       "concluir_fechamento_investimento_completo_v1",
-      {
-        p_acao_id: payload.acaoId.trim(),
-        p_apuracao_numero_acordo: payload.numeroAcordo.trim(),
-        p_apuracao_qtd_vendida: payload.qtdVendida ?? null,
-        p_apuracao_valor_realizado: payload.valorRealizado ?? null,
-        p_apuracao_evidencias_url: payload.evidencias ?? null,
-        p_condicao_pagamento: payload.condicaoPagamento ?? null,
-        p_sem_boleto: payload.semBoleto ?? false,
-        p_post_action_notes: payload.postActionNotes ?? null,
-        p_vinculos: payload.vinculos || [],
-        p_plano_financeiro: payload.planoFinanceiro || null,
-        p_user_email: user.email || "unknown",
-        p_user_id: user.id,
-        p_idempotency_key: finalIdempotencyKey,
-      }
+      rpcPayload
     );
+
+    // Fallback resiliente para ambiente local (onde SUPABASE_SERVICE_ROLE_KEY não está presente e createAdminClient opera sob anon)
+    if (rpcResponse.error && (rpcResponse.error.code === "42501" || rpcResponse.error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      rpcResponse = await supabase.rpc(
+        "concluir_fechamento_investimento_completo_v1",
+        rpcPayload
+      );
+    }
+
+    const { data: rpcRes, error: rpcErr } = rpcResponse;
 
     if (rpcErr) {
       console.error("[FECHAMENTO_COMPLETO_ACTION] Erro na RPC concluir_fechamento_investimento_completo_v1:", rpcErr);

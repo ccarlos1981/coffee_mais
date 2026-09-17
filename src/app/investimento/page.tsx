@@ -62,6 +62,9 @@ import { resolverApuracaoAcao, calcularDeltaApuracao } from "@/lib/investimento/
 import { buildMatrizLookup, resolveClienteMatriz, matchesActionToNetwork, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { InvestimentoAcaoDrawer } from "./components/InvestimentoAcaoDrawer";
 import { ExcluirAcaoModal } from "./components/ExcluirAcaoModal";
+import { ApuracaoHistoricoCard } from "./components/ApuracaoHistoricoCard";
+import { ConferenciaFinanceiraCard } from "./components/ConferenciaFinanceiraCard";
+import { PagamentoFinanceiroCard } from "./components/PagamentoFinanceiroCard";
 import { NewFollowUpModal, FollowUpInitialContext } from "@/app/processo-comercial/follow-up/components/NewFollowUpModal";
 import { toast } from "sonner";
 
@@ -163,6 +166,7 @@ interface AcaoInvestimento {
   vencimento?: string | null;
   dados_quitacao?: string | null;
   apuracao_preenchida_em?: string | null;
+  apuracao_preenchida_por?: string | null;
   trade_conferido_em?: string | null;
   trade_conferido_por?: string | null;
   trade_conferencia_aprovado?: boolean | null;
@@ -989,7 +993,8 @@ export default function InvestimentoPage() {
                     rede: info.matriz,
                     parceiro_nome: b.rede,
                     parceiro_codigo: b.parceiro_codigo,
-                    prazo: b.prazo
+                    prazo: b.prazo,
+                    status: b.status
                   };
                 });
                 setVinculosBoletos(parsed);
@@ -1015,7 +1020,8 @@ export default function InvestimentoPage() {
                           rede: info.matriz,
                           parceiro_nome: b.rede,
                           parceiro_codigo: b.parceiro_codigo,
-                          prazo: b.prazo
+                          prazo: b.prazo,
+                          status: b.status
                         }]);
                       } else {
                         setVinculosBoletos([]);
@@ -6925,151 +6931,64 @@ export default function InvestimentoPage() {
                     </div>
                   )}
 
-                  {(selectedAction.fase_atual || 1) === 4 && (
-                    <div className="flex flex-col gap-3">
-                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-2">
-                        <span className="text-sm font-bold text-foreground">Nota Fiscal</span>
-                        {vinculosBoletos.length > 0 ? (
-                          <div className="space-y-2">
-                            {vinculosBoletos.map((vinculo, index) => (
-                              <div key={vinculo.boleto_id || index} className="flex flex-col p-2.5 bg-background border border-border rounded-xl">
-                                <span className="text-xs font-bold text-foreground-secondary break-all">
-                                  {vinculo.rede ? `${vinculo.rede} — ` : ''}Nº {vinculo.numero_boleto} {vinculo.tipo_titulo ? `[${vinculo.tipo_titulo}]` : ''}
-                                </span>
-                                {vinculo.valor_total !== undefined && (
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5 text-[10px] text-muted-foreground/80">
-                                    <span>Valor Original: <strong className="text-gold font-bold">{formatCurrency(vinculo.valor_total)}</strong></span>
-                                    {vinculo.vencimento && <span className="text-border mx-1">|</span>}
-                                    {vinculo.vencimento && <span>Venc: <strong className="text-foreground">{formatDate(vinculo.vencimento)}</strong></span>}
-                                  </div>
-                                )}
-                                <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t border-border/50">
-                                  <span className="text-[10px] text-muted font-bold uppercase text-left leading-tight block">
-                                    Valor para<br />abatimento:
-                                  </span>
-                                  <span className="text-sm font-extrabold text-gold">
-                                    {formatCurrency(Number(vinculo.valor_associado))}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : selectedAction.sem_boleto ? (
-                          <div className="p-2.5 bg-purple-500/10 border border-purple-500/20 text-purple-400 rounded-xl text-xs font-semibold flex items-center gap-1.5">
-                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                            Sinalizado que o cliente não possui boletos em aberto.
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted italic">Nenhum boleto em aberto ou vinculado.</span>
-                        )}
-                      </div>
-                      {/* Upload boleto do cliente */}
-                      <div>
-                        <label className="block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide">Boleto do Cliente</label>
-                        {(selectedAction as any).financeiro_boleto_url ? (
-                          <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded-lg">
-                            <FileText className="w-4 h-4 flex-shrink-0" />
-                            <span className="text-sm font-medium truncate flex-1">Boleto Anexado</span>
-                            <button
-                              type="button"
-                              onClick={() => handleViewDocument((selectedAction as any).financeiro_boleto_url)}
-                              className="text-xs underline hover:text-blue-400 flex-shrink-0"
-                            >
-                              Visualizar
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-border border border-dashed border-border rounded-lg cursor-pointer transition-colors group">
-                            {uploadingBoletoFinanceiro ? (
-                              <RefreshCw className="w-4 h-4 animate-spin text-muted" />
-                            ) : (
-                              <>
-                                <FileUp className="w-4 h-4 text-muted group-hover:text-blue-400 transition-colors" />
-                                <span className="text-sm text-muted group-hover:text-foreground font-medium transition-colors">Selecionar arquivo (PDF ou Imagem)...</span>
-                              </>
-                            )}
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept=".pdf,image/*"
-                              onChange={(e) => handleBoletoFinanceiroUpload(selectedAction.id, e.target.files?.[0] || null)}
-                              disabled={uploadingBoletoFinanceiro}
-                            />
-                          </label>
-                        )}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, true))}
-                          disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade')}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                          title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade' ? "Apenas perfil Financeiro ou Trade pode aprovar" : ""}
-                        >
-                          {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                          Aprovar
-                        </button>
-                        <button
-                          onClick={() => {
-                            const obs = prompt("Motivo da devolução:");
-                            if (obs !== null) handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, false, obs));
-                          }}
-                          disabled={actionLoading === selectedAction.id}
-                          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          Devolver
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {(selectedAction.fase_atual || 1) === 5 && (
-                    <form 
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        const formData = new FormData(e.currentTarget);
-                        await handlePhaseAction(selectedAction.id, () => confirmarPagamento(selectedAction.id, formData));
-                      }}
-                      className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3 mt-2"
-                    >
-                      <span className="text-sm font-bold text-foreground">Finalizar Financeiro</span>
-                      
-                      <div>
-                        <label className="block text-xs font-medium text-muted mb-1">Observações (Opcional)</label>
-                        <textarea 
-                          name="financeiro_observacoes" 
-                          rows={2} 
-                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" 
-                          placeholder="Detalhes do pagamento, número de transação, etc." 
-                        />
-                      </div>
-                      
-                      <button
-                        type="submit"
-                        disabled={actionLoading === selectedAction.id || (userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade')}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 rounded-xl text-sm font-bold transition-all disabled:opacity-50"
-                        title={userRole !== 'Financeiro' && userRole !== 'Admin' && userRole !== 'CEO' && userRole !== 'Trade' ? "Apenas perfil Financeiro ou Trade pode finalizar" : ""}
-                      >
-                        {actionLoading === selectedAction.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Banknote className="w-4 h-4" />}
-                        Confirmar Pagamento
-                      </button>
-                    </form>
-                  )}
-
-                  {(selectedAction.fase_atual || 1) === 6 && (
+                  {(selectedAction.fase_atual || 1) >= 4 && (
                     <div className="flex flex-col gap-3 mt-2">
-                      <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
-                        <CheckCircle className="w-5 h-5 text-green-400" />
-                        <div>
-                          <span className="text-sm font-bold text-green-400">Ação Concluída</span>
-                          {selectedAction.financeiro_pago_em && (
-                            <span className="text-xs text-muted block">Pago em {new Date(selectedAction.financeiro_pago_em).toLocaleDateString('pt-BR')}</span>
-                          )}
-                        </div>
-                      </div>
+                      {/* 1. Histórico da Fase 3 — Apuração GRV */}
+                      <ApuracaoHistoricoCard
+                        action={selectedAction}
+                        onViewDocument={handleViewDocument}
+                        formatCurrency={formatCurrency}
+                      />
 
-                      {/* ROI Pós-Ação Container */}
-                      <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3">
+                      {/* 2. Histórico da Fase 4 — Conferência Financeira / Boletos */}
+                      <ConferenciaFinanceiraCard
+                        action={selectedAction}
+                        vinculosBoletos={vinculosBoletos}
+                        isPhase4={(selectedAction.fase_atual || 1) === 4}
+                        uploadingBoletoFinanceiro={uploadingBoletoFinanceiro}
+                        onBoletoFinanceiroUpload={(file) => handleBoletoFinanceiroUpload(selectedAction.id, file)}
+                        onViewDocument={handleViewDocument}
+                        onAprovar={() => handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, true))}
+                        onDevolver={() => {
+                          const obs = prompt("Motivo da devolução:");
+                          if (obs !== null) handlePhaseAction(selectedAction.id, () => conferirTrade(selectedAction.id, false, obs));
+                        }}
+                        actionLoading={actionLoading === selectedAction.id}
+                        userRole={userRole}
+                        formatCurrency={formatCurrency}
+                        formatDate={formatDate}
+                      />
+
+                      {/* 3. Fase 5 — Finalizar Financeiro (Formulário Operacional) */}
+                      {(selectedAction.fase_atual || 1) === 5 && (
+                        <PagamentoFinanceiroCard
+                          action={selectedAction}
+                          isPhase5={true}
+                          isPhase6={false}
+                          onConfirmarPagamento={async (formData) => {
+                            await handlePhaseAction(selectedAction.id, () => confirmarPagamento(selectedAction.id, formData));
+                          }}
+                          actionLoading={actionLoading === selectedAction.id}
+                          userRole={userRole}
+                          onViewDocument={handleViewDocument}
+                        />
+                      )}
+
+                      {/* 4. Fase 6 — Pagamento Financeiro Concluído e ROI Pós-Ação */}
+                      {(selectedAction.fase_atual || 1) === 6 && (
+                        <>
+                          <PagamentoFinanceiroCard
+                            action={selectedAction}
+                            isPhase5={false}
+                            isPhase6={true}
+                            onConfirmarPagamento={async () => {}}
+                            actionLoading={false}
+                            userRole={userRole}
+                            onViewDocument={handleViewDocument}
+                          />
+
+                          {/* ROI Pós-Ação Container */}
+                          <div className="bg-elevated p-3 rounded-xl border border-border flex flex-col gap-3">
                         <span className="text-sm font-bold text-foreground">Fechamento Real & ROI Pós-Ação</span>
                         
                         {selectedAction.roi !== null && selectedAction.roi !== undefined && (
@@ -7204,8 +7123,10 @@ export default function InvestimentoPage() {
                           Salvar Fechamento & ROI
                         </button>
                       </div>
-                    </div>
+                    </>
                   )}
+                </div>
+              )}
 
                   <div className="flex gap-2 mt-2">
                     <button 

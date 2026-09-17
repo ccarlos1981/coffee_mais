@@ -71,12 +71,40 @@ export async function requireAuth() {
 }
 
 export async function requireApprovedProfile(userId: string) {
-  const adminClient = createAdminClient();
-  const { data: profile, error } = await adminClient
-    .from("cm_user_profiles")
-    .select("role, approved, manager_name, name, company_id, employee_code")
-    .eq("id", userId)
-    .single();
+  let profile: any = null;
+  let error: any = null;
+
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const adminClient = createAdminClient();
+    const res = await adminClient
+      .from("cm_user_profiles")
+      .select("role, approved, manager_name, name, company_id, employee_code")
+      .eq("id", userId)
+      .single();
+    profile = res.data;
+    error = res.error;
+  }
+
+  // Fallback para ambiente local/dev onde SUPABASE_SERVICE_ROLE_KEY não está configurado:
+  // Consulta via client autenticado da sessão, que satisfaz a política RLS para 'authenticated'
+  if (!profile) {
+    try {
+      const userClient = await createClient();
+      const res = await userClient
+        .from("cm_user_profiles")
+        .select("role, approved, manager_name, name, company_id, employee_code")
+        .eq("id", userId)
+        .single();
+      if (res.data) {
+        profile = res.data;
+        error = null;
+      } else if (!error) {
+        error = res.error;
+      }
+    } catch {
+      // Ignora falha de contexto de cookies se executado fora de requisição HTTP
+    }
+  }
 
   if (error || !profile) {
     throw new Error("PROFILE_NOT_FOUND");
@@ -88,16 +116,35 @@ export async function requireApprovedProfile(userId: string) {
 }
 
 export async function requirePermission(role: string, moduleName: string) {
-  const adminClient = createAdminClient();
-  
-  // 1. Check database-defined permissions
-  const { data: permission } = await adminClient
-    .from("cm_role_permissions")
-    .select("has_access")
-    .eq("role", role)
-    .eq("module_name", moduleName)
-    .maybeSingle();
+  let permission: any = null;
 
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    const adminClient = createAdminClient();
+    const res = await adminClient
+      .from("cm_role_permissions")
+      .select("has_access")
+      .eq("role", role)
+      .eq("module_name", moduleName)
+      .maybeSingle();
+    permission = res.data;
+  }
+
+  // Fallback para ambiente local/dev via client autenticado
+  if (!permission) {
+    try {
+      const userClient = await createClient();
+      const res = await userClient
+        .from("cm_role_permissions")
+        .select("has_access")
+        .eq("role", role)
+        .eq("module_name", moduleName)
+        .maybeSingle();
+      permission = res.data;
+    } catch {
+      // Fallback
+    }
+  }
+  
   if (permission) {
     if (!permission.has_access) {
       throw new Error("PERMISSION_DENIED");
