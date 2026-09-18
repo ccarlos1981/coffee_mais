@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { Filter,
   Bell,
@@ -19,7 +19,7 @@ import { Filter,
   PieChart,
   Target,
   Package,
-  Layers, CheckCircle2, X, Menu } from "lucide-react";
+  Layers, CheckCircle2, X, Menu, AlertTriangle, RefreshCw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { ThemeToggle } from "@/components/ThemeProvider";
@@ -76,9 +76,72 @@ const QUICK_FILTERS: { label: string; type: "manager" | "channel" | "familia"; v
   { label: "Drip", type: "familia", value: "Drip", color: "#6b8fad" },
 ];
 
-
-
 /* ───────────────── types ───────────────── */
+type VendasStatus = 'IDLE' | 'LOADING' | 'SUCCESS' | 'SUCCESS_EMPTY' | 'ERROR' | 'REVALIDATING';
+
+const VENDAS_CACHE_PREFIX = "cm:vendas:v1";
+const VENDAS_CACHE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutos fresh
+
+interface VendasCachedData {
+  managerRows: ManagerRow[];
+  familiaData: FamiliaData[];
+  previousMonth: { fat: number; qty: number; maco: number };
+  previousYear: { fat: number; qty: number; maco: number };
+  businessDays: { total_days: number; elapsed_days: number } | null;
+  cachedAt: number;
+}
+
+function buildCacheKey(params: {
+  year: number;
+  month: number;
+  manager: string[];
+  familia: string[];
+  uf: string[];
+  channel: string[];
+  product: string[];
+}): string {
+  const norm = (arr: string[]) => {
+    const cleaned = arr.filter(v => v && !['todos', 'todas', 'all'].includes(v.trim().toLowerCase())).sort();
+    return cleaned.length > 0 ? cleaned.join(',') : 'ALL';
+  };
+  return `${VENDAS_CACHE_PREFIX}:${params.year}-${String(params.month).padStart(2, '0')}:${norm(params.manager)}:${norm(params.familia)}:${norm(params.uf)}:${norm(params.channel)}:${norm(params.product)}:0`;
+}
+
+function getCachedVendas(key: string): VendasCachedData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const data: VendasCachedData = JSON.parse(raw);
+    if (!data || !data.cachedAt || !Array.isArray(data.managerRows)) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    // Descarta registros locais com mais de 24 horas
+    if (Date.now() - data.cachedAt > 24 * 60 * 60 * 1000) {
+      localStorage.removeItem(key);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.warn("[VendasCache] Erro ao ler cache local:", err);
+    return null;
+  }
+}
+
+function setCachedVendas(key: string, data: Omit<VendasCachedData, "cachedAt">): void {
+  if (typeof window === "undefined") return;
+  try {
+    const entry: VendasCachedData = {
+      ...data,
+      cachedAt: Date.now(),
+    };
+    localStorage.setItem(key, JSON.stringify(entry));
+  } catch (err) {
+    console.warn("[VendasCache] Erro ao salvar cache local:", err);
+  }
+}
+
 interface FiltersData {
   managers: string[];
   familias: string[];
@@ -144,8 +207,15 @@ interface ManagerRow extends ManagerData {
 
 /* ───────────────── COMPONENT ───────────────── */
 export default function VendasDashboard() {
+  const [status, setStatus] = useState<VendasStatus>('LOADING');
   const [loading, setLoading] = useState(true);
   const [filtersLoading, setFiltersLoading] = useState(true);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [revalidationError, setRevalidationError] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const requestIdRef = useRef<number>(0);
 
   // Período
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
@@ -178,39 +248,85 @@ export default function VendasDashboard() {
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [isSummaryOpen, setIsSummaryOpen] = useState(false);
 
-  /* ─── Fetch filters ─── */
+  /* ─── Fetch filters and default period (single consolidated call) ─── */
   useEffect(() => {
     let active = true;
-    async function loadFilters() {
+    async function initFiltersAndPeriod() {
       setFiltersLoading(true);
       try {
-        const res = await fetch(`/api/dashboard/filters?year=${filterYear}&month=${filterMonth}`);
+        const res = await fetch("/api/dashboard/filters");
         const json = await res.json();
         if (active && json.success) {
-          setFilterOptions(json.filters);
+          if (json.filters) {
+            setFilterOptions(json.filters);
+          }
+          if (json.latestPeriod) {
+            setFilterYear(json.latestPeriod.year);
+            setFilterMonth(json.latestPeriod.month);
+          }
         }
       } catch (e) {
-        console.error(e);
+        console.error("Error loading filters and default period:", e);
       } finally {
         if (active) setFiltersLoading(false);
       }
     }
-    loadFilters();
+    initFiltersAndPeriod();
     return () => {
       active = false;
     };
-  }, [filterYear, filterMonth]);
+  }, []);
 
-  /* ─── Fetch data ─── */
+  /* ─── Fetch data with SWR cache, AbortController, and request sequencing ─── */
   useEffect(() => {
-    let active = true;
+    const cacheKey = buildCacheKey({
+      year: filterYear,
+      month: filterMonth,
+      manager: filterManager,
+      familia: filterFamilia,
+      uf: filterUf,
+      channel: filterChannel,
+      product: filterProduct,
+    });
+
+    const cached = getCachedVendas(cacheKey);
+    const hasCached = !!cached;
+
+    if (cached) {
+      setManagerRows(cached.managerRows);
+      setFamiliaData(cached.familiaData);
+      setPreviousMonth(cached.previousMonth);
+      setPreviousYear(cached.previousYear);
+      if (cached.businessDays) {
+        setBusinessDays(cached.businessDays);
+      }
+      setLastSyncTime(new Date(cached.cachedAt));
+      setStatus('REVALIDATING');
+      setLoading(false);
+    } else {
+      setStatus('LOADING');
+      setLoading(true);
+    }
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const currentRequestId = ++requestIdRef.current;
 
     async function loadData() {
-      setLoading(true);
-
       const startDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-01`;
       const lastDay = new Date(filterYear, filterMonth, 0).getDate();
       const endDate = `${filterYear}-${String(filterMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+      const autoBd = calculateMonthBusinessDays(filterYear, filterMonth);
+      if (!hasCached) {
+        setBusinessDays({
+          total_days: autoBd.total_days,
+          elapsed_days: autoBd.elapsed_days,
+        });
+      }
 
       try {
         const params: Record<string, string> = {
@@ -252,20 +368,27 @@ export default function VendasDashboard() {
             .select("*")
             .eq("year", filterYear)
             .eq("month", filterMonth),
-          fetch(`/api/dashboard?${new URLSearchParams(params)}`, { cache: "no-store" })
+          fetch(`/api/dashboard?${new URLSearchParams(params)}`, {
+            cache: "no-store",
+            signal: controller.signal,
+          })
         ]);
 
-        if (!active) return;
+        if (requestIdRef.current !== currentRequestId) return;
 
-        const autoBd = calculateMonthBusinessDays(filterYear, filterMonth);
-        setBusinessDays({
+        const resolvedBusinessDays = {
           total_days: bdRes.data?.total_days || autoBd.total_days,
           elapsed_days: autoBd.elapsed_days,
-        });
+        };
+        setBusinessDays(resolvedBusinessDays);
         const allTargets: TargetRecord[] = targetRes.data || [];
 
+        if (!apiRes.ok) {
+          throw new Error(`HTTP ${apiRes.status}: ${apiRes.statusText}`);
+        }
+
         const rawJson = await apiRes.json();
-        if (!active) return;
+        if (requestIdRef.current !== currentRequestId) return;
 
         const payload = normalizeAnalyticsPayload<ManagerData, FamiliaData>(rawJson);
         const desafioConfigs = rawJson?.desafioConfigs || {};
@@ -277,13 +400,11 @@ export default function VendasDashboard() {
 
         if (payload.success) {
           const byManager: ManagerData[] = payload.byManager;
-          setFamiliaData(payload.byFamilia);
-          
+          const resolvedFamilia = payload.byFamilia;
           const pm = payload.previousMonth;
-          setPreviousMonth({ fat: Number(pm.fat || 0), qty: Number(pm.qty || 0), maco: Number(pm.maco || 0) });
-          
+          const resolvedPm = { fat: Number(pm.fat || 0), qty: Number(pm.qty || 0), maco: Number(pm.maco || 0) };
           const py = payload.previousYear;
-          setPreviousYear({ fat: Number(py.fat || 0), qty: Number(py.qty || 0), maco: Number(py.maco || 0) });
+          const resolvedPy = { fat: Number(py.fat || 0), qty: Number(py.qty || 0), maco: Number(py.maco || 0) };
 
           const getManagerId = (t: { manager: string; manager_id?: string | null }) => {
             if (t.manager_id) return t.manager_id;
@@ -565,37 +686,51 @@ export default function VendasDashboard() {
             if (pA === pB) return b.fat - a.fat;
             return pB - pA;
           });
+
           setManagerRows(rows);
+          setFamiliaData(resolvedFamilia);
+          setPreviousMonth(resolvedPm);
+          setPreviousYear(resolvedPy);
+          setLastSyncTime(new Date());
+          setRevalidationError(false);
+          setStatus(rows.length === 0 ? 'SUCCESS_EMPTY' : 'SUCCESS');
+
+          setCachedVendas(cacheKey, {
+            managerRows: rows,
+            familiaData: resolvedFamilia,
+            previousMonth: resolvedPm,
+            previousYear: resolvedPy,
+            businessDays: resolvedBusinessDays,
+          });
+        } else {
+          throw new Error((rawJson as any)?.error || "Dados não disponíveis");
         }
-      } catch (e) {
-        console.error(e);
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          return;
+        }
+        console.error("[VendasDashboard] Erro ao carregar dados:", e);
+        if (requestIdRef.current !== currentRequestId) return;
+
+        if (hasCached) {
+          setRevalidationError(true);
+          setStatus('SUCCESS');
+        } else {
+          setStatus('ERROR');
+        }
       } finally {
-        if (active) setLoading(false);
+        if (requestIdRef.current === currentRequestId) {
+          setLoading(false);
+        }
       }
     }
 
     loadData();
 
     return () => {
-      active = false;
+      controller.abort();
     };
-  }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct]);
-
-  useEffect(() => {
-    async function initDefaultPeriod() {
-      try {
-        const res = await fetch("/api/dashboard/filters");
-        const json = await res.json();
-        if (json.success && json.latestPeriod) {
-          setFilterYear(json.latestPeriod.year);
-          setFilterMonth(json.latestPeriod.month);
-        }
-      } catch (err) {
-        console.error("Error adjusting default period:", err);
-      }
-    }
-    initDefaultPeriod();
-  }, []);
+  }, [filterYear, filterMonth, filterManager, filterFamilia, filterUf, filterChannel, filterProduct, reloadTrigger]);
 
   const renderSidebarContent = () => {
     return (
@@ -897,142 +1032,247 @@ export default function VendasDashboard() {
           })}
         </div>
 
-        {/* ═══ TOP SECTION: KPIs + Gauge + Pie ═══ */}
-        <div className="desktop-only">
-          <div className="vendas-top-grid">
-            <div className="kpi-grid" style={{ marginBottom: 0 }}>
-              {/* FATURAMENTO */}
-              <div className="vendas-kpi-pair">
-                <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
-                <KPICard
-                  label="Real Fat."
-                  value={formatCurrency(totals.fat / 1000, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.fat, totals.metaFat)}
-                  compare={compareVariation(totals.fat, previousMonth.fat)}
-                  compareLabel="mês ant."
-                />
-              </div>
-              
-              {/* UNIDADES */}
-              <div className="vendas-kpi-pair">
-                <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
-                <KPICard
-                  label="Real Unid."
-                  value={formatNumber(totals.qty, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.qty, totals.metaUnd)}
-                  compare={compareVariation(totals.qty, previousMonth.qty)}
-                  compareLabel="mês ant."
-                />
-              </div>
-
-              {/* MACO */}
-              <div className="vendas-kpi-pair">
-                <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
-                <KPICard
-                  label="Real MaCo"
-                  value={formatCurrency(totals.maco / 1000, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.maco, totals.metaMaco)}
-                  compare={compareVariation(totals.maco, previousYear.maco)}
-                  compareLabel="ano ant."
-                />
-              </div>
-            </div>
-
-            {/* Gauge */}
-            <div className="glass-card vendas-gauge-card">
-              <GaugeChart value={faturamentoPct} label="Atingimento" />
-            </div>
-
-            {/* Pie */}
-            <div className="glass-card vendas-donut-card">
-              <DonutChart data={familiaData} />
-            </div>
+        {/* ═══ SWR & SYNC STATUS BAR ═══ */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 24, margin: "6px 0 10px", padding: "0 4px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "0.72rem" }}>
+            {status === 'REVALIDATING' && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--accent-gold, #c8a96e)", fontWeight: 500 }}>
+                <RefreshCw style={{ width: 12, height: 12, animation: "spin 1s linear infinite" }} />
+                Atualizando dados em segundo plano...
+              </span>
+            )}
+            {revalidationError && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, color: "var(--warning, #f59e0b)", fontWeight: 500 }}>
+                <AlertTriangle style={{ width: 12, height: 12 }} />
+                Exibindo dados em cache {lastSyncTime ? `(${lastSyncTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })})` : ""} • Não foi possível atualizar agora
+                <button
+                  onClick={() => setReloadTrigger(prev => prev + 1)}
+                  style={{
+                    marginLeft: 6,
+                    background: "none",
+                    border: "none",
+                    color: "var(--accent-gold, #c8a96e)",
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  tentar novamente
+                </button>
+              </span>
+            )}
+            {!revalidationError && status === 'SUCCESS' && lastSyncTime && (
+              <span style={{ color: "var(--foreground-dim, #6b7280)", fontSize: "0.68rem" }}>
+                Atualizado às {lastSyncTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
+
+          {(status === 'SUCCESS' || status === 'SUCCESS_EMPTY') && (
+            <button
+              onClick={() => setReloadTrigger(prev => prev + 1)}
+              title="Atualizar dados do servidor"
+              style={{
+                background: "rgba(255, 255, 255, 0.04)",
+                border: "1px solid var(--border, rgba(255, 255, 255, 0.1))",
+                color: "var(--foreground-muted, #9ca3af)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                cursor: "pointer",
+                fontSize: "0.68rem",
+                padding: "3px 8px",
+                borderRadius: 6,
+                transition: "all 0.15s ease",
+              }}
+              className="hover:text-foreground"
+            >
+              <RefreshCw style={{ width: 10, height: 10 }} />
+              Atualizar
+            </button>
+          )}
         </div>
 
-        {/* ═══ Pace Row ═══ */}
-        <div className="desktop-only">
-          <div className="vendas-pace-grid">
-            <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
-            <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
-            <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
-            <MiniStat
-              label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
-              value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
-              color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-            />
-            <MiniStat
-              label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
-              value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
-              color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-            />
-          </div>
-        </div>
+        {status === 'ERROR' && managerRows.length === 0 ? (
+          <VendasErrorState onRetry={() => setReloadTrigger(prev => prev + 1)} />
+        ) : (
+          <>
+            {/* ═══ TOP SECTION: KPIs + Gauge + Pie ═══ */}
+            <div className="desktop-only">
+              <div className="vendas-top-grid">
+                {status === 'LOADING' ? (
+                  <>
+                    <div className="kpi-grid" style={{ marginBottom: 0 }}>
+                      <div className="vendas-kpi-pair">
+                        <KPICardSkeleton variant="meta" />
+                        <KPICardSkeleton variant="real" />
+                      </div>
+                      <div className="vendas-kpi-pair">
+                        <KPICardSkeleton variant="meta" />
+                        <KPICardSkeleton variant="real" />
+                      </div>
+                      <div className="vendas-kpi-pair">
+                        <KPICardSkeleton variant="meta" />
+                        <KPICardSkeleton variant="real" />
+                      </div>
+                    </div>
+                    <div className="glass-card vendas-gauge-card">
+                      <GaugeSkeleton />
+                    </div>
+                    <div className="glass-card vendas-donut-card">
+                      <DonutSkeleton />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="kpi-grid" style={{ marginBottom: 0 }}>
+                      {/* FATURAMENTO */}
+                      <div className="vendas-kpi-pair">
+                        <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
+                        <KPICard
+                          label="Real Fat."
+                          value={formatCurrency(totals.fat / 1000, 0)}
+                          variant="real"
+                          pctVal={calcTendPct(totals.fat, totals.metaFat)}
+                          compare={compareVariation(totals.fat, previousMonth.fat)}
+                          compareLabel="mês ant."
+                        />
+                      </div>
+                      
+                      {/* UNIDADES */}
+                      <div className="vendas-kpi-pair">
+                        <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
+                        <KPICard
+                          label="Real Unid."
+                          value={formatNumber(totals.qty, 0)}
+                          variant="real"
+                          pctVal={calcTendPct(totals.qty, totals.metaUnd)}
+                          compare={compareVariation(totals.qty, previousMonth.qty)}
+                          compareLabel="mês ant."
+                        />
+                      </div>
 
-        {/* ═══ MAIN TABLE (DESKTOP) ═══ */}
-        <div className="desktop-only">
-          <div className="glass-card vendas-table-card">
-            <div className="vendas-table-wrapper">
-              <table className="data-table vendas-main-table">
-                {/* Distribuição semântica por tipo de coluna:
-                    Gerente (1):        8.5%  — flexível, nomes reais
-                    Monetário Meta/Real (4): 10.5% — FAT Meta, FAT Real, MACO Meta, MACO Real
-                    Percentual (4):    7.875% — FAT %ATG, FAT Tend%, UND Tend%, MACO Tend%
-                    Quantidade (2):    9.0%  — UND Meta, UND Real
-                    Total: 8.5 + (2×10.5) + (2×10.5) + (4×7.875) + (2×9.0) = 100%
-                */}
-                <colgroup>
-                  {/* Col 1: Gerente — flexível */}
-                  <col style={{ width: "8.5%" }} />
-                  {/* Col 2-3: FAT Meta (R$) + FAT Real (R$) — monetárias */}
-                  <col style={{ width: "10.5%" }} />
-                  <col style={{ width: "10.5%" }} />
-                  {/* Col 4: FAT %ATG — percentual */}
-                  <col style={{ width: "7.875%" }} />
-                  {/* Col 5: FAT Tend% — percentual */}
-                  <col style={{ width: "7.875%" }} />
-                  {/* Col 6-7: UND Meta + UND Real — quantidades */}
-                  <col style={{ width: "9.0%" }} />
-                  <col style={{ width: "9.0%" }} />
-                  {/* Col 8: UND %ATG — percentual */}
-                  <col style={{ width: "7.875%" }} />
-                  {/* Col 9-10: MACO Meta (R$) + MACO Real (R$) — monetárias */}
-                  <col style={{ width: "10.5%" }} />
-                  <col style={{ width: "10.5%" }} />
-                  {/* Col 11: MACO %ATG — percentual */}
-                  <col style={{ width: "7.875%" }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
-                    <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento</th>
-                    <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
-                    <th colSpan={3} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MACO</th>
-                  </tr>
-                  <tr>
-                    <th className="col-group-fat col-divider">Meta</th>
-                    <th className="col-group-fat">Real</th>
-                    <th className="col-group-fat">%ATG</th>
-                    <th className="col-group-fat">Tend %</th>
-                    <th className="col-group-und col-divider">Meta</th>
-                    <th className="col-group-und">Real</th>
-                    <th className="col-group-und">%ATG</th>
-                    <th className="col-group-maco col-divider">Meta</th>
-                    <th className="col-group-maco">Real</th>
-                    <th className="col-group-maco">%ATG</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {managerRows.length === 0 && !loading ? (
-                    <tr>
-                      <td colSpan={11} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
-                        Sem dados para o período selecionado
-                      </td>
-                    </tr>
-                  ) : (
+                      {/* MACO */}
+                      <div className="vendas-kpi-pair">
+                        <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
+                        <KPICard
+                          label="Real MaCo"
+                          value={formatCurrency(totals.maco / 1000, 0)}
+                          variant="real"
+                          pctVal={calcTendPct(totals.maco, totals.metaMaco)}
+                          compare={compareVariation(totals.maco, previousYear.maco)}
+                          compareLabel="ano ant."
+                        />
+                      </div>
+                    </div>
+
+                    {/* Gauge */}
+                    <div className="glass-card vendas-gauge-card">
+                      <GaugeChart value={faturamentoPct} label="Atingimento" />
+                    </div>
+
+                    {/* Pie */}
+                    <div className="glass-card vendas-donut-card">
+                      <DonutChart data={familiaData} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ═══ Pace Row ═══ */}
+            <div className="desktop-only">
+              {status === 'LOADING' ? (
+                <div className="vendas-pace-grid">
+                  <PaceStatSkeleton />
+                  <PaceStatSkeleton />
+                  <PaceStatSkeleton />
+                  <PaceStatSkeleton />
+                  <PaceStatSkeleton />
+                </div>
+              ) : (
+                <div className="vendas-pace-grid">
+                  <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
+                  <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
+                  <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
+                  <MiniStat
+                    label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
+                    value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
+                    color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                  />
+                  <MiniStat
+                    label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
+                    value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
+                    color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* ═══ MAIN TABLE (DESKTOP) ═══ */}
+            <div className="desktop-only">
+              <div className="glass-card vendas-table-card">
+                <div className="vendas-table-wrapper">
+                  <table className="data-table vendas-main-table">
+                    {/* Distribuição semântica por tipo de coluna:
+                        Gerente (1):        8.5%  — flexível, nomes reais
+                        Monetário Meta/Real (4): 10.5% — FAT Meta, FAT Real, MACO Meta, MACO Real
+                        Percentual (4):    7.875% — FAT %ATG, FAT Tend%, UND Tend%, MACO Tend%
+                        Quantidade (2):    9.0%  — UND Meta, UND Real
+                        Total: 8.5 + (2×10.5) + (2×10.5) + (4×7.875) + (2×9.0) = 100%
+                    */}
+                    <colgroup>
+                      {/* Col 1: Gerente — flexível */}
+                      <col style={{ width: "8.5%" }} />
+                      {/* Col 2-3: FAT Meta (R$) + FAT Real (R$) — monetárias */}
+                      <col style={{ width: "10.5%" }} />
+                      <col style={{ width: "10.5%" }} />
+                      {/* Col 4: FAT %ATG — percentual */}
+                      <col style={{ width: "7.875%" }} />
+                      {/* Col 5: FAT Tend% — percentual */}
+                      <col style={{ width: "7.875%" }} />
+                      {/* Col 6-7: UND Meta + UND Real — quantidades */}
+                      <col style={{ width: "9.0%" }} />
+                      <col style={{ width: "9.0%" }} />
+                      {/* Col 8: UND %ATG — percentual */}
+                      <col style={{ width: "7.875%" }} />
+                      {/* Col 9-10: MACO Meta (R$) + MACO Real (R$) — monetárias */}
+                      <col style={{ width: "10.5%" }} />
+                      <col style={{ width: "10.5%" }} />
+                      {/* Col 11: MACO %ATG — percentual */}
+                      <col style={{ width: "7.875%" }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th rowSpan={2} style={{ verticalAlign: "bottom" }}>Gerente</th>
+                        <th colSpan={4} className="col-group-fat col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--accent-gold)" }}>Faturamento</th>
+                        <th colSpan={3} className="col-group-und col-divider" style={{ textAlign: "center", borderBottom: "2px solid var(--border-light)" }}>Unidades</th>
+                        <th colSpan={3} className="col-group-maco col-divider" style={{ textAlign: "center", borderBottom: "2px solid #5a805a" }}>MACO</th>
+                      </tr>
+                      <tr>
+                        <th className="col-group-fat col-divider">Meta</th>
+                        <th className="col-group-fat">Real</th>
+                        <th className="col-group-fat">%ATG</th>
+                        <th className="col-group-fat">Tend %</th>
+                        <th className="col-group-und col-divider">Meta</th>
+                        <th className="col-group-und">Real</th>
+                        <th className="col-group-und">%ATG</th>
+                        <th className="col-group-maco col-divider">Meta</th>
+                        <th className="col-group-maco">Real</th>
+                        <th className="col-group-maco">%ATG</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {status === 'LOADING' ? (
+                        <VendasTableSkeletonRows count={6} />
+                      ) : managerRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={11} style={{ textAlign: "center", padding: 40, color: "var(--foreground-dim)" }}>
+                            Sem dados para o período selecionado
+                          </td>
+                        </tr>
+                      ) : (
                     <>
                       {managerRows.map((row) => {
                         const pFat = calcTendPct(row.fat, row.metaFat);
@@ -1184,7 +1424,9 @@ export default function VendasDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {managerRows.length === 0 && !loading ? (
+                    {status === 'LOADING' ? (
+                      <MobileTableSkeletonRows count={4} cols={5} />
+                    ) : managerRows.length === 0 ? (
                       <tr>
                         <td colSpan={5} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
                           Sem dados para o período selecionado
@@ -1308,7 +1550,9 @@ export default function VendasDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {managerRows.length === 0 && !loading ? (
+                    {status === 'LOADING' ? (
+                      <MobileTableSkeletonRows count={4} cols={4} />
+                    ) : managerRows.length === 0 ? (
                       <tr>
                         <td colSpan={4} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
                           Sem dados para o período selecionado
@@ -1414,7 +1658,9 @@ export default function VendasDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {managerRows.length === 0 && !loading ? (
+                    {status === 'LOADING' ? (
+                      <MobileTableSkeletonRows count={4} cols={4} />
+                    ) : managerRows.length === 0 ? (
                       <tr>
                         <td colSpan={4} style={{ textAlign: "center", padding: 30, color: "var(--foreground-dim)", fontSize: "0.75rem" }}>
                           Sem dados para o período selecionado
@@ -1503,6 +1749,8 @@ export default function VendasDashboard() {
 
           </div>
         </div>
+          </>
+        )}
         </main>
       </div>{/* dash-body */}
 
@@ -1595,60 +1843,92 @@ export default function VendasDashboard() {
               <button className="mobile-drawer-close" onClick={() => setIsSummaryOpen(false)}>&times;</button>
             </div>
             <div className="mobile-drawer-body">
-              <div className="mobile-summary-kpis">
-                <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
-                <KPICard
-                  label="Real Fat."
-                  value={formatCurrency(totals.fat / 1000, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.fat, totals.metaFat)}
-                  compare={compareVariation(totals.fat, previousMonth.fat)}
-                  compareLabel="mês ant."
-                />
-                <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
-                <KPICard
-                  label="Real Unid."
-                  value={formatNumber(totals.qty, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.qty, totals.metaUnd)}
-                  compare={compareVariation(totals.qty, previousMonth.qty)}
-                  compareLabel="mês ant."
-                />
-                <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
-                <KPICard
-                  label="Real MaCo"
-                  value={formatCurrency(totals.maco / 1000, 0)}
-                  variant="real"
-                  pctVal={calcTendPct(totals.maco, totals.metaMaco)}
-                  compare={compareVariation(totals.maco, previousYear.maco)}
-                  compareLabel="ano ant."
-                />
-              </div>
+              {status === 'LOADING' ? (
+                <>
+                  <div className="mobile-summary-kpis">
+                    <KPICardSkeleton variant="meta" />
+                    <KPICardSkeleton variant="real" />
+                    <KPICardSkeleton variant="meta" />
+                    <KPICardSkeleton variant="real" />
+                    <KPICardSkeleton variant="meta" />
+                    <KPICardSkeleton variant="real" />
+                  </div>
 
-              <div className="mobile-summary-charts">
-                <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-                  <GaugeChart value={faturamentoPct} label="Atingimento" />
-                </div>
-                <div className="glass-card" style={{ padding: 14 }}>
-                  <DonutChart data={familiaData} />
-                </div>
-              </div>
+                  <div className="mobile-summary-charts">
+                    <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                      <GaugeSkeleton />
+                    </div>
+                    <div className="glass-card" style={{ padding: 14 }}>
+                      <DonutSkeleton />
+                    </div>
+                  </div>
 
-              <div className="mobile-summary-pace">
-                <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
-                <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
-                <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
-                <MiniStat
-                  label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
-                  value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
-                  color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-                />
-                <MiniStat
-                  label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
-                  value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
-                  color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
-                />
-              </div>
+                  <div className="mobile-summary-pace">
+                    <PaceStatSkeleton />
+                    <PaceStatSkeleton />
+                    <PaceStatSkeleton />
+                    <PaceStatSkeleton />
+                    <PaceStatSkeleton />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="mobile-summary-kpis">
+                    <KPICard label="Meta Fat." value={formatCurrency(totals.metaFat / 1000, 0)} variant="meta" />
+                    <KPICard
+                      label="Real Fat."
+                      value={formatCurrency(totals.fat / 1000, 0)}
+                      variant="real"
+                      pctVal={calcTendPct(totals.fat, totals.metaFat)}
+                      compare={compareVariation(totals.fat, previousMonth.fat)}
+                      compareLabel="mês ant."
+                    />
+                    <KPICard label="Meta Unid." value={formatNumber(totals.metaUnd, 0)} variant="meta" />
+                    <KPICard
+                      label="Real Unid."
+                      value={formatNumber(totals.qty, 0)}
+                      variant="real"
+                      pctVal={calcTendPct(totals.qty, totals.metaUnd)}
+                      compare={compareVariation(totals.qty, previousMonth.qty)}
+                      compareLabel="mês ant."
+                    />
+                    <KPICard label="Meta MaCo" value={formatCurrency(totals.metaMaco / 1000, 0)} variant="meta" />
+                    <KPICard
+                      label="Real MaCo"
+                      value={formatCurrency(totals.maco / 1000, 0)}
+                      variant="real"
+                      pctVal={calcTendPct(totals.maco, totals.metaMaco)}
+                      compare={compareVariation(totals.maco, previousYear.maco)}
+                      compareLabel="ano ant."
+                    />
+                  </div>
+
+                  <div className="mobile-summary-charts">
+                    <div className="glass-card" style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                      <GaugeChart value={faturamentoPct} label="Atingimento" />
+                    </div>
+                    <div className="glass-card" style={{ padding: 14 }}>
+                      <DonutChart data={familiaData} />
+                    </div>
+                  </div>
+
+                  <div className="mobile-summary-pace">
+                    <MiniStat label="Pace Fat." value={formatCurrency(totals.paceFat / 1000)} color="var(--foreground)" />
+                    <MiniStat label="Pace Unid." value={formatNumber(totals.paceQty, 0)} color="var(--foreground)" />
+                    <MiniStat label="Pace MaCo" value={formatCurrency(totals.paceMaco / 1000)} color="var(--foreground)" />
+                    <MiniStat
+                      label={`vs ${MONTHS[((filterMonth - 2) + 12) % 12].slice(0,3)}`}
+                      value={`${compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousMonth.fat).pct.toFixed(1)}%`}
+                      color={compareVariation(totals.fat, previousMonth.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                    />
+                    <MiniStat
+                      label={`vs ${MONTHS[filterMonth - 1].slice(0,3)} ${filterYear - 1}`}
+                      value={`${compareVariation(totals.fat, previousYear.fat).direction === "up" ? "+" : "-"}${compareVariation(totals.fat, previousYear.fat).pct.toFixed(1)}%`}
+                      color={compareVariation(totals.fat, previousYear.fat).direction === "up" ? "var(--success)" : "var(--danger)"}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1844,3 +2124,144 @@ function MiniStat({ label, value, color }: { label: string; value: string; color
     </div>
   );
 }
+
+/* ─── SKELETON LOADERS & ERROR STATE ─── */
+
+function KPICardSkeleton({ variant = "real" }: { variant?: "meta" | "real" }) {
+  return (
+    <div className={`kpi-card ${variant === "meta" ? "kpi-meta" : "kpi-real"}`}>
+      <div className="animate-pulse rounded" style={{ height: 10, width: 60, marginBottom: 8, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} />
+      <div className="animate-pulse rounded" style={{ height: 26, width: 110, marginBottom: 8, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.8 }} />
+      <div className="animate-pulse rounded" style={{ height: 12, width: 75, marginBottom: 6, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} />
+      <div className="perf-bar-track">
+        <div className="animate-pulse" style={{ height: "100%", width: "50%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.4 }} />
+      </div>
+    </div>
+  );
+}
+
+function PaceStatSkeleton() {
+  return (
+    <div className="glass-card" style={{ padding: "8px 12px", textAlign: "center" }}>
+      <div className="animate-pulse rounded" style={{ height: 9, width: 50, margin: "0 auto 6px", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} />
+      <div className="animate-pulse rounded" style={{ height: 20, width: 70, margin: "0 auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.75 }} />
+    </div>
+  );
+}
+
+function GaugeSkeleton() {
+  return (
+    <div className="gauge-container" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+      <div className="animate-pulse rounded" style={{ height: 10, width: 70, marginBottom: 12, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} />
+      <div className="animate-pulse" style={{ width: 120, height: 60, border: "8px solid var(--border-light, rgba(255,255,255,0.1))", borderBottom: "none", borderRadius: "120px 120px 0 0", opacity: 0.4 }} />
+      <div className="animate-pulse rounded" style={{ height: 14, width: 45, marginTop: 10, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.7 }} />
+    </div>
+  );
+}
+
+function DonutSkeleton() {
+  return (
+    <div>
+      <div className="animate-pulse rounded" style={{ height: 10, width: 110, marginBottom: 14, backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} />
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div className="animate-pulse" style={{ width: 84, height: 84, borderRadius: "50%", border: "10px solid var(--border-light, rgba(255,255,255,0.1))", opacity: 0.4, flexShrink: 0 }} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="animate-pulse rounded" style={{ height: 10, width: "90%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} />
+          <div className="animate-pulse rounded" style={{ height: 10, width: "75%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} />
+          <div className="animate-pulse rounded" style={{ height: 10, width: "80%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} />
+          <div className="animate-pulse rounded" style={{ height: 10, width: "60%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VendasTableSkeletonRows({ count = 6 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <tr key={i} className="animate-pulse">
+          <td><div className="rounded" style={{ height: 14, width: "70%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.7 }} /></td>
+          <td className="col-divider"><div className="rounded" style={{ height: 14, width: 55, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 55, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 40, margin: "0 auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 40, margin: "0 auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td className="col-divider"><div className="rounded" style={{ height: 14, width: 50, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 50, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 40, margin: "0 auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td className="col-divider"><div className="rounded" style={{ height: 14, width: 55, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 55, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.6 }} /></td>
+          <td><div className="rounded" style={{ height: 14, width: 40, margin: "0 auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function MobileTableSkeletonRows({ count = 4, cols = 5 }: { count?: number; cols?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <tr key={i} className="animate-pulse">
+          <td><div className="rounded" style={{ height: 14, width: "65%", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.7 }} /></td>
+          {Array.from({ length: cols - 1 }).map((_, j) => (
+            <td key={j}><div className="rounded" style={{ height: 14, width: 45, marginLeft: "auto", backgroundColor: "var(--border-light, rgba(255,255,255,0.1))", opacity: 0.5 }} /></td>
+          ))}
+        </tr>
+      ))}
+    </>
+  );
+}
+
+function VendasErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      className="glass-card"
+      style={{
+        padding: "48px 24px",
+        textAlign: "center",
+        margin: "24px 0",
+        border: "1px solid rgba(239, 68, 68, 0.3)",
+        background: "rgba(239, 68, 68, 0.04)",
+      }}
+    >
+      <div
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: "50%",
+          background: "rgba(239, 68, 68, 0.15)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          margin: "0 auto 16px",
+        }}
+      >
+        <AlertTriangle style={{ width: 26, height: 26, color: "var(--danger, #ef4444)" }} />
+      </div>
+      <h3 style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--foreground)", marginBottom: 6 }}>
+        Não foi possível carregar os dados de vendas
+      </h3>
+      <p style={{ fontSize: "0.85rem", color: "var(--foreground-muted)", maxWidth: 440, margin: "0 auto 20px" }}>
+        Ocorreu uma instabilidade na consulta do servidor. Seus filtros foram preservados e você pode tentar novamente.
+      </p>
+      <button
+        onClick={onRetry}
+        className="cm-btn-primary"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "10px 20px",
+          fontSize: "0.85rem",
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+      >
+        <RefreshCw style={{ width: 14, height: 14 }} />
+        Tentar novamente
+      </button>
+    </div>
+  );
+}
+
