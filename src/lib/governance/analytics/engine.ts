@@ -210,7 +210,14 @@ export class AnalyticsEngine {
         COALESCE(tipo_produto, 'Outros') as tipo_produto,
         COALESCE(uf, 'SP') as uf,
         COALESCE(channel, 'Outros') as channel,
-        SUM(net_value) as fat,
+        SUM(
+          CASE 
+            WHEN channel = 'KA' AND payment_type = 'VENDA NF-E' THEN net_value
+            WHEN channel = 'KA' AND payment_type LIKE '%DEVOLUÇÃO%' AND COALESCE(cod_natureza, '') != '4040000' THEN net_value
+            WHEN channel = 'KA' THEN 0
+            ELSE net_value
+          END
+        ) as fat,
         SUM(quantity) as qty,
         SUM(
           CASE 
@@ -222,7 +229,7 @@ export class AnalyticsEngine {
         SUM(net_value) * ${DRE_FRETE_PERCENTUAL} as frete,
         SUM(maco) as maco_raw,
         0 as valor_venda_futura,
-        COUNT(*) as num_vendas
+        COUNT(1) as num_vendas
       FROM ${sourceTable}
       ${fullWhere}
       GROUP BY ano, mes, COALESCE(manager, 'SEM RESPONSÁVEL'), COALESCE(manager_id, '9999'),
@@ -476,13 +483,24 @@ export class AnalyticsEngine {
     const investmentPct = filters.investmentPct || 0;
     const sanitizedImpostoSql = `CASE WHEN ABS(COALESCE(imposto, 0)) >= ABS(COALESCE(net_value, 0)) THEN COALESCE(net_value * 0.035, 0) ELSE COALESCE(imposto, 0) END`;
     const rawMacoExpression = `(COALESCE(net_value, 0) - ${sanitizedImpostoSql} - COALESCE(custo_total, 0) - (COALESCE(net_value, 0) * ${DRE_FRETE_PERCENTUAL}))`;
-    const macoSql = investmentPct > 0
-      ? `SUM(${rawMacoExpression} - (COALESCE(net_value, 0) * ${investmentPct}))`
-      : `SUM(${rawMacoExpression})`;
+    const macoInner = investmentPct > 0
+      ? `(${rawMacoExpression} - (COALESCE(net_value, 0) * ${investmentPct}))`
+      : rawMacoExpression;
+    const macoSql = `SUM(${macoInner})`;
+
+    const paceFatExpr = `SUM(
+      CASE 
+        WHEN channel = 'KA' AND payment_type = 'VENDA NF-E' THEN COALESCE(net_value, 0)
+        WHEN channel = 'KA' AND payment_type LIKE '%DEVOLUÇÃO%' AND COALESCE(cod_natureza, '') != '4040000' THEN COALESCE(net_value, 0)
+        WHEN channel = 'KA' THEN 0
+        ELSE COALESCE(net_value, 0)
+      END
+    )`;
+    const paceQtyExpr = `SUM(COALESCE(quantity, 0))`;
 
     const sqlPmRemainderManager = `
       SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
-             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+             ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
       FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
       GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros')
     `;
@@ -490,14 +508,14 @@ export class AnalyticsEngine {
     const sqlPmRemainderClient = `
       SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
              COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
-             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+             ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
       FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
       GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
     const sqlPmRemainderFamilia = `
       SELECT COALESCE(tipo_produto, 'Outros') as familia,
-             SUM(COALESCE(net_value, 0)) as pace_fat, SUM(COALESCE(quantity, 0)) as pace_qty, ${macoSql} as pace_maco
+             ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
       FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
       GROUP BY COALESCE(tipo_produto, 'Outros')
     `;
