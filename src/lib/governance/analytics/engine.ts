@@ -191,14 +191,28 @@ export class AnalyticsEngine {
     const baseFilters = { ...filters, startMonth: null, endMonth: null, startDate: null, endDate: null };
     const whereBase = buildWhereClause(baseFilters, sourceTable);
 
-    const curFormatted = curStartMonth.replace('-', '_');
-    const pmFormatted = pmStartMonth.replace('-', '_');
-    const pyFormatted = pyStartMonth.replace('-', '_');
+    const getMonthRange = (startM: string, endM: string) => {
+      const [ey, em] = endM.split('-').map(Number);
+      const lastDay = new Date(ey, em, 0).getDate();
+      return {
+        startDate: `${startM}-01`,
+        endDate: `${endM}-${String(lastDay).padStart(2, '0')}`,
+      };
+    };
 
-    const monthsClause = `ano_mes IN ('${curFormatted}', '${pmFormatted}', '${pyFormatted}')`;
+    const curRange = getMonthRange(curStartMonth, curEndMonth);
+    const pmRange = getMonthRange(pmStartMonth, pmEndMonth);
+    const pyRange = getMonthRange(pyStartMonth, pyEndMonth);
+
+    const dateRangeClause = `(
+      (invoice_date >= '${curRange.startDate}' AND invoice_date <= '${curRange.endDate}')
+      OR (invoice_date >= '${pmRange.startDate}' AND invoice_date <= '${pmRange.endDate}')
+      OR (invoice_date >= '${pyRange.startDate}' AND invoice_date <= '${pyRange.endDate}')
+    )`;
+
     const fullWhere = whereBase.includes('WHERE 1=1 AND') 
-      ? whereBase.replace('WHERE 1=1 AND', `WHERE 1=1 AND ${monthsClause} AND`)
-      : whereBase.replace('WHERE 1=1', `WHERE 1=1 AND ${monthsClause}`);
+      ? whereBase.replace('WHERE 1=1 AND', `WHERE 1=1 AND ${dateRangeClause} AND`)
+      : whereBase.replace('WHERE 1=1', `WHERE 1=1 AND ${dateRangeClause}`);
 
     const sqlUnified = `
       SELECT 
@@ -477,8 +491,14 @@ export class AnalyticsEngine {
     const dayStartPrev = cutOffDay + 1;
     const dayEndPrev = lastDayOfPm;
 
-    const pmRemainderFilters = { ...filters, startMonth: pmStartMonth, endMonth: pmStartMonth };
-    const wherePmRemainderBase = buildWhereClause(pmRemainderFilters, OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME);
+    const basePmFilters = { ...filters, startMonth: null, endMonth: null, startDate: null, endDate: null };
+    const wherePmRemainderBase = buildWhereClause(basePmFilters, OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME);
+    const startDatePmRemainder = `${pmYear}-${String(pmMonth).padStart(2, '0')}-${String(dayStartPrev).padStart(2, '0')}`;
+    const endDatePmRemainder = `${pmYear}-${String(pmMonth).padStart(2, '0')}-${String(dayEndPrev).padStart(2, '0')}`;
+    const paceDateClause = `(invoice_date >= '${startDatePmRemainder}' AND invoice_date <= '${endDatePmRemainder}')`;
+    const fullWherePmRemainder = wherePmRemainderBase.includes('WHERE 1=1 AND')
+      ? wherePmRemainderBase.replace('WHERE 1=1 AND', `WHERE 1=1 AND ${paceDateClause} AND`)
+      : wherePmRemainderBase.replace('WHERE 1=1', `WHERE 1=1 AND ${paceDateClause}`);
 
     const investmentPct = filters.investmentPct || 0;
     const sanitizedImpostoSql = `CASE WHEN ABS(COALESCE(imposto, 0)) >= ABS(COALESCE(net_value, 0)) THEN COALESCE(net_value * 0.035, 0) ELSE COALESCE(imposto, 0) END`;
@@ -501,7 +521,7 @@ export class AnalyticsEngine {
     const sqlPmRemainderManager = `
       SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
              ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${fullWherePmRemainder}
       GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros')
     `;
 
@@ -509,14 +529,14 @@ export class AnalyticsEngine {
       SELECT COALESCE(manager_id, '9999') as manager_id, COALESCE(manager, 'Outros') as manager,
              COALESCE(rede, nome_parceiro, 'Não Mapeado') as client,
              ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${fullWherePmRemainder}
       GROUP BY COALESCE(manager_id, '9999'), COALESCE(manager, 'Outros'), COALESCE(rede, nome_parceiro, 'Não Mapeado')
     `;
 
     const sqlPmRemainderFamilia = `
       SELECT COALESCE(tipo_produto, 'Outros') as familia,
              ${paceFatExpr} as pace_fat, ${paceQtyExpr} as pace_qty, ${macoSql} as pace_maco
-      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${wherePmRemainderBase} AND dia >= ${dayStartPrev} AND dia <= ${dayEndPrev}
+      FROM ${OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME} ${fullWherePmRemainder}
       GROUP BY COALESCE(tipo_produto, 'Outros')
     `;
 

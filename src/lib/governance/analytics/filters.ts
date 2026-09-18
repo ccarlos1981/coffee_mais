@@ -87,12 +87,14 @@ export function buildDateFilter(startMonth?: string | null, endMonth?: string | 
 
   if (targetTable === OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME) {
     if (startMonth) {
-      const formatted = startMonth.includes('-') ? startMonth.replace('-', '_') : startMonth;
-      clauses.push(`${prefix}ano_mes >= ${escapeSqlValue(formatted)}`);
+      const sMonth = startMonth.includes('_') ? startMonth.replace('_', '-') : startMonth;
+      clauses.push(`${prefix}invoice_date >= '${sMonth}-01'`);
     }
     if (endMonth) {
-      const formatted = endMonth.includes('-') ? endMonth.replace('-', '_') : endMonth;
-      clauses.push(`${prefix}ano_mes <= ${escapeSqlValue(formatted)}`);
+      const eMonth = endMonth.includes('_') ? endMonth.replace('_', '-') : endMonth;
+      const [y, m] = eMonth.split('-').map(Number);
+      const lastDay = new Date(y, m, 0).getDate();
+      clauses.push(`${prefix}invoice_date <= '${eMonth}-${String(lastDay).padStart(2, '0')}'`);
     }
   } else {
     const monthCol = `${prefix}mes`;
