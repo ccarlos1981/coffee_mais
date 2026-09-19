@@ -675,6 +675,7 @@ export class CsvImportService {
       }
 
       // 9. BARREIRA E: Missing Invoice Guard (Comparação direta de NFs)
+      let missingInvoiceDiagnostics: any = null;
       if (prevBatch) {
         const { data: missingNfsData, error: missingErr } = await supabase.rpc("fn_check_missing_invoices", {
           p_batch_id: batchId,
@@ -683,16 +684,33 @@ export class CsvImportService {
         });
 
         if (!missingErr && missingNfsData) {
-          const missingCount = Number(missingNfsData.missing_count || 0);
+          const missingInvoiceCount = Number(missingNfsData.missing_invoice_count ?? missingNfsData.missing_count ?? 0);
+          const missingItemCount = Number(missingNfsData.missing_item_count ?? missingNfsData.missing_count ?? 0);
           const missingDelta = Number(missingNfsData.missing_value || 0);
 
-          if ((missingCount > 2 || missingDelta > 100) && !params.forceOverride) {
+          missingInvoiceDiagnostics = {
+            missingInvoiceCount,
+            missingItemCount,
+            missingDelta,
+            sampleMissingInvoices: missingNfsData.sample_invoices,
+            sampleMissingItems: missingNfsData.sample_items,
+            forceOverridden: Boolean(params.forceOverride),
+          };
+
+          if ((missingInvoiceCount > 2 || missingDelta > 100) && !params.forceOverride) {
             throw new CsvBarrierError(
-              `Missing Invoice Guard: Detectadas ${missingCount} NFs ausentes no novo arquivo acumulado totalizando R$ ${missingDelta.toFixed(
+              `Missing Invoice Guard: Detectadas ${missingInvoiceCount} NF(s) ausente(s) (${missingItemCount} itens) no novo arquivo acumulado totalizando R$ ${missingDelta.toFixed(
                 2
               )}.`,
               "MISSING_INVOICES",
-              { missingCount, missingDelta, sampleMissing: missingNfsData.sample_invoices }
+              {
+                missingInvoiceCount,
+                missingItemCount,
+                missingCount: missingInvoiceCount,
+                missingDelta,
+                sampleMissing: missingNfsData.sample_invoices,
+                sampleMissingItems: missingNfsData.sample_items,
+              }
             );
           }
         }
@@ -756,6 +774,7 @@ export class CsvImportService {
             total_devolution: metrics.totalDevolution,
             sub_status: finalStatus,
             spike_guard_diagnostics: spikeGuardDiagnostics,
+            missing_invoice_diagnostics: missingInvoiceDiagnostics,
             metrics,
             swap_result: swapResult,
           },
