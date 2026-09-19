@@ -538,13 +538,19 @@ export default function InvestimentoPage() {
     const fetchAuditLogs = async () => {
       setAuditLoading(true);
       try {
-        const { data: logs } = await supabase
+        const { data: logs, error: auditErr } = await supabase
           .from('cm_audit_logs')
           .select('*')
           .eq('table_name', 'cm_acoes_investimento')
           .or(`new_data->>id.eq.${selectedAction.id},old_data->>id.eq.${selectedAction.id}`)
           .order('created_at', { ascending: false })
           .limit(20);
+
+        if (auditErr) {
+          setAuditLogs([]);
+          setAuditLoading(false);
+          return;
+        }
 
         if (logs && logs.length > 0) {
           // Resolve user names
@@ -1645,8 +1651,12 @@ export default function InvestimentoPage() {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(err);
-      setFeedback({ type: "error", msg: "Erro ao carregar dados: " + errMsg });
+      console.error("[InvestimentoPage.loadData] Erro ao carregar dados:", err);
+      const isServerComponentDigest = errMsg.includes("Server Components render") || errMsg.includes("digest");
+      const userMsg = isServerComponentDigest
+        ? "Falha temporária de comunicação com o servidor ao carregar investimentos. Por favor, recarregue a página."
+        : "Erro ao carregar dados: " + errMsg;
+      setFeedback({ type: "error", msg: userMsg });
     }
     setLoading(false);
   }, []);
@@ -1660,13 +1670,20 @@ export default function InvestimentoPage() {
         if (data) setUserRole(data.role);
 
         // Load favorites/preferences
-        const { data: prefData } = await supabase
-          .from('cm_user_preferences')
-          .select('preferences')
-          .eq('user_id', user.id)
-          .single();
-        if (prefData?.preferences?.viewMode) {
-          setViewMode(prefData.preferences.viewMode);
+        try {
+          const { data: prefData } = await supabase
+            .from('cm_user_preferences')
+            .select('investimento_sort_column, investimento_sort_direction')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          if (prefData?.investimento_sort_column) {
+            setSortField(prefData.investimento_sort_column);
+          }
+          if (prefData?.investimento_sort_direction === 'asc' || prefData?.investimento_sort_direction === 'desc') {
+            setSortDirection(prefData.investimento_sort_direction);
+          }
+        } catch {
+          // Fail-safe silencioso para preferências
         }
       }
     };
@@ -2478,8 +2495,13 @@ export default function InvestimentoPage() {
       setTimeout(() => setFeedback(null), 3000);
       setSelectedAction(null);
     } catch (err: any) {
-      console.error(err);
-      setFeedback({ type: "error", msg: err.message });
+      console.error("[InvestimentoPage.handlePhaseAction] Erro na ação:", err);
+      const rawMsg = err?.message || String(err);
+      const isServerComponentDigest = rawMsg.includes("Server Components render") || rawMsg.includes("digest");
+      const userMsg = isServerComponentDigest
+        ? "Falha ao processar a solicitação no servidor. Por favor, tente novamente ou verifique suas permissões de acesso."
+        : rawMsg;
+      setFeedback({ type: "error", msg: userMsg });
     } finally {
       setActionLoading(null);
     }
@@ -2863,7 +2885,12 @@ export default function InvestimentoPage() {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      setFeedback({ type: "error", msg: "Erro ao excluir: " + errMsg });
+      console.error("[InvestimentoPage.handleDelete] Erro ao excluir ação:", err);
+      const isServerComponentDigest = errMsg.includes("Server Components render") || errMsg.includes("digest");
+      const userMsg = isServerComponentDigest
+        ? "Falha ao processar a exclusão no servidor. Por favor, tente novamente."
+        : "Erro ao excluir: " + errMsg;
+      setFeedback({ type: "error", msg: userMsg });
     } finally {
       setActionLoading(null);
     }

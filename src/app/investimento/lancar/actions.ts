@@ -2436,7 +2436,7 @@ export async function preencherApuracao(id: string, formData: FormData) {
 export async function conferirTrade(id: string, aprovado: boolean, observacao?: string) {
   const user = await requireAuth();
   const profile = await requireApprovedProfile(user.id);
-  requireRole(profile, ["Financeiro", "Admin", "Admin Master", "CEO", "Diretor"]);
+  requireRole(profile, ["Financeiro", "Trade", "Admin", "Admin Master", "CEO", "Diretor"]);
   const supabase = await createClient();
 
   const updateData: any = {
@@ -4599,28 +4599,33 @@ export async function excluirAcaoInvestimento(
  * Obtém a listagem segura de ações comerciais ou planejamentos com isolamento estrito de carteira para Gerente Regional.
  */
 export async function obterAcoesInvestimentoListagem(isPlanejamento: boolean = false) {
-  const user = await requireAuth();
-  await requireApprovedProfile(user.id);
+  try {
+    const user = await requireAuth();
+    await requireApprovedProfile(user.id);
 
-  const adminClient = createAdminClient();
-  const rpcPayload = {
-    p_is_planejamento: isPlanejamento,
-    p_user_id: user.id
-  };
-  let { data, error } = await adminClient.rpc("obter_acoes_investimento_v1", rpcPayload);
-  if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
-    const supabase = await createClient();
-    const resAuth = await supabase.rpc("obter_acoes_investimento_v1", rpcPayload);
-    data = resAuth.data;
-    error = resAuth.error;
+    const adminClient = createAdminClient();
+    const rpcPayload = {
+      p_is_planejamento: isPlanejamento,
+      p_user_id: user.id
+    };
+    let { data, error } = await adminClient.rpc("obter_acoes_investimento_v1", rpcPayload);
+    if (error && (error.code === "42501" || error.message?.includes("permission denied"))) {
+      const supabase = await createClient();
+      const resAuth = await supabase.rpc("obter_acoes_investimento_v1", rpcPayload);
+      data = resAuth.data;
+      error = resAuth.error;
+    }
+
+    if (error) {
+      console.error("[obterAcoesInvestimentoListagem] Erro na RPC obter_acoes_investimento_v1:", error);
+      throw new Error(error.message || "Erro ao carregar ações de investimento.");
+    }
+
+    return (data || []) as any[];
+  } catch (err: any) {
+    console.error("[obterAcoesInvestimentoListagem] Falha ao carregar listagem:", err?.message || err);
+    throw err;
   }
-
-  if (error) {
-    console.error("Erro na RPC obter_acoes_investimento_v1:", error);
-    throw new Error(error.message || "Erro ao carregar ações de investimento.");
-  }
-
-  return (data || []) as any[];
 }
 
 /**

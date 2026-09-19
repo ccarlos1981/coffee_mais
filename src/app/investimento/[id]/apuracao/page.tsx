@@ -28,12 +28,12 @@ export default async function ApuracaoPage({ params }: { params: Promise<{ id: s
   if (user) {
     const { data: profile } = await supabase
       .from("cm_user_profiles")
-      .select("role, name, manager_name, email")
+      .select("role, name, manager_name")
       .eq("id", user.id)
       .single();
 
     if (profile?.role === "Gerente Regional") {
-      const userEmail = profile.email || user.email || "";
+      const userEmail = user.email || "";
       const emailPrefix = userEmail.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "");
       const cleanProf = (profile.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
       const cleanMgr = (profile.manager_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");

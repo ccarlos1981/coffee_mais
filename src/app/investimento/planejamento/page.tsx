@@ -318,8 +318,12 @@ export default function PlanejamentoInvestimentoPage() {
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(err);
-      setFeedback({ type: "error", msg: "Erro ao carregar dados: " + errMsg });
+      console.error("[PlanejamentoPage.loadData] Erro ao carregar dados:", err);
+      const isServerComponentDigest = errMsg.includes("Server Components render") || errMsg.includes("digest");
+      const userMsg = isServerComponentDigest
+        ? "Falha temporária de comunicação com o servidor ao carregar planejamentos. Por favor, recarregue a página."
+        : "Erro ao carregar dados: " + errMsg;
+      setFeedback({ type: "error", msg: userMsg });
     }
     setLoading(false);
   }, []);
