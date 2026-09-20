@@ -52,7 +52,18 @@ export interface CsvImportResult {
   fileSize: number;
   driveFileId: string;
   isDryRun: boolean;
-  status: "SUCCESS" | "DRY_RUN_SUCCESS" | "BLOCKED" | "ERROR" | "SKIPPED_DUPLICATE_HASH" | "SKIPPED_UNMODIFIED";
+  status:
+    | "SUCCESS"
+    | "SUCCESS_CLEAN"
+    | "SUCCESS_AUTO_TOLERATED"
+    | "DRY_RUN_SUCCESS"
+    | "DRY_RUN_AUTO_TOLERATED"
+    | "BLOCKED"
+    | "ERROR"
+    | "SKIPPED_DUPLICATE_HASH"
+    | "SKIPPED_UNMODIFIED"
+    | "SKIPPED_CONCURRENT";
+  operationalStatus?: "SUCCESS_CLEAN" | "SUCCESS_AUTO_TOLERATED" | "FAILED_GUARD" | "SKIPPED";
   metrics: CsvParsedMetrics;
   barriersChecked: {
     hashDuplicateCheck: boolean;
@@ -81,6 +92,7 @@ export interface CsvImportResult {
     toleratedIncrement: number;
     passed: boolean;
   } | null;
+  missingInvoiceDiagnostics?: any;
   message: string;
 }
 
@@ -684,6 +696,9 @@ export class CsvImportService {
 
       // 9. BARREIRA E: Missing Invoice Guard (Comparação direta de NFs)
       let missingInvoiceDiagnostics: any = null;
+      let isAutoTolerated = false;
+      let isClean = true;
+
       if (prevBatch) {
         const { data: missingNfsData, error: missingErr } = await supabase.rpc("fn_check_missing_invoices", {
           p_batch_id: batchId,
@@ -696,25 +711,71 @@ export class CsvImportService {
           const missingItemCount = Number(missingNfsData.missing_item_count ?? missingNfsData.missing_count ?? 0);
           const missingDelta = Number(missingNfsData.missing_value || 0);
           const missingPercent = prevNet > 0 ? Number(((missingDelta / prevNet) * 100).toFixed(5)) : 0;
-          const isOverThreshold = (missingInvoiceCount > 2 || missingDelta > 100);
+
+          // =========================================================================
+          // LIMITES OFICIAIS DE TOLERÂNCIA CUMULATIVA (AND) — OPÇÃO 2 HOMOLOGADA
+          // =========================================================================
+          // Critérios estritamente cumulativos:
+          // 1. missingInvoiceCount <= 3 NFs distintas
+          // 2. missingDelta <= R$ 700,00
+          // 3. missingPercent <= 0,05% da base acumulada
+          // 4. Todos os demais guards críticos = PASS (validados nas etapas anteriores)
+          // =========================================================================
+          const MAX_TOLERATED_INVOICES = 3;
+          const MAX_TOLERATED_DELTA = 700.00;
+          const MAX_TOLERATED_PERCENT = 0.05; // 0,05%
+
+          isClean = missingInvoiceCount === 0 && missingDelta === 0;
+          isAutoTolerated =
+            !isClean &&
+            missingInvoiceCount <= MAX_TOLERATED_INVOICES &&
+            missingDelta <= MAX_TOLERATED_DELTA &&
+            missingPercent <= MAX_TOLERATED_PERCENT;
+
+          const isBlocked = !isClean && !isAutoTolerated;
+
+          let classification = "CLEAN";
+          let decision = "PASSED";
+
+          if (isClean) {
+            classification = "CLEAN";
+            decision = "PASSED";
+          } else if (isAutoTolerated) {
+            classification = "SMALL_TOLERATED_DIVERGENCE";
+            decision = "AUTO_TOLERATED";
+          } else {
+            classification = "UNEXPLAINED_MISSING_INVOICE";
+            decision = params.forceOverride ? "FORCE_OVERRIDDEN" : "BLOCKED";
+          }
 
           missingInvoiceDiagnostics = {
+            classification,
+            decision,
             missingInvoiceCount,
             missingItemCount,
             missingDelta,
             missingPercent,
-            classification: isOverThreshold ? "UNEXPLAINED_MISSING_INVOICE" : "WITHIN_LIMITS",
-            decision: isOverThreshold ? (params.forceOverride ? "FORCE_OVERRIDDEN" : "BLOCKED") : "PASSED",
+            thresholdInvoiceCount: MAX_TOLERATED_INVOICES,
+            thresholdAbsolute: MAX_TOLERATED_DELTA,
+            thresholdPercent: `${MAX_TOLERATED_PERCENT}%`,
+            thresholdsUsed: {
+              maxInvoices: MAX_TOLERATED_INVOICES,
+              maxAbsoluteValue: MAX_TOLERATED_DELTA,
+              maxPercent: MAX_TOLERATED_PERCENT,
+            },
             sampleMissingInvoices: missingNfsData.sample_invoices,
             sampleMissingItems: missingNfsData.sample_items,
+            timestamp: new Date().toISOString(),
             forceOverridden: Boolean(params.forceOverride),
           };
 
-          if (isOverThreshold && !params.forceOverride) {
+          if (isBlocked && !params.forceOverride) {
             throw new CsvBarrierError(
               `Missing Invoice Guard: Detectadas ${missingInvoiceCount} NF(s) ausente(s) (${missingItemCount} itens) no novo arquivo acumulado totalizando R$ ${missingDelta.toFixed(
                 2
-              )} (${missingPercent}% da base).`,
+              )} (${missingPercent}% da base), excedendo os limites de tolerância cumulativa (máx ${MAX_TOLERATED_INVOICES} NFs, R$ ${MAX_TOLERATED_DELTA.toFixed(
+                2
+              )}, ${MAX_TOLERATED_PERCENT}%).`,
               "MISSING_INVOICES",
               {
                 missingInvoiceCount,
@@ -723,6 +784,12 @@ export class CsvImportService {
                 missingDelta,
                 missingPercent,
                 classification: "UNEXPLAINED_MISSING_INVOICE",
+                decision: "BLOCKED",
+                thresholds: {
+                  maxInvoices: MAX_TOLERATED_INVOICES,
+                  maxAbsoluteValue: MAX_TOLERATED_DELTA,
+                  maxPercent: MAX_TOLERATED_PERCENT,
+                },
                 sampleMissing: missingNfsData.sample_invoices,
                 sampleMissingItems: missingNfsData.sample_items,
               }
@@ -761,7 +828,9 @@ export class CsvImportService {
       }
 
       const durationMs = Date.now() - startTime;
-      const finalStatus = isDryRun ? "DRY_RUN_SUCCESS" : "SUCCESS";
+      const operationalStatus = isAutoTolerated
+        ? (isDryRun ? "DRY_RUN_AUTO_TOLERATED" : "SUCCESS_AUTO_TOLERATED")
+        : (isDryRun ? "DRY_RUN_SUCCESS" : "SUCCESS_CLEAN");
 
       // 11. Atualizar cm_sync_logs com sucesso
       await supabase
@@ -787,7 +856,8 @@ export class CsvImportService {
             nfs_approved: metrics.nfsApproved,
             nfs_cancelled: metrics.nfsCancelled,
             total_devolution: metrics.totalDevolution,
-            sub_status: finalStatus,
+            sub_status: operationalStatus,
+            operational_status: operationalStatus,
             spike_guard_diagnostics: spikeGuardDiagnostics,
             missing_invoice_diagnostics: missingInvoiceDiagnostics,
             metrics,
@@ -803,7 +873,8 @@ export class CsvImportService {
         fileSize: params.fileSize,
         driveFileId: params.driveFileId,
         isDryRun,
-        status: finalStatus,
+        status: operationalStatus as any,
+        operationalStatus: operationalStatus as any,
         metrics,
         barriersChecked: {
           hashDuplicateCheck: true,
@@ -821,9 +892,12 @@ export class CsvImportService {
           isReconciled: true,
         },
         spikeGuardDiagnostics,
+        missingInvoiceDiagnostics,
         message: isDryRun
-          ? "Simulação DRY_RUN concluída com 100% de sucesso. Nenhuma mutação foi feita na base oficial."
-          : "Importação e promoção atômica concluídas com 100% de sucesso.",
+          ? `Simulação DRY_RUN concluída com 100% de sucesso (${operationalStatus}). Nenhuma mutação foi feita na base oficial.`
+          : isAutoTolerated
+          ? `Importação e promoção atômica concluídas com sucesso (AUTO_TOLERATED: ${missingInvoiceDiagnostics.missingInvoiceCount} NFs, R$ ${missingInvoiceDiagnostics.missingDelta.toFixed(2)}, ${missingInvoiceDiagnostics.missingPercent}% da base).`
+          : "Importação e promoção atômica concluídas com 100% de sucesso (SUCCESS_CLEAN).",
       };
     } catch (error: any) {
       console.error("[CsvImportService] Error during processCsv:", error);
@@ -846,7 +920,8 @@ export class CsvImportService {
             file_hash: fileHash,
             drive_file_id: params.driveFileId,
             is_dry_run: isDryRun,
-            sub_status: "BLOCKED",
+            sub_status: "FAILED_GUARD",
+            operational_status: "FAILED_GUARD",
             barrier_failed: error instanceof CsvBarrierError ? error.barrierType : "UNHANDLED_EXCEPTION",
             error_details: error instanceof CsvBarrierError ? error.details : undefined,
           },

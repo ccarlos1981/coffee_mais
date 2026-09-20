@@ -121,12 +121,26 @@ async function handleImportCron(request: NextRequest) {
     const durationSeconds = (Date.now() - startTime) / 1000;
 
     // 7. Envio de Notificação por E-mail
+    const isSuccess = String(importResult.status).startsWith("SUCCESS");
     const emailStatus =
-      importResult.status === "DRY_RUN_SUCCESS"
+      importResult.status === "DRY_RUN_SUCCESS" || importResult.status === "DRY_RUN_AUTO_TOLERATED"
         ? "DRY_RUN_SUCCESS"
-        : importResult.status === "SKIPPED_DUPLICATE_HASH" || importResult.status === "SKIPPED_UNMODIFIED"
+        : importResult.status === "SKIPPED_DUPLICATE_HASH" ||
+          importResult.status === "SKIPPED_UNMODIFIED" ||
+          importResult.status === "SKIPPED_CONCURRENT"
         ? "SKIPPED"
+        : isSuccess
+        ? "SUCCESS"
         : (importResult.status as any);
+
+    const promotionStatus =
+      importResult.status === "SUCCESS_AUTO_TOLERATED"
+        ? "SUCESSO (Auto-Tolerado)"
+        : importResult.status === "SUCCESS_CLEAN"
+        ? "SUCESSO (Limpo)"
+        : isSuccess
+        ? "SUCESSO (Atomic Swap)"
+        : importResult.status;
 
     await EmailNotificationService.sendReport({
       status: emailStatus,
@@ -140,8 +154,8 @@ async function handleImportCron(request: NextRequest) {
       totalGross: importResult.metrics?.totalGross,
       totalDevolution: importResult.metrics?.totalDevolution,
       totalCancelledNet: importResult.metrics?.totalCancelledNet,
-      promotionStatus: importResult.status === "SUCCESS" ? "SUCESSO (Atomic Swap)" : importResult.status,
-      viewsStatus: importResult.status === "SUCCESS" ? "ATUALIZADAS (0,0000% desvio)" : "PRESERVADAS",
+      promotionStatus,
+      viewsStatus: isSuccess ? "ATUALIZADAS (0,0000% desvio)" : "PRESERVADAS",
       durationSeconds,
       deltaNet: 0,
       driveModifiedTime: driveResult.driveModifiedTime,
