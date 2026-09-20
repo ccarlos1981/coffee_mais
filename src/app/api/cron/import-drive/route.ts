@@ -53,10 +53,32 @@ async function handleImportCron(request: NextRequest) {
       });
     }
 
-    // 4. Iniciar Registro Persistente de Execução em cm_sync_logs (Observabilidade Imediata)
+    // 4. Iniciar Registro Persistente de Execução em cm_sync_logs (com verificação de concorrência)
     try {
       const { createAdminClient } = await import("@/lib/supabase/admin");
       const supabase = createAdminClient();
+
+      // Proteção de Concorrência: Verificar se já existe execução RUNNING nos últimos 5 minutos
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: runningJobs } = await supabase
+        .from("cm_sync_logs")
+        .select("id, started_at")
+        .eq("source", "google_drive_csv")
+        .eq("status", "RUNNING")
+        .gte("started_at", fiveMinutesAgo)
+        .order("started_at", { ascending: false })
+        .limit(1);
+
+      if (runningJobs && runningJobs.length > 0 && !forceOverride) {
+        console.log(`[CronImportDrive] Execução concorrente ativa detectada (Job ${runningJobs[0].id}). Disparo ignorado.`);
+        return NextResponse.json({
+          success: true,
+          status: "SKIPPED_CONCURRENT",
+          message: `Outro processo de importação está ativo no momento (Job ${runningJobs[0].id}). Disparo concorrente evitado.`,
+          durationSeconds: (Date.now() - startTime) / 1000,
+        });
+      }
+
       const { data: initialLog } = await supabase
         .from("cm_sync_logs")
         .insert({
@@ -139,7 +161,8 @@ async function handleImportCron(request: NextRequest) {
     console.error("[CronImportDrive] Erro na execução da rota cron:", error);
     const durationSeconds = (Date.now() - startTime) / 1000;
 
-    if (batchId && !(error instanceof CsvBarrierError)) {
+    const isBarrierError = Boolean(error?.barrierType || error instanceof CsvBarrierError);
+    if (batchId && !isBarrierError) {
       try {
         const { createAdminClient } = await import("@/lib/supabase/admin");
         const supabase = createAdminClient();

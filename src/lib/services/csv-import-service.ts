@@ -627,14 +627,14 @@ export class CsvImportService {
       // 8b. Carga em cm_faturamento_staging via RPC Bulk Insert (Otimizada e Resiliente)
       // D2: fn_bulk_insert_staging usa ON CONFLICT (batch_id, row_hash) DO NOTHING
       //     portanto retries do mesmo chunk são intrinsecamente idempotentes
-      const chunkSize = 10000;
+      const chunkSize = 5000; // Reduzido de 10.000 para 5.000 para evitar payload timeouts e connection resets
       let totalInserted = 0;
       for (let i = 0; i < stagingRows.length; i += chunkSize) {
         const chunk = stagingRows.slice(i, i + chunkSize);
         let inserted = false;
         let lastErr: any = null;
 
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        for (let attempt = 1; attempt <= 4; attempt++) {
           try {
             const { data: insertedCount, error: rpcErr } = await supabase.rpc("fn_bulk_insert_staging", {
               p_rows: chunk,
@@ -642,6 +642,11 @@ export class CsvImportService {
 
             if (rpcErr) {
               lastErr = rpcErr;
+              // Se for erro permanente de SQL/Schema, não retentar
+              const isTransient = /upstream connect|connection termination|timeout|502|503|504|fetch failed/i.test(rpcErr.message || "");
+              if (!isTransient && attempt > 1) {
+                break;
+              }
             } else {
               // ON CONFLICT DO NOTHING: insertedCount pode ser menor que chunk.length em retry
               // Isso é comportamento esperado e correto (duplicatas foram ignoradas)
@@ -652,12 +657,15 @@ export class CsvImportService {
           } catch (err: any) {
             lastErr = err;
           }
-          await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+          // Backoff exponencial para retentativas de rede (1s, 2s, 4s)
+          if (attempt < 4) {
+            await new Promise((resolve) => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+          }
         }
 
         if (!inserted) {
           throw new Error(
-            `Erro ao persistir lote de staging (${Math.floor(i / chunkSize) + 1}/${Math.ceil(stagingRows.length / chunkSize)}) após 3 tentativas: ${lastErr?.message || String(lastErr)}`
+            `Erro ao persistir lote de staging (${Math.floor(i / chunkSize) + 1}/${Math.ceil(stagingRows.length / chunkSize)}) após 4 tentativas com backoff: ${lastErr?.message || String(lastErr)}`
           );
         }
       }
@@ -687,27 +695,34 @@ export class CsvImportService {
           const missingInvoiceCount = Number(missingNfsData.missing_invoice_count ?? missingNfsData.missing_count ?? 0);
           const missingItemCount = Number(missingNfsData.missing_item_count ?? missingNfsData.missing_count ?? 0);
           const missingDelta = Number(missingNfsData.missing_value || 0);
+          const missingPercent = prevNet > 0 ? Number(((missingDelta / prevNet) * 100).toFixed(5)) : 0;
+          const isOverThreshold = (missingInvoiceCount > 2 || missingDelta > 100);
 
           missingInvoiceDiagnostics = {
             missingInvoiceCount,
             missingItemCount,
             missingDelta,
+            missingPercent,
+            classification: isOverThreshold ? "UNEXPLAINED_MISSING_INVOICE" : "WITHIN_LIMITS",
+            decision: isOverThreshold ? (params.forceOverride ? "FORCE_OVERRIDDEN" : "BLOCKED") : "PASSED",
             sampleMissingInvoices: missingNfsData.sample_invoices,
             sampleMissingItems: missingNfsData.sample_items,
             forceOverridden: Boolean(params.forceOverride),
           };
 
-          if ((missingInvoiceCount > 2 || missingDelta > 100) && !params.forceOverride) {
+          if (isOverThreshold && !params.forceOverride) {
             throw new CsvBarrierError(
               `Missing Invoice Guard: Detectadas ${missingInvoiceCount} NF(s) ausente(s) (${missingItemCount} itens) no novo arquivo acumulado totalizando R$ ${missingDelta.toFixed(
                 2
-              )}.`,
+              )} (${missingPercent}% da base).`,
               "MISSING_INVOICES",
               {
                 missingInvoiceCount,
                 missingItemCount,
                 missingCount: missingInvoiceCount,
                 missingDelta,
+                missingPercent,
+                classification: "UNEXPLAINED_MISSING_INVOICE",
                 sampleMissing: missingNfsData.sample_invoices,
                 sampleMissingItems: missingNfsData.sample_items,
               }
