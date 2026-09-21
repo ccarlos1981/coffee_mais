@@ -4715,48 +4715,60 @@ export interface ExclusaoAcaoResult {
   valor_investimento_total?: number;
   valor_realizado_preservado?: number;
   saldo_futuro_cancelado?: number;
+  saldo_financeiro_devedor?: number;
+  outras_acoes_restantes?: number;
 }
 
 /**
- * Gate 5.16: Exclusão Segura e Administrativa de Ações de Investimento (V2 Soberana)
+ * Gate 5.16 & Gate 5.18: Exclusão Segura e Administrativa de Ações de Investimento (V2 Soberana)
  * Integra a Server Action à RPC soberana public.excluir_acao_investimento_admin_v2,
  * permitindo exclusão limpa (CLEAN), cancelamento controlado de compromissos futuros (FUTURE_ONLY),
  * soft-cancel com blindagem de histórico realizado (PARTIAL_REALIZED),
- * e bloqueio estrito em FULLY_REALIZED e MULTI_ACTION_FINANCIAL_AMBIGUOUS (Opção A).
- * Perfis autorizados: Trade, Admin.
+ * e override administrativo excepcional (Gate 5.18) exclusivo para Admin e Admin Master em negociações multi-ações.
+ * Perfis autorizados: Trade, Admin, Admin Master (com override restrito a Admin / Admin Master).
  */
 export async function excluirAcaoInvestimentoAdmin(
   id: string,
   motivo?: string,
-  confirmarCancelamentoFuturo: boolean = true
+  confirmarCancelamentoFuturo: boolean = true,
+  adminOverride: boolean = false
 ): Promise<ActionResult<ExclusaoAcaoResult>> {
   try {
     const user = await requireAuth();
     const profile = await requireApprovedProfile(user.id);
 
     const normalizedRole = (profile.role || "").trim().toLowerCase();
-    if (!["trade", "admin"].includes(normalizedRole)) {
+    if (!["trade", "admin", "admin master"].includes(normalizedRole)) {
       return errorResult(
         ActionErrorCode.UNAUTHORIZED,
         `Acesso Negado: Perfil com role "${profile.role}" não possui autorização para exclusão administrativa de ações.`
       );
     }
 
+    if (adminOverride && !["admin", "admin master"].includes(normalizedRole)) {
+      return errorResult(
+        ActionErrorCode.UNAUTHORIZED,
+        `Acesso Negado: Apenas perfil Admin ou Admin Master possui autorização para override administrativo de exclusão.`
+      );
+    }
+
     const adminClient = createAdminClient();
     let rpcResponse = await adminClient.rpc("excluir_acao_investimento_admin_v2", {
       p_acao_id: id,
-      p_motivo: motivo || "Exclusão administrativa de ação",
+      p_motivo: motivo || (adminOverride ? "Exclusão administrativa via override autorizado" : "Exclusão administrativa de ação"),
       p_user_id: user.id,
-      p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo
+      p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo,
+      p_admin_override: adminOverride
     });
 
     if (rpcResponse.error && (rpcResponse.error.code === "42501" || rpcResponse.error.message?.includes("permission denied"))) {
       const supabase = await createClient();
       rpcResponse = await supabase.rpc("excluir_acao_investimento_admin_v2", {
         p_acao_id: id,
-        p_motivo: motivo || "Exclusão administrativa de ação",
+        p_motivo: motivo || (adminOverride ? "Exclusão administrativa via override autorizado" : "Exclusão administrativa de ação"),
         p_user_id: user.id,
-        p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo
+        p_confirmar_cancelamento_futuro: confirmarCancelamentoFuturo,
+        p_admin_override: adminOverride
       });
     }
 
@@ -4793,7 +4805,9 @@ export async function excluirAcaoInvestimentoAdmin(
       saldo_cancelado: data.saldo_cancelado,
       valor_investimento_total: data.valor_investimento_total,
       valor_realizado_preservado: data.valor_realizado_preservado,
-      saldo_futuro_cancelado: data.saldo_futuro_cancelado
+      saldo_futuro_cancelado: data.saldo_futuro_cancelado,
+      saldo_financeiro_devedor: data.saldo_financeiro_devedor,
+      outras_acoes_restantes: data.outras_acoes_restantes
     });
   } catch (err: any) {
     if (err.message === "UNAUTHENTICATED") {

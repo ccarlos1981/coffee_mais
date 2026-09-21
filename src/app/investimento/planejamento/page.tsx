@@ -547,11 +547,14 @@ export default function PlanejamentoInvestimentoPage() {
     // Exclusão administrativa universal permitida estritamente para Trade e Admin (Fases 1 a 6)
     // Aplicável a ações reais (is_test = FALSE) e de teste (is_test = TRUE)
     const normalizedRole = (userRole || "").trim().toLowerCase();
-    return ["trade", "admin"].includes(normalizedRole);
+    return ["trade", "admin", "admin master"].includes(normalizedRole);
   };
 
   const canExecuteAdminDelete = (action?: AcaoInvestimento | null): boolean => {
     if (!canShowAdminDelete(action)) return false;
+    const normalizedRole = (userRole || "").trim().toLowerCase();
+    const isAdmin = ["admin", "admin master"].includes(normalizedRole);
+    if (isAdmin) return true;
     if (action?.diagnostico_exclusao === "FULLY_REALIZED" || action?.diagnostico_exclusao === "MULTI_ACTION_FINANCIAL_AMBIGUOUS") {
       return false;
     }
@@ -570,10 +573,12 @@ export default function PlanejamentoInvestimentoPage() {
   const testDeleteAction = adminDeleteAction;
   const setTestDeleteAction = setAdminDeleteAction;
 
-  const handleConfirmAdminDelete = async () => {
+  const handleConfirmAdminDelete = async (override?: boolean) => {
     if (!adminDeleteAction) return;
     const diag = adminDeleteAction.diagnostico_exclusao;
-    if (diag === "FULLY_REALIZED" || diag === "MULTI_ACTION_FINANCIAL_AMBIGUOUS") {
+    const isOverride = override === true;
+
+    if (!isOverride && (diag === "FULLY_REALIZED" || diag === "MULTI_ACTION_FINANCIAL_AMBIGUOUS")) {
       toast.error(
         adminDeleteAction.motivo_bloqueio_exclusao ||
         "Operação Bloqueada: Este planejamento possui compromissos financeiros que impedem a exclusão individual."
@@ -581,13 +586,18 @@ export default function PlanejamentoInvestimentoPage() {
       setAdminDeleteAction(null);
       return;
     }
+
     const id = adminDeleteAction.id;
     const isTest = adminDeleteAction.is_test === true;
     setActionLoading(id);
     try {
       const res = await excluirAcaoInvestimentoAdmin(
         id,
-        isTest ? "Exclusão administrativa de planejamento de teste" : "Exclusão administrativa de planejamento"
+        isOverride
+          ? `Exclusão com override administrativo (${isTest ? "planejamento de teste" : "planejamento"})`
+          : (isTest ? "Exclusão administrativa de planejamento de teste" : "Exclusão administrativa de planejamento"),
+        true,
+        isOverride
       );
       if (res?.success) {
         setData(prev => prev.filter(item => item.id !== id));
@@ -596,9 +606,15 @@ export default function PlanejamentoInvestimentoPage() {
         }
         setAdminDeleteAction(null);
 
-        // Feedback pós-commit discriminado por estado operacional soberano (Gate 5.16 Fase 5A)
+        // Feedback pós-commit discriminado por estado operacional soberano (Gate 5.16 / Gate 5.18)
         const op = res.data?.operation;
-        if (op === "SOFT_CANCELED") {
+        if (op === "ADMIN_OVERRIDE_DELETE") {
+          const restantes = res.data?.outras_acoes_restantes ?? 0;
+          toast.success(
+            `Planejamento excluído com sucesso via override de administrador.${restantes > 0 ? ` A negociação master permanece com ${restantes} ação(ões) ativa(s).` : ""}`,
+            { duration: 5000 }
+          );
+        } else if (op === "SOFT_CANCELED") {
           const realizadoPreservado = formatBrl(res.data?.valor_realizado_preservado);
           const saldoCancelado = formatBrl(res.data?.saldo_futuro_cancelado ?? res.data?.saldo_cancelado);
           toast.info(
@@ -2357,6 +2373,7 @@ export default function PlanejamentoInvestimentoPage() {
         action={adminDeleteAction}
         isLoading={actionLoading === adminDeleteAction?.id}
         tipoEntidadeLabel="planejamento"
+        userRole={userRole}
       />
     </div>
   );
