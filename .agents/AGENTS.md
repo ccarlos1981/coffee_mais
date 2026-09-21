@@ -5952,6 +5952,45 @@ GOVERNANCE = LOCKED
 
 Status Arquitetural: `GATE_D_3_CONSOLIDADO = HOMOLOGADO_E_CONGELADO` | `BASELINE = PERMANENTE` | `GOVERNANCE = LOCKED`.
 
+---
+
+## 108. Baseline Oficial — RPS: Consolidação Automática Bottom-Up do FAT Gerente (Baseline Permanente)
+
+A partir de 21/09/2026, por decisão formal e homologação executiva da governança comercial do Coffee++, a regra de consolidação das projeções semanais de faturamento (FAT) no módulo **RPS (Reunião de Planejamento Semanal)** passa a operar sob o modelo **Bottom-Up** (Redes → Gerente).
+
+### 1. Histórico e Evolução Arquitetural
+1. **Baseline 12 (13/07/2026)**: Estabeleceu historicamente o desacoplamento estratégico entre o consolidado do gerente (`_TOTAL_`) e as redes para impedir que alterações descontroladas na carteira sobrescrevessem metas.
+2. **Baseline 117 (13/08/2026)**: Consolidou a auditoria forense do desacoplamento e garantiu a soberania do `_TOTAL_`.
+3. **Baseline 87 (26/08/2026)**: Congelou temporariamente a edição manual do `_TOTAL_` e rejeitou a tentativa P4.7 até que houvesse deliberação formal.
+4. **Baseline 108 (21/09/2026 — Vigente)**: Homologa formalmente a nova regra comercial: o faturamento semanal consolidado do gerente (`_TOTAL_`) passa a ser **estritamente derivado da soma aritmética das projeções de suas redes**.
+   - O desacoplamento permanece ativo exclusivamente no sentido **`GERENTE → REDE = PROIBIDO`** (nenhum valor do gerente se distribui para as redes).
+   - O sentido tático passa a ser **`REDE → GERENTE = SOMA_AUTOMATICA`** (a alteração de uma rede recalcula imediatamente o consolidado do gerente).
+
+### 2. Regra Matemática e Operacional
+1. **Fórmula Oficial de Consolidação Semanal**:
+   $$\text{FAT\_GERENTE}[wIdx] = \sum_{\text{cli} \in \text{clientsList}} \text{FAT\_REDE}_{\text{cli}}[wIdx]$$
+   onde $\text{clientsList}$ contém todas as redes oficiais e ativas do gerente, sem dupla contagem, acrescidas da linha residual $\text{OUTROS}$ quando houver projeção explícita.
+2. **Reatividade Instantânea na UI**: Toda edição de faturamento em qualquer rede recalcula em tempo real a coluna da semana correspondente no cabeçalho do gerente.
+3. **Remoção de Redes**: Ao remover uma rede da carteira, todas as semanas do FAT consolidado do gerente são recalculadas pela soma das redes remanescentes.
+4. **Proteção Read-Only do Consolidado FAT**: A projeção semanal de FAT do gerente não é mais digitável diretamente pelo usuário (`if (kpi === 'FAT') return;`), sendo exibida como célula calculada formatada.
+
+### 3. Preservação Absoluta das Demais Estruturas
+1. **VOL e INVEST Manuais e Soberanos**:
+   - As projeções semanais de Volume (VOL) e Investimento (INVEST) do gerente permanecem 100% manuais e digitáveis pelo Admin / Gerente no cabeçalho consolidado. Nenhuma regra de soma é aplicada a VOL ou INVEST.
+2. **Governança de DESAFIOS e METAS**:
+   - `DESAFIO_VOL`, `DESAFIO_FAT` e `DESAFIO_INVEST` permanecem inalterados, exclusivos de Admin, e persistidos com suas escalas próprias.
+   - A `META` por rede permanece inalterada, exclusiva de Admin.
+   - `public.targets` permanece estritamente `READ-ONLY`.
+3. **Alerta Automático das 14h**:
+   - O payload do `POST` continua enviando e persistindo o registro `client_matrix = '_TOTAL_'`, `kpi = 'FAT'` com o valor exato da soma das redes.
+   - O cron de alerta (`/api/cron/rps-alert`) e relatórios downstream (RDM, etc.) continuam identificando o preenchimento pleno dos 3 KPIs (`FAT`, `VOL`, `INVEST`) na chave `_TOTAL_`.
+4. **Isolamento Multidimensional**:
+   - `GERENTE_A ≠ GERENTE_B`: A soma de um gerente não afeta nenhum outro gerente.
+   - `SEMANA_A ≠ SEMANA_B`: A soma de uma semana não afeta nenhuma outra semana.
+
+Status Arquitetural: `RPS_BOTTOM_UP_FAT = LOCKED` | `RPS_REDE_TO_GERENTE = SOMA_AUTOMATICA` | `RPS_GERENTE_TO_REDE = PROIBIDO` | `RPS_VOL_MANUAL = LOCKED` | `RPS_INVEST_MANUAL = LOCKED` | `RPS_ALERT_14H = INTACT` | `BASELINE = PERMANENTE`.
+
+
 
 
 

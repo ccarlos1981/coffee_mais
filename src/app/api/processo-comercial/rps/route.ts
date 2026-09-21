@@ -660,6 +660,11 @@ export async function GET(request: Request) {
         display_order: 999999
       });
 
+      // Baseline 108: FAT consolidado do gerente calculado automaticamente pela soma das projeções semanais de FAT das redes do gerente
+      kpis.FAT.projections = mondays.map((_, wIdx) => {
+        return clientsList.reduce((acc: number, cli: any) => acc + (cli.projections[wIdx] || 0), 0);
+      });
+
       return {
         manager: mName,
         kpis,
