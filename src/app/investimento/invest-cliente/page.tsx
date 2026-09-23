@@ -1,6 +1,7 @@
 "use client";
 
 import { OFFICIAL_ANALYTICS_SOURCES, resolveSupabaseTableName } from "@/lib/governance/analytics";
+import { getFaturamentoKaAction } from "./actions";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
@@ -24,6 +25,7 @@ import { supabase } from "@/lib/supabase";
 import { ThemeToggle } from "@/components/ThemeProvider";
 import { buildMatrizLookup, resolveClienteMatriz, MatrizLookup } from "@/lib/investimento/matriz-resolver";
 import { getValorProjetadoComercial } from "@/lib/investimento/getValorTotal";
+import { resolveCanonicalManager } from "@/lib/domain/canonical";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 const normalizeGerenteNome = (nome?: string | null): string => {
@@ -148,8 +150,11 @@ export default function InvestClientePage() {
   const [rawVinculoMap, setRawVinculoMap] = useState<Record<string, VinculoRow[]>>({});
   const [gerenteMap, setGerenteMap] = useState<Record<string, string>>({});
   const [matrizLookup, setMatrizLookup] = useState<MatrizLookup | null>(null);
-  // ── faturamento per rede for the selected month ───────────────────────────
+  // ── faturamento per rede and per manager from official KA source (SSOT) ──
   const [fatMap, setFatMap] = useState<Record<string, number>>({});
+  const [managerFatMap, setManagerFatMap] = useState<Record<string, number>>({});
+  const [gerenteRedesFatMap, setGerenteRedesFatMap] = useState<Record<string, Record<string, number>>>({});
+  const [totalKaFat, setTotalKaFat] = useState<number>(0);
   const [fatLoading, setFatLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -250,23 +255,15 @@ export default function InvestClientePage() {
   const loadFat = useCallback(async (mes: string) => {
     setFatLoading(true);
     try {
-      const { data: salesRows, error } = await supabase
-        .from(resolveSupabaseTableName(OFFICIAL_ANALYTICS_SOURCES.VENDAS_MENSAL))
-        .select("rede, fat")
-        .eq("mes", mes)
-        .limit(10000);
-
-      if (error) {
-        console.error("Erro faturamento:", error);
-        return;
+      const kaRes = await getFaturamentoKaAction(mes);
+      if (kaRes && kaRes.success) {
+        setFatMap(kaRes.redes || {});
+        setManagerFatMap(kaRes.gerentes || {});
+        setGerenteRedesFatMap(kaRes.gerenteRedes || {});
+        setTotalKaFat(kaRes.totalGeral || 0);
       }
-
-      const fMap: Record<string, number> = {};
-      (salesRows || []).forEach((row: any) => {
-        const rk = (row.rede || "").toUpperCase().trim();
-        if (rk) fMap[rk] = (fMap[rk] || 0) + (Number(row.fat) || 0);
-      });
-      setFatMap(fMap);
+    } catch (err) {
+      console.error("Erro ao carregar faturamento oficial KA:", err);
     } finally {
       setFatLoading(false);
     }
@@ -410,7 +407,19 @@ export default function InvestClientePage() {
     const clientesList: ClienteData[] = Object.values(redeAgg)
       .filter((v) => v.expectativaInvest > 0 || v.provisionado > 0 || v.naoProvisionado > 0)
       .map((agg) => {
-        const fat = fatMap[agg.rede.toUpperCase()] || (agg.rawRede ? fatMap[agg.rawRede.toUpperCase()] : 0) || 0;
+        const gNorm = normalizeGerenteNome(agg.gerente);
+        const canonical = resolveCanonicalManager(agg.gerente);
+        const cId = canonical?.managerId;
+        const rKey = agg.rede.toUpperCase().trim();
+        const rawRKey = agg.rawRede ? agg.rawRede.toUpperCase().trim() : "";
+        const fat =
+          (cId ? gerenteRedesFatMap[cId]?.[rKey] : undefined) ??
+          gerenteRedesFatMap[gNorm]?.[rKey] ??
+          (cId && rawRKey ? gerenteRedesFatMap[cId]?.[rawRKey] : undefined) ??
+          (rawRKey ? gerenteRedesFatMap[gNorm]?.[rawRKey] : undefined) ??
+          fatMap[rKey] ??
+          (rawRKey ? fatMap[rawRKey] : 0) ??
+          0;
         const perc =
           fat > 0 ? ((agg.naoProvisionado + agg.provisionado) / fat) * 100 : null;
         return {
@@ -436,9 +445,22 @@ export default function InvestClientePage() {
 
     const grupoList: GrupoGerente[] = Object.entries(gerenteGroups)
       .map(([gerente, clientes]) => {
+        const gNorm = normalizeGerenteNome(gerente);
+        const canonical = resolveCanonicalManager(gerente);
+        const cId = canonical?.managerId;
+        const cName = canonical?.managerName;
+        const clientSumFat = clientes.reduce((acc, c) => acc + c.faturamento, 0);
+        const officialManagerFat =
+          (cId && managerFatMap[cId]) ||
+          managerFatMap[gerente] ||
+          managerFatMap[gNorm] ||
+          (cName && managerFatMap[cName]) ||
+          managerFatMap[gerente.toUpperCase()] ||
+          managerFatMap[gNorm.toUpperCase()] ||
+          clientSumFat;
+
         const totals = clientes.reduce(
           (acc, c) => {
-            acc.faturamento += c.faturamento;
             acc.expectativaInvest += c.expectativaInvest;
             acc.naoProvisionado += c.naoProvisionado;
             acc.provisionado += c.provisionado;
@@ -449,7 +471,7 @@ export default function InvestClientePage() {
             return acc;
           },
           {
-            faturamento: 0,
+            faturamento: officialManagerFat,
             expectativaInvest: 0,
             naoProvisionado: 0,
             provisionado: 0,
@@ -466,7 +488,7 @@ export default function InvestClientePage() {
       .sort((a, b) => b.totals.expectativaInvest - a.totals.expectativaInvest);
 
     return grupoList;
-  }, [rawAcoes, rawVinculoMap, gerenteMap, fatMap, selectedMes, matrizLookup]);
+  }, [rawAcoes, rawVinculoMap, gerenteMap, fatMap, managerFatMap, gerenteRedesFatMap, selectedMes, matrizLookup]);
 
   // Auto-expand all groups when grupos change
   useEffect(() => {
@@ -519,14 +541,17 @@ export default function InvestClientePage() {
         meses: {} as Record<string, number>,
       }
     );
+    const finalFat = !filterGerente && totalKaFat > 0 ? totalKaFat : base.faturamento;
+
     return {
       ...base,
+      faturamento: finalFat,
       percInvest:
-        base.faturamento > 0
-          ? ((base.naoProvisionado + base.provisionado) / base.faturamento) * 100
+        finalFat > 0
+          ? ((base.naoProvisionado + base.provisionado) / finalFat) * 100
           : null,
     };
-  }, [filteredGrupos]);
+  }, [filteredGrupos, filterGerente, totalKaFat]);
 
   const toggleGerente = (gerente: string) => {
     setExpandedGerentes((prev) => {
@@ -666,12 +691,15 @@ export default function InvestClientePage() {
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <ThemeToggle />
             <button
-              onClick={loadData}
-              disabled={loading}
+              onClick={() => {
+                loadData();
+                loadFat(selectedMes);
+              }}
+              disabled={loading || fatLoading}
               title="Atualizar"
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg shadow-sm transition-all disabled:opacity-50"
             >
-              <RefreshCw className={`w-4 h-4 text-gray-500 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`w-4 h-4 text-gray-500 ${loading || fatLoading ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">Atualizar</span>
             </button>
             <button

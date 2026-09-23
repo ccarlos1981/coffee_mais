@@ -12,12 +12,41 @@ import { OFFICIAL_ANALYTICS_SOURCES, resolveOfficialSource } from './sources';
 import { AnalyticsFilters, escapeSqlValue, buildManagerFilter, buildUfFilter, buildChannelFilter, buildRedeFilter } from './filters';
 import { buildWhereClause } from './query-builder';
 import { buildMacoSqlExpression } from './metrics';
-import { getCommercialManagerRoleOptions } from '@/lib/domain/commercial-structure';
+import {
+  getCommercialManagerRoleOptions,
+  DISTRIBUTORS_REGISTRY,
+  isDistributorClient,
+  isInsideSalesClient,
+  OFFICIAL_COMMERCIAL_ROLES,
+} from '@/lib/domain/commercial-structure';
 import { CommercialDomainService } from '@/lib/domain';
 import { resolveCanonicalManager } from '@/lib/domain/canonical';
 
 function getSupabaseClient() {
   return createAdminClient();
+}
+
+export interface KaOfficialClientFat {
+  client: string;
+  channel: string;
+  fat: number;
+}
+
+export interface KaOfficialManagerFat {
+  manager: string;
+  manager_id: string;
+  fat: number;
+  topClients: KaOfficialClientFat[];
+}
+
+export interface KaOfficialFaturamentoResult {
+  success: boolean;
+  competencia: string;
+  totalGeral: number;
+  gerentes: Record<string, number>;
+  gerenteRedes: Record<string, Record<string, number>>;
+  redes: Record<string, number>;
+  detalhes: KaOfficialManagerFat[];
 }
 
 export interface DesafioDreConfig {
@@ -383,6 +412,151 @@ export class AnalyticsEngine {
       rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient,
       paceResult,
       investmentPct: filters.investmentPct || 0,
+    };
+  }
+
+  /**
+   * Obtém o Faturamento Oficial do Canal KA (Key Account) para uma competência (YYYY-MM).
+   * SINGLE SOURCE OF TRUTH (SSOT) compartilhada entre Vendas (KA) e Investimentos (Dash Resumido).
+   * Aplica estritamente as regras homologadas de segregação de Commercial Roles:
+   * - Dedução de Distribuidores (conforme DISTRIBUTORS_REGISTRY);
+   * - Dedução de Inside Sales (conforme isInsideSalesClient);
+   * - Filtro oficial de faturamento líquido KA (payment_type = 'VENDA NF-E' e devoluções legítimas).
+   */
+  public static async getKaOfficialFaturamento(competencia: string): Promise<KaOfficialFaturamentoResult> {
+    const [y, m] = competencia.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const startDate = `${competencia}-01`;
+    const endDate = `${competencia}-${String(lastDay).padStart(2, '0')}`;
+
+    const query = `
+      SELECT 
+        COALESCE(manager, 'SEM RESPONSÁVEL') as manager,
+        COALESCE(manager_id, '9999') as manager_id,
+        COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado') as client,
+        COALESCE(channel, 'Outros') as channel,
+        SUM(
+          CASE 
+            WHEN channel = 'KA' AND payment_type = 'VENDA NF-E' THEN net_value
+            WHEN channel = 'KA' AND payment_type LIKE '%DEVOLUÇÃO%' AND COALESCE(cod_natureza, '') != '4040000' THEN net_value
+            WHEN channel = 'KA' THEN 0
+            ELSE net_value
+          END
+        ) as fat,
+        SUM(quantity) as qty
+      FROM public.sales
+      WHERE invoice_date >= '${startDate}' AND invoice_date <= '${endDate}'
+      GROUP BY COALESCE(manager, 'SEM RESPONSÁVEL'), COALESCE(manager_id, '9999'),
+               COALESCE(NULLIF(TRIM(rede), ''), nome_parceiro, 'Não Mapeado'), COALESCE(channel, 'Outros')
+    `;
+
+    const rows = await this.executeSql<any>(query);
+
+    const byManagerMap: Record<string, {
+      managerId: string;
+      managerName: string;
+      fat: number;
+      byClient: Record<string, { client: string; channel: string; fat: number }>;
+    }> = {};
+
+    for (const r of rows || []) {
+      const mId = r.manager_id || '9999';
+      const mName = r.manager || 'Outros';
+      const client = r.client || 'Não Mapeado';
+      const fat = Number(r.fat || 0);
+
+      if (!byManagerMap[mId]) {
+        byManagerMap[mId] = { managerId: mId, managerName: mName, fat: 0, byClient: {} };
+      }
+      byManagerMap[mId].fat += fat;
+      if (!byManagerMap[mId].byClient[client]) {
+        byManagerMap[mId].byClient[client] = { client, channel: r.channel, fat: 0 };
+      }
+      byManagerMap[mId].byClient[client].fat += fat;
+    }
+
+    const gerentes: Record<string, number> = {};
+    const gerenteRedes: Record<string, Record<string, number>> = {};
+    const redes: Record<string, number> = {};
+    const detalhes: KaOfficialManagerFat[] = [];
+    let totalGeral = 0;
+
+    const normalizeManagerKey = (nome: string) => {
+      const trimmed = (nome || '').trim();
+      if (!trimmed) return 'Sem Gerente';
+      const lower = trimmed.toLowerCase();
+      if (lower === 'john guedes' || lower === 'john') return 'John';
+      if (lower === 'leandro saffi' || lower === 'leandro') return 'Leandro';
+      return trimmed;
+    };
+
+    // Gerentes comerciais homologados no catálogo de Commercial Roles
+    const kaManagerIds = ['1001', '1002', '1003', '1000'];
+
+    kaManagerIds.forEach(mId => {
+      const sales = byManagerMap[mId];
+      if (!sales) return;
+
+      const allClients = Object.values(sales.byClient);
+      const distClients = allClients.filter(c => isDistributorClient(c, mId));
+      const insideClients = allClients.filter(c => isInsideSalesClient(c));
+      const kaClients = allClients.filter(c => !isDistributorClient(c, mId) && !isInsideSalesClient(c));
+
+      const distFat = distClients.reduce((acc, c) => acc + c.fat, 0);
+      const insideFat = insideClients.reduce((acc, c) => acc + c.fat, 0);
+      const officialManagerFat = sales.fat;
+      const kaOfficialFat = Math.max(0, officialManagerFat - distFat - insideFat);
+
+      const normName = normalizeManagerKey(sales.managerName);
+      const roundedFat = Number(kaOfficialFat.toFixed(2));
+
+      // Mapeamento resiliente de chaves para compatibilidade com nomes de exibição
+      gerentes[mId] = roundedFat;
+      gerentes[normName] = roundedFat;
+      gerentes[sales.managerName] = roundedFat;
+      gerentes[sales.managerName.toUpperCase()] = roundedFat;
+      gerentes[normName.toUpperCase()] = roundedFat;
+
+      gerenteRedes[normName] = {};
+      gerenteRedes[mId] = {};
+      gerenteRedes[sales.managerName] = {};
+
+      const topClientsForManager: KaOfficialClientFat[] = [];
+
+      kaClients.forEach(c => {
+        const cFat = Number(c.fat.toFixed(2));
+        const rKey = c.client.toUpperCase().trim();
+        redes[rKey] = (redes[rKey] || 0) + cFat;
+        gerenteRedes[normName][rKey] = (gerenteRedes[normName][rKey] || 0) + cFat;
+        gerenteRedes[mId][rKey] = (gerenteRedes[mId][rKey] || 0) + cFat;
+        gerenteRedes[sales.managerName][rKey] = (gerenteRedes[sales.managerName][rKey] || 0) + cFat;
+        topClientsForManager.push({
+          client: c.client,
+          channel: c.channel,
+          fat: cFat,
+        });
+      });
+
+      detalhes.push({
+        manager: normName,
+        manager_id: mId,
+        fat: roundedFat,
+        topClients: topClientsForManager.sort((a, b) => b.fat - a.fat),
+      });
+
+      totalGeral += kaOfficialFat;
+    });
+
+    totalGeral = Number(totalGeral.toFixed(2));
+
+    return {
+      success: true,
+      competencia,
+      totalGeral,
+      gerentes,
+      gerenteRedes,
+      redes,
+      detalhes,
     };
   }
 
