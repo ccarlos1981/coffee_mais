@@ -207,11 +207,23 @@ export class AnalyticsEngine {
 
     const pmStartMonth = `${sMonth === 1 ? sYear - 1 : sYear}-${String(sMonth === 1 ? 12 : sMonth - 1).padStart(2, '0')}`;
     const pmEndMonth = `${eMonth === 1 ? eYear - 1 : eYear}-${String(eMonth === 1 ? 12 : eMonth - 1).padStart(2, '0')}`;
+    
+    // M-2 (Dois meses anteriores à competência)
+    const getPrevMonth = (y: number, m: number, offset: number) => {
+      const totalMonths = y * 12 + (m - 1) - offset;
+      const targetYear = Math.floor(totalMonths / 12);
+      const targetMonth = ((totalMonths % 12) + 12) % 12 + 1;
+      return `${targetYear}-${String(targetMonth).padStart(2, '0')}`;
+    };
+    const p2mStartMonth = getPrevMonth(sYear, sMonth, 2);
+    const p2mEndMonth = getPrevMonth(eYear, eMonth, 2);
+
     const pyStartMonth = `${sYear - 1}-${String(sMonth).padStart(2, '0')}`;
     const pyEndMonth = `${eYear - 1}-${String(eMonth).padStart(2, '0')}`;
 
     const curFilters = { ...filters, startMonth: curStartMonth, endMonth: curEndMonth };
     const pmFilters = { ...filters, startMonth: pmStartMonth, endMonth: pmEndMonth };
+    const p2mFilters = { ...filters, startMonth: p2mStartMonth, endMonth: p2mEndMonth };
     const pyFilters = { ...filters, startMonth: pyStartMonth, endMonth: pyEndMonth };
 
     const sourceTable = OFFICIAL_ANALYTICS_SOURCES.SALES_REALTIME;
@@ -231,11 +243,13 @@ export class AnalyticsEngine {
 
     const curRange = getMonthRange(curStartMonth, curEndMonth);
     const pmRange = getMonthRange(pmStartMonth, pmEndMonth);
+    const p2mRange = getMonthRange(p2mStartMonth, p2mEndMonth);
     const pyRange = getMonthRange(pyStartMonth, pyEndMonth);
 
     const dateRangeClause = `(
       (invoice_date >= '${curRange.startDate}' AND invoice_date <= '${curRange.endDate}')
       OR (invoice_date >= '${pmRange.startDate}' AND invoice_date <= '${pmRange.endDate}')
+      OR (invoice_date >= '${p2mRange.startDate}' AND invoice_date <= '${p2mRange.endDate}')
       OR (invoice_date >= '${pyRange.startDate}' AND invoice_date <= '${pyRange.endDate}')
     )`;
 
@@ -287,7 +301,7 @@ export class AnalyticsEngine {
         UPPER(TRIM(COALESCE(codigo_matriz, rede, ''))) as rede_key,
         SUM(valor_investimento) as valor_investimento
       FROM public.v_acoes_investimento_com_gerente
-      WHERE mes_referencia IN ('${curStartMonth}', '${pmStartMonth}', '${pyStartMonth}')
+      WHERE mes_referencia IN ('${curStartMonth}', '${pmStartMonth}', '${p2mStartMonth}', '${pyStartMonth}')
       GROUP BY mes_referencia, COALESCE(gerente_responsavel, 'Outros'), UPPER(TRIM(COALESCE(codigo_matriz, rede, '')))
     `;
 
@@ -361,6 +375,7 @@ export class AnalyticsEngine {
 
     const rowsCur = processedRows.filter((r: any) => r.mes === curStartMonth);
     const rowsPm = processedRows.filter((r: any) => r.mes === pmStartMonth);
+    const rowsP2m = processedRows.filter((r: any) => r.mes === p2mStartMonth);
     const rowsPy = processedRows.filter((r: any) => r.mes === pyStartMonth);
 
     const deriveClientRows = (baseRows: any[]) => {
@@ -406,10 +421,11 @@ export class AnalyticsEngine {
 
     const rowsCurClient = deriveClientRows(rowsCur);
     const rowsPmClient = deriveClientRows(rowsPm);
+    const rowsP2mClient = deriveClientRows(rowsP2m);
     const rowsPyClient = deriveClientRows(rowsPy);
 
     return {
-      rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsPy, rowsPyClient,
+      rowsCur, rowsCurClient, rowsPm, rowsPmClient, rowsP2m, rowsP2mClient, rowsPy, rowsPyClient,
       paceResult,
       investmentPct: filters.investmentPct || 0,
     };

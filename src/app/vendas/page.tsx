@@ -49,6 +49,15 @@ function cleanManagerName(name: string): string {
   return name.replace(/\s*\((KA|Dist|DIST|Key Accounts)\)/gi, "").trim();
 }
 
+function getHistoricalMonthLabel(year: number, month: number, offset: number): string {
+  const totalMonths = year * 12 + (month - 1) - offset;
+  const targetYear = Math.floor(totalMonths / 12);
+  const targetMonth = ((totalMonths % 12) + 12) % 12;
+  const monthAbbr = MONTHS[targetMonth].slice(0, 3).toUpperCase();
+  const year2d = String(targetYear).slice(-2);
+  return `${monthAbbr}/${year2d}`;
+}
+
 const PIE_COLORS = [
   "#c8a96e", "#7d6b45", "#5a805a", "#a0522d",
   "#6b8fad", "#b8860b", "#708090", "#cd853f",
@@ -177,6 +186,7 @@ interface ManagerData {
 }
 
 interface TopClientRow extends ClientRow {
+  prevTwoMonthsFat?: number;
   prevMonthFat: number;
   prevYearFat: number;
   paceFat?: number;
@@ -220,6 +230,10 @@ export default function VendasDashboard() {
   // Período
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1);
+
+  // Rótulos dinâmicos para histórico de competências (M-2 e M-1)
+  const m2Label = getHistoricalMonthLabel(filterYear, filterMonth, 2);
+  const m1Label = getHistoricalMonthLabel(filterYear, filterMonth, 1);
 
   // Sidebar filters (inicializados como TODOS / limpos para garantir carregamento total)
   const [filterManager, setFilterManager] = useState<string[]>([]);
@@ -1331,6 +1345,8 @@ export default function VendasDashboard() {
                                           <tr>
                                             <th style={{ width: 30 }}>#</th>
                                             <th>{row.role === 'DIST' ? 'Distribuidor' : 'Matriz'}</th>
+                                            <th>{m2Label}</th>
+                                            <th>{m1Label}</th>
                                             <th>Faturamento</th>
                                             <th>vs Mês Ant.</th>
                                             <th>vs Ano Ant.</th>
@@ -1346,6 +1362,8 @@ export default function VendasDashboard() {
                                               <tr key={i}>
                                                 <td style={{ textAlign: "center", color: "var(--foreground-dim)", fontWeight: 600 }}>{i + 1}</td>
                                                 <td>{c.client}</td>
+                                                <td>{formatCurrency((c.prevTwoMonthsFat || 0) / 1000)}</td>
+                                                <td>{formatCurrency((c.prevMonthFat || 0) / 1000)}</td>
                                                 <td>{formatCurrency(c.fat / 1000)}</td>
                                                 <td style={{ color: vsPM === null ? "var(--foreground-dim)" : vsPM >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600, fontSize: "0.65rem" }}>
                                                   {vsPM === null ? "—" : `${vsPM >= 0 ? "+" : ""}${vsPM.toFixed(1)}%`}

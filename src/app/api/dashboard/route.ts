@@ -20,7 +20,8 @@ function aggregateFromMV(
     cutOffDay: number;
     isPastMonth: boolean;
     isFutureMonth: boolean;
-  }
+  },
+  p2mClientMap?: Map<string, { fat: number; qty: number; maco: number }>
 ) {
   const byManagerMap: Record<string, {
     managerId: string;
@@ -184,13 +185,17 @@ function aggregateFromMV(
         const paceFat = isPastMonth ? c.fat : (isFutureMonth ? remC.fat : c.fat + remC.fat);
         const paceQty = isPastMonth ? c.qty : (isFutureMonth ? remC.qty : c.qty + remC.qty);
         const paceMaco = isPastMonth ? c.maco : (isFutureMonth ? remC.maco : c.maco + remC.maco);
+        const prevTwoMonthsFat = (p2mClientMap?.get(`${managerId}|${c.client}`)?.fat ?? p2mClientMap?.get(c.client)?.fat) || 0;
+        const prevMonthFat = (pmClientMap?.get(`${managerId}|${c.client}`)?.fat ?? pmClientMap?.get(c.client)?.fat) || 0;
+        const prevYearFat = (pyClientMap?.get(`${managerId}|${c.client}`)?.fat ?? pyClientMap?.get(c.client)?.fat) || 0;
         return {
           ...c,
           fat: isFutureMonth ? 0 : c.fat,
           qty: isFutureMonth ? 0 : c.qty,
           maco: isFutureMonth ? 0 : c.maco,
-          prevMonthFat: pmClientMap?.get(c.client)?.fat || 0,
-          prevYearFat: pyClientMap?.get(c.client)?.fat || 0,
+          prevTwoMonthsFat,
+          prevMonthFat,
+          prevYearFat,
           paceFat,
           paceQty,
           paceMaco,
@@ -258,6 +263,25 @@ export async function GET(request: Request) {
       desafioConfigs[k] = v;
     }
 
+    const p2mClientMap = new Map<string, { fat: number; qty: number; maco: number }>();
+    for (const r of (data.rowsP2mClient || [])) {
+      const existing = p2mClientMap.get(r.client) || { fat: 0, qty: 0, maco: 0 };
+      p2mClientMap.set(r.client, {
+        fat: existing.fat + Number(r.fat || 0),
+        qty: existing.qty + Number(r.qty || 0),
+        maco: existing.maco + Number(r.maco || 0),
+      });
+      if (r.manager_id) {
+        const mgrKey = `${r.manager_id}|${r.client}`;
+        const existingMgr = p2mClientMap.get(mgrKey) || { fat: 0, qty: 0, maco: 0 };
+        p2mClientMap.set(mgrKey, {
+          fat: existingMgr.fat + Number(r.fat || 0),
+          qty: existingMgr.qty + Number(r.qty || 0),
+          maco: existingMgr.maco + Number(r.maco || 0),
+        });
+      }
+    }
+
     const pmClientMap = new Map<string, { fat: number; qty: number; maco: number }>();
     for (const r of data.rowsPmClient) {
       const existing = pmClientMap.get(r.client) || { fat: 0, qty: 0, maco: 0 };
@@ -266,6 +290,15 @@ export async function GET(request: Request) {
         qty: existing.qty + Number(r.qty || 0),
         maco: existing.maco + Number(r.maco || 0),
       });
+      if (r.manager_id) {
+        const mgrKey = `${r.manager_id}|${r.client}`;
+        const existingMgr = pmClientMap.get(mgrKey) || { fat: 0, qty: 0, maco: 0 };
+        pmClientMap.set(mgrKey, {
+          fat: existingMgr.fat + Number(r.fat || 0),
+          qty: existingMgr.qty + Number(r.qty || 0),
+          maco: existingMgr.maco + Number(r.maco || 0),
+        });
+      }
     }
 
     const pyClientMap = new Map<string, { fat: number; qty: number; maco: number }>();
@@ -276,9 +309,18 @@ export async function GET(request: Request) {
         qty: existing.qty + Number(r.qty || 0),
         maco: existing.maco + Number(r.maco || 0),
       });
+      if (r.manager_id) {
+        const mgrKey = `${r.manager_id}|${r.client}`;
+        const existingMgr = pyClientMap.get(mgrKey) || { fat: 0, qty: 0, maco: 0 };
+        pyClientMap.set(mgrKey, {
+          fat: existingMgr.fat + Number(r.fat || 0),
+          qty: existingMgr.qty + Number(r.qty || 0),
+          maco: existingMgr.maco + Number(r.maco || 0),
+        });
+      }
     }
 
-    const curAgg = aggregateFromMV(data.rowsCur, data.investmentPct, data.rowsCurClient, pmClientMap, pyClientMap, data.paceResult);
+    const curAgg = aggregateFromMV(data.rowsCur, data.investmentPct, data.rowsCurClient, pmClientMap, pyClientMap, data.paceResult, p2mClientMap);
     const pmAgg = aggregateFromMV(data.rowsPm, data.investmentPct);
     const pyAgg = aggregateFromMV(data.rowsPy, data.investmentPct);
 
